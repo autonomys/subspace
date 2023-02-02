@@ -17,10 +17,13 @@ use sp_messenger::messages::{
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::scale_info::TypeInfo;
-use sp_runtime::traits::{Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{
+    Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor, One,
+};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use tracing::error;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -476,31 +479,75 @@ where
         .map_err(Error::UnableToSubmitCrossDomainMessage)
     }
 
-    fn last_relayed_block_key(domain_id: DomainId) -> Vec<u8> {
-        (b"message_relayer_last_processed_block_of_domain", domain_id).encode()
+    fn relayed_blocks_at_number_key(domain_id: DomainId, number: NumberFor<Block>) -> Vec<u8> {
+        (
+            b"message_relayer_processed_block_of_domain",
+            domain_id,
+            number,
+        )
+            .encode()
     }
 
-    fn fetch_last_relayed_block(
+    /// Takes number as tip and finds all the unprocessed blocks including the tip.
+    fn fetch_unprocessed_blocks_until(
         client: &Arc<Client>,
         domain_id: DomainId,
-    ) -> Option<NumberFor<Block>> {
-        let encoded = client
-            .get_aux(&Self::last_relayed_block_key(domain_id))
-            .ok()??;
+        number: NumberFor<Block>,
+        hash: Block::Hash,
+    ) -> Vec<(NumberFor<Block>, Block::Hash)> {
+        let mut blocks_to_process = vec![];
+        let (mut number_to_check, mut hash_to_check) = (number, hash);
+        while !Self::fetch_blocks_relayed_at(client, domain_id, number_to_check)
+            .contains(&hash_to_check)
+        {
+            blocks_to_process.push((number_to_check, hash_to_check));
+            hash_to_check = match client.header(hash_to_check).ok().flatten() {
+                Some(header) => *header.parent_hash(),
+                None => {
+                    error!(target: LOG_TARGET,
+                        "Failed to fetch header for hash {hash_to_check:?} for domain {domain_id:?}");
+                    return blocks_to_process;
+                }
+            };
+            number_to_check = match number_to_check.checked_sub(&One::one()) {
+                None => return blocks_to_process,
+                Some(number) => number,
+            };
+        }
 
-        NumberFor::<Block>::decode(&mut encoded.as_ref()).ok()
+        blocks_to_process.reverse();
+        blocks_to_process
     }
 
-    pub(crate) fn store_last_relayed_block(
+    #[inline]
+    fn fetch_blocks_relayed_at(
+        client: &Arc<Client>,
+        domain_id: DomainId,
+        number: NumberFor<Block>,
+    ) -> Vec<Block::Hash> {
+        client
+            .get_aux(&Self::relayed_blocks_at_number_key(domain_id, number))
+            .ok()
+            .flatten()
+            .and_then(|enc_val| Vec::<Block::Hash>::decode(&mut enc_val.as_ref()).ok())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn store_relayed_block(
         client: &Arc<Client>,
         domain_id: DomainId,
         block_number: NumberFor<Block>,
+        block_hash: Block::Hash,
     ) -> Result<(), Error> {
+        let mut processed_blocks = Self::fetch_blocks_relayed_at(client, domain_id, block_number);
+        processed_blocks.push(block_hash);
+        processed_blocks.sort_unstable();
+        processed_blocks.dedup();
         client
             .insert_aux(
                 &[(
-                    Self::last_relayed_block_key(domain_id).as_ref(),
-                    block_number.encode().as_ref(),
+                    Self::relayed_blocks_at_number_key(domain_id, block_number).as_ref(),
+                    processed_blocks.encode().as_ref(),
                 )],
                 &[],
             )

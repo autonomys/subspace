@@ -7,8 +7,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
 use sp_messenger::RelayerApi;
 use sp_runtime::scale_info::TypeInfo;
-use sp_runtime::traits::{CheckedAdd, CheckedSub, NumberFor, One, Zero};
-use sp_runtime::ArithmeticError;
+use sp_runtime::traits::{CheckedSub, NumberFor};
 use std::sync::Arc;
 
 /// Starts relaying system domain messages to other domains.
@@ -31,11 +30,11 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
     let result = relay_domain_messages(
         relayer_id,
         system_domain_client,
-        |relayer_id, client, block_id| {
+        |relayer_id, client, block_hash| {
             Relayer::submit_messages_from_system_domain(
                 relayer_id,
                 client,
-                block_id,
+                block_hash,
                 &gossip_message_sink,
             )
         },
@@ -86,12 +85,12 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
     let result = relay_domain_messages(
         relayer_id,
         core_domain_client,
-        |relayer_id, client, block_id| {
+        |relayer_id, client, block_hash| {
             Relayer::submit_messages_from_core_domain(
                 relayer_id,
                 client,
                 &system_domain_client,
-                block_id,
+                block_hash,
                 &gossip_message_sink,
             )
         },
@@ -126,19 +125,10 @@ where
 {
     let domain_id = Relayer::domain_id(&domain_client)?;
     let relay_confirmation_depth = Relayer::relay_confirmation_depth(&domain_client)?;
-    let maybe_last_relayed_block = Relayer::fetch_last_relayed_block(&domain_client, domain_id);
-    let mut relay_block_from = match maybe_last_relayed_block {
-        None => Zero::zero(),
-        Some(last_block_number) => last_block_number
-            .checked_add(&One::one())
-            .ok_or(ArithmeticError::Overflow)?,
-    };
-
     tracing::info!(
         target: LOG_TARGET,
-        "Starting relayer for domain: {:?} from the block: {:?}",
+        "Starting relayer for domain: {:?}",
         domain_id,
-        relay_block_from,
     );
     let mut domain_block_import = domain_client.import_notification_stream();
 
@@ -148,15 +138,13 @@ where
     // construct proof of each message to be relayed
     // submit XDM as unsigned extrinsic.
     while let Some(block) = domain_block_import.next().await {
-        let block_number = block.header.number();
-
         // if the client is in major sync, wait until sync is complete
         if sync_oracle.is_major_syncing() {
             tracing::info!(target: LOG_TARGET, "Client is in major sync. Skipping...");
             continue;
         }
 
-        let relay_block_until = match block_number.checked_sub(&relay_confirmation_depth) {
+        let relay_block_until = match block.header.number().checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
                 tracing::info!(
@@ -169,30 +157,29 @@ where
             Some(confirmed_block) => confirmed_block,
         };
 
-        while relay_block_from <= relay_block_until {
+        let (number, hash) = (*block.header.number(), block.header.hash());
+        let blocks_to_process: Vec<(NumberFor<Block>, Block::Hash)> =
+            Relayer::fetch_unprocessed_blocks_until(&domain_client, domain_id, number, hash)
+                .into_iter()
+                .filter(|(number, _)| *number <= relay_block_until)
+                .collect();
+
+        for (number, hash) in blocks_to_process {
             tracing::info!(
                 target: LOG_TARGET,
-                "Checking messages to be submitted from domain: {:?} at block: {:?}",
-                domain_id,
-                relay_block_from
+                "Checking messages to be submitted from domain: {domain_id:?} at block: ({number:?}, {hash:?})",
             );
 
-            let block_hash = domain_client
-                .hash(relay_block_from)?
-                .ok_or(Error::UnableToFetchBlockNumber)?;
-            if let Err(err) = message_processor(relayer_id.clone(), &domain_client, block_hash) {
+            if let Err(err) = message_processor(relayer_id.clone(), &domain_client, hash) {
                 tracing::error!(
                     target: LOG_TARGET,
                     ?err,
-                    "Failed to submit messages from the domain {domain_id:?} at the block {relay_block_from:?}"
+                    "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
                 );
                 break;
             };
 
-            Relayer::store_last_relayed_block(&domain_client, domain_id, relay_block_from)?;
-            relay_block_from = relay_block_from
-                .checked_add(&One::one())
-                .ok_or(ArithmeticError::Overflow)?;
+            Relayer::store_relayed_block(&domain_client, domain_id, number, hash)?;
         }
     }
 
