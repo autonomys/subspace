@@ -21,7 +21,7 @@ use subspace_networking::{
     RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
 use tokio::runtime::Handle;
-use tracing::{debug, error, info, warn, Instrument, Span};
+use tracing::{debug, error, info, Instrument, Span};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
     NonZeroUsize::new(2000).expect("Not zero; qed");
@@ -187,7 +187,10 @@ pub(crate) fn start_announcements_processor(
                     return;
                 }
                 let record = error.into_inner();
-                warn!(
+                // TODO: This should be made a warning, but due to
+                //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
+                //  to resolve
+                debug!(
                     ?record.key,
                     ?record.provider,
                     "Failed to add provider record to the channel."
