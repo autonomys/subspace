@@ -1,6 +1,8 @@
 use crate::utils::parity_db_store::ParityDbStore;
 use crate::utils::piece_cache::PieceCache;
+use parking_lot::Mutex;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use subspace_core_primitives::Piece;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::PeerId;
@@ -8,11 +10,12 @@ use subspace_networking::RecordBinaryHeap;
 use tracing::{info, trace, warn};
 
 /// Piece cache with limited size where pieces closer to provided peer ID are retained.
+#[derive(Clone)]
 pub struct FarmerPieceCache {
     // Underlying unbounded store.
     store: ParityDbStore<Key, Piece>,
     // Maintains a heap to limit total number of entries.
-    heap: RecordBinaryHeap,
+    heap: Arc<Mutex<RecordBinaryHeap>>,
 }
 
 impl FarmerPieceCache {
@@ -40,19 +43,24 @@ impl FarmerPieceCache {
             }
         }
 
-        Self { store, heap }
+        Self {
+            store,
+            heap: Arc::new(Mutex::new(heap)),
+        }
     }
 }
 
 impl PieceCache for FarmerPieceCache {
+    type KeysIterator = impl IntoIterator<Item = Key>;
+
     fn should_cache(&self, key: &Key) -> bool {
-        self.heap.should_include_key(key)
+        self.heap.lock().should_include_key(key)
     }
 
     fn add_piece(&mut self, key: Key, piece: Piece) {
         self.store.update([(&key, Some(piece.into()))]);
 
-        let evicted_key = self.heap.insert(key);
+        let evicted_key = self.heap.lock().insert(key);
 
         if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
@@ -63,5 +71,11 @@ impl PieceCache for FarmerPieceCache {
 
     fn get_piece(&self, key: &Key) -> Option<Piece> {
         self.store.get(key)
+    }
+
+    fn keys(&self) -> Self::KeysIterator {
+        // It is not great that we're cloning it, but at the same time dealing with self-referential
+        // lifetimes originating from the fact that mutex is used here proven to be challenging
+        self.heap.lock().keys().cloned().collect::<Vec<_>>()
     }
 }

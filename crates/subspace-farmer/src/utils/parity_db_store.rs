@@ -1,6 +1,5 @@
 use parity_db::{ColumnOptions, Db, Options};
 use std::error::Error;
-use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -71,9 +70,9 @@ where
         }
     }
 
-    pub fn update<'a, I>(&'a mut self, values: I) -> bool
+    pub fn update<'a, I>(&'a self, values: I) -> bool
     where
-        I: IntoIterator<Item = (&'a StoreKey, Option<Vec<u8>>)> + fmt::Debug,
+        I: IntoIterator<Item = (&'a StoreKey, Option<Vec<u8>>)> + Debug,
     {
         trace!(?values, "Updating records in DB");
 
