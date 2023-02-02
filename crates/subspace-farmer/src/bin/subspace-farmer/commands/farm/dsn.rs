@@ -45,7 +45,7 @@ pub(super) async fn configure_dsn(
 ) -> Result<
     (
         Node,
-        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage>>,
+        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>>,
         FarmerPieceCache,
     ),
     anyhow::Error,
@@ -81,12 +81,16 @@ pub(super) async fn configure_dsn(
         ParityDbProviderStorage::new(&provider_cache_db_path, provider_cache_size, peer_id)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
-    let farmer_provider_storage =
-        FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
-
     let piece_store =
         ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
+
+    let farmer_provider_storage = FarmerProviderStorage::new(
+        peer_id,
+        readers_and_pieces.clone(),
+        db_provider_storage,
+        piece_cache.clone(),
+    );
 
     let config = Config {
         reserved_peers,
