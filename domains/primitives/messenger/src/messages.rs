@@ -124,7 +124,7 @@ pub struct Message<Balance> {
 pub struct DomainBlockInfo<Number, Hash> {
     /// Block number of the domain.
     pub block_number: Number,
-    /// Block hash of the system domain.
+    /// Block hash of the domain.
     pub block_hash: Hash,
 }
 
