@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
-#![feature(type_alias_impl_trait, type_changing_struct_update)]
+#![feature(const_option, type_alias_impl_trait, type_changing_struct_update)]
 
 pub mod dsn;
 pub mod piece_cache;
@@ -546,7 +546,9 @@ where
                             .expect("Must not be poisoned here")
                             .take()
                         {
-                            node_address_sender.send(address.clone()).unwrap();
+                            node_address_sender
+                                .send(address.clone())
+                                .expect("Channel must allow sending at this point.");
                         }
                     }
                 }

@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+mod piece_validator;
+
+use crate::dsn::import_blocks::piece_validator::RecordsRootPieceValidator;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
@@ -25,7 +28,7 @@ use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
-use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 
 struct WaitLinkError<B: BlockT> {
@@ -81,8 +84,13 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None, false);
+    let piece_provider = PieceProvider::<RecordsRootPieceValidator>::new(
+        node.clone(),
+        Some(RecordsRootPieceValidator::new(node.clone())),
+        false,
+    );
 
+    info!("Importing blocks...");
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;
     debug!("Connected to peers.");
@@ -122,8 +130,6 @@ where
             if let Some(received_piece) = maybe_piece {
                 found_one_piece = true;
 
-                // TODO: We do not keep track of peers here and don't verify records, we probably
-                //  should though
                 piece.replace(received_piece);
             }
         }

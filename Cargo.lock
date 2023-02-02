@@ -9770,6 +9770,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "derive_more",
  "domain-runtime-primitives",
  "either",
@@ -9777,6 +9778,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "futures 0.3.25",
  "jsonrpsee",
+ "lru 0.8.1",
  "pallet-transaction-payment-rpc",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
