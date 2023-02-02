@@ -79,7 +79,8 @@ where
         Either::Right(MemoryProviderStorage::new(peer_id))
     };
 
-    let provider_storage = NodeProviderStorage::new(piece_cache.clone(), external_provider_storage);
+    let provider_storage =
+        NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
