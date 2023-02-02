@@ -336,6 +336,17 @@ pub enum SingleDiskPlotError {
         you provided: {allocated_space}."
     )]
     InsufficientAllocatedSpace { min_size: u64, allocated_space: u64 },
+    /// Available space is not enough for file
+    #[error(
+        "Available disk space is not enough, path: {path} \
+        The maximum acceptable value for this directory is: {available_space}, \
+        you requested: {requested_space}. "
+    )]
+    InsufficientAvailableSpace {
+        path: PathBuf,
+        requested_space: String,
+        available_space: String,
+    },
 }
 
 /// Errors that happen during plotting
@@ -609,13 +620,25 @@ impl SingleDiskPlot {
                 .map_mut(&metadata_file)?
         };
 
+        let plot_path = directory.join(Self::PLOT_FILE);
         let plot_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .open(directory.join(Self::PLOT_FILE))?;
+            .open(plot_path.clone())?;
 
-        plot_file.preallocate(PLOT_SECTOR_SIZE * target_sector_count)?;
+        let available_space = fs2::available_space(plot_path.clone())?;
+        let plot_size = PLOT_SECTOR_SIZE * target_sector_count;
+
+        if plot_size >= available_space {
+            return Err(SingleDiskPlotError::InsufficientAvailableSpace {
+                path: plot_path,
+                requested_space: ByteSize::b(plot_size).to_string(),
+                available_space: ByteSize::b(available_space).to_string(),
+            });
+        }
+
+        plot_file.preallocate(plot_size)?;
 
         let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
 
