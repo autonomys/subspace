@@ -17,7 +17,9 @@ use sp_messenger::messages::{
 use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::scale_info::TypeInfo;
-use sp_runtime::traits::{Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{
+    Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor, One, Zero,
+};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -79,6 +81,7 @@ impl From<sp_api::ApiError> for Error {
 }
 
 type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
+type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
 impl<Client, Block> Relayer<Client, Block>
 where
@@ -476,31 +479,80 @@ where
         .map_err(Error::UnableToSubmitCrossDomainMessage)
     }
 
-    fn last_relayed_block_key(domain_id: DomainId) -> Vec<u8> {
-        (b"message_relayer_last_processed_block_of_domain", domain_id).encode()
+    fn relayed_blocks_at_number_key(domain_id: DomainId, number: NumberFor<Block>) -> Vec<u8> {
+        (
+            b"message_relayer_processed_block_of_domain",
+            domain_id,
+            number,
+        )
+            .encode()
     }
 
-    fn fetch_last_relayed_block(
+    /// Takes number as tip and finds all the unprocessed blocks including the tip.
+    fn fetch_unprocessed_blocks_until(
         client: &Arc<Client>,
         domain_id: DomainId,
-    ) -> Option<NumberFor<Block>> {
-        let encoded = client
-            .get_aux(&Self::last_relayed_block_key(domain_id))
-            .ok()??;
+        best_number: NumberFor<Block>,
+        best_hash: Block::Hash,
+    ) -> Result<UnProcessedBlocks<Block>, Error> {
+        let mut blocks_to_process = vec![];
+        let (mut number_to_check, mut hash_to_check) = (best_number, best_hash);
+        while !Self::fetch_blocks_relayed_at(client, domain_id, number_to_check)
+            .contains(&hash_to_check)
+        {
+            blocks_to_process.push((number_to_check, hash_to_check));
+            if number_to_check == Zero::zero() {
+                break;
+            }
 
-        NumberFor::<Block>::decode(&mut encoded.as_ref()).ok()
+            hash_to_check = match client.header(hash_to_check).ok().flatten() {
+                Some(header) => *header.parent_hash(),
+                None => {
+                    return Err(
+                        sp_blockchain::Error::MissingHeader(hash_to_check.to_string()).into(),
+                    );
+                }
+            };
+
+            number_to_check = number_to_check
+                .checked_sub(&One::one())
+                .expect("block number is guaranteed to be >= 1 from the above check")
+        }
+
+        blocks_to_process.reverse();
+        Ok(blocks_to_process)
     }
 
-    pub(crate) fn store_last_relayed_block(
+    fn fetch_blocks_relayed_at(
+        client: &Arc<Client>,
+        domain_id: DomainId,
+        number: NumberFor<Block>,
+    ) -> Vec<Block::Hash> {
+        client
+            .get_aux(&Self::relayed_blocks_at_number_key(domain_id, number))
+            .ok()
+            .flatten()
+            .and_then(|enc_val| Vec::<Block::Hash>::decode(&mut enc_val.as_ref()).ok())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn store_relayed_block(
         client: &Arc<Client>,
         domain_id: DomainId,
         block_number: NumberFor<Block>,
+        block_hash: Block::Hash,
     ) -> Result<(), Error> {
+        let mut processed_blocks = Self::fetch_blocks_relayed_at(client, domain_id, block_number);
+        if processed_blocks.contains(&block_hash) {
+            return Ok(());
+        }
+
+        processed_blocks.push(block_hash);
         client
             .insert_aux(
                 &[(
-                    Self::last_relayed_block_key(domain_id).as_ref(),
-                    block_number.encode().as_ref(),
+                    Self::relayed_blocks_at_number_key(domain_id, block_number).as_ref(),
+                    processed_blocks.encode().as_ref(),
                 )],
                 &[],
             )
