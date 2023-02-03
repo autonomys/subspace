@@ -18,7 +18,7 @@ use sp_messenger::RelayerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{
-    Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor, One,
+    Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor, One, Zero,
 };
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
@@ -492,15 +492,19 @@ where
     fn fetch_unprocessed_blocks_until(
         client: &Arc<Client>,
         domain_id: DomainId,
-        number: NumberFor<Block>,
-        hash: Block::Hash,
+        best_number: NumberFor<Block>,
+        best_hash: Block::Hash,
     ) -> Result<UnProcessedBlocks<Block>, Error> {
         let mut blocks_to_process = vec![];
-        let (mut number_to_check, mut hash_to_check) = (number, hash);
+        let (mut number_to_check, mut hash_to_check) = (best_number, best_hash);
         while !Self::fetch_blocks_relayed_at(client, domain_id, number_to_check)
             .contains(&hash_to_check)
         {
             blocks_to_process.push((number_to_check, hash_to_check));
+            if number_to_check == Zero::zero() {
+                break;
+            }
+
             hash_to_check = match client.header(hash_to_check).ok().flatten() {
                 Some(header) => *header.parent_hash(),
                 None => {
@@ -512,7 +516,7 @@ where
 
             number_to_check = number_to_check
                 .checked_sub(&One::one())
-                .expect("fetched header this height so underflow doesn't happen.")
+                .expect("block number is guaranteed to be >= 1 from the above check")
         }
 
         blocks_to_process.reverse();
