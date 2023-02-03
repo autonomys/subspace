@@ -1,6 +1,8 @@
+use crate::utils::piece_cache::PieceCache;
 use crate::utils::readers_and_pieces::ReadersAndPieces;
 use parking_lot::Mutex;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BLAKE2B_256_HASH_SIZE};
 use subspace_networking::libp2p::kad::record::Key;
@@ -11,37 +13,62 @@ use subspace_networking::utils::multihash::{MultihashCode, ToMultihash};
 use subspace_networking::ProviderStorage;
 use tracing::trace;
 
-pub struct FarmerProviderStorage<PersistentProviderStorage> {
+pub struct FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache> {
     local_peer_id: PeerId,
     readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
     persistent_provider_storage: PersistentProviderStorage,
+    piece_cache: LocalPieceCache,
 }
 
-impl<PersistentProviderStorage> FarmerProviderStorage<PersistentProviderStorage> {
+impl<PersistentProviderStorage, LocalPieceCache>
+    FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache>
+where
+    PersistentProviderStorage: ProviderStorage,
+{
     pub fn new(
         local_peer_id: PeerId,
         readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
-        persistent_provider_storage: PersistentProviderStorage,
+        mut persistent_provider_storage: PersistentProviderStorage,
+        piece_cache: LocalPieceCache,
     ) -> Self {
+        // TODO: Transitional upgrade code, should be removed in the future; this is because we no
+        //  longer persist locally provided records
+        for key in persistent_provider_storage
+            .provided()
+            .map(|provided_record| provided_record.key.clone())
+            .collect::<Vec<_>>()
+        {
+            persistent_provider_storage.remove_provider(&key, &local_peer_id);
+        }
         Self {
             local_peer_id,
             readers_and_pieces,
             persistent_provider_storage,
+            piece_cache,
         }
     }
 }
 
-impl<PersistentProviderStorage> ProviderStorage for FarmerProviderStorage<PersistentProviderStorage>
+impl<PersistentProviderStorage, LocalPieceCache> ProviderStorage
+    for FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache>
 where
     PersistentProviderStorage: ProviderStorage,
+    LocalPieceCache: PieceCache,
 {
-    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
+    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>>
+    where
+        Self:'a;
 
     fn add_provider(
         &mut self,
         record: ProviderRecord,
     ) -> subspace_networking::libp2p::kad::store::Result<()> {
-        self.persistent_provider_storage.add_provider(record)
+        // Local providers are implicit and should not be put into persistent storage
+        if record.provider != self.local_peer_id {
+            self.persistent_provider_storage.add_provider(record)
+        } else {
+            Ok(())
+        }
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
@@ -76,12 +103,14 @@ where
 
         let mut provider_records = self.persistent_provider_storage.providers(key);
 
+        // `ReadersAndPieces` is much cheaper than getting from piece cache, so try it first
         if self
             .readers_and_pieces
             .lock()
             .as_ref()
             .expect("Should be populated at this point.")
             .contains_piece(&piece_index_hash)
+            || self.piece_cache.get_piece(key).is_some()
         {
             provider_records.push(ProviderRecord {
                 key: piece_index_hash.to_multihash().into(),
@@ -95,6 +124,9 @@ where
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
+        // We are not using interior mutability in this context, so this is fine
+        #[allow(clippy::mutable_key_type)]
+        let provided_by_cache = self.piece_cache.keys().into_iter().collect::<HashSet<_>>();
         let provided_by_plots = self
             .readers_and_pieces
             .lock()
@@ -102,26 +134,36 @@ where
             .map(|readers_and_pieces| {
                 readers_and_pieces
                     .piece_index_hashes()
-                    .map(|hash| {
-                        ProviderRecord {
-                            key: hash.to_multihash().into(),
-                            provider: self.local_peer_id,
-                            expires: None,
-                            addresses: Vec::new(), // TODO: add address hints
+                    .filter_map(|hash| {
+                        let key = hash.to_multihash().into();
+
+                        if provided_by_cache.contains(&key) {
+                            None
+                        } else {
+                            Some(key)
                         }
                     })
-                    .map(Cow::Owned)
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
 
-        provided_by_plots
+        provided_by_cache
             .into_iter()
+            .chain(provided_by_plots)
+            .map(|key| {
+                ProviderRecord {
+                    key,
+                    provider: self.local_peer_id,
+                    expires: None,
+                    addresses: Vec::new(), // TODO: add address hints
+                }
+            })
+            .map(Cow::Owned)
             .chain(self.persistent_provider_storage.provided())
     }
 
     fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
         self.persistent_provider_storage
-            .remove_provider(key, peer_id)
+            .remove_provider(key, peer_id);
     }
 }

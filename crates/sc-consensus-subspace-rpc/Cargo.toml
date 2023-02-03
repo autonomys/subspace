@@ -17,7 +17,6 @@ async-oneshot = "0.5.0"
 futures = "0.3.25"
 futures-timer = "3.0.2"
 jsonrpsee = { version = "0.16.2", features = ["server", "macros"] }
-log = "0.4.17"
 parity-scale-codec = "3.2.1"
 parking_lot = "0.12.1"
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
@@ -35,3 +34,4 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
+tracing = "0.1.37"

@@ -4,20 +4,34 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::ProviderStorage;
 
 pub(crate) struct NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage> {
+    local_peer_id: PeerId,
     /// Provider records from local cache
     implicit_provider_storage: ImplicitProviderStorage,
     /// External provider records
     persistent_provider_storage: PersistentProviderStorage,
 }
 
-impl<ImplicitProviderStorage, ExternalProviderStorage>
-    NodeProviderStorage<ImplicitProviderStorage, ExternalProviderStorage>
+impl<ImplicitProviderStorage, PersistentProviderStorage>
+    NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage>
+where
+    PersistentProviderStorage: ProviderStorage,
 {
     pub(crate) fn new(
+        local_peer_id: PeerId,
         implicit_provider_storage: ImplicitProviderStorage,
-        persistent_provider_storage: ExternalProviderStorage,
+        mut persistent_provider_storage: PersistentProviderStorage,
     ) -> Self {
+        // TODO: Transitional upgrade code, should be removed in the future; this is because we no
+        //  longer persist locally provided records
+        for key in persistent_provider_storage
+            .provided()
+            .map(|provided_record| provided_record.key.clone())
+            .collect::<Vec<_>>()
+        {
+            persistent_provider_storage.remove_provider(&key, &local_peer_id);
+        }
         Self {
+            local_peer_id,
             implicit_provider_storage,
             persistent_provider_storage,
         }
@@ -36,8 +50,12 @@ where
         &mut self,
         record: ProviderRecord,
     ) -> subspace_networking::libp2p::kad::store::Result<()> {
-        // only external provider records
-        self.persistent_provider_storage.add_provider(record)
+        // Local providers are implicit and should not be put into persistent storage
+        if record.provider != self.local_peer_id {
+            self.persistent_provider_storage.add_provider(record)
+        } else {
+            Ok(())
+        }
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
@@ -50,13 +68,12 @@ where
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        // only local cached provider records
+        // Only provider records cached locally
         self.implicit_provider_storage.provided()
     }
 
     fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
-        // only external provider records
         self.persistent_provider_storage
-            .remove_provider(key, peer_id)
+            .remove_provider(key, peer_id);
     }
 }
