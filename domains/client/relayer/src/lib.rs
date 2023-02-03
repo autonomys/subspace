@@ -539,9 +539,11 @@ where
         block_hash: Block::Hash,
     ) -> Result<(), Error> {
         let mut processed_blocks = Self::fetch_blocks_relayed_at(client, domain_id, block_number);
+        if processed_blocks.contains(&block_hash) {
+            return Ok(());
+        }
+
         processed_blocks.push(block_hash);
-        processed_blocks.sort_unstable();
-        processed_blocks.dedup();
         client
             .insert_aux(
                 &[(
