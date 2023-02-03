@@ -23,7 +23,6 @@ use sp_runtime::traits::{
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use tracing::error;
 
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
@@ -82,6 +81,7 @@ impl From<sp_api::ApiError> for Error {
 }
 
 type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
+type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
 impl<Client, Block> Relayer<Client, Block>
 where
@@ -494,7 +494,7 @@ where
         domain_id: DomainId,
         number: NumberFor<Block>,
         hash: Block::Hash,
-    ) -> Vec<(NumberFor<Block>, Block::Hash)> {
+    ) -> Result<UnProcessedBlocks<Block>, Error> {
         let mut blocks_to_process = vec![];
         let (mut number_to_check, mut hash_to_check) = (number, hash);
         while !Self::fetch_blocks_relayed_at(client, domain_id, number_to_check)
@@ -504,22 +504,21 @@ where
             hash_to_check = match client.header(hash_to_check).ok().flatten() {
                 Some(header) => *header.parent_hash(),
                 None => {
-                    error!(target: LOG_TARGET,
-                        "Failed to fetch header for hash {hash_to_check:?} for domain {domain_id:?}");
-                    return blocks_to_process;
+                    return Err(
+                        sp_blockchain::Error::MissingHeader(hash_to_check.to_string()).into(),
+                    );
                 }
             };
-            number_to_check = match number_to_check.checked_sub(&One::one()) {
-                None => return blocks_to_process,
-                Some(number) => number,
-            };
+
+            number_to_check = number_to_check
+                .checked_sub(&One::one())
+                .expect("fetched header this height so underflow doesn't happen.")
         }
 
         blocks_to_process.reverse();
-        blocks_to_process
+        Ok(blocks_to_process)
     }
 
-    #[inline]
     fn fetch_blocks_relayed_at(
         client: &Arc<Client>,
         domain_id: DomainId,

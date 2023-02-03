@@ -159,7 +159,7 @@ where
 
         let (number, hash) = (*block.header.number(), block.header.hash());
         let blocks_to_process: Vec<(NumberFor<Block>, Block::Hash)> =
-            Relayer::fetch_unprocessed_blocks_until(&domain_client, domain_id, number, hash)
+            Relayer::fetch_unprocessed_blocks_until(&domain_client, domain_id, number, hash)?
                 .into_iter()
                 .filter(|(number, _)| *number <= relay_block_until)
                 .collect();
