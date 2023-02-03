@@ -77,7 +77,6 @@ impl pallet_receipts::Config for Test {
     type DomainHash = H256;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = ();
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {

@@ -288,18 +288,11 @@ impl pallet_receipts::Config for Runtime {
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = DomainTracker;
 }
 
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
     pub const RelayConfirmationDepth: BlockNumber = 7;
-}
-
-impl pallet_domain_tracker::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type ConfirmedStateRootsBound = StateRootsBound;
-    type RelayerConfirmationDepth = RelayConfirmationDepth;
 }
 
 parameter_types! {
@@ -311,7 +304,6 @@ parameter_types! {
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = SystemDomainId;
-    type DomainTracker = DomainTracker;
 
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
@@ -377,9 +369,8 @@ construct_runtime!(
         ExecutorRegistry: pallet_executor_registry = 4,
         Receipts: pallet_receipts = 9,
         DomainRegistry: pallet_domain_registry = 5,
-        DomainTracker: pallet_domain_tracker = 6,
-        Messenger: pallet_messenger = 7,
-        Transporter: pallet_transporter = 8,
+        Messenger: pallet_messenger = 6,
+        Transporter: pallet_transporter = 7,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -588,15 +579,6 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::state_root_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
-        fn storage_key_for_core_domain_state_root(
-            domain_id: DomainId,
-            block_number: BlockNumber,
-        ) -> Option<Vec<u8>> {
-            DomainTracker::storage_key_for_core_domain_state_root(domain_id, block_number)
-        }
-    }
-
     impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
         fn domain_id() -> DomainId {
             SystemDomainId::get()
@@ -610,11 +592,11 @@ impl_runtime_apis! {
             Messenger::relayer_assigned_messages(relayer_id)
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

@@ -26,7 +26,6 @@ use frame_support::ensure;
 use frame_support::traits::Get;
 pub use pallet::*;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::state_root_tracker::CoreDomainTracker;
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use sp_std::vec::Vec;
@@ -36,7 +35,6 @@ mod pallet {
     use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
     use frame_support::PalletError;
     use sp_core::H256;
-    use sp_domains::state_root_tracker::CoreDomainTracker;
     use sp_domains::{DomainId, ExecutionReceipt};
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, SimpleBitOps};
     use sp_std::fmt::Debug;
@@ -72,13 +70,10 @@ mod pallet {
         /// Number of execution receipts kept in the state.
         #[pallet::constant]
         type ReceiptsPruningDepth: Get<Self::BlockNumber>;
-
-        /// Core domain tracker that tracks the state roots of the core domains.
-        type CoreDomainTracker: CoreDomainTracker<Self::BlockNumber, Self::DomainHash>;
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -161,7 +156,7 @@ mod pallet {
     >;
 
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A new domain receipt.
         NewDomainReceipt {
@@ -378,14 +373,6 @@ impl<T: Config> Pallet<T> {
                 (domain_id, primary_number, execution_receipt.domain_hash),
                 state_root,
             );
-
-            if domain_id.is_core() {
-                T::CoreDomainTracker::add_core_domain_state_root(
-                    domain_id,
-                    primary_number,
-                    *state_root,
-                );
-            }
         }
 
         Self::deposit_event(Event::NewDomainReceipt {

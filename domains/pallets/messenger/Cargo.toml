@@ -30,7 +30,6 @@ sp-trie = { version = "7.0.0", default-features = false, git = "https://github.c
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-pallet-domain-tracker = { version = "0.1.0", path = "../domain-tracker" }
 pallet-transporter = { version = "0.1.0", path = "../transporter" }
 sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }

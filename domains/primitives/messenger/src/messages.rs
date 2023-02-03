@@ -1,10 +1,15 @@
 use crate::endpoint::{EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, FullCodec};
+use frame_support::pallet_prelude::NMapKey;
+use frame_support::storage::generator::StorageNMap;
+use frame_support::Twox64Concat;
 use scale_info::TypeInfo;
+use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::traits::CheckedAdd;
 use sp_runtime::{sp_std, DispatchError};
+use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 
@@ -114,21 +119,34 @@ pub struct Message<Balance> {
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
+/// Domain block info used as part of the Cross domain message proof.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct DomainBlockInfo<Number, Hash> {
+    /// Block number of the domain.
+    pub block_number: Number,
+    /// Block hash of the domain.
+    pub block_hash: Hash,
+}
+
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Proof<BlockNumber, StateRoot> {
-    pub state_root: StateRoot,
-    /// Storage proof that src_domain state_root is registered on System domain.
+pub struct Proof<BlockNumber, BlockHash, StateRoot> {
+    /// System domain block info when proof was constructed
+    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
+    /// State root of System domain at above number and block hash.
+    /// This is the used to extract the message from proof.
+    pub system_domain_state_root: StateRoot,
+    /// Storage proof that src core domain state_root is registered on System domain.
     /// This is optional when the src_domain is the system domain.
-    /// BlockNumber is used with storage proof to validate and fetch its state root.
-    pub core_domain_proof: Option<(BlockNumber, StorageProof)>,
+    /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
+    pub core_domain_proof: Option<(DomainBlockInfo<BlockNumber, BlockHash>, StorageProof)>,
     /// Storage proof that message is processed on src_domain.
     pub message_proof: StorageProof,
 }
 
 /// Cross Domain message contains Message and its proof on src_domain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct CrossDomainMessage<StateRoot, BlockNumber> {
+pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
     /// Domain this message is intended for.
@@ -138,7 +156,7 @@ pub struct CrossDomainMessage<StateRoot, BlockNumber> {
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
-    pub proof: Proof<BlockNumber, StateRoot>,
+    pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
 }
 
 /// Relayer message with storage key to generate storage proof using the backend.
@@ -163,10 +181,10 @@ pub struct RelayerMessagesWithStorageKey {
     pub inbox_responses: Vec<RelayerMessageWithStorageKey>,
 }
 
-impl<StateRoot, BlockNumber> CrossDomainMessage<StateRoot, BlockNumber> {
+impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub fn from_relayer_msg_with_proof(
         r_msg: RelayerMessageWithStorageKey,
-        proof: Proof<BlockNumber, StateRoot>,
+        proof: Proof<BlockNumber, BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {
             src_domain_id: r_msg.src_domain_id,
@@ -175,5 +193,58 @@ impl<StateRoot, BlockNumber> CrossDomainMessage<StateRoot, BlockNumber> {
             nonce: r_msg.nonce,
             proof,
         }
+    }
+}
+
+type KeyGenerator<Number, Hash> = (
+    NMapKey<Twox64Concat, DomainId>,
+    NMapKey<Twox64Concat, Number>,
+    NMapKey<Twox64Concat, Hash>,
+);
+
+/// This is a representation of actual StateRoots storage in pallet-receipts.
+/// Any change in key or value there should be changed here accordingly.
+pub struct CoreDomainStateRootStorage<Number, Hash, StateRoot>(
+    PhantomData<(Number, Hash, StateRoot)>,
+);
+
+impl<Number, Hash, StateRoot> StorageNMap<KeyGenerator<Number, Hash>, StateRoot>
+    for CoreDomainStateRootStorage<Number, Hash, StateRoot>
+where
+    Number: FullCodec + TypeInfo + 'static,
+    Hash: FullCodec + TypeInfo + 'static,
+    StateRoot: FullCodec + TypeInfo + 'static,
+{
+    type Query = Option<StateRoot>;
+
+    fn module_prefix() -> &'static [u8] {
+        "Receipts".as_ref()
+    }
+
+    fn storage_prefix() -> &'static [u8] {
+        "StateRoots".as_ref()
+    }
+
+    fn from_optional_value_to_query(v: Option<StateRoot>) -> Self::Query {
+        v
+    }
+
+    fn from_query_to_optional_value(v: Self::Query) -> Option<StateRoot> {
+        v
+    }
+}
+
+impl<Number, Hash, StateRoot> CoreDomainStateRootStorage<Number, Hash, StateRoot>
+where
+    Number: FullCodec + TypeInfo + 'static,
+    Hash: FullCodec + TypeInfo + 'static,
+    StateRoot: FullCodec + TypeInfo + 'static,
+{
+    pub fn storage_key(domain_id: DomainId, number: Number, hash: Hash) -> StorageKey {
+        StorageKey(
+            Self::storage_n_map_final_key::<KeyGenerator<Number, Hash>, _>((
+                domain_id, number, hash,
+            )),
+        )
     }
 }

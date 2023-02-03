@@ -102,10 +102,9 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
-        ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        CoreDomainStateRootStorage, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
+        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::DomainTracker as DomainTrackerT;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
 
@@ -114,8 +113,6 @@ mod pallet {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         /// Gets the domain_id that is treated as src_domain for outgoing messages.
         type SelfDomainId: Get<DomainId>;
-        /// System domain tracker.
-        type DomainTracker: DomainTrackerT<Self::BlockNumber, StateRootOf<Self>>;
         /// function to fetch endpoint response handler by Endpoint.
         fn get_endpoint_response_handler(
             endpoint: &Endpoint,
@@ -514,7 +511,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+            msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::process_inbox_messages(msg.src_domain_id, msg.channel_id)?;
@@ -526,7 +523,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
-            msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+            msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
             Self::process_outbox_message_responses(msg.src_domain_id, msg.channel_id)?;
@@ -685,7 +682,7 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message(
-            xdm: &CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> Result<ValidatedRelayMessage<BalanceOf<T>>, TransactionValidityError> {
             let mut should_init_channel = false;
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
@@ -771,7 +768,7 @@ mod pallet {
         }
 
         pub(crate) fn do_validate_relay_message_response(
-            xdm: &CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
@@ -814,40 +811,27 @@ mod pallet {
         pub(crate) fn do_verify_xdm(
             next_nonce: Nonce,
             storage_key: StorageKey,
-            xdm: &CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
-            // fetch state roots from System domain tracker
-            let state_roots = T::DomainTracker::system_domain_state_roots();
-            if !state_roots.contains(&xdm.proof.state_root) {
-                log::error!(
-                    target: "runtime::messenger",
-                    "XDM state root: {:?} is not in the confirmed state roots: {:?}",
-                    xdm.proof,
-                    state_roots,
-                );
-                return Err(TransactionValidityError::Invalid(
-                    InvalidTransaction::BadProof,
-                ));
-            }
-
             // verify intermediate core domain proof and retrieve state root of the message.
             let core_domain_state_root_proof = xdm.proof.core_domain_proof.clone();
             let state_root = {
                 // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
                 if xdm.src_domain_id.is_system() && xdm.proof.core_domain_proof.is_none() {
-                    Ok(xdm.proof.state_root)
+                    Ok(xdm.proof.system_domain_state_root)
                 }
                 // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
                 else if xdm.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
-                    let (number, proof) =
+                    let (domain_info, proof) =
                         core_domain_state_root_proof.expect("checked for existence value above");
                     let core_domain_state_root_key =
-                        T::DomainTracker::storage_key_for_core_domain_state_root(
+                        CoreDomainStateRootStorage::<_, _, StateRootOf<T>>::storage_key(
                             xdm.src_domain_id,
-                            number,
+                            domain_info.block_number,
+                            domain_info.block_hash,
                         );
                     StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
-                        &xdm.proof.state_root,
+                        &xdm.proof.system_domain_state_root,
                         proof,
                         core_domain_state_root_key,
                     )
@@ -897,14 +881,14 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
     pub fn outbox_message_unsigned(
-        msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+        msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message { msg };
         T::Extrinsic::new(call.into(), None)
     }
 
     pub fn inbox_response_message_unsigned(
-        msg: CrossDomainMessage<StateRootOf<T>, T::BlockNumber>,
+        msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
     ) -> Option<T::Extrinsic> {
         let call = Call::relay_message_response { msg };
         T::Extrinsic::new(call.into(), None)

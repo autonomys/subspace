@@ -238,12 +238,6 @@ parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 7;
 }
 
-impl pallet_domain_tracker::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type ConfirmedStateRootsBound = StateRootsBound;
-    type RelayerConfirmationDepth = RelayConfirmationDepth;
-}
-
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
@@ -253,7 +247,6 @@ parameter_types! {
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = CorePaymentsDomainId;
-    type DomainTracker = DomainTracker;
 
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
@@ -313,7 +306,6 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment = 3,
 
         // messenger stuff
-        DomainTracker: pallet_domain_tracker = 6,
         Messenger: pallet_messenger = 7,
         Transporter: pallet_transporter = 8,
 
@@ -461,11 +453,11 @@ impl_runtime_apis! {
             Messenger::relayer_assigned_messages(relayer_id)
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 
