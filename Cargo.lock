@@ -7451,7 +7451,6 @@ dependencies = [
  "futures 0.3.25",
  "futures-timer",
  "jsonrpsee",
- "log",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-client-api",
@@ -7469,6 +7468,7 @@ dependencies = [
  "subspace-farmer-components",
  "subspace-networking",
  "subspace-rpc-primitives",
+ "tracing",
 ]
 
 [[package]]

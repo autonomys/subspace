@@ -12,18 +12,23 @@ use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderReco
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
+use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
 use tokio::runtime::Handle;
-use tracing::{debug, info, warn, Instrument, Span};
+use tracing::{debug, error, info, Instrument, Span};
 
-const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: usize = 2000;
+const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
+    NonZeroUsize::new(2000).expect("Not zero; qed");
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
+const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
+    NonZeroUsize::new(100).expect("Not zero; qed");
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -36,10 +41,11 @@ pub(super) async fn configure_dsn(
         reserved_peers,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
+    node_client: NodeRpcClient,
 ) -> Result<
     (
         Node,
-        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage>>,
+        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>>,
         FarmerPieceCache,
     ),
     anyhow::Error,
@@ -66,7 +72,8 @@ pub(super) async fn configure_dsn(
         "Record cache DB configured."
     );
 
-    let handle = Handle::current();
+    let piece_protocol_handle = Handle::current();
+    let root_blocks_protocol_handle = Handle::current();
     let default_config = Config::default();
     let peer_id = peer_id(&keypair);
 
@@ -74,12 +81,16 @@ pub(super) async fn configure_dsn(
         ParityDbProviderStorage::new(&provider_cache_db_path, provider_cache_size, peer_id)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
 
-    let farmer_provider_storage =
-        FarmerProviderStorage::new(peer_id, readers_and_pieces.clone(), db_provider_storage);
-
     let piece_store =
         ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
+
+    let farmer_provider_storage = FarmerProviderStorage::new(
+        peer_id,
+        readers_and_pieces.clone(),
+        db_provider_storage,
+        piece_cache.clone(),
+    );
 
     let config = Config {
         reserved_peers,
@@ -88,48 +99,68 @@ pub(super) async fn configure_dsn(
         allow_non_global_addresses_in_dht: !disable_private_ips,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
-        request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = {
-                debug!(piece_index_hash = ?req.piece_index_hash, "Piece request received. Trying cache...");
-                let multihash = req.piece_index_hash.to_multihash();
+        request_response_protocols: vec![
+            PieceByHashRequestHandler::create(move |req| {
+                let result = {
+                    debug!(piece_index_hash = ?req.piece_index_hash, "Piece request received. Trying cache...");
+                    let multihash = req.piece_index_hash.to_multihash();
 
-                let piece_from_cache = piece_store.get(&multihash.into());
+                    let piece_from_cache = piece_store.get(&multihash.into());
 
-                if piece_from_cache.is_some() {
-                    piece_from_cache
-                } else {
-                    debug!(piece_index_hash = ?req.piece_index_hash, "No piece in the cache. Trying archival storage...");
+                    if piece_from_cache.is_some() {
+                        piece_from_cache
+                    } else {
+                        debug!(piece_index_hash = ?req.piece_index_hash, "No piece in the cache. Trying archival storage...");
 
-                    let read_piece_fut = {
-                        let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                            Some(readers_and_pieces) => readers_and_pieces,
-                            None => {
-                                debug!("A readers and pieces are already dropped");
-                                return None;
-                            }
+                        let read_piece_fut = {
+                            let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
+                                Some(readers_and_pieces) => readers_and_pieces,
+                                None => {
+                                    debug!("A readers and pieces are already dropped");
+                                    return None;
+                                }
+                            };
+                            let readers_and_pieces = readers_and_pieces.lock();
+                            let readers_and_pieces = match readers_and_pieces.as_ref() {
+                                Some(readers_and_pieces) => readers_and_pieces,
+                                None => {
+                                    debug!(
+                                        ?req.piece_index_hash,
+                                        "Readers and pieces are not initialized yet"
+                                    );
+                                    return None;
+                                }
+                            };
+
+                            readers_and_pieces.read_piece(&req.piece_index_hash)?
                         };
-                        let readers_and_pieces = readers_and_pieces.lock();
-                        let readers_and_pieces = match readers_and_pieces.as_ref() {
-                            Some(readers_and_pieces) => readers_and_pieces,
-                            None => {
-                                debug!(
-                                    ?req.piece_index_hash,
-                                    "Readers and pieces are not initialized yet"
-                                );
-                                return None;
-                            }
-                        };
 
-                        readers_and_pieces.read_piece(&req.piece_index_hash)?
-                    };
+                        let handle = piece_protocol_handle.clone();
+                        tokio::task::block_in_place(move || handle.block_on(read_piece_fut))
+                    }
+                };
 
-                    let handle = handle.clone();
-                    tokio::task::block_in_place(move || handle.block_on(read_piece_fut))
+                Some(PieceByHashResponse { piece: result })
+            }),
+            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
+                debug!(segment_indexes_count = ?req.segment_indexes.len(), "Root blocks request received.");
+
+                let handle = root_blocks_protocol_handle.clone();
+                let node_client = node_client.clone();
+                let internal_result = tokio::task::block_in_place(move || {
+                    handle.block_on(node_client.root_blocks(req.segment_indexes.clone()))
+                });
+
+                match internal_result {
+                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                    Err(error) => {
+                        error!(%error, "Failed to get root blocks from cache");
+
+                        None
+                    }
                 }
-            };
-
-            Some(PieceByHashResponse { piece: result })
-        })],
+            }),
+        ],
         provider_storage: farmer_provider_storage,
         ..default_config
     };
@@ -148,7 +179,7 @@ pub(crate) fn start_announcements_processor(
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
-        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE);
+        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
 
     let handler_id = node.on_announcement(Arc::new({
         let provider_records_sender = Mutex::new(provider_records_sender);
@@ -160,7 +191,10 @@ pub(crate) fn start_announcements_processor(
                     return;
                 }
                 let record = error.into_inner();
-                warn!(
+                // TODO: This should be made a warning, but due to
+                //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
+                //  to resolve
+                debug!(
                     ?record.key,
                     ?record.provider,
                     "Failed to add provider record to the channel."
@@ -176,6 +210,7 @@ pub(crate) fn start_announcements_processor(
         piece_cache,
         weak_readers_and_pieces.clone(),
         MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
+        MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING,
     );
 
     // We are working with database internally, better to run in a separate thread

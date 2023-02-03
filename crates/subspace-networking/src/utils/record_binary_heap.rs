@@ -106,6 +106,11 @@ impl RecordBinaryHeap {
         }
     }
 
+    /// Iterator over all keys in arbitrary order
+    pub fn keys(&self) -> impl Iterator<Item = &'_ Key> {
+        self.max_heap.iter().map(|key| key.key.preimage())
+    }
+
     fn is_limit_reached(&self) -> bool {
         self.size() >= self.limit
     }

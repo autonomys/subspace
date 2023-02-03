@@ -81,7 +81,9 @@ fn test_resizable_semaphore_expand() {
     assert!(sem.try_acquire().is_none());
 
     // Increase capacity of semaphore by 2, we should be able to alloc two more permits.
-    sem.expand(2);
+    sem.expand(2).unwrap();
+    // Can't expand with overflow
+    assert!(sem.expand(usize::MAX).is_err());
     let _permit_4 = sem.try_acquire().unwrap();
     let _permit_5 = sem.try_acquire().unwrap();
     assert!(sem.try_acquire().is_none());
@@ -98,20 +100,22 @@ fn test_resizable_semaphore_shrink() {
     assert!(sem.try_acquire().is_none());
 
     // Shrink the capacity by 2, new capacity = 2.
-    sem.shrink(2);
+    sem.shrink(2).unwrap();
+    // Can't shrink by more than capacity
+    assert!(sem.shrink(usize::MAX).is_err());
 
     // Alloc should fail as outstanding permits(4) >= capacity(2).
     assert!(sem.try_acquire().is_none());
 
     // Free a permit, alloc should fail as outstanding permits(3) >= capacity(2).
-    std::mem::drop(permit_2);
+    drop(permit_2);
     assert!(sem.try_acquire().is_none());
 
     // Free another permit, alloc should fail as outstanding permits(2) >= capacity(2).
-    std::mem::drop(permit_3);
+    drop(permit_3);
     assert!(sem.try_acquire().is_none());
 
     // Free another permit, alloc should succeed as outstanding permits(1) < capacity(2).
-    std::mem::drop(permit_1);
+    drop(permit_1);
     assert!(sem.try_acquire().is_some());
 }

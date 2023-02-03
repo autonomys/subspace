@@ -58,5 +58,8 @@ pub use request_handlers::piece_by_key::{
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
+pub use request_handlers::root_block::{
+    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
+};
 pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::record_binary_heap::RecordBinaryHeap;

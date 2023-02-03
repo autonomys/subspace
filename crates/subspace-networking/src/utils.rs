@@ -12,6 +12,7 @@ use parking_lot::Mutex;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use thiserror::Error;
 use tokio::sync::Notify;
 use tracing::warn;
 
@@ -102,12 +103,30 @@ pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddre
         .collect()
 }
 
+/// Errors happening during semaphore usage
+#[derive(Debug, Error)]
+pub(crate) enum SemaphoreError {
+    #[error("Invalid shrink: capacity {capacity}, delta {delta}")]
+    InvalidShrink {
+        /// The current capacity
+        capacity: usize,
+        /// How much to shrink
+        delta: usize,
+    },
+    #[error("Invalid expand: capacity {capacity}, delta {delta}")]
+    InvalidExpand {
+        /// The current capacity
+        capacity: usize,
+        /// How much to expand
+        delta: usize,
+    },
+}
+
 /// The state shared between the semaphore and the outstanding permits.
 #[derive(Debug)]
 struct SemShared {
     /// The tuple holds (current usage, current max capacity)
     state: Mutex<SemState>,
-
     /// To signal waiters for permits to be available
     notify: Notify,
 }
@@ -117,7 +136,6 @@ struct SemShared {
 struct SemState {
     /// The current capacity
     capacity: usize,
-
     /// The current outstanding permits
     usage: usize,
 }
@@ -141,7 +159,7 @@ impl SemState {
         if let Some(dec) = self.usage.checked_sub(1) {
             self.usage = dec;
         } else {
-            panic!("SemState::free_one(): invalid free, state = {self:?}");
+            unreachable!("Dropping semaphore twice is not possible");
         }
 
         // Notify if we did a full -> available transition.
@@ -150,20 +168,30 @@ impl SemState {
 
     // Expands the max capacity by delta.
     // Returns true if any waiters need to be notified.
-    fn expand(&mut self, delta: usize) -> bool {
+    fn expand(&mut self, delta: usize) -> Result<bool, SemaphoreError> {
         let prev_is_full = self.is_full();
-        self.capacity += delta;
-
-        // Notify if we did a full -> available transition.
-        prev_is_full && !self.is_full()
+        if let Some(capacity) = self.capacity.checked_add(delta) {
+            self.capacity = capacity;
+            // Notify if we did a full -> available transition.
+            Ok(prev_is_full && !self.is_full())
+        } else {
+            Err(SemaphoreError::InvalidExpand {
+                capacity: self.capacity,
+                delta,
+            })
+        }
     }
 
     // Shrinks the max capacity by delta.
-    fn shrink(&mut self, delta: usize) {
-        if let Some(dec) = self.capacity.checked_sub(delta) {
-            self.capacity = dec;
+    fn shrink(&mut self, delta: usize) -> Result<(), SemaphoreError> {
+        if let Some(capacity) = self.capacity.checked_sub(delta) {
+            self.capacity = capacity;
+            Ok(())
         } else {
-            panic!("SemState::shrink(): invalid shrink, state = {self:?}");
+            Err(SemaphoreError::InvalidShrink {
+                capacity: self.capacity,
+                delta,
+            })
         }
     }
 
@@ -224,15 +252,17 @@ impl ResizableSemaphore {
     }
 
     // Expands the capacity by the specified amount.
-    pub(crate) fn expand(&self, delta: usize) {
-        let notify_waiters = self.0.state.lock().expand(delta);
+    pub(crate) fn expand(&self, delta: usize) -> Result<(), SemaphoreError> {
+        let notify_waiters = self.0.state.lock().expand(delta)?;
         if notify_waiters {
             self.0.notify.notify_waiters();
         }
+
+        Ok(())
     }
 
     // Shrinks the capacity by the specified amount.
-    pub(crate) fn shrink(&self, delta: usize) {
+    pub(crate) fn shrink(&self, delta: usize) -> Result<(), SemaphoreError> {
         self.0.state.lock().shrink(delta)
     }
 }
