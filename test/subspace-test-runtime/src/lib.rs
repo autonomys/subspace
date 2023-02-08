@@ -49,7 +49,7 @@ use sp_consensus_subspace::{
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::{Hasher, OpaqueMetadata};
+use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
@@ -876,6 +876,17 @@ fn extract_core_bundles(
         .collect()
 }
 
+fn extract_stored_bundle_hashes() -> Vec<H256> {
+    System::read_events_no_consensus()
+        .filter_map(|e| match e.event {
+            RuntimeEvent::Domains(pallet_domains::Event::BundleStored { bundle_hash, .. }) => {
+                Some(bundle_hash)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+}
+
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
@@ -1162,6 +1173,10 @@ impl_runtime_apis! {
             domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
             extract_core_bundles(extrinsics, domain_id)
+        }
+
+        fn extract_stored_bundle_hashes() -> Vec<H256> {
+            extract_stored_bundle_hashes()
         }
 
         fn extract_receipts(
