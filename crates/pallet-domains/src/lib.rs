@@ -195,7 +195,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
-            bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -618,7 +618,7 @@ impl<T: Config> Pallet<T> {
 
     // TODO: Checks if the bundle equivocation proof is valid.
     fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
+        _bundle_equivocation_proof: &BundleEquivocationProof<T::BlockNumber, T::Hash>,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
@@ -669,7 +669,7 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
     pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
+        bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
     ) {
         let call = Call::submit_bundle_equivocation_proof {
             bundle_equivocation_proof,

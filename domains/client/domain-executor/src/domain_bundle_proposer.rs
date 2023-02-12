@@ -113,6 +113,7 @@ where
 
         let bundle = Bundle {
             header: BundleHeader {
+                primary_number,
                 primary_hash,
                 slot_number: slot.into(),
                 extrinsics_root,

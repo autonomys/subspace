@@ -332,7 +332,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
-            _bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
+            _bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1014,7 +1014,7 @@ impl<T: Config> Pallet<T> {
 
     // TODO: Verify bundle_equivocation_proof.
     fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
+        _bundle_equivocation_proof: &BundleEquivocationProof<T::BlockNumber, T::Hash>,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
