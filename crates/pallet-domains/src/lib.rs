@@ -60,7 +60,7 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// The signer of bundle is unexpected.
         UnexpectedSigner,
@@ -88,7 +88,7 @@ mod pallet {
         }
     }
 
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum ExecutionReceiptError {
         /// The parent execution receipt is unknown.
         MissingParent,

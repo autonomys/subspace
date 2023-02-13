@@ -519,3 +519,48 @@ fn test_receipts_are_consecutive() {
     assert!(Domains::receipts_are_consecutive(&receipts));
     assert!(Domains::receipts_are_consecutive(&[]));
 }
+
+#[test]
+fn test_stale_bundle_should_be_rejected() {
+    let confirmation_depth_k = ConfirmationDepthK::get() as u64;
+    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1..=confirmation_depth_k + 2)
+        .map(|n| {
+            let primary_hash = Hash::random();
+            (
+                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                primary_hash,
+            )
+        })
+        .unzip();
+
+    let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
+        System::set_block_number(1);
+        System::initialize(&1, &System::parent_hash(), &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(1);
+        System::finalize();
+
+        for b in 2..=n {
+            System::set_block_number(b);
+            System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
+            <Domains as Hooks<BlockNumber>>::on_initialize(b);
+            System::finalize();
+        }
+    };
+
+    new_test_ext().execute_with(|| {
+        run_to_block(confirmation_depth_k + 2, block_hashes);
+        for bundle in dummy_bundles.iter().take(2) {
+            assert_eq!(
+                pallet_domains::Pallet::<Test>::validate_bundle(bundle),
+                Err(pallet_domains::BundleError::StaleBundle)
+            );
+        }
+        for bundle in dummy_bundles.iter().skip(2) {
+            assert_ne!(
+                pallet_domains::Pallet::<Test>::validate_bundle(bundle),
+                // Other error may return due to we can't mock ProofOfElection properly
+                Err(pallet_domains::BundleError::StaleBundle)
+            );
+        }
+    });
+}
