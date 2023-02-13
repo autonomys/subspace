@@ -237,7 +237,7 @@ impl<T: Config> Pallet<T> {
             trace: Vec::new(),
             trace_root: Default::default(),
         };
-        Self::apply_new_best_receipt(domain_id, &genesis_receipt);
+        Self::import_head_receipt(domain_id, &genesis_receipt);
         // Explicitly initialize the oldest receipt number even not necessary as ValueQuery is used.
         <OldestReceiptNumber<T>>::insert::<_, T::BlockNumber>(domain_id, Zero::zero());
     }
@@ -260,9 +260,9 @@ impl<T: Config> Pallet<T> {
 
             if primary_number <= best_number {
                 // Either increase the vote for a known receipt or add a fork receipt at this height.
-                Self::apply_non_new_best_receipt(domain_id, receipt);
+                Self::import_receipt(domain_id, receipt);
             } else if primary_number == best_number + One::one() {
-                Self::apply_new_best_receipt(domain_id, receipt);
+                Self::import_head_receipt(domain_id, receipt);
                 Self::remove_expired_receipts(domain_id, primary_number);
                 best_number += One::one();
             } else {
@@ -289,7 +289,9 @@ impl<T: Config> Pallet<T> {
             let block_hash = PrimaryBlockHash::<T>::get(domain_id, to_remove)
                 .ok_or(Error::UnavailablePrimaryBlockHash)?;
             for (receipt_hash, _) in <ReceiptVotes<T>>::drain_prefix((domain_id, block_hash)) {
-                <Receipts<T>>::remove(domain_id, receipt_hash);
+                if let Some(receipt) = <Receipts<T>>::take(domain_id, receipt_hash) {
+                    StateRoots::<T>::remove((domain_id, to_remove, receipt.domain_hash))
+                }
             }
             to_remove -= One::one();
         }
@@ -347,41 +349,20 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn apply_new_best_receipt(
+    /// Imports the receipt of the latest head of the domain.
+    /// Updates the receipt head of the domain accordingly.
+    fn import_head_receipt(
         domain_id: DomainId,
-        execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
+        receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
-        let primary_hash = execution_receipt.primary_hash;
-        let primary_number = execution_receipt.primary_number;
-        let receipt_hash = execution_receipt.hash();
-
-        // Apply the new best receipt.
-        <Receipts<T>>::insert(domain_id, receipt_hash, execution_receipt);
-        <HeadReceiptNumber<T>>::insert(domain_id, primary_number);
-        <ReceiptVotes<T>>::mutate((domain_id, primary_hash, receipt_hash), |count| {
-            *count += 1;
-        });
-
-        if !primary_number.is_zero() {
-            let state_root = execution_receipt
-                .trace
-                .last()
-                .expect("There are at least 2 elements in trace after the genesis block; qed");
-
-            <StateRoots<T>>::insert(
-                (domain_id, primary_number, execution_receipt.domain_hash),
-                state_root,
-            );
-        }
-
-        Self::deposit_event(Event::NewDomainReceipt {
-            domain_id,
-            primary_number,
-            primary_hash,
-        });
+        Self::import_receipt(domain_id, receipt);
+        HeadReceiptNumber::<T>::insert(domain_id, receipt.primary_number)
     }
 
-    fn apply_non_new_best_receipt(
+    /// Imports a receipt of domain.
+    /// Increments the receipt votes.
+    /// Assumes the receipt number is not pruned yet and inserts the a new receipt if not present.
+    fn import_receipt(
         domain_id: DomainId,
         execution_receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {

@@ -108,7 +108,7 @@ mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -371,7 +371,11 @@ mod pallet {
 
             let mut consumed_weight = Weight::zero();
             for domain_id in Domains::<T>::iter_keys() {
-                pallet_receipts::PrimaryBlockHash::<T>::insert(domain_id, primary_number, primary_hash);
+                pallet_receipts::PrimaryBlockHash::<T>::insert(
+                    domain_id,
+                    primary_number,
+                    primary_hash,
+                );
                 consumed_weight += T::DbWeight::get().reads_writes(1, 1);
             }
 
@@ -519,7 +523,7 @@ mod pallet {
     }
 
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A new domain was created.
         NewDomain {
@@ -757,10 +761,10 @@ impl<T: Config> Pallet<T> {
             // Non-best receipt
             if receipt.primary_number <= new_best_number {
                 continue;
-            // New nest receipt.
+                // New nest receipt.
             } else if receipt.primary_number == new_best_number + One::one() {
                 new_best_number += One::one();
-            // Missing receipt.
+                // Missing receipt.
             } else {
                 let missing_receipt_number = new_best_number + One::one();
                 log::error!(
@@ -845,16 +849,16 @@ impl<T: Config> Pallet<T> {
                     core_block_number,
                     core_block_hash,
                 ))
-                .ok_or(Error::<T>::StateRootNotFound)
-                .map_err(|err|{
-                    log::error!(
+                    .ok_or(Error::<T>::StateRootNotFound)
+                    .map_err(|err| {
+                        log::error!(
                         target: "runtime::domain-registry",
                         "State root for {domain_id:?} #{core_block_number:?},{core_block_hash:?} not found, \
                         current head receipt: {:?}",
                         pallet_receipts::Pallet::<T>::receipt_head(domain_id),
                     );
-                    err
-                })?,
+                        err
+                    })?,
             };
 
             if expected_state_root != *core_state_root {

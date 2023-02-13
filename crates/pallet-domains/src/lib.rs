@@ -56,7 +56,7 @@ mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -125,7 +125,7 @@ mod pallet {
     }
 
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A domain bundle was included.
         BundleStored {
@@ -233,7 +233,11 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
 
-            pallet_receipts::PrimaryBlockHash::<T>::insert(DomainId::SYSTEM, parent_number, parent_hash);
+            pallet_receipts::PrimaryBlockHash::<T>::insert(
+                DomainId::SYSTEM,
+                parent_number,
+                parent_hash,
+            );
 
             // The genesis block hash is not finalized until the genesis block building is done,
             // hence the genesis receipt is initialized after the genesis building.
@@ -412,7 +416,7 @@ impl<T: Config> Pallet<T> {
                             InvalidTransactionCode::ExecutionReceipt.into(),
                         ));
                     }
-                // New nest receipt.
+                    // New nest receipt.
                 } else if primary_number == best_number + One::one() {
                     if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
@@ -430,7 +434,7 @@ impl<T: Config> Pallet<T> {
                         ));
                     }
                     best_number += One::one();
-                // Missing receipt.
+                    // Missing receipt.
                 } else {
                     return Err(TransactionValidityError::Invalid(
                         InvalidTransactionCode::ExecutionReceipt.into(),
