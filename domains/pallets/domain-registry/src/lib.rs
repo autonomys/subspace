@@ -371,7 +371,7 @@ mod pallet {
 
             let mut consumed_weight = Weight::zero();
             for domain_id in Domains::<T>::iter_keys() {
-                pallet_receipts::BlockHash::<T>::insert(domain_id, primary_number, primary_hash);
+                pallet_receipts::PrimaryBlockHash::<T>::insert(domain_id, primary_number, primary_hash);
                 consumed_weight += T::DbWeight::get().reads_writes(1, 1);
             }
 
@@ -779,7 +779,7 @@ impl<T: Config> Pallet<T> {
                     "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
                     expected: #{primary_number:?},{:?}",
                     receipt.primary_hash,
-                    pallet_receipts::BlockHash::<T>::get(domain_id, primary_number),
+                    pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, primary_number),
                 );
                 return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
             }

@@ -233,7 +233,7 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
 
-            pallet_receipts::BlockHash::<T>::insert(DomainId::SYSTEM, parent_number, parent_hash);
+            pallet_receipts::PrimaryBlockHash::<T>::insert(DomainId::SYSTEM, parent_number, parent_hash);
 
             // The genesis block hash is not finalized until the genesis block building is done,
             // hence the genesis receipt is initialized after the genesis building.
@@ -405,7 +405,7 @@ impl<T: Config> Pallet<T> {
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
                             expected: {:?}, got: {:?}",
-                            pallet_receipts::BlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                            pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                             receipt.primary_hash,
                         );
                         return Err(TransactionValidityError::Invalid(
@@ -422,7 +422,7 @@ impl<T: Config> Pallet<T> {
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
                             expected: {:?}, got: {:?}",
-                            pallet_receipts::BlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                            pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                             receipt.primary_hash,
                         );
                         return Err(TransactionValidityError::Invalid(
@@ -596,7 +596,7 @@ impl<T: Config> Pallet<T> {
                         "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
                         expected: #{primary_number:?},{:?}",
                         execution_receipt.primary_hash,
-                        pallet_receipts::BlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                        pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                     );
                     return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
                 }
