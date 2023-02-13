@@ -269,12 +269,12 @@ pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     pub extrinsics: Vec<Extrinsic>,
 }
 
-impl<Extrinsic, Number: Encode, Hash: Encode, DomainHash>
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
     Bundle<Extrinsic, Number, Hash, DomainHash>
 {
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
-        self.header.hash()
+        BlakeTwo256::hash_of(self)
     }
 }
 
