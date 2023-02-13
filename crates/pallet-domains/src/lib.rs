@@ -30,7 +30,7 @@ use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proo
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
-use sp_runtime::traits::{BlockNumberProvider, One, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
 
@@ -78,6 +78,8 @@ mod pallet {
         BadElectionSolution,
         /// An invalid execution receipt found in the bundle.
         Receipt(ExecutionReceiptError),
+        /// The Bundle is created too long ago.
+        StaleBundle,
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -540,6 +542,16 @@ impl<T: Config> Pallet<T> {
             signature,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        if let Some(last_finalized) =
+            current_block_number.checked_sub(&T::ConfirmationDepthK::get())
+        {
+            if bundle.header.primary_number <= last_finalized {
+                return Err(BundleError::StaleBundle);
+            }
+        }
+
         let proof_of_election = bundle_solution.proof_of_election();
 
         if !proof_of_election
@@ -561,8 +573,6 @@ impl<T: Config> Pallet<T> {
 
         if proof_of_election.domain_id.is_system() {
             Self::validate_system_bundle_solution(&bundle.receipts, proof_of_election)?;
-
-            let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
             let best_number = Self::head_receipt_number();
             let max_allowed = best_number + T::MaximumReceiptDrift::get();
