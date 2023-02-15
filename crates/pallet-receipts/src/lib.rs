@@ -212,6 +212,15 @@ impl<T: Config> Pallet<T> {
         Self::finalized_receipt_number(domain_id) + One::one()
     }
 
+    /// Returns the state root of a domain at specific number and hash.
+    pub fn domain_state_root_at(
+        domain_id: DomainId,
+        number: T::BlockNumber,
+        hash: T::DomainHash,
+    ) -> Option<T::DomainHash> {
+        StateRoots::<T>::get((domain_id, number, hash))
+    }
+
     /// Returns the block number of latest _finalized_ receipt.
     pub fn finalized_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         let best_number = <HeadReceiptNumber<T>>::get(domain_id);

@@ -566,6 +566,10 @@ impl_runtime_apis! {
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
+
+        fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
+            Receipts::domain_state_root_at(domain_id, number, domain_hash)
+        }
     }
 
     impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
