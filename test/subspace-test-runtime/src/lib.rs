@@ -1209,6 +1209,10 @@ impl_runtime_apis! {
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
         }
+
+        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: domain_runtime_primitives::Hash) -> Option<domain_runtime_primitives::Hash>{
+            Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
+        }
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {

@@ -444,5 +444,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;
+
+        // Returns the state root of the system domain at specific number and hash.
+        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
     }
 }
