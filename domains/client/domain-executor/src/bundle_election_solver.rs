@@ -106,7 +106,7 @@ where
                     // TODO: bench how large the storage proof we can afford and try proving a single
                     // electioned executor storage instead of the whole authority set.
                     let storage_proof = if domain_id.is_system() {
-                        let storage_keys = well_known_keys::bundle_election_storage_keys(domain_id);
+                        let storage_keys = well_known_keys::system_bundle_election_storage_keys();
                         self.system_domain_client
                             .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else if domain_id.is_core() {

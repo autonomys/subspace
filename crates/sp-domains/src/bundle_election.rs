@@ -99,7 +99,6 @@ pub fn make_local_randomness_transcript_data(
 }
 
 pub mod well_known_keys {
-    use crate::DomainId;
     use sp_std::vec;
     use sp_std::vec::Vec;
 
@@ -127,8 +126,8 @@ pub mod well_known_keys {
         214, 175, 220, 254, 34, 167, 168, 222, 147, 18, 4, 168,
     ];
 
-    // TODO: return the correct core domain storage keys
-    pub fn bundle_election_storage_keys(_domain_id: DomainId) -> Vec<[u8; 32]> {
+    /// Returns the storage keys for verifying the system domain bundle election.
+    pub fn system_bundle_election_storage_keys() -> Vec<[u8; 32]> {
         vec![AUTHORITIES, TOTAL_STAKE_WEIGHT, SLOT_PROBABILITY]
     }
 }
