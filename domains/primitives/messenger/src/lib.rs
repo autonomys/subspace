@@ -21,7 +21,9 @@ pub mod endpoint;
 pub mod messages;
 
 use codec::{Decode, Encode};
-use messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
+use messages::{
+    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+};
 use sp_domains::DomainId;
 
 sp_api::decl_runtime_apis! {
@@ -56,5 +58,10 @@ sp_api::decl_runtime_apis! {
 
         /// Returns true if the inbox message response is ready to be relayed to dst_domain.
         fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool;
+    }
+
+    /// Api to provide XDM extraction from Runtime Calls.
+    pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
+        fn extract_xdm_proof_state_roots(extrinsic: &Block::Extrinsic) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
     }
 }
