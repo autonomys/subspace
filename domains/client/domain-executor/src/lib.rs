@@ -101,6 +101,7 @@ mod system_gossip_message_validator;
 #[cfg(test)]
 mod tests;
 mod utils;
+mod xdm_validator;
 
 pub use self::core_executor::Executor as CoreExecutor;
 pub use self::core_gossip_message_validator::CoreGossipMessageValidator;

@@ -2114,6 +2114,7 @@ dependencies = [
  "sp-domains",
  "sp-keyring",
  "sp-keystore",
+ "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
