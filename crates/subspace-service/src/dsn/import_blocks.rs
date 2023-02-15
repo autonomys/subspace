@@ -24,7 +24,9 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
+use subspace_core_primitives::{
+    Piece, PieceIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+};
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
 use subspace_networking::Node;
 
@@ -105,7 +107,7 @@ where
         });
 
         let mut pieces = vec![None::<Piece>; pieces_in_segment as usize];
-        let mut found_one_piece = false;
+        let mut pieces_received = 0;
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
@@ -120,15 +122,18 @@ where
             );
 
             if let Some(received_piece) = maybe_piece {
-                found_one_piece = true;
-
-                // TODO: We do not keep track of peers here and don't verify records, we probably
-                //  should though
                 piece.replace(received_piece);
+
+                pieces_received += 1;
+            }
+
+            if pieces_received >= PIECES_IN_SEGMENT / 2 {
+                trace!(%segment_index, "Received half of the segment.");
+                break;
             }
         }
 
-        if !found_one_piece {
+        if pieces_received == 0 {
             info!("Found no pieces for segment index {}", segment_index);
             break;
         }
