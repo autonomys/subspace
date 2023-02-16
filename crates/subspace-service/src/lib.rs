@@ -182,8 +182,8 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         >,
         (
             impl BlockImport<
@@ -373,7 +373,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Validator, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Verifier, Validator>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
@@ -394,8 +394,8 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         >,
         (
             I,
@@ -404,7 +404,6 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
-
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
