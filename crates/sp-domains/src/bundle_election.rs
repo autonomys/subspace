@@ -1,3 +1,4 @@
+use crate::merkle_tree::{MerkleProof, Witness};
 use crate::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
 use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
@@ -7,12 +8,12 @@ use schnorrkel::{SignatureError, SignatureResult};
 use sp_core::H256;
 #[cfg(feature = "std")]
 use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
-use sp_runtime::traits::BlakeTwo256;
+use sp_runtime::traits::{BlakeTwo256, Hash};
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use subspace_core_primitives::crypto::blake2b_256_hash_list;
 use subspace_core_primitives::Blake2b256Hash;
-use well_known_keys::{AUTHORITIES, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
+use well_known_keys::{AUTHORITIES_ROOT, SLOT_PROBABILITY, TOTAL_STAKE_WEIGHT};
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
 
@@ -102,12 +103,12 @@ pub mod well_known_keys {
     use sp_std::vec;
     use sp_std::vec::Vec;
 
-    /// Storage key of `pallet_executor_registry::Authorities`.
+    /// Storage key of `pallet_executor_registry::AuthoritiesRoot`.
     ///
-    /// Authorities::<T>::hashed_key().
-    pub(crate) const AUTHORITIES: [u8; 32] = [
-        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 94, 6, 33, 196,
-        134, 154, 166, 12, 2, 190, 154, 220, 201, 138, 13, 29,
+    /// AuthoritiesRoot::<T>::hashed_key().
+    pub(crate) const AUTHORITIES_ROOT: [u8; 32] = [
+        185, 61, 20, 0, 90, 16, 106, 134, 14, 150, 35, 100, 152, 229, 203, 187, 229, 73, 72, 152,
+        132, 52, 185, 74, 34, 205, 232, 65, 110, 2, 255, 36,
     ];
 
     /// Storage key of `pallet_executor_registry::TotalStakeWeight`.
@@ -128,7 +129,7 @@ pub mod well_known_keys {
 
     /// Returns the storage keys for verifying the system domain bundle election.
     pub fn system_bundle_election_storage_keys() -> Vec<[u8; 32]> {
-        vec![AUTHORITIES, TOTAL_STAKE_WEIGHT, SLOT_PROBABILITY]
+        vec![AUTHORITIES_ROOT, TOTAL_STAKE_WEIGHT, SLOT_PROBABILITY]
     }
 }
 
@@ -148,6 +149,14 @@ impl BundleElectionParams {
             slot_probability: (0, 0),
         }
     }
+}
+
+/// Parameters for verifying the system bundle election.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+struct SystemBundleElectionVerifierParams {
+    pub authorities_root: Blake2b256Hash,
+    pub total_stake_weight: StakeWeight,
+    pub slot_probability: (u64, u64),
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -191,11 +200,11 @@ pub enum ReadBundleElectionParamsError {
     DecodeError,
 }
 
-/// Returns the bundle election parameters read from the given storage proof.
-pub fn read_bundle_election_params(
+/// Returns the system bundle election verification parameters read from the given storage proof.
+fn read_system_bundle_election_verifier_params(
     storage_proof: StorageProof,
     state_root: &H256,
-) -> Result<BundleElectionParams, ReadBundleElectionParamsError> {
+) -> Result<SystemBundleElectionVerifierParams, ReadBundleElectionParamsError> {
     let db = storage_proof.into_memory_db::<BlakeTwo256>();
 
     let read_value = |storage_key| {
@@ -203,10 +212,10 @@ pub fn read_bundle_election_params(
             .map_err(|_| ReadBundleElectionParamsError::TrieError)
     };
 
-    let authorities =
-        read_value(&AUTHORITIES)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
-    let authorities: Vec<(ExecutorPublicKey, StakeWeight)> =
-        Decode::decode(&mut authorities.as_slice())
+    let authorities_root_value =
+        read_value(&AUTHORITIES_ROOT)?.ok_or(ReadBundleElectionParamsError::MissingValue)?;
+    let authorities_root: Blake2b256Hash =
+        Decode::decode(&mut authorities_root_value.as_slice())
             .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
     let total_stake_weight_value =
@@ -219,8 +228,8 @@ pub fn read_bundle_election_params(
     let slot_probability: (u64, u64) = Decode::decode(&mut slot_probability_value.as_slice())
         .map_err(|_| ReadBundleElectionParamsError::DecodeError)?;
 
-    Ok(BundleElectionParams {
-        authorities,
+    Ok(SystemBundleElectionVerifierParams {
+        authorities_root,
         total_stake_weight,
         slot_probability,
     })
@@ -230,8 +239,10 @@ pub fn read_bundle_election_params(
 pub enum BundleSolutionError {
     /// Can not retrieve the state needed from the storage proof.
     BadStorageProof(ReadBundleElectionParamsError),
-    /// Bundle author is not found in the authority set.
-    AuthorityNotFound,
+    /// Can not construct merkle proof.
+    CannotConstructMerkleProof(rs_merkle::Error),
+    /// Invalid merkle proof.
+    BadMerkleProof,
     /// Failed to derive the bundle election solution.
     FailedToDeriveBundleElectionSolution(SignatureError),
     /// Election solution does not satisfy the threshold.
@@ -241,6 +252,8 @@ pub enum BundleSolutionError {
 pub fn verify_system_bundle_solution<DomainHash>(
     proof_of_election: &ProofOfElection<DomainHash>,
     verified_state_root: H256,
+    authority_stake_weight: StakeWeight,
+    authority_witness: &Witness,
 ) -> Result<(), BundleSolutionError> {
     let ProofOfElection {
         domain_id,
@@ -251,28 +264,40 @@ pub fn verify_system_bundle_solution<DomainHash>(
         ..
     } = proof_of_election;
 
-    let BundleElectionParams {
-        authorities,
+    let SystemBundleElectionVerifierParams {
+        authorities_root,
         total_stake_weight,
         slot_probability,
-    } = read_bundle_election_params(storage_proof.clone(), &verified_state_root)
+    } = read_system_bundle_election_verifier_params(storage_proof.clone(), &verified_state_root)
         .map_err(BundleSolutionError::BadStorageProof)?;
 
-    let stake_weight = authorities
-        .iter()
-        .find_map(|(authority, weight)| {
-            if authority == executor_public_key {
-                Some(weight)
-            } else {
-                None
-            }
-        })
-        .ok_or(BundleSolutionError::AuthorityNotFound)?;
+    let stake_weight = authority_stake_weight;
+
+    let Witness {
+        leaf_index,
+        number_of_leaves,
+        proof,
+    } = authority_witness;
+
+    let merkle_proof =
+        MerkleProof::from_bytes(proof).map_err(BundleSolutionError::CannotConstructMerkleProof)?;
+
+    let leaf_to_prove =
+        BlakeTwo256::hash_of(&(executor_public_key, stake_weight).encode()).to_fixed_bytes();
+
+    if !merkle_proof.verify(
+        authorities_root,
+        &[*leaf_index as usize],
+        &[leaf_to_prove],
+        *number_of_leaves as usize,
+    ) {
+        return Err(BundleSolutionError::BadMerkleProof);
+    }
 
     verify_bundle_solution_threshold(
         *domain_id,
         *vrf_output,
-        *stake_weight,
+        stake_weight,
         total_stake_weight,
         slot_probability,
         executor_public_key,

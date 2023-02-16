@@ -7,6 +7,7 @@ use sp_domains::bundle_election::{
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
     BundleElectionParams,
 };
+use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
 use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -33,6 +34,15 @@ impl<SBlock, PBlock, SClient> Clone for BundleElectionSolver<SBlock, PBlock, SCl
     }
 }
 
+pub(super) enum PreliminaryBundleSolution<DomainHash> {
+    System {
+        authority_stake_weight: StakeWeight,
+        authority_witness: Witness,
+        proof_of_election: ProofOfElection<DomainHash>,
+    },
+    Core(ProofOfElection<DomainHash>),
+}
+
 impl<SBlock, PBlock, SClient> BundleElectionSolver<SBlock, PBlock, SClient>
 where
     SBlock: BlockT,
@@ -54,7 +64,7 @@ where
         best_number: NumberFor<SBlock>,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
+    ) -> sp_blockchain::Result<Option<PreliminaryBundleSolution<Block::Hash>>> {
         let best_block_id = BlockId::Hash(best_hash);
 
         let BundleElectionParams {
@@ -77,7 +87,7 @@ where
 
         let transcript_data = make_local_randomness_transcript_data(&global_challenge);
 
-        for (authority_id, stake_weight) in authorities {
+        for (index, (authority_id, stake_weight)) in authorities.iter().enumerate() {
             if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
                 &*self.keystore,
                 ExecutorPublicKey::ID,
@@ -87,7 +97,7 @@ where
                 let election_solution = derive_bundle_election_solution(
                     domain_id,
                     vrf_signature.output.to_bytes(),
-                    &authority_id,
+                    authority_id,
                     &global_challenge,
                 )
                 .map_err(|err| {
@@ -97,7 +107,7 @@ where
                 })?;
 
                 let threshold = calculate_bundle_election_threshold(
-                    stake_weight,
+                    *stake_weight,
                     total_stake_weight,
                     slot_probability,
                 );
@@ -144,7 +154,7 @@ where
                         domain_id,
                         vrf_output: vrf_signature.output.to_bytes(),
                         vrf_proof: vrf_signature.proof.to_bytes(),
-                        executor_public_key: authority_id,
+                        executor_public_key: authority_id.clone(),
                         global_challenge,
                         state_root,
                         storage_proof,
@@ -152,7 +162,29 @@ where
                         block_hash,
                     };
 
-                    return Ok(Some(proof_of_election));
+                    let preliminary_bundle_solution = if domain_id.is_system() {
+                        let merkle_tree = authorities_merkle_tree(&authorities);
+                        let authority_witness = Witness {
+                            leaf_index: index.try_into().expect("Leaf index must fit into u32"),
+                            number_of_leaves: authorities
+                                .len()
+                                .try_into()
+                                .expect("Authorities size must fit into u32"),
+                            proof: merkle_tree.proof(&[index]).to_bytes(),
+                        };
+
+                        PreliminaryBundleSolution::System {
+                            authority_stake_weight: *stake_weight,
+                            authority_witness,
+                            proof_of_election,
+                        }
+                    } else if domain_id.is_core() {
+                        PreliminaryBundleSolution::Core(proof_of_election)
+                    } else {
+                        unreachable!("Open domain has been handled above")
+                    };
+
+                    return Ok(Some(preliminary_bundle_solution));
                 }
             }
         }
