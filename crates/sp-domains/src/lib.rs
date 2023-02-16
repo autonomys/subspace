@@ -19,6 +19,7 @@
 
 pub mod bundle_election;
 pub mod fraud_proof;
+pub mod merkle_tree;
 pub mod transaction;
 
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};

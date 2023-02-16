@@ -5159,6 +5159,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "micromath"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39617bc909d64b068dcffd0e3e31679195b5576d0c83fadc52690268cc2b2b55"
+
+[[package]]
 name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5764,6 +5770,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -6976,6 +6983,16 @@ checksum = "20c9f5d2a0c3e2ea729ab3706d22217177770654c3ef5056b68b69d07332d3f5"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "rs_merkle"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a632a43487c1332be8e183588079f89b6820fab24e04db49521eacd536837372"
+dependencies = [
+ "micromath",
+ "sha2 0.10.2",
 ]
 
 [[package]]
@@ -8858,8 +8875,10 @@ dependencies = [
 name = "sp-domains"
 version = "0.1.0"
 dependencies = [
+ "blake2",
  "merlin 2.0.1",
  "parity-scale-codec",
+ "rs_merkle",
  "scale-info",
  "schnorrkel",
  "serde",
