@@ -5,7 +5,6 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-blake2 = "0.10.5"
 codec = { package = "parity-scale-codec", version = "3.2.1", features = [ "derive" ] }
 crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
@@ -15,7 +14,6 @@ futures = { version = "0.3.25", features = ["compat"] }
 futures-timer = "3.0.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
-merkletree = "0.22.1"
 parking_lot = "0.12.1"
 schnorrkel = "0.9.1"
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }

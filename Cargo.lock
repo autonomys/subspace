@@ -2077,7 +2077,6 @@ dependencies = [
 name = "domain-client-executor"
 version = "0.1.0"
 dependencies = [
- "blake2",
  "core-payments-domain-runtime",
  "crossbeam",
  "domain-block-builder",
@@ -2086,7 +2085,6 @@ dependencies = [
  "domain-test-service",
  "futures 0.3.25",
  "futures-timer",
- "merkletree",
  "pallet-balances",
  "pallet-domains",
  "parity-scale-codec",
@@ -5118,23 +5116,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b879f617ec392ad9c11a50356ca373009c52363c0953b34c2e1b2234037a26a9"
 
 [[package]]
-name = "merkletree"
-version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d348b5b0d1707be1c8a727b7078daa08e2a3051d63b35715a19c35a324d2aaac"
-dependencies = [
- "anyhow",
- "arrayref",
- "log",
- "memmap2",
- "positioned-io",
- "rayon",
- "serde",
- "tempfile",
- "typenum",
-]
-
-[[package]]
 name = "merlin"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6402,17 +6383,6 @@ dependencies = [
  "cpufeatures",
  "opaque-debug 0.3.0",
  "universal-hash",
-]
-
-[[package]]
-name = "positioned-io"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09b9485cf7f528baf34edd811ec8283a168864912e11d0b7d3e0510738761114"
-dependencies = [
- "byteorder",
- "libc",
- "winapi",
 ]
 
 [[package]]
