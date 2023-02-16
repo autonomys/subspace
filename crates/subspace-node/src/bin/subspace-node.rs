@@ -199,7 +199,7 @@ fn main() -> Result<(), Error> {
                     client,
                     import_queue,
                     task_manager,
-                    other: (_block_import, subspace_link, _telemetry),
+                    other: (_block_import, subspace_link, _telemetry, _bundle_collector),
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 

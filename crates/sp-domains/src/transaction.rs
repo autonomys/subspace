@@ -1,10 +1,9 @@
 use crate::fraud_proof::FraudProof;
-use crate::ExecutionReceipt;
+use crate::SignedOpaqueBundle;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
-use sp_std::vec::Vec;
 
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
@@ -37,7 +36,7 @@ where
 {
     Null,
     FraudProof(FraudProof),
-    Receipts(Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>),
+    Bundle(SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>),
 }
 
 sp_api::decl_runtime_apis! {

@@ -111,7 +111,7 @@ pub(crate) fn extract_pre_validation_object(
         }
         RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
             signed_opaque_bundle,
-        }) => PreValidationObject::Receipts(signed_opaque_bundle.bundle.receipts),
+        }) => PreValidationObject::Bundle(signed_opaque_bundle),
         _ => PreValidationObject::Null,
     }
 }
