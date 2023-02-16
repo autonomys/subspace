@@ -133,15 +133,15 @@ pub mod well_known_keys {
     }
 }
 
-/// Parameters for the bundle election.
+/// Parameters for solving the bundle election.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleElectionParams {
+pub struct BundleElectionSolverParams {
     pub authorities: Vec<(ExecutorPublicKey, StakeWeight)>,
     pub total_stake_weight: StakeWeight,
     pub slot_probability: (u64, u64),
 }
 
-impl BundleElectionParams {
+impl BundleElectionSolverParams {
     pub fn empty() -> Self {
         Self {
             authorities: Vec::new(),

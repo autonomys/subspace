@@ -5,7 +5,7 @@ use sp_blockchain::HeaderBackend;
 use sp_domains::bundle_election::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    BundleElectionParams,
+    BundleElectionSolverParams,
 };
 use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
 use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
@@ -67,14 +67,14 @@ where
     ) -> sp_blockchain::Result<Option<PreliminaryBundleSolution<Block::Hash>>> {
         let best_block_id = BlockId::Hash(best_hash);
 
-        let BundleElectionParams {
+        let BundleElectionSolverParams {
             authorities,
             total_stake_weight,
             slot_probability,
         } = self
             .system_domain_client
             .runtime_api()
-            .bundle_elections_params(&best_block_id, domain_id)?;
+            .bundle_election_solver_params(&best_block_id, domain_id)?;
 
         assert!(
             total_stake_weight
