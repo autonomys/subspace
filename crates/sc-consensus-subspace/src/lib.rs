@@ -1194,7 +1194,8 @@ where
     }
 }
 
-fn get_chain_constants<Block, Client>(
+/// Get chain constant configurations
+pub fn get_chain_constants<Block, Client>(
     client: &Client,
 ) -> Result<ChainConstants, Error<Block::Header>>
 where

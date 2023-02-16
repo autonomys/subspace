@@ -33,6 +33,8 @@ use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
 
+pub mod bundle_validator;
+
 /// Block hash type for a pool.
 type BlockHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 
