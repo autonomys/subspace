@@ -156,18 +156,20 @@ pub struct FraudProof {
 /// are the given distinct bundle headers that were signed by the validator and which
 /// include the slot number.
 #[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
-pub struct BundleEquivocationProof<Hash> {
+pub struct BundleEquivocationProof<Number, Hash> {
     /// The authority id of the equivocator.
     pub offender: AccountId,
     /// The slot at which the equivocation happened.
     pub slot: Slot,
     /// The first header involved in the equivocation.
-    pub first_header: BundleHeader<Hash>,
+    pub first_header: BundleHeader<Number, Hash>,
     /// The second header involved in the equivocation.
-    pub second_header: BundleHeader<Hash>,
+    pub second_header: BundleHeader<Number, Hash>,
 }
 
-impl<Hash: Clone + Default + Encode> BundleEquivocationProof<Hash> {
+impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
+    BundleEquivocationProof<Number, Hash>
+{
     /// Returns the hash of this bundle equivocation proof.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -177,6 +179,7 @@ impl<Hash: Clone + Default + Encode> BundleEquivocationProof<Hash> {
     /// Constructs a dummy bundle equivocation proof.
     pub fn dummy_at(slot_number: u64) -> Self {
         let dummy_header = BundleHeader {
+            primary_number: Number::from(0u32),
             primary_hash: Hash::default(),
             slot_number,
             extrinsics_root: H256::default(),
