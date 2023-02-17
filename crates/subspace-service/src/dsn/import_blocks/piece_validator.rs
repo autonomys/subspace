@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use std::error::Error;
 use std::num::NonZeroUsize;
 use subspace_archiving::archiver::is_piece_valid;
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Piece, PieceIndex, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
 };
@@ -23,10 +23,10 @@ pub struct RecordsRootPieceValidator {
 }
 
 impl RecordsRootPieceValidator {
-    pub fn new(dsn_node: Node) -> Self {
+    pub fn new(dsn_node: Node, kzg: Kzg) -> Self {
         Self {
             dsn_node,
-            kzg: Kzg::new(test_public_parameters()),
+            kzg,
             records_root_cache: Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE)),
         }
     }

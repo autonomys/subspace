@@ -75,7 +75,7 @@ use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::FullPool;
-use tracing::{error, info, Instrument};
+use tracing::{debug, error, info, Instrument};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -546,9 +546,9 @@ where
                             .expect("Must not be poisoned here")
                             .take()
                         {
-                            node_address_sender
-                                .send(address.clone())
-                                .expect("Channel must allow sending at this point.");
+                            if let Err(err) = node_address_sender.send(address.clone()) {
+                                debug!(?err, "Couldn't send a node address to the channel.");
+                            }
                         }
                     }
                 }
