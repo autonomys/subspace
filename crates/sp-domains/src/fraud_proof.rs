@@ -131,7 +131,7 @@ pub enum VerificationError {
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct FraudProof {
-    /// The id of the domain this fraud proof targetted
+    /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the signed bundle in which an invalid state transition occurred.
     pub bad_signed_bundle_hash: H256,

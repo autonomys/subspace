@@ -1,7 +1,7 @@
 use crate::{self as pallet_domains};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
-use pallet_receipts::{BlockHash, ReceiptVotes};
+use pallet_receipts::{PrimaryBlockHash, ReceiptVotes};
 use sp_core::crypto::Pair;
 use sp_core::{H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
@@ -215,12 +215,12 @@ fn submit_execution_receipt_incrementally_should_work() {
 
     new_test_ext().execute_with(|| {
         let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
-        BlockHash::<Test>::insert(DomainId::SYSTEM, 0, genesis_hash);
+        PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, 0, genesis_hash);
         Receipts::initialize_genesis_receipt(DomainId::SYSTEM, genesis_hash);
 
         (0..256).for_each(|index| {
             let block_hash = block_hashes[index];
-            BlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
+            PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
 
             assert_ok!(pallet_domains::Pallet::<Test>::pre_dispatch(
                 &pallet_domains::Call::submit_bundle {
@@ -306,26 +306,26 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
         });
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[255].clone(),
         ));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[256].clone(),
         ));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[257].clone(),
         ));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
     });
 }
@@ -380,19 +380,19 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle2));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 1);
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle3));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 2);
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle4));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 3);
         assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
         assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 258);
@@ -453,7 +453,7 @@ fn submit_fraud_proof_should_work() {
     new_test_ext().execute_with(|| {
         (0usize..256usize).for_each(|index| {
             let block_hash = block_hashes[index];
-            BlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
+            PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
 
             assert_ok!(Domains::submit_bundle(
                 RuntimeOrigin::none(),
