@@ -1,9 +1,18 @@
+use futures::FutureExt;
+use sc_client_api::BlockBackend;
+use sc_transaction_pool::{ChainApi, FullChainApi};
+use sc_transaction_pool_api::error::Error as TxPoolError;
 use sp_api::ProvideRuntimeApi;
-use sp_blockchain::{Error, HeaderBackend};
+use sp_blockchain::{Error, HeaderBackend, HeaderMetadata};
+use sp_core::traits::SpawnNamed;
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor};
+use sp_runtime::transaction_validity::TransactionSource;
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_transaction_pool::{BlockExtrinsicOf, ValidateExtrinsic, ValidationFuture};
 use system_runtime_primitives::SystemDomainApi;
 
 /// Verifies if the xdm has the correct proof generated from known parent block.
@@ -12,16 +21,16 @@ use system_runtime_primitives::SystemDomainApi;
 /// System domain node use this to verify the XDM while validating fraud proof.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-#[allow(dead_code)]
-fn verify_xdm_with_system_domain_client<Client, Block, PBlock>(
+fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
     system_domain_client: &Arc<Client>,
-    extrinsic: &Block::Extrinsic,
+    extrinsic: &SBlock::Extrinsic,
 ) -> Result<bool, Error>
 where
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
+    Client: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    Client::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     Block: BlockT,
+    SBlock: BlockT,
     PBlock: BlockT,
 {
     let api = system_domain_client.runtime_api();
@@ -61,4 +70,78 @@ where
     }
 
     Ok(true)
+}
+
+pub struct CoreDomainXDMValidator<SDC, PBlock, SBlock> {
+    _data: PhantomData<(PBlock, SBlock)>,
+    system_domain_client: Arc<SDC>,
+}
+
+impl<SDC, PBlock, SBlock> CoreDomainXDMValidator<SDC, PBlock, SBlock> {
+    pub fn new(system_domain_client: Arc<SDC>) -> Self {
+        Self {
+            _data: Default::default(),
+            system_domain_client,
+        }
+    }
+}
+
+impl<SDC, PBlock, SBlock> Clone for CoreDomainXDMValidator<SDC, PBlock, SBlock> {
+    fn clone(&self) -> Self {
+        Self {
+            _data: Default::default(),
+            system_domain_client: self.system_domain_client.clone(),
+        }
+    }
+}
+
+impl<Block, Client, SDC, SBlock, PBlock>
+    ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
+    for CoreDomainXDMValidator<SDC, PBlock, SBlock>
+where
+    Block: BlockT,
+    SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    Block: BlockT,
+    SBlock: BlockT,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
+    PBlock: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + BlockIdTo<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
+{
+    fn validate_extrinsic(
+        &self,
+        at: &BlockId<Block>,
+        source: TransactionSource,
+        uxt: BlockExtrinsicOf<Block>,
+        _spawner: Box<dyn SpawnNamed>,
+        chain_api: Arc<FullChainApi<Client, Block>>,
+    ) -> ValidationFuture {
+        let result = verify_xdm_with_system_domain_client::<SDC, Block, SBlock, PBlock>(
+            &self.system_domain_client,
+            &(uxt.clone().into()),
+        );
+        match result {
+            Ok(valid) => {
+                if valid {
+                    chain_api.validate_transaction(at, source, uxt)
+                } else {
+                    tracing::trace!(target: "xdm_validator", "Dropped invalid XDM extrinsic");
+                    async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()
+                }
+            }
+            Err(err) => {
+                tracing::trace!(target: "xdm_validator", error = ?err, "Failed to verify XDM");
+                async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()
+            }
+        }
+    }
 }
