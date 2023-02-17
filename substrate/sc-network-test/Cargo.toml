@@ -20,7 +20,7 @@ sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/
 sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 log = "0.4.17"
 parking_lot = "0.12.1"
-futures = "0.3.25"
+futures = "0.3.26"
 futures-timer = "3.0.1"
 rand = "0.8.5"
 libp2p = { version = "0.50.0", default-features = false }

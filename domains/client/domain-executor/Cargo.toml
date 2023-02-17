@@ -11,7 +11,7 @@ crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-client-executor-gossip = { version = "0.1.0", path = "../executor-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
-futures = { version = "0.3.25", features = ["compat"] }
+futures = { version = "0.3.26", features = ["compat"] }
 futures-timer = "3.0.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"

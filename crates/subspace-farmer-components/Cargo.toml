@@ -18,7 +18,7 @@ bench = false
 [dependencies]
 async-trait = "0.1.58"
 fs2 = "0.4.3"
-futures = "0.3.25"
+futures = "0.3.26"
 libc = "0.2.131"
 parity-scale-codec = "3.2.1"
 rand = "0.8.5"
@@ -33,7 +33,7 @@ tracing = "0.1.37"
 
 [dev-dependencies]
 criterion = "0.4.0"
-futures = "0.3.25"
+futures = "0.3.26"
 memmap2 = "0.5.8"
 rayon = "1.6.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
