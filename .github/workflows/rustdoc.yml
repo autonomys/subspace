@@ -5,6 +5,10 @@ on:
    branches:
    - main
 
+concurrency:
+  group: rustdoc-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
