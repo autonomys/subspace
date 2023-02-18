@@ -31,7 +31,7 @@ use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransa
 use sp_domains::merkle_tree::Witness;
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
-use sp_runtime::traits::{BlockNumberProvider, One, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
 
@@ -61,7 +61,7 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// The signer of bundle is unexpected.
         UnexpectedSigner,
@@ -79,6 +79,8 @@ mod pallet {
         BadElectionSolution,
         /// An invalid execution receipt found in the bundle.
         Receipt(ExecutionReceiptError),
+        /// The Bundle is created too long ago.
+        StaleBundle,
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -87,7 +89,7 @@ mod pallet {
         }
     }
 
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug)]
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum ExecutionReceiptError {
         /// The parent execution receipt is unknown.
         MissingParent,
@@ -196,7 +198,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
-            bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -552,6 +554,16 @@ impl<T: Config> Pallet<T> {
             signature,
         }: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+
+        if let Some(last_finalized) =
+            current_block_number.checked_sub(&T::ConfirmationDepthK::get())
+        {
+            if bundle.header.primary_number <= last_finalized {
+                return Err(BundleError::StaleBundle);
+            }
+        }
+
         let proof_of_election = bundle_solution.proof_of_election();
 
         if !proof_of_election
@@ -586,8 +598,6 @@ impl<T: Config> Pallet<T> {
                 authority_witness,
                 proof_of_election,
             )?;
-
-            let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
             let best_number = Self::head_receipt_number();
             let max_allowed = best_number + T::MaximumReceiptDrift::get();
@@ -643,7 +653,7 @@ impl<T: Config> Pallet<T> {
 
     // TODO: Checks if the bundle equivocation proof is valid.
     fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
+        _bundle_equivocation_proof: &BundleEquivocationProof<T::BlockNumber, T::Hash>,
     ) -> Result<(), Error<T>> {
         Ok(())
     }
@@ -694,7 +704,7 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
     pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
+        bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
     ) {
         let call = Call::submit_bundle_equivocation_proof {
             bundle_equivocation_proof,

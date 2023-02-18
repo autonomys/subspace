@@ -405,6 +405,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
         let bundle = Bundle {
             header: BundleHeader {
+                primary_number,
                 primary_hash: ferdie.client.hash(primary_number).unwrap().unwrap(),
                 slot_number: (std::time::SystemTime::now()
                     .duration_since(std::time::SystemTime::UNIX_EPOCH)

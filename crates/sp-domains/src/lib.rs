@@ -170,7 +170,9 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
 /// Header of bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleHeader<Hash> {
+pub struct BundleHeader<Number, Hash> {
+    /// The block number of primary block at which the bundle was created.
+    pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
     pub primary_hash: Hash,
     /// The slot number.
@@ -179,7 +181,7 @@ pub struct BundleHeader<Hash> {
     pub extrinsics_root: H256,
 }
 
-impl<Hash: Encode> BundleHeader<Hash> {
+impl<Number: Encode, Hash: Encode> BundleHeader<Number, Hash> {
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -267,7 +269,7 @@ impl<DomainHash> BundleSolution<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
-    pub header: BundleHeader<Hash>,
+    pub header: BundleHeader<Number, Hash>,
     /// Expected receipts by the primay chain when the bundle was created.
     ///
     /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
@@ -278,10 +280,12 @@ pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     pub extrinsics: Vec<Extrinsic>,
 }
 
-impl<Extrinsic, Number, Hash: Encode, DomainHash> Bundle<Extrinsic, Number, Hash, DomainHash> {
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
+    Bundle<Extrinsic, Number, Hash, DomainHash>
+{
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
-        self.header.hash()
+        BlakeTwo256::hash_of(self)
     }
 }
 
@@ -408,7 +412,7 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the bundle equivocation proof via an unsigned extrinsic.
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<Block::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, Block::Hash>,
         );
 
         /// Submits the invalid transaction proof via an unsigned extrinsic.
