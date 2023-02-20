@@ -133,6 +133,11 @@ mod pallet {
     pub(super) type Domains<T: Config> =
         StorageMap<_, Twox64Concat, DomainId, DomainConfig<T>, OptionQuery>;
 
+    /// At which block the domain was created.
+    #[pallet::storage]
+    pub(super) type CreatedAt<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, T::BlockNumber, ValueQuery>;
+
     /// (executor, domain_id, allocated_stake_proportion)
     #[pallet::storage]
     pub(super) type DomainOperators<T: Config> = StorageDoubleMap<
@@ -453,6 +458,8 @@ mod pallet {
         TooFarInFuture,
         /// Core domain receipt points to an unknown primary block.
         UnknownBlock,
+        /// Valid receipts start after the domain creation.
+        BeforeDomainCreation,
     }
 
     impl<T> From<PalletReceiptError> for Error<T> {
@@ -752,6 +759,7 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
+        let created_at = CreatedAt::<T>::get(domain_id);
         let head_receipt_number = Self::head_receipt_number(domain_id);
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
@@ -777,6 +785,15 @@ impl<T: Config> Pallet<T> {
             }
 
             let primary_number = receipt.primary_number;
+
+            if primary_number <= created_at {
+                log::error!(
+                    target: "runtime::domain-registry",
+                    "Domain was created at #{created_at:?}, but this receipt points to an earlier block #{:?}", receipt.primary_number,
+                );
+                return Err(Error::<T>::Receipt(ReceiptError::BeforeDomainCreation));
+            }
+
             if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt) {
                 log::error!(
                     target: "runtime::domain-registry",
@@ -957,6 +974,13 @@ impl<T: Config> Pallet<T> {
         Domains::<T>::insert(domain_id, domain_config);
         DomainCreators::<T>::insert(domain_id, who, deposit);
         NextDomainId::<T>::put(domain_id + 1);
+
+        let current_block_number = frame_system::Pallet::<T>::block_number();
+        CreatedAt::<T>::insert(domain_id, current_block_number);
+        pallet_receipts::Pallet::<T>::initialize_head_receipt_number(
+            domain_id,
+            current_block_number,
+        );
 
         domain_id
     }
