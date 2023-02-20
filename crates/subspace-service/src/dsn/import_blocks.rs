@@ -15,8 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 mod piece_validator;
+mod root_blocks;
 
 use crate::dsn::import_blocks::piece_validator::RecordsRootPieceValidator;
+use crate::dsn::import_blocks::root_blocks::RootBlockHandler;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
@@ -87,11 +89,16 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
+    let root_block_handler = RootBlockHandler::new(node.clone());
     let piece_provider = PieceProvider::<RecordsRootPieceValidator>::new(
         node.clone(),
         Some(RecordsRootPieceValidator::new(
             node.clone(),
             Kzg::new(test_public_parameters()),
+            root_block_handler
+                .get_root_blocks()
+                .await
+                .map_err(|error| sc_service::Error::Other(error.to_string()))?,
         )),
         false,
     );
