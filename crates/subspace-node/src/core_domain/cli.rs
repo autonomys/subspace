@@ -151,19 +151,10 @@ impl SubstrateCli for CoreDomainCli {
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
         // TODO: add core domain chain spec an extension of system domain chain spec.
-        let chain_spec = match self.domain_id {
-            DomainId::CORE_PAYMENTS => match id {
-                "dev" => core_payments_chain_spec::development_config(),
-                "gemini-3c" => core_payments_chain_spec::gemini_3c_config(),
-                "devnet" => core_payments_chain_spec::devnet_config(),
-                "" | "local" => core_payments_chain_spec::local_testnet_config(),
-                path => core_payments_chain_spec::ChainSpec::from_json_file(
-                    std::path::PathBuf::from(path),
-                )?,
-            },
+        match self.domain_id {
+            DomainId::CORE_PAYMENTS => core_payments_chain_spec::load_chain_spec(id),
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
-        };
-        Ok(Box::new(chain_spec))
+        }
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
