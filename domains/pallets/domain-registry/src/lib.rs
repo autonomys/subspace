@@ -136,7 +136,7 @@ mod pallet {
     /// At which block the domain was created.
     #[pallet::storage]
     pub(super) type CreatedAt<T: Config> =
-        StorageMap<_, Twox64Concat, DomainId, T::BlockNumber, ValueQuery>;
+        StorageMap<_, Twox64Concat, DomainId, T::BlockNumber, OptionQuery>;
 
     /// (executor, domain_id, allocated_stake_proportion)
     #[pallet::storage]
@@ -519,6 +519,9 @@ mod pallet {
         /// Not a core domain bundle.
         NotCoreDomainBundle,
 
+        /// Can not find the number of block the domain was created at.
+        DomainNotCreated,
+
         /// Can not find the block hash of given primary block number.
         UnavailablePrimaryBlockHash,
 
@@ -759,7 +762,7 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
-        let created_at = CreatedAt::<T>::get(domain_id);
+        let created_at = CreatedAt::<T>::get(domain_id).ok_or(Error::<T>::DomainNotCreated)?;
         let head_receipt_number = Self::head_receipt_number(domain_id);
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
