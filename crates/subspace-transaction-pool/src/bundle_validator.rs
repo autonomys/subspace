@@ -189,9 +189,9 @@ impl<Block: BlockT> BundleStoredInLastK<Block> {
                 )))
             }
         };
-        let pre_best_hash = BundleStoredInLastK::<Block>::best_hash(&bundles);
+        let pre_best_hash = Self::best_hash(&bundles);
         let res = update_fn(&mut bundles);
-        if pre_best_hash != BundleStoredInLastK::<Block>::best_hash(&bundles) {
+        if pre_best_hash != Self::best_hash(&bundles) {
             *self.bundle_syncer.write() = bundles.clone();
         }
         res
@@ -199,12 +199,9 @@ impl<Block: BlockT> BundleStoredInLastK<Block> {
 
     fn contains(&self, hash: Hash) -> bool {
         let block_bundles = self.bundle_syncer.read();
-        for (_, bundle_hashes) in block_bundles.iter() {
-            if bundle_hashes.contains(&hash) {
-                return true;
-            }
-        }
-        false
+        block_bundles
+            .iter()
+            .any(|(_, bundle_hashes)| bundle_hashes.contains(&hash))
     }
 }
 
