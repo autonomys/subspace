@@ -71,7 +71,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                         min_operator_stake: 100 * SSC,
                     },
                     get_account_id_from_seed("Alice"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(get_account_id_from_seed("Alice")),
                 vec![(
@@ -133,7 +133,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                         min_operator_stake: 100 * SSC,
                     },
                     get_account_id_from_seed("Alice"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(get_account_id_from_seed("Alice")),
                 vec![
@@ -208,7 +208,7 @@ pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
                     },
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(sudo_account),
                 Default::default(),
@@ -274,7 +274,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     },
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(sudo_account.clone()),
                 vec![(
