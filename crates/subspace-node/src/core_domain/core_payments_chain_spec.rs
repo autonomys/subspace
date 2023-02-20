@@ -188,6 +188,17 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
+pub fn load_chain_spec(spec_id: &str) -> std::result::Result<Box<dyn sc_cli::ChainSpec>, String> {
+    let chain_spec = match spec_id {
+        "dev" => development_config(),
+        "gemini-3c" => gemini_3c_config(),
+        "devnet" => devnet_config(),
+        "" | "local" => local_testnet_config(),
+        path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+    };
+    Ok(Box::new(chain_spec))
+}
+
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,

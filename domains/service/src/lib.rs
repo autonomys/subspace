@@ -4,7 +4,7 @@ mod core_domain;
 mod rpc;
 mod system_domain;
 
-pub use self::core_domain::{new_full_core, NewFullCore};
+pub use self::core_domain::{new_full_core, CoreDomainParams, NewFullCore};
 pub use self::system_domain::{new_full_system, FullPool, NewFullSystem};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::RelayerId;
