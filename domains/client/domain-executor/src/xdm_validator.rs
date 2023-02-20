@@ -21,7 +21,7 @@ use system_runtime_primitives::SystemDomainApi;
 /// System domain node use this to verify the XDM while validating fraud proof.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
+pub(crate) fn validate_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
     system_domain_client: &Arc<Client>,
     extrinsic: &SBlock::Extrinsic,
 ) -> Result<bool, Error>
@@ -125,7 +125,7 @@ where
         _spawner: Box<dyn SpawnNamed>,
         chain_api: Arc<FullChainApi<Client, Block>>,
     ) -> ValidationFuture {
-        let result = verify_xdm_with_system_domain_client::<SDC, Block, SBlock, PBlock>(
+        let result = validate_xdm_with_system_domain_client::<SDC, Block, SBlock, PBlock>(
             &self.system_domain_client,
             &(uxt.clone().into()),
         );
