@@ -5,8 +5,10 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::{fs, io, thread};
+use subspace_core_primitives::RootBlock;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderRecordProcessor;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
@@ -18,7 +20,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, Instrument, Span};
@@ -29,6 +31,7 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
+const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -92,6 +95,23 @@ pub(super) async fn configure_dsn(
         piece_cache.clone(),
     );
 
+    let last_archived_segment_index = Arc::new(AtomicU64::default());
+    tokio::spawn({
+        let mut archived_segments_notifications =
+            node_client
+                .subscribe_archived_segments()
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+        let last_archived_segment_index = last_archived_segment_index.clone();
+
+        async move {
+            while let Some(segment) = archived_segments_notifications.next().await {
+                last_archived_segment_index
+                    .store(segment.root_block.segment_index(), Ordering::Relaxed);
+            }
+        }
+    });
+
     let config = Config {
         reserved_peers,
         keypair,
@@ -143,12 +163,37 @@ pub(super) async fn configure_dsn(
                 Some(PieceByHashResponse { piece: result })
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
-                debug!(segment_indexes_count = ?req.segment_indexes.len(), "Root blocks request received.");
+                debug!(?req, "Root blocks request received.");
+
+                let segment_indexes = match req {
+                    RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
+                    RootBlockRequest::LastRootBlocks { root_block_number } => {
+                        if *root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            error!(%root_block_number, "Root block number exceeded the limit.");
+                            return None;
+                        }
+
+                        let last_segment_index =
+                            last_archived_segment_index.load(Ordering::Relaxed);
+
+                        // several last segment indexes available on the node
+                        (0..=last_segment_index)
+                            .rev()
+                            .take(*root_block_number as usize)
+                            .collect::<Vec<_>>()
+                    }
+                };
 
                 let handle = root_blocks_protocol_handle.clone();
                 let node_client = node_client.clone();
                 let internal_result = tokio::task::block_in_place(move || {
-                    handle.block_on(node_client.root_blocks(req.segment_indexes.clone()))
+                    handle.block_on(node_client.root_blocks(segment_indexes.clone()))
+                })
+                .map(|root_blocks| {
+                    root_blocks
+                        .iter()
+                        .filter_map(|rb| *rb)
+                        .collect::<Vec<RootBlock>>()
                 });
 
                 match internal_result {

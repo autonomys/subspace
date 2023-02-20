@@ -4,6 +4,7 @@ use sc_client_api::backend::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
 use sc_consensus_subspace_rpc::RootBlockProvider;
 use std::error::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::{RootBlock, SegmentIndex};
 use tracing::{debug, error, trace};
@@ -33,12 +34,14 @@ pub(crate) async fn start_root_block_archiver<AS: AuxStore>(
 /// Cache of recently produced root blocks in aux storage
 pub struct RootBlockCache<AS> {
     aux_store: Arc<AS>,
+    max_segment_index: Arc<AtomicU64>,
 }
 
 impl<AS> Clone for RootBlockCache<AS> {
     fn clone(&self) -> Self {
         Self {
             aux_store: self.aux_store.clone(),
+            max_segment_index: self.max_segment_index.clone(),
         }
     }
 }
@@ -51,7 +54,15 @@ where
 
     /// Create new instance.
     pub fn new(aux_store: Arc<AS>) -> Self {
-        Self { aux_store }
+        Self {
+            aux_store,
+            max_segment_index: Default::default(),
+        }
+    }
+
+    /// Returns last observed segment index.
+    pub fn max_segment_index(&self) -> u64 {
+        self.max_segment_index.load(Ordering::Relaxed)
     }
 
     /// Add root block to cache (likely as the result of archiving)
@@ -61,6 +72,8 @@ where
         let insert_data = vec![(key.as_slice(), value.as_slice())];
 
         self.aux_store.insert_aux(&insert_data, &Vec::new())?;
+        self.max_segment_index
+            .store(root_block.segment_index(), Ordering::Relaxed);
 
         Ok(())
     }
