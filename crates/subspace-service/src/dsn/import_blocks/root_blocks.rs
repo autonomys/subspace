@@ -4,7 +4,7 @@ use std::error::Error;
 use subspace_core_primitives::{RootBlock, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, RootBlockRequest, RootBlockResponse};
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 const ROOT_BLOCK_NUMBER_PER_REQUEST: u64 = 10;
 
@@ -46,6 +46,19 @@ impl RootBlockHandler {
                         warn!("Root block request returned None.");
                     }
                     Some(root_block) => {
+                        if root_block.hash() != last_root_block.prev_root_block_hash() {
+                            error!(
+                                hash=?root_block.hash(),
+                                prev_hash=?last_root_block.prev_root_block_hash(),
+                                "Root block hash doesn't match expected hash from the last block."
+                            );
+
+                            return Err(
+                                "Root block hash doesn't match expected hash from the last block."
+                                    .into(),
+                            );
+                        }
+
                         last_root_block = root_block;
                         result.push(root_block);
                     }
