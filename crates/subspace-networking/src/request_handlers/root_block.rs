@@ -9,9 +9,14 @@ use subspace_core_primitives::{RootBlock, SegmentIndex};
 
 /// Root block by segment indexes protocol request.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
-pub struct RootBlockRequest {
-    /// Request key - piece index hash
-    pub segment_indexes: Vec<SegmentIndex>,
+pub enum RootBlockRequest {
+    SegmentIndexes {
+        segment_indexes: Vec<SegmentIndex>,
+    },
+    /// Defines how many root blocks to return.
+    LastRootBlocks {
+        root_block_number: u64,
+    },
 }
 
 impl GenericRequest for RootBlockRequest {

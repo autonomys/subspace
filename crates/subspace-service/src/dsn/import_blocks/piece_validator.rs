@@ -51,7 +51,7 @@ impl RecordsRootPieceValidator {
                         .dsn_node
                         .send_generic_request(
                             peer_id,
-                            RootBlockRequest {
+                            RootBlockRequest::SegmentIndexes {
                                 segment_indexes: vec![segment_index],
                             },
                         )

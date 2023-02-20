@@ -7,6 +7,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::{fs, io, thread};
+use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderRecordProcessor;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
@@ -18,7 +19,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, Instrument, Span};
@@ -29,6 +30,7 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
+const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -143,12 +145,45 @@ pub(super) async fn configure_dsn(
                 Some(PieceByHashResponse { piece: result })
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
-                debug!(segment_indexes_count = ?req.segment_indexes.len(), "Root blocks request received.");
+                debug!(?req, "Root blocks request received.");
+
+                let segment_indexes = match req {
+                    RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
+                    RootBlockRequest::LastRootBlocks { root_block_number } => {
+                        if *root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            error!(%root_block_number, "Root block number exceeded the limit.");
+                            return None;
+                        }
+
+                        let handle = root_blocks_protocol_handle.clone();
+                        let node_client = node_client.clone();
+                        let farmer_app_info_result = tokio::task::block_in_place(move || {
+                            handle.block_on(node_client.farmer_app_info())
+                        });
+
+                        match farmer_app_info_result {
+                            Ok(app_info) => {
+                                let segment_number = app_info.protocol_info.total_pieces.get()
+                                    / PIECES_IN_SEGMENT as u64;
+
+                                // several last segment indexes available on the node
+                                (0..segment_number)
+                                    .rev()
+                                    .take(*root_block_number as usize)
+                                    .collect::<Vec<_>>()
+                            }
+                            Err(err) => {
+                                error!(?err, "Couldn't get farmer_app_info.");
+                                return None;
+                            }
+                        }
+                    }
+                };
 
                 let handle = root_blocks_protocol_handle.clone();
                 let node_client = node_client.clone();
                 let internal_result = tokio::task::block_in_place(move || {
-                    handle.block_on(node_client.root_blocks(req.segment_indexes.clone()))
+                    handle.block_on(node_client.root_blocks(segment_indexes.clone()))
                 });
 
                 match internal_result {
