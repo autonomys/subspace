@@ -23,4 +23,4 @@ sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate",
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 codec = { package = "parity-scale-codec", version = "3.2.1" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-futures = "0.3.25"
+futures = "0.3.26"

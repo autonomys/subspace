@@ -184,13 +184,16 @@ pub(crate) fn start_announcements_processor(
     let handler_id = node.on_announcement(Arc::new({
         let provider_records_sender = Mutex::new(provider_records_sender);
 
-        move |record| {
-            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
+        move |record, guard| {
+            if let Err(error) = provider_records_sender
+                .lock()
+                .try_send((record.clone(), Arc::clone(guard)))
+            {
                 if error.is_disconnected() {
                     // Receiver exited, nothing left to be done
                     return;
                 }
-                let record = error.into_inner();
+                let (record, _guard) = error.into_inner();
                 // TODO: This should be made a warning, but due to
                 //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
                 //  to resolve
@@ -218,7 +221,7 @@ pub(crate) fn start_announcements_processor(
         .name("ann-processor".to_string())
         .spawn(move || {
             let processor_fut = async {
-                while let Some(provider_record) = provider_records_receiver.next().await {
+                while let Some((provider_record, _guard)) = provider_records_receiver.next().await {
                     if weak_readers_and_pieces.upgrade().is_none() {
                         // `ReadersAndPieces` was dropped, nothing left to be done
                         return;

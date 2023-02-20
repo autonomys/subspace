@@ -13,7 +13,8 @@ use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
 use futures::channel::mpsc;
 use libp2p::gossipsub::{
-    GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
+    Config as GossipsubConfig, ConfigBuilder as GossipsubConfigBuilder,
+    Message as GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::kad::record::Key;

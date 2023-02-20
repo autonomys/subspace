@@ -17,7 +17,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-trait = "0.1.58"
 codec = { package = "parity-scale-codec", version = "3.2.1", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-futures = "0.3.25"
+futures = "0.3.26"
 futures-timer = "3.0.2"
 log = "0.4.17"
 lru = "0.8.1"

@@ -12,7 +12,7 @@ use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
-use libp2p::gossipsub::{GossipsubEvent, TopicHash};
+use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
@@ -561,10 +561,10 @@ where
 
         match event {
             KademliaEvent::InboundRequest {
-                request: InboundRequest::AddProvider { record },
+                request: InboundRequest::AddProvider { record, guard },
             } => {
                 trace!("Add provider request received: {:?}", record);
-                if let Some(record) = record {
+                if let (Some(record), Some(guard)) = (record, guard) {
                     if let Err(err) = self
                         .swarm
                         .behaviour_mut()
@@ -582,7 +582,7 @@ where
                         }
                     };
 
-                    shared.handlers.announcement.call_simple(&record);
+                    shared.handlers.announcement.call_simple(&record, &guard);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
