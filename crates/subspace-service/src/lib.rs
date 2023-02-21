@@ -36,7 +36,7 @@ use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::{BlockBackend, HeaderBackend, StateBackendFor};
+use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -54,7 +54,7 @@ use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
-use sp_consensus::Error as ConsensusError;
+use sp_consensus::{Error as ConsensusError, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
@@ -74,6 +74,7 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
+use subspace_transaction_pool::bundle_validator::{BundleValidator, ValidateBundle};
 use subspace_transaction_pool::FullPool;
 use tracing::{error, info, Instrument};
 
@@ -181,6 +182,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
         (
@@ -191,6 +193,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
             >,
             SubspaceLink<Block>,
             Option<Telemetry>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
     ServiceError,
@@ -248,6 +251,8 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
+    let bundle_validator = BundleValidator::new(client.clone());
+
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         client.clone(),
         backend.clone(),
@@ -259,6 +264,7 @@ where
         &task_manager,
         client.clone(),
         proof_verifier.clone(),
+        bundle_validator.clone(),
     );
 
     let fraud_proof_block_import =
@@ -322,12 +328,12 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, telemetry),
+        other: (block_import, subspace_link, telemetry, bundle_validator),
     })
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, Verifier>
+pub struct NewFull<Client, Validator, Verifier>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -338,6 +344,8 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    Validator:
+        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -365,11 +373,12 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Validator, Verifier>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
+    BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -385,9 +394,15 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
-        (I, SubspaceLink<Block>, Option<Telemetry>),
+        (
+            I,
+            SubspaceLink<Block>,
+            Option<Telemetry>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        ),
     >,
 
     enable_rpc_extensions: bool,
@@ -427,7 +442,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, mut telemetry),
+        other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
     } = partial_components;
 
     let root_block_cache = RootBlockCache::new(client.clone());
@@ -601,6 +616,24 @@ where
             block_announce_validator_builder: None,
             warp_sync: None,
         })?;
+
+    let sync_oracle = network.clone();
+    let best_hash = client.info().best_hash;
+    let mut imported_blocks_stream = client.import_notification_stream();
+    task_manager.spawn_handle().spawn(
+        "maintain-bundles-stored-in-last-k",
+        None,
+        Box::pin(async move {
+            if !sync_oracle.is_major_syncing() {
+                bundle_validator.update_recent_stored_bundles(best_hash);
+            }
+            while let Some(incoming_block) = imported_blocks_stream.next().await {
+                if !sync_oracle.is_major_syncing() && incoming_block.is_new_best {
+                    bundle_validator.update_recent_stored_bundles(incoming_block.hash);
+                }
+            }
+        }),
+    );
 
     if config.offchain_worker.enabled {
         sc_service::build_offchain_workers(
