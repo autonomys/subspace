@@ -616,7 +616,9 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
-        fn extract_xdm_proof_state_roots(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>>{
+        fn extract_xdm_proof_state_roots(
+            extrinsic: &<Block as BlockT>::Extrinsic,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
             extract_xdm_proof_state_roots(extrinsic)
         }
     }
