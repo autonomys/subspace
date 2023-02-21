@@ -85,8 +85,7 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
     fn write(&mut self, bytes: &[u8]) {
         // Try to finish last partial record if possible
         let bytes = {
-            let bytes_until_full_record =
-                ((self.processed / self.record_size) + 1) * self.record_size - self.processed;
+            let bytes_until_full_record = self.bytes_until_full_record();
             let (remaining_record_bytes, bytes) =
                 bytes.split_at(if bytes.len() >= bytes_until_full_record {
                     bytes_until_full_record
