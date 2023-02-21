@@ -1,6 +1,6 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_responses;
-use crate::shared::{Command, CreatedSubscription, HandlerFn, Shared};
+use crate::shared::{Command, CreatedSubscription, HandlerFn, HandlerFn2, Shared};
 use crate::utils::ResizableSemaphorePermit;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -10,6 +10,7 @@ use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
+use libp2p::kad::handler::InboundStreamEventGuard;
 use libp2p::kad::record::Key;
 use libp2p::kad::{PeerRecord, ProviderRecord};
 use libp2p::{Multiaddr, PeerId};
@@ -535,7 +536,10 @@ impl Node {
     }
 
     /// Callback is called when node starts listening on new address.
-    pub fn on_announcement(&self, callback: HandlerFn<ProviderRecord>) -> HandlerId {
+    pub fn on_announcement(
+        &self,
+        callback: HandlerFn2<ProviderRecord, Arc<InboundStreamEventGuard>>,
+    ) -> HandlerId {
         self.shared.handlers.announcement.add(callback)
     }
 }

@@ -108,7 +108,7 @@ mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
+    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -132,6 +132,11 @@ mod pallet {
     #[pallet::storage]
     pub(super) type Domains<T: Config> =
         StorageMap<_, Twox64Concat, DomainId, DomainConfig<T>, OptionQuery>;
+
+    /// At which block the domain was created.
+    #[pallet::storage]
+    pub(super) type CreatedAt<T: Config> =
+        StorageMap<_, Twox64Concat, DomainId, T::BlockNumber, OptionQuery>;
 
     /// (executor, domain_id, allocated_stake_proportion)
     #[pallet::storage]
@@ -332,7 +337,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn submit_bundle_equivocation_proof(
             origin: OriginFor<T>,
-            _bundle_equivocation_proof: BundleEquivocationProof<T::Hash>,
+            _bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -371,7 +376,11 @@ mod pallet {
 
             let mut consumed_weight = Weight::zero();
             for domain_id in Domains::<T>::iter_keys() {
-                pallet_receipts::BlockHash::<T>::insert(domain_id, primary_number, primary_hash);
+                pallet_receipts::PrimaryBlockHash::<T>::insert(
+                    domain_id,
+                    primary_number,
+                    primary_hash,
+                );
                 consumed_weight += T::DbWeight::get().reads_writes(1, 1);
             }
 
@@ -449,6 +458,8 @@ mod pallet {
         TooFarInFuture,
         /// Core domain receipt points to an unknown primary block.
         UnknownBlock,
+        /// Valid receipts start after the domain creation.
+        BeforeDomainCreation,
     }
 
     impl<T> From<PalletReceiptError> for Error<T> {
@@ -508,6 +519,9 @@ mod pallet {
         /// Not a core domain bundle.
         NotCoreDomainBundle,
 
+        /// Can not find the number of block the domain was created at.
+        DomainNotCreated,
+
         /// Can not find the block hash of given primary block number.
         UnavailablePrimaryBlockHash,
 
@@ -519,7 +533,7 @@ mod pallet {
     }
 
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// A new domain was created.
         NewDomain {
@@ -748,6 +762,7 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
+        let created_at = CreatedAt::<T>::get(domain_id).ok_or(Error::<T>::DomainNotCreated)?;
         let head_receipt_number = Self::head_receipt_number(domain_id);
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
@@ -757,10 +772,10 @@ impl<T: Config> Pallet<T> {
             // Non-best receipt
             if receipt.primary_number <= new_best_number {
                 continue;
-            // New nest receipt.
+                // New nest receipt.
             } else if receipt.primary_number == new_best_number + One::one() {
                 new_best_number += One::one();
-            // Missing receipt.
+                // Missing receipt.
             } else {
                 let missing_receipt_number = new_best_number + One::one();
                 log::error!(
@@ -773,13 +788,22 @@ impl<T: Config> Pallet<T> {
             }
 
             let primary_number = receipt.primary_number;
+
+            if primary_number <= created_at {
+                log::error!(
+                    target: "runtime::domain-registry",
+                    "Domain was created at #{created_at:?}, but this receipt points to an earlier block #{:?}", receipt.primary_number,
+                );
+                return Err(Error::<T>::Receipt(ReceiptError::BeforeDomainCreation));
+            }
+
             if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt) {
                 log::error!(
                     target: "runtime::domain-registry",
                     "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
                     expected: #{primary_number:?},{:?}",
                     receipt.primary_hash,
-                    pallet_receipts::BlockHash::<T>::get(domain_id, primary_number),
+                    pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, primary_number),
                 );
                 return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
             }
@@ -845,16 +869,16 @@ impl<T: Config> Pallet<T> {
                     core_block_number,
                     core_block_hash,
                 ))
-                .ok_or(Error::<T>::StateRootNotFound)
-                .map_err(|err|{
-                    log::error!(
+                    .ok_or(Error::<T>::StateRootNotFound)
+                    .map_err(|err| {
+                        log::error!(
                         target: "runtime::domain-registry",
                         "State root for {domain_id:?} #{core_block_number:?},{core_block_hash:?} not found, \
                         current head receipt: {:?}",
                         pallet_receipts::Pallet::<T>::receipt_head(domain_id),
                     );
-                    err
-                })?,
+                        err
+                    })?,
             };
 
             if expected_state_root != *core_state_root {
@@ -954,6 +978,13 @@ impl<T: Config> Pallet<T> {
         DomainCreators::<T>::insert(domain_id, who, deposit);
         NextDomainId::<T>::put(domain_id + 1);
 
+        let current_block_number = frame_system::Pallet::<T>::block_number();
+        CreatedAt::<T>::insert(domain_id, current_block_number);
+        pallet_receipts::Pallet::<T>::initialize_head_receipt_number(
+            domain_id,
+            current_block_number,
+        );
+
         domain_id
     }
 
@@ -1014,7 +1045,7 @@ impl<T: Config> Pallet<T> {
 
     // TODO: Verify bundle_equivocation_proof.
     fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof<T::Hash>,
+        _bundle_equivocation_proof: &BundleEquivocationProof<T::BlockNumber, T::Hash>,
     ) -> Result<(), Error<T>> {
         Ok(())
     }

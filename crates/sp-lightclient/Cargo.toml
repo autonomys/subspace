@@ -31,7 +31,7 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 [dev-dependencies]
 async-trait = "0.1.58"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-futures = "0.3.25"
+futures = "0.3.26"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }

@@ -1148,7 +1148,7 @@ impl_runtime_apis! {
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, <Block as BlockT>::Hash>,
         ) {
             Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }

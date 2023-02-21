@@ -22,7 +22,7 @@ domain-client-message-relayer = { version = "0.1.0", path = "../client/relayer" 
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false, features = ["runtime-benchmarks"] }
-futures = "0.3.25"
+futures = "0.3.26"
 hex-literal = "0.3.1"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
 log = "0.4.17"

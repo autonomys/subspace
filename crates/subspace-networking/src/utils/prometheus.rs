@@ -14,7 +14,7 @@ type SharedRegistry = Arc<Mutex<Registry>>;
 
 #[get("/metrics")]
 async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn Error>> {
-    let mut encoded: Vec<u8> = Vec::new();
+    let mut encoded = String::new();
     encode(&mut encoded, &registry.lock())?;
 
     let resp = HttpResponse::build(StatusCode::OK).body(encoded);

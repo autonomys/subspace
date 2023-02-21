@@ -194,6 +194,24 @@ where
     Ok(params)
 }
 
+pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>
+where
+    SBlock: BlockT,
+    PBlock: BlockT,
+{
+    pub domain_id: DomainId,
+    pub core_domain_config: DomainConfiguration,
+    pub system_domain_client: Arc<SClient>,
+    pub system_domain_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
+    pub primary_chain_client: Arc<PClient>,
+    pub primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    pub select_chain: SC,
+    pub imported_block_notification_stream: IBNS,
+    pub new_slot_notification_stream: NSNS,
+    pub block_import_throttling_buffer_size: u32,
+    pub gossip_message_sink: GossipMessageSink,
+}
+
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
@@ -209,17 +227,7 @@ pub async fn new_full_core<
     RuntimeApi,
     ExecutorDispatch,
 >(
-    domain_id: DomainId,
-    mut core_domain_config: DomainConfiguration,
-    system_domain_client: Arc<SClient>,
-    system_domain_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
-    primary_chain_client: Arc<PClient>,
-    primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
-    select_chain: &SC,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
-    block_import_throttling_buffer_size: u32,
-    gossip_message_sink: GossipMessageSink,
+    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>,
 ) -> sc_service::error::Result<
     NewFullCore<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -268,6 +276,20 @@ where
         + RelayerApi<Block, RelayerId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
+    let CoreDomainParams {
+        domain_id,
+        mut core_domain_config,
+        system_domain_client,
+        system_domain_network,
+        primary_chain_client,
+        primary_network,
+        select_chain,
+        imported_block_notification_stream,
+        new_slot_notification_stream,
+        block_import_throttling_buffer_size,
+        gossip_message_sink,
+    } = core_domain_params;
+
     // TODO: Do we even need block announcement on core domain node?
     // core_domain_config.announce_block = false;
 
@@ -340,7 +362,7 @@ where
         domain_id,
         system_domain_client.clone(),
         &spawn_essential,
-        select_chain,
+        &select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),
             primary_network,
