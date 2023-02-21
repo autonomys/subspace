@@ -221,13 +221,13 @@ pub(crate) fn start_announcements_processor(
         .name("ann-processor".to_string())
         .spawn(move || {
             let processor_fut = async {
-                while let Some((provider_record, _guard)) = provider_records_receiver.next().await {
+                while let Some((provider_record, guard)) = provider_records_receiver.next().await {
                     if weak_readers_and_pieces.upgrade().is_none() {
                         // `ReadersAndPieces` was dropped, nothing left to be done
                         return;
                     }
                     provider_record_processor
-                        .process_provider_record(provider_record)
+                        .process_provider_record(provider_record, guard)
                         .await;
                 }
             };
