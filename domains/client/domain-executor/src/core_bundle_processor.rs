@@ -3,6 +3,7 @@ use crate::domain_block_processor::{
 };
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{translate_number_type, DomainBundles};
+use crate::xdm_validator::validate_xdm_with_system_domain_client;
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
@@ -12,6 +13,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
+use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::marker::PhantomData;
@@ -63,6 +65,7 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
     PBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
@@ -75,8 +78,9 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api: DomainCoreApi<SBlock, AccountId>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
@@ -176,7 +180,9 @@ where
         let (bundles, shuffling_seed, maybe_new_runtime) =
             preprocess_primary_block(self.domain_id, &*self.primary_chain_client, primary_hash)?;
 
-        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+        let extrinsics = self
+            .bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)
+            .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
 
         let domain_block_result = self
             .domain_block_processor
@@ -249,5 +255,26 @@ where
             .compile_own_domain_bundles(bundles);
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
+    }
+
+    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
+        exts.into_iter()
+            .filter(|ext| {
+                match validate_xdm_with_system_domain_client::<_, Block, SBlock, PBlock>(
+                    &self.system_domain_client,
+                    &(ext.clone().into()),
+                ) {
+                    Ok(valid) => valid,
+                    Err(err) => {
+                        tracing::error!(
+                            target = "xdm_validator",
+                            "failed to validate extrinsic: {}",
+                            err
+                        );
+                        false
+                    }
+                }
+            })
+            .collect()
     }
 }
