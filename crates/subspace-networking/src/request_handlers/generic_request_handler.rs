@@ -20,33 +20,38 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
+use std::pin::Pin;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
-// Could be changed after the production feedback.
+/// Could be changed after the production feedback.
 const REQUESTS_BUFFER_SIZE: usize = 50;
 
 /// Generic request with associated response
-pub trait GenericRequest: Encode + Decode + 'static {
+pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
     const PROTOCOL_NAME: &'static str;
     const LOG_TARGET: &'static str;
     /// Response type that corresponds to this request
-    type Response: Encode + Decode + 'static;
+    type Response: Encode + Decode + Send + Sync + 'static;
 }
 
 pub struct GenericRequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
     #[allow(clippy::type_complexity)]
     request_handler: Arc<
-        dyn (Fn(&Request) -> Option<<Request as GenericRequest>::Response>) + Send + Sync + 'static,
+        dyn (Fn(&Request) -> Pin<Box<dyn Future<Output = Option<Request::Response>> + Send>>)
+            + Send
+            + Sync
+            + 'static,
     >,
     protocol_config: ProtocolConfig,
 }
 
 impl<Request: GenericRequest> GenericRequestHandler<Request> {
-    pub fn create<F>(request_handler: F) -> Box<dyn RequestHandler>
+    pub fn create<RH, Fut>(request_handler: RH) -> Box<dyn RequestHandler>
     where
-        F: (Fn(&Request) -> Option<Request::Response>) + Send + Sync + 'static,
+        RH: (Fn(&Request) -> Fut) + Send + Sync + 'static,
+        Fut: Future<Output = Option<Request::Response>> + Send + 'static,
     {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
@@ -55,13 +60,13 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
 
         Box::new(Self {
             request_receiver,
-            request_handler: Arc::new(request_handler),
+            request_handler: Arc::new(move |request| Box::pin(request_handler(request))),
             protocol_config,
         })
     }
 
-    // Invokes external protocol handler.
-    fn handle_request(
+    /// Invokes external protocol handler.
+    async fn handle_request(
         &mut self,
         peer: PeerId,
         payload: Vec<u8>,
@@ -69,7 +74,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         trace!(%peer, protocol=Request::LOG_TARGET, "Handling request...");
         let request = Request::decode(&mut payload.as_slice())
             .map_err(|_| RequestHandlerError::InvalidRequestFormat)?;
-        let response = (self.request_handler)(&request);
+        let response = (self.request_handler)(&request).await;
 
         Ok(response.ok_or(RequestHandlerError::NoResponse)?.encode())
     }
@@ -86,7 +91,7 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
                 pending_response,
             } = request;
 
-            match self.handle_request(peer, payload) {
+            match self.handle_request(peer, payload).await {
                 Ok(response_data) => {
                     let response = OutgoingResponse {
                         result: Ok(response_data),
