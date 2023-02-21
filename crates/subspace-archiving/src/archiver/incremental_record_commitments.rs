@@ -68,11 +68,13 @@ impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
     fn drop(&mut self) {
         if self.full {
             // How many bytes to read before the start of the next record
-            let bytes_until_full_record = self.bytes_until_full_record();
-            if bytes_until_full_record > 0 {
+            let bytes_until_record_end =
+                ((self.processed / self.record_size) + 1) * self.record_size - self.processed;
+            let padding_bytes = bytes_until_record_end % self.record_size;
+            if padding_bytes > 0 {
                 // This is fine since we'll have at most a few iterations and allocation is less
                 // desirable than a loop here
-                for _ in 0..bytes_until_full_record {
+                for _ in 0..padding_bytes {
                     self.update_hashing_state(&[0]);
                 }
                 self.finish_hash();
@@ -85,17 +87,19 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
     fn write(&mut self, bytes: &[u8]) {
         // Try to finish last partial record if possible
         let bytes = {
-            let bytes_until_full_record = self.bytes_until_full_record();
+            // How many bytes to read before the start of the next record
+            let bytes_until_record_end =
+                ((self.processed / self.record_size) + 1) * self.record_size - self.processed;
             let (remaining_record_bytes, bytes) =
-                bytes.split_at(if bytes.len() >= bytes_until_full_record {
-                    bytes_until_full_record
+                bytes.split_at(if bytes.len() >= bytes_until_record_end {
+                    bytes_until_record_end
                 } else {
                     bytes.len()
                 });
 
             self.update_hashing_state(remaining_record_bytes);
 
-            if remaining_record_bytes.len() == bytes_until_full_record {
+            if remaining_record_bytes.len() == bytes_until_record_end {
                 self.finish_hash();
             }
 
@@ -127,13 +131,6 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
             full,
             hashing_state: Blake2b::<U32>::default(),
         }
-    }
-
-    /// How many bytes to read before the start of the next record
-    fn bytes_until_full_record(&self) -> usize {
-        let bytes_to_next_record =
-            ((self.processed / self.record_size) + 1) * self.record_size - self.processed;
-        bytes_to_next_record % self.record_size
     }
 
     /// Whether commitment for current record needs to be created
