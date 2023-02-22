@@ -1,11 +1,17 @@
 use futures::StreamExt;
+use std::cmp::Reverse;
+use std::collections::BTreeMap;
 use std::error::Error;
-use subspace_core_primitives::{RootBlock, SegmentIndex};
+use subspace_core_primitives::{Blake2b256Hash, RootBlock, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, RootBlockRequest, RootBlockResponse};
 use tracing::{debug, error, trace, warn};
 
 const ROOT_BLOCK_NUMBER_PER_REQUEST: u64 = 10;
+/// Minimum peers number to participate in root block election.
+const ROOT_BLOCK_CONSENSUS_MIN_SET: usize = 2; //TODO: change the value
+/// Threshold for the root block election success (minimum peer number with the same root block).
+const ROOT_BLOCK_CONSENSUS_THRESHOLD: u64 = 2; //TODO: change the value
 
 /// Helps gathering root blocks from DSN
 pub struct RootBlockHandler {
@@ -60,8 +66,12 @@ impl RootBlockHandler {
         Ok(result)
     }
 
+    /// Return last root block known to DSN. We ask several peers for the highest root block
+    /// known to them. Target root block should be known to at least ROOT_BLOCK_CONSENSUS_THRESHOLD
+    /// among peer set with minimum size of ROOT_BLOCK_CONSENSUS_MIN_SET peers.
     async fn get_last_root_block(&self) -> Result<RootBlock, Box<dyn Error>> {
         trace!("Getting last root block...");
+        let mut peer_blocks: BTreeMap<PeerId, Vec<RootBlock>> = BTreeMap::new();
 
         // Get random peers. Some of them could be bootstrap nodes with no support for
         // request-response protocol for records root.
@@ -70,6 +80,7 @@ impl RootBlockHandler {
             .get_closest_peers(PeerId::random().into())
             .await;
 
+        // Acquire root blocks from peers.
         match get_peers_result {
             Ok(mut get_peers_stream) => {
                 while let Some(peer_id) = get_peers_stream.next().await {
@@ -87,36 +98,68 @@ impl RootBlockHandler {
 
                     match request_result {
                         Ok(RootBlockResponse { root_blocks }) => {
-                            trace!(%peer_id, "Last root block request succeeded.");
+                            trace!(
+                                %peer_id,
+                                root_blocks_number=%root_blocks.len(),
+                                "Last root block request succeeded."
+                            );
 
-                            let last_root_block =
-                                root_blocks.iter().max_by_key(|rb| rb.segment_index());
-
-                            if let Some(root_block) = last_root_block {
-                                trace!(
-                                    %peer_id,
-                                    segment_index=root_block.segment_index(),
-                                    "Last root block was obtained."
-                                );
-
-                                return Ok(*root_block);
-                            } else {
-                                debug!(%peer_id, "Last root block was not received.");
-                            }
+                            peer_blocks.insert(peer_id, root_blocks);
                         }
                         Err(error) => {
                             debug!(%peer_id, ?error, "Last root block request failed.");
                         }
                     };
                 }
-                Err("No more peers for root blocks.".into())
             }
             Err(err) => {
                 warn!(?err, "get_closest_peers returned an error");
 
-                Err(err.into())
+                return Err(err.into());
             }
         }
+
+        // TODO: Consider adding attempts to increase the initial peer set.
+        if peer_blocks.len() < ROOT_BLOCK_CONSENSUS_MIN_SET {
+            return Err(format!(
+                "Root block consensus failed: not enough peers ({}).",
+                peer_blocks.len()
+            )
+            .into());
+        }
+
+        // Calculate votes
+        let mut root_block_score: BTreeMap<Blake2b256Hash, u64> = BTreeMap::new();
+        let mut root_block_dict: BTreeMap<Blake2b256Hash, RootBlock> = BTreeMap::new();
+
+        for (_peer_id, root_blocks) in peer_blocks {
+            // TODO: check root_blocks variable for duplicates and add peer ban
+            for root_block in root_blocks {
+                root_block_score
+                    .entry(root_block.hash())
+                    .and_modify(|val| *val += 1)
+                    .or_insert(1);
+                root_block_dict
+                    .entry(root_block.hash())
+                    .or_insert(root_block);
+            }
+        }
+
+        // Sort the collection to get highest blocks first.
+        let mut root_blocks = root_block_dict.values().collect::<Vec<_>>();
+        root_blocks.sort_by_key(|rb| Reverse(rb.segment_index()));
+
+        for root_block in root_blocks {
+            let score = root_block_score
+                .get(&root_block.hash())
+                .expect("Must be present because of the manual adding.");
+
+            if *score >= ROOT_BLOCK_CONSENSUS_THRESHOLD {
+                return Ok(*root_block);
+            }
+        }
+
+        Err("Root block consensus failed: can't pass the threshold.".into())
     }
 
     async fn get_root_blocks_batch(
