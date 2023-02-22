@@ -66,7 +66,7 @@ const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(30).expec
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
+pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 3;
 /// Base limit for number of any concurrent tasks except Kademlia.
 ///
 /// We configure total number of streams per connection to 256. Here we assume half of them might be
@@ -79,7 +79,7 @@ const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
+pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 5;
 
 /// Record store that can't be created, only
 pub(crate) struct ProviderOnlyRecordStore<ProviderStorage> {
