@@ -100,7 +100,7 @@ where
                     }
                 };
 
-                Some(PieceByHashResponse { piece: result })
+                async { Some(PieceByHashResponse { piece: result }) }
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
                 let internal_result = req
@@ -109,14 +109,16 @@ where
                     .map(|segment_index| root_block_cache.get_root_block(*segment_index))
                     .collect::<Result<Vec<Option<RootBlock>>, _>>();
 
-                match internal_result {
+                let result = match internal_result {
                     Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 
                         None
                     }
-                }
+                };
+
+                async move { result }
             }),
         ],
         provider_storage,

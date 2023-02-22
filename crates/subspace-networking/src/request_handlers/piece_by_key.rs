@@ -8,7 +8,7 @@ use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{Piece, PieceIndexHash};
 
 /// Piece-by-hash protocol request.
-#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Encode, Decode)]
 pub struct PieceByHashRequest {
     /// Request key - piece index hash
     pub piece_index_hash: PieceIndexHash,
