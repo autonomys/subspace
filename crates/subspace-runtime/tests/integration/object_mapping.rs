@@ -114,7 +114,7 @@ fn object_mapping() {
     assert_eq!(objects.len(), 7);
 
     // Hashes should be computed correctly.
-    assert_eq!(objects[0].hash(), crypto::blake2b_256_hash(&data0),);
+    assert_eq!(objects[0].hash(), crypto::blake2b_256_hash(&data0));
     assert_eq!(objects[1].hash(), crypto::blake2b_256_hash(&data1));
     assert_eq!(objects[2].hash(), crypto::blake2b_256_hash(&data2));
     assert_eq!(objects[3].hash(), crypto::blake2b_256_hash(&data3));
