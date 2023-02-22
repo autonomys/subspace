@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+mod piece_validator;
+mod root_blocks;
+
+use crate::dsn::import_blocks::piece_validator::RecordsRootPieceValidator;
+use crate::dsn::import_blocks::root_blocks::RootBlockHandler;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
@@ -24,10 +29,11 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::{
     Piece, PieceIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 
 struct WaitLinkError<B: BlockT> {
@@ -83,7 +89,19 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None, false);
+    let root_block_handler = RootBlockHandler::new(node.clone());
+    let piece_provider = PieceProvider::<RecordsRootPieceValidator>::new(
+        node.clone(),
+        Some(RecordsRootPieceValidator::new(
+            node.clone(),
+            Kzg::new(test_public_parameters()),
+            root_block_handler
+                .get_root_blocks()
+                .await
+                .map_err(|error| sc_service::Error::Other(error.to_string()))?,
+        )),
+        false,
+    );
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;
