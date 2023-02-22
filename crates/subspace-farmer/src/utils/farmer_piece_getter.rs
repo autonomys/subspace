@@ -58,6 +58,8 @@ where
                 let mut piece_cache = self.piece_cache.lock().await;
                 if piece_cache.should_cache(&key) && piece_cache.get_piece(&key).is_none() {
                     piece_cache.add_piece(key, piece.clone());
+                    drop(piece_cache);
+
                     if let Err(error) =
                         announce_single_piece_index_hash_with_backoff(piece_index_hash, &self.node)
                             .await
