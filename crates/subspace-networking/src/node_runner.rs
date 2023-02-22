@@ -34,7 +34,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Weak;
 use std::time::Duration;
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -433,6 +433,12 @@ where
                     match self.established_connections.entry((peer_id, endpoint)) {
                         Entry::Vacant(_) => {
                             // Nothing to do here, we are not aware of the connection being closed
+                            warn!(
+                                ?peer_id,
+                                "Connection closed, but it is not known as open connection, \
+                                this is likely a bug in libp2p: \
+                                https://github.com/libp2p/rust-libp2p/discussions/3418"
+                            );
                             return;
                         }
                         Entry::Occupied(mut entry) => {
@@ -1093,6 +1099,7 @@ where
                 );
             }
             Command::BanPeer { peer_id } => {
+                info!(?peer_id, "Banning peer on network level");
                 self.swarm.ban_peer_id(peer_id);
                 self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                 self.networking_parameters_registry
