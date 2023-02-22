@@ -35,15 +35,19 @@ pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
     type Response: Encode + Decode + Send + Sync + 'static;
 }
 
+pub type RequestHandlerFn<Request> = Arc<
+    dyn (Fn(
+            &Request,
+        )
+            -> Pin<Box<dyn Future<Output = Option<<Request as GenericRequest>::Response>> + Send>>)
+        + Send
+        + Sync
+        + 'static,
+>;
+
 pub struct GenericRequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
-    #[allow(clippy::type_complexity)]
-    request_handler: Arc<
-        dyn (Fn(&Request) -> Pin<Box<dyn Future<Output = Option<Request::Response>> + Send>>)
-            + Send
-            + Sync
-            + 'static,
-    >,
+    request_handler: RequestHandlerFn<Request>,
     protocol_config: ProtocolConfig,
 }
 
