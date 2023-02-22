@@ -1,7 +1,9 @@
 use futures::StreamExt;
+use parking_lot::Mutex;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, RootBlock, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, RootBlockRequest, RootBlockResponse};
@@ -62,7 +64,6 @@ impl RootBlockHandler {
                 result.push(root_block);
             }
         }
-
         Ok(result)
     }
 
@@ -71,7 +72,7 @@ impl RootBlockHandler {
     /// among peer set with minimum size of ROOT_BLOCK_CONSENSUS_MIN_SET peers.
     async fn get_last_root_block(&self) -> Result<RootBlock, Box<dyn Error>> {
         trace!("Getting last root block...");
-        let mut peer_blocks: BTreeMap<PeerId, Vec<RootBlock>> = BTreeMap::new();
+        let peer_blocks = Arc::new(Mutex::new(BTreeMap::<PeerId, Vec<RootBlock>>::new()));
 
         // Get random peers. Some of them could be bootstrap nodes with no support for
         // request-response protocol for records root.
@@ -80,36 +81,42 @@ impl RootBlockHandler {
             .get_closest_peers(PeerId::random().into())
             .await;
 
+        let mut peer_handles = Vec::new();
         // Acquire root blocks from peers.
         match get_peers_result {
             Ok(mut get_peers_stream) => {
                 while let Some(peer_id) = get_peers_stream.next().await {
-                    trace!(%peer_id, "get_closest_peers returned an item");
+                    let peer_blocks = peer_blocks.clone();
+                    let dsn_node = self.dsn_node.clone();
+                    let join_handle = tokio::spawn(async move {
+                        trace!(%peer_id, "get_closest_peers returned an item");
 
-                    let request_result = self
-                        .dsn_node
-                        .send_generic_request(
-                            peer_id,
-                            RootBlockRequest::LastRootBlocks {
-                                root_block_number: ROOT_BLOCK_NUMBER_PER_REQUEST,
-                            },
-                        )
-                        .await;
+                        let request_result = dsn_node
+                            .send_generic_request(
+                                peer_id,
+                                RootBlockRequest::LastRootBlocks {
+                                    root_block_number: ROOT_BLOCK_NUMBER_PER_REQUEST,
+                                },
+                            )
+                            .await;
 
-                    match request_result {
-                        Ok(RootBlockResponse { root_blocks }) => {
-                            trace!(
-                                %peer_id,
-                                root_blocks_number=%root_blocks.len(),
-                                "Last root block request succeeded."
-                            );
+                        match request_result {
+                            Ok(RootBlockResponse { root_blocks }) => {
+                                trace!(
+                                    %peer_id,
+                                    root_blocks_number=%root_blocks.len(),
+                                    "Last root block request succeeded."
+                                );
 
-                            peer_blocks.insert(peer_id, root_blocks);
-                        }
-                        Err(error) => {
-                            debug!(%peer_id, ?error, "Last root block request failed.");
-                        }
-                    };
+                                peer_blocks.lock().insert(peer_id, root_blocks);
+                            }
+                            Err(error) => {
+                                debug!(%peer_id, ?error, "Last root block request failed.");
+                            }
+                        };
+                    });
+
+                    peer_handles.push(join_handle);
                 }
             }
             Err(err) => {
@@ -118,6 +125,16 @@ impl RootBlockHandler {
                 return Err(err.into());
             }
         }
+
+        for handle in peer_handles {
+            if let Err(err) = handle.await {
+                error!(?err, "Task for root blocks returned an error");
+            }
+        }
+
+        let peer_blocks = Arc::try_unwrap(peer_blocks)
+            .expect("We manually waited for each other usage to be dropped.")
+            .into_inner();
 
         // TODO: Consider adding attempts to increase the initial peer set.
         if peer_blocks.len() < ROOT_BLOCK_CONSENSUS_MIN_SET {
