@@ -139,11 +139,7 @@ pub(super) async fn configure_dsn(
                                 .instrument(Span::current())
                         };
 
-                        let piece = tokio::task::spawn_blocking(move || {
-                            Handle::current().block_on(read_piece_fut)
-                        })
-                        .await
-                        .ok()?;
+                        let piece = read_piece_fut.await;
 
                         Some(PieceByHashResponse { piece })
                     }
