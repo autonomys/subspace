@@ -13,14 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod incremental_record_commitments;
 mod record_shards;
 
 extern crate alloc;
 
-use crate::archiver::incremental_record_commitments::{
-    update_record_commitments, IncrementalRecordCommitmentsState,
-};
 use crate::archiver::record_shards::RecordShards;
 use crate::utils::GF_16_ELEMENT_BYTES;
 use alloc::collections::VecDeque;
@@ -186,8 +182,6 @@ pub struct Archiver {
     /// Buffer containing blocks and other buffered items that are pending to be included into the
     /// next segment
     buffer: VecDeque<SegmentItem>,
-    /// Intermediate record commitments that are built incrementally as above buffer fills up.
-    incremental_record_commitments: IncrementalRecordCommitmentsState,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
     record_size: u32,
@@ -251,9 +245,6 @@ impl Archiver {
 
         Ok(Self {
             buffer: VecDeque::default(),
-            incremental_record_commitments: IncrementalRecordCommitmentsState::with_capacity(
-                data_shards as usize,
-            ),
             record_size,
             data_shards,
             parity_shards,
@@ -376,13 +367,6 @@ impl Archiver {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
-                    update_record_commitments(
-                        &mut self.incremental_record_commitments,
-                        &segment,
-                        false,
-                        self.record_size as usize,
-                    );
-
                     let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
                     for segment_item in items.into_iter().rev() {
@@ -587,13 +571,6 @@ impl Archiver {
 
         self.last_archived_block = last_archived_block;
 
-        update_record_commitments(
-            &mut self.incremental_record_commitments,
-            &segment,
-            true,
-            self.record_size as usize,
-        );
-
         Some(segment)
     }
 
@@ -673,21 +650,12 @@ impl Archiver {
         let mut pieces = FlatPieces::new(record_shards_slices.len());
         drop(record_shards_slices);
 
-        // We take hashes of source records computed incrementally
-        // TODO: Parity hashes will be erasure coded in the future
-        let record_shards_hashes = self
-            .incremental_record_commitments
-            .drain()
-            .chain(
-                record_shards
-                    .as_bytes()
-                    .as_ref()
-                    .chunks_exact(self.record_size as usize)
-                    .skip(self.data_shards as usize)
-                    .map(blake2b_256_254_hash),
-            )
+        let record_shards_hashes = record_shards
+            .as_bytes()
+            .as_ref()
+            .chunks_exact(self.record_size as usize)
+            .map(blake2b_256_254_hash)
             .collect::<Vec<_>>();
-
         let data = {
             let mut data = Vec::with_capacity(
                 (self.data_shards + self.parity_shards) as usize * BLAKE2B_256_HASH_SIZE,
