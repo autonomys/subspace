@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, RootBlock, SegmentIndex};
@@ -149,8 +149,11 @@ impl RootBlockHandler {
         let mut root_block_score: BTreeMap<Blake2b256Hash, u64> = BTreeMap::new();
         let mut root_block_dict: BTreeMap<Blake2b256Hash, RootBlock> = BTreeMap::new();
 
-        for (_peer_id, root_blocks) in peer_blocks {
-            // TODO: check root_blocks variable for duplicates and add peer ban
+        for (peer_id, root_blocks) in peer_blocks {
+            if !self.validate_root_blocks(peer_id, &root_blocks).await {
+                continue;
+            }
+
             for root_block in root_blocks {
                 root_block_score
                     .entry(root_block.hash())
@@ -177,6 +180,20 @@ impl RootBlockHandler {
         }
 
         Err("Root block consensus failed: can't pass the threshold.".into())
+    }
+
+    async fn validate_root_blocks(&self, peer_id: PeerId, root_blocks: &Vec<RootBlock>) -> bool {
+        // check for duplicates
+        let segment_indexes = BTreeSet::from_iter(root_blocks.iter().map(|rb| rb.segment_index()));
+        if segment_indexes.len() != root_blocks.len() {
+            warn!(%peer_id, "Peer banned: it returned collection with duplicated root blocks.");
+            // We don't check the result here.
+            let _ = self.dsn_node.ban_peer(peer_id).await;
+
+            return false;
+        }
+
+        true
     }
 
     async fn get_root_blocks_batch(
