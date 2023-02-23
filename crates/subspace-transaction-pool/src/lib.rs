@@ -155,7 +155,7 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block>,
 {
-    fn new(client: Arc<Client>, verifier: Verifier, bundle_validator: BundleValidator) -> Self {
+    pub fn new(client: Arc<Client>, verifier: Verifier, bundle_validator: BundleValidator) -> Self {
         Self {
             _phantom_data: Default::default(),
             verifier,

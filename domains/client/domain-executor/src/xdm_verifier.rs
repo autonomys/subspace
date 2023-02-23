@@ -73,7 +73,6 @@ where
     Ok(true)
 }
 
-#[allow(dead_code)]
 /// Verifies if the xdm has the correct proof generated from known parent block.
 /// This is used by the System domain to validate Extrinsics.
 /// Returns either true if the XDM is valid else false.
@@ -131,6 +130,94 @@ where
     Ok(true)
 }
 
+/// A verifier for XDM messages on System domain.
+pub struct SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier> {
+    _data: PhantomData<(PBlock, SBlock)>,
+    primary_chain_client: Arc<PClient>,
+    system_domain_client: Arc<SClient>,
+    inner_verifier: Verifier,
+}
+
+impl<PClient, SClient, PBlock, SBlock, Verifier>
+    SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier>
+{
+    pub fn new(
+        primary_chain_client: Arc<PClient>,
+        system_domain_client: Arc<SClient>,
+        inner_verifier: Verifier,
+    ) -> Self {
+        Self {
+            _data: Default::default(),
+            primary_chain_client,
+            system_domain_client,
+            inner_verifier,
+        }
+    }
+}
+
+impl<PClient, SClient, PBlock, SBlock, Verifier> Clone
+    for SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier>
+where
+    Verifier: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            _data: Default::default(),
+            primary_chain_client: self.primary_chain_client.clone(),
+            system_domain_client: self.system_domain_client.clone(),
+            inner_verifier: self.inner_verifier.clone(),
+        }
+    }
+}
+
+impl<PClient, SClient, PBlock, SBlock, Verifier>
+    VerifyExtrinsic<SBlock, SClient, FullChainApi<SClient, SBlock>>
+    for SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier>
+where
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SBlock: BlockT,
+    PBlock: BlockT,
+    NumberFor<PBlock>: From<NumberFor<SBlock>>,
+    PBlock::Hash: From<SBlock::Hash>,
+    Verifier: VerifyExtrinsic<SBlock, SClient, FullChainApi<SClient, SBlock>>,
+{
+    fn verify_extrinsic(
+        &self,
+        at: &BlockId<SBlock>,
+        source: TransactionSource,
+        uxt: BlockExtrinsicOf<SBlock>,
+        spawner: Box<dyn SpawnNamed>,
+        chain_api: Arc<FullChainApi<SClient, SBlock>>,
+    ) -> ValidationFuture {
+        let result = verify_xdm_with_primary_chain_client::<_, _, _, _>(
+            &self.primary_chain_client,
+            &self.system_domain_client,
+            &uxt,
+        );
+
+        match result {
+            Ok(valid) => {
+                if valid {
+                    self.inner_verifier
+                        .verify_extrinsic(at, source, uxt, spawner, chain_api)
+                } else {
+                    tracing::trace!(target: "system_domain_xdm_validator", "Dropped invalid XDM extrinsic");
+                    async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()
+                }
+            }
+            Err(err) => {
+                tracing::trace!(target: "system_domain_xdm_validator", error = ?err, "Failed to verify XDM");
+                async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()
+            }
+        }
+    }
+}
+
+/// A Verifier for XDM messages on Core domains.
 pub struct CoreDomainXDMVerifier<SDC, PBlock, SBlock> {
     _data: PhantomData<(PBlock, SBlock)>,
     system_domain_client: Arc<SDC>,
@@ -192,12 +279,12 @@ where
                 if valid {
                     chain_api.validate_transaction(at, source, uxt)
                 } else {
-                    tracing::trace!(target: "xdm_validator", "Dropped invalid XDM extrinsic");
+                    tracing::trace!(target: "core_domain_xdm_validator", "Dropped invalid XDM extrinsic");
                     async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()
                 }
             }
             Err(err) => {
-                tracing::trace!(target: "xdm_validator", error = ?err, "Failed to verify XDM");
+                tracing::trace!(target: "core_domain_xdm_validator", error = ?err, "Failed to verify XDM");
                 async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()
             }
         }
