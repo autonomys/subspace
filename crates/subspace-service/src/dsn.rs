@@ -1,5 +1,5 @@
 pub mod import_blocks;
-mod node_provider_storage;
+pub mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
