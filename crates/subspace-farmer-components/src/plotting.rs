@@ -1,3 +1,4 @@
+use crate::piece_caching::PieceMemoryCache;
 use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
 use futures::stream::FuturesOrdered;
@@ -10,7 +11,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PieceIndexHash, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE,
+    PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
 use tracing::info;
@@ -94,6 +96,7 @@ pub async fn plot_sector<PG, S, SM>(
     sector_codec: &SectorCodec,
     mut sector_output: S,
     mut sector_metadata_output: SM,
+    piece_memory_cache: PieceMemoryCache,
 ) -> Result<PlottedSector, PlottingError>
 where
     PG: PieceGetter,
@@ -128,6 +131,7 @@ where
         sector_index,
         piece_getter,
         &piece_indexes,
+        piece_memory_cache,
     )
     .await?;
 
@@ -189,6 +193,7 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
     sector_index: u64,
     piece_getter: &PG,
     piece_indexes: &[PieceIndex],
+    piece_memory_cache: PieceMemoryCache,
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
@@ -198,10 +203,13 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
         })
         .collect::<FuturesOrdered<_>>();
 
+    let mut pieces = Vec::new();
     while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
         let piece = piece_result
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
+
+        pieces.push((PieceIndexHash::from_index(piece_index), piece.clone()));
 
         in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
             Scalar::from(
@@ -210,6 +218,8 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
             )
         }));
     }
+
+    piece_memory_cache.add_pieces(pieces);
 
     info!(%sector_index, "Plotting was successful.");
 

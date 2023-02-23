@@ -78,6 +78,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &sector_codec,
             plotted_sector.as_mut_slice(),
             sector_metadata.as_mut_slice(),
+            Default::default(),
         ))
         .unwrap();
 
