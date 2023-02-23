@@ -44,6 +44,7 @@ mod pallet {
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
     use sp_arithmetic::traits::{BaseArithmetic, Unsigned};
+    use sp_domains::merkle_tree::authorities_merkle_tree;
     use sp_domains::ExecutorPublicKey;
     use sp_executor_registry::OnNewEpoch;
     use sp_runtime::traits::{
@@ -53,6 +54,7 @@ mod pallet {
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
+    use subspace_core_primitives::Blake2b256Hash;
 
     /// Same sematic as `AtLeast32Bit` but requires at least `u128`.
     pub trait AtLeast128Bit:
@@ -562,6 +564,12 @@ mod pallet {
                 authorities.push((public_key, stake_weight));
             }
 
+            let merkle_tree = authorities_merkle_tree(authorities.as_slice());
+            let merkle_root = merkle_tree
+                .root()
+                .expect("Merkle root must exist as authorities are always non-empty; qed");
+            AuthoritiesRoot::<T>::put(merkle_root);
+
             let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
                 .expect("T::MaxExecutors bound is checked above; qed");
             Authorities::<T>::put(bounded_authorities);
@@ -710,6 +718,12 @@ mod pallet {
                     })
                     .collect::<Vec<_>>();
 
+                let merkle_tree = authorities_merkle_tree(authorities.as_slice());
+                let merkle_root = merkle_tree
+                    .root()
+                    .expect("Merkle root must exist as authorities are always non-empty; qed");
+                AuthoritiesRoot::<T>::put(merkle_root);
+
                 let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
                     .expect(
                         "T::MaxExecutors bound is ensured while registering a new executor; qed",
@@ -767,6 +781,10 @@ mod pallet {
         BoundedVec<(ExecutorPublicKey, T::StakeWeight), T::MaxExecutors>,
         ValueQuery,
     >;
+
+    /// Merkle root of authorities.
+    #[pallet::storage]
+    pub(super) type AuthoritiesRoot<T> = StorageValue<_, Blake2b256Hash, ValueQuery>;
 
     /// Total stake weight of authorities.
     #[pallet::storage]

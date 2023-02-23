@@ -276,6 +276,7 @@ pub(crate) async fn farm_multi_disk(
                         return;
                     }
 
+                    // TODO: Skip those that were already announced (because they cached)
                     let publish_fut = async move {
                         let mut pieces_publishing_futures = new_pieces
                             .into_iter()
@@ -288,7 +289,7 @@ pub(crate) async fn farm_multi_disk(
                             // Nothing is needed here, just driving all futures to completion
                         }
 
-                        info!("Piece publishing was successful.");
+                        info!(?sector_index, "Sector publishing was successful.");
 
                         // Release only after publishing is finished
                         drop(plotting_permit);

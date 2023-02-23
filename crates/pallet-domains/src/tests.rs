@@ -129,7 +129,11 @@ fn create_dummy_bundle(
     let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
 
     let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System(proof_of_election)
+        BundleSolution::System {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
+        }
     } else if domain_id.is_core() {
         BundleSolution::Core {
             proof_of_election,
@@ -174,7 +178,11 @@ fn create_dummy_bundle_with_receipts(
     let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
 
     let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System(proof_of_election)
+        BundleSolution::System {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
+        }
     } else if domain_id.is_core() {
         BundleSolution::Core {
             proof_of_election,

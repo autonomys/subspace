@@ -57,16 +57,13 @@ const YAMUX_MAX_STREAMS: usize = 256;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
-/// Kademlia has 32 substream as a hardcoded constant, we leave 2 for auxiliary internal functions
-/// like periodic random walk.
-///
-/// We restrict this so we don't exceed number of incoming streams for single peer, but this value
-/// will be boosted depending on number of connected peers.
-const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
+/// We restrict this so we can manage outgoing requests a bit better by cancelling low-priority
+/// requests, but this value will be boosted depending on number of connected peers.
+const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(25).expect("Not zero; qed");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 3;
+pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 /// Base limit for number of any concurrent tasks except Kademlia.
 ///
 /// We configure total number of streams per connection to 256. Here we assume half of them might be
@@ -75,11 +72,11 @@ pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 3;
 /// We restrict this so we don't exceed number of streams for single peer, but this value will be
 /// boosted depending on number of connected peers.
 const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
-    NonZeroUsize::new(120 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
+    NonZeroUsize::new(80 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 5;
+pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 50;
 
 /// Record store that can't be created, only
 pub(crate) struct ProviderOnlyRecordStore<ProviderStorage> {

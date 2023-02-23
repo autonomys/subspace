@@ -2089,7 +2089,6 @@ dependencies = [
 name = "domain-client-executor"
 version = "0.1.0"
 dependencies = [
- "blake2",
  "core-payments-domain-runtime",
  "crossbeam",
  "domain-block-builder",
@@ -2098,7 +2097,6 @@ dependencies = [
  "domain-test-service",
  "futures 0.3.26",
  "futures-timer",
- "merkletree",
  "pallet-balances",
  "pallet-domains",
  "parity-scale-codec",
@@ -5157,29 +5155,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8452105ba047068f40ff7093dd1d9da90898e63dd61736462e9cdda6a90ad3c3"
 
 [[package]]
-name = "merkle_light"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b879f617ec392ad9c11a50356ca373009c52363c0953b34c2e1b2234037a26a9"
-
-[[package]]
-name = "merkletree"
-version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d348b5b0d1707be1c8a727b7078daa08e2a3051d63b35715a19c35a324d2aaac"
-dependencies = [
- "anyhow",
- "arrayref",
- "log",
- "memmap2",
- "positioned-io",
- "rayon",
- "serde",
- "tempfile",
- "typenum",
-]
-
-[[package]]
 name = "merlin"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5202,6 +5177,12 @@ dependencies = [
  "rand_core 0.6.4",
  "zeroize",
 ]
+
+[[package]]
+name = "micromath"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39617bc909d64b068dcffd0e3e31679195b5576d0c83fadc52690268cc2b2b55"
 
 [[package]]
 name = "mime"
@@ -5819,6 +5800,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -6459,17 +6441,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "positioned-io"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09b9485cf7f528baf34edd811ec8283a168864912e11d0b7d3e0510738761114"
-dependencies = [
- "byteorder",
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7060,6 +7031,16 @@ checksum = "20c9f5d2a0c3e2ea729ab3706d22217177770654c3ef5056b68b69d07332d3f5"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "rs_merkle"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a632a43487c1332be8e183588079f89b6820fab24e04db49521eacd536837372"
+dependencies = [
+ "micromath",
+ "sha2 0.10.2",
 ]
 
 [[package]]
@@ -8942,8 +8923,10 @@ dependencies = [
 name = "sp-domains"
 version = "0.1.0"
 dependencies = [
+ "blake2",
  "merlin 2.0.1",
  "parity-scale-codec",
+ "rs_merkle",
  "scale-info",
  "schnorrkel",
  "serde",
@@ -9547,7 +9530,6 @@ name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "merkle_light",
  "parity-scale-codec",
  "rand 0.8.5",
  "reed-solomon-erasure",
