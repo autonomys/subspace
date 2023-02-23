@@ -1,5 +1,5 @@
 pub mod import_blocks;
-mod node_provider_storage;
+pub mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
@@ -100,7 +100,7 @@ where
                     }
                 };
 
-                Some(PieceByHashResponse { piece: result })
+                async { Some(PieceByHashResponse { piece: result }) }
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
                 let internal_result = req
@@ -109,14 +109,16 @@ where
                     .map(|segment_index| root_block_cache.get_root_block(*segment_index))
                     .collect::<Result<Vec<Option<RootBlock>>, _>>();
 
-                match internal_result {
+                let result = match internal_result {
                     Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 
                         None
                     }
-                }
+                };
+
+                async move { result }
             }),
         ],
         provider_storage,
@@ -207,5 +209,5 @@ pub(crate) async fn publish_pieces(
         // empty body
     }
 
-    info!(%segment_index, "Piece publishing was successful.");
+    info!(%segment_index, "Segment publishing was successful.");
 }

@@ -760,7 +760,7 @@ where
                 {
                     match result {
                         Ok(AddProviderOk { key }) => {
-                            trace!("Start providing query for {} succeeded", hex::encode(&key),);
+                            trace!("Start providing query for {} succeeded", hex::encode(&key));
 
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
@@ -773,7 +773,7 @@ where
                         Err(error) => {
                             let AddProviderError::Timeout { key } = error;
 
-                            debug!("Start providing query for {} failed.", hex::encode(&key),);
+                            debug!("Start providing query for {} failed.", hex::encode(&key));
                         }
                     }
                 }
@@ -795,7 +795,7 @@ where
                 {
                     match result {
                         Ok(PutRecordOk { key, .. }) => {
-                            trace!("Put record query for {} succeeded", hex::encode(&key),);
+                            trace!("Put record query for {} succeeded", hex::encode(&key));
 
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
