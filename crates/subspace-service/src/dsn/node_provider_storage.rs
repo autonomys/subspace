@@ -3,7 +3,7 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::ProviderStorage;
 
-pub(crate) struct NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage> {
+pub struct NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage> {
     local_peer_id: PeerId,
     /// Provider records from local cache
     implicit_provider_storage: ImplicitProviderStorage,
@@ -16,7 +16,7 @@ impl<ImplicitProviderStorage, PersistentProviderStorage>
 where
     PersistentProviderStorage: ProviderStorage,
 {
-    pub(crate) fn new(
+    pub fn new(
         local_peer_id: PeerId,
         implicit_provider_storage: ImplicitProviderStorage,
         mut persistent_provider_storage: PersistentProviderStorage,
