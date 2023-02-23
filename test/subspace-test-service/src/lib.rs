@@ -272,7 +272,7 @@ pub struct PrimaryTestNode {
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
     pub transaction_pool:
-        Arc<FullPool<Block, Client, BundleValidator<Block, Client>, FraudProofVerifier>>,
+        Arc<FullPool<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>>,
 }
 
 impl PrimaryTestNode {

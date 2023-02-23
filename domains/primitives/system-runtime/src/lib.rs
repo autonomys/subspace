@@ -47,5 +47,12 @@ sp_api::decl_runtime_apis! {
         fn maximum_receipt_drift() -> NumberFor<Block>;
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof);
+
+        /// Returns the core domain's state root at a specific number and hash.
+        fn core_domain_state_root_at(
+            domain_id: DomainId,
+            number: NumberFor<Block>,
+            domain_hash: Block::Hash
+        ) -> Option<Block::Hash>;
     }
 }

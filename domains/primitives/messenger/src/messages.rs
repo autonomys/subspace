@@ -144,6 +144,19 @@ pub struct Proof<BlockNumber, BlockHash, StateRoot> {
     pub message_proof: StorageProof,
 }
 
+/// Holds the Block info and state roots from which a proof was constructed.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
+    /// System domain block info when proof was constructed
+    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
+    /// State root of System domain at above number and block hash.
+    pub system_domain_state_root: StateRoot,
+    /// Storage proof that src core domain state_root is registered on System domain.
+    /// This is optional when the src_domain is the system domain.
+    /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
+    pub core_domain_info: Option<(DomainId, DomainBlockInfo<BlockNumber, BlockHash>, StateRoot)>,
+}
+
 /// Cross Domain message contains Message and its proof on src_domain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {

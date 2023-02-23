@@ -35,7 +35,10 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
 use sp_domains::DomainId;
-use sp_messenger::messages::{ChannelId, CrossDomainMessage, FeeModel, Message, MessageId, Nonce};
+use sp_messenger::messages::{
+    ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, FeeModel, Message, MessageId,
+    Nonce,
+};
 use sp_runtime::traits::{Extrinsic, Hash};
 use sp_runtime::DispatchError;
 
@@ -102,8 +105,9 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        CoreDomainStateRootStorage, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
-        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        CoreDomainStateRootStorage, CrossDomainMessage, ExtractedStateRootsFromProof,
+        InitiateChannelParams, Message, MessageId, Payload, ProtocolMessageRequest,
+        RequestResponse, VersionedPayload,
     };
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
@@ -808,28 +812,37 @@ mod pallet {
             Ok(())
         }
 
-        pub(crate) fn do_verify_xdm(
-            next_nonce: Nonce,
-            storage_key: StorageKey,
-            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
-        ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
+        #[allow(clippy::type_complexity)]
+        pub(crate) fn extract_state_roots_from_proof(
+            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, T::Hash>,
+        ) -> Result<
+            ExtractedStateRootsFromProof<T::BlockNumber, T::Hash, T::Hash>,
+            TransactionValidityError,
+        > {
+            let proof = xdm.proof.clone();
+            let mut extracted_state_roots = ExtractedStateRootsFromProof {
+                system_domain_block_info: proof.system_domain_block_info,
+                system_domain_state_root: proof.system_domain_state_root,
+                core_domain_info: None,
+            };
+
             // verify intermediate core domain proof and retrieve state root of the message.
             let core_domain_state_root_proof = xdm.proof.core_domain_proof.clone();
-            let state_root = {
-                // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
-                if xdm.src_domain_id.is_system() && xdm.proof.core_domain_proof.is_none() {
-                    Ok(xdm.proof.system_domain_state_root)
-                }
-                // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
-                else if xdm.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
-                    let (domain_info, proof) =
-                        core_domain_state_root_proof.expect("checked for existence value above");
-                    let core_domain_state_root_key =
-                        CoreDomainStateRootStorage::<_, _, StateRootOf<T>>::storage_key(
-                            xdm.src_domain_id,
-                            domain_info.block_number,
-                            domain_info.block_hash,
-                        );
+            // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
+            if xdm.src_domain_id.is_system() && xdm.proof.core_domain_proof.is_none() {
+                Ok(extracted_state_roots)
+            }
+            // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
+            else if xdm.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
+                let (domain_info, proof) =
+                    core_domain_state_root_proof.expect("checked for existence value above");
+                let core_domain_state_root_key =
+                    CoreDomainStateRootStorage::<_, _, StateRootOf<T>>::storage_key(
+                        xdm.src_domain_id,
+                        domain_info.block_number,
+                        domain_info.block_hash,
+                    );
+                let core_domain_state_root =
                     StorageProofVerifier::<T::Hashing>::verify_and_get_value::<StateRootOf<T>>(
                         &xdm.proof.system_domain_state_root,
                         proof,
@@ -842,14 +855,23 @@ mod pallet {
                             err
                         );
                         TransactionValidityError::Invalid(InvalidTransaction::BadProof)
-                    })
-                } else {
-                    Err(TransactionValidityError::Invalid(
-                        InvalidTransaction::BadProof,
-                    ))
-                }
-            }?;
+                    })?;
+                extracted_state_roots.core_domain_info =
+                    Some((xdm.src_domain_id, domain_info, core_domain_state_root));
 
+                Ok(extracted_state_roots)
+            } else {
+                Err(TransactionValidityError::Invalid(
+                    InvalidTransaction::BadProof,
+                ))
+            }
+        }
+
+        pub(crate) fn do_verify_xdm(
+            next_nonce: Nonce,
+            storage_key: StorageKey,
+            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
+        ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
             // channel should be either already be created or match the next channelId for domain.
             let next_channel_id = NextChannelId::<T>::get(xdm.src_domain_id);
             ensure!(xdm.channel_id <= next_channel_id, InvalidTransaction::Call);
@@ -857,6 +879,12 @@ mod pallet {
             // verify nonce
             // nonce should be either be next or in future.
             ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
+
+            let extracted_state_roots = Self::extract_state_roots_from_proof(xdm)?;
+            let state_root = extracted_state_roots
+                .core_domain_info
+                .map(|(_domain_id, _info, state_root)| state_root)
+                .unwrap_or(extracted_state_roots.system_domain_state_root);
 
             // verify and decode the message
             let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
@@ -902,5 +930,21 @@ where
     /// Returns true if the inbox message response has not received acknowledgement yet.
     pub fn should_relay_inbox_message_response(dst_domain: DomainId, msg_id: MessageId) -> bool {
         InboxResponses::<T>::contains_key((dst_domain, msg_id.0, msg_id.1))
+    }
+}
+
+impl<T> Call<T>
+where
+    T: Config,
+{
+    pub fn extract_xdm_proof_state_roots(
+        &self,
+    ) -> Option<ExtractedStateRootsFromProof<T::BlockNumber, T::Hash, T::Hash>> {
+        match self {
+            Self::relay_message { msg } | Self::relay_message_response { msg } => {
+                Pallet::<T>::extract_state_roots_from_proof(msg).ok()
+            }
+            _ => None,
+        }
     }
 }
