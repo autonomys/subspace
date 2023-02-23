@@ -12,7 +12,7 @@ use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
-use libp2p::gossipsub::{GossipsubEvent, TopicHash};
+use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
@@ -561,10 +561,10 @@ where
 
         match event {
             KademliaEvent::InboundRequest {
-                request: InboundRequest::AddProvider { record },
+                request: InboundRequest::AddProvider { record, guard },
             } => {
                 trace!("Add provider request received: {:?}", record);
-                if let Some(record) = record {
+                if let (Some(record), Some(guard)) = (record, guard) {
                     if let Err(err) = self
                         .swarm
                         .behaviour_mut()
@@ -582,7 +582,7 @@ where
                         }
                     };
 
-                    shared.handlers.announcement.call_simple(&record);
+                    shared.handlers.announcement.call_simple(&record, &guard);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
@@ -760,7 +760,7 @@ where
                 {
                     match result {
                         Ok(AddProviderOk { key }) => {
-                            trace!("Start providing query for {} succeeded", hex::encode(&key),);
+                            trace!("Start providing query for {} succeeded", hex::encode(&key));
 
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
@@ -773,7 +773,7 @@ where
                         Err(error) => {
                             let AddProviderError::Timeout { key } = error;
 
-                            debug!("Start providing query for {} failed.", hex::encode(&key),);
+                            debug!("Start providing query for {} failed.", hex::encode(&key));
                         }
                     }
                 }
@@ -795,7 +795,7 @@ where
                 {
                     match result {
                         Ok(PutRecordOk { key, .. }) => {
-                            trace!("Put record query for {} succeeded", hex::encode(&key),);
+                            trace!("Put record query for {} succeeded", hex::encode(&key));
 
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,

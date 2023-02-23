@@ -58,7 +58,7 @@ use sp_consensus_subspace::{
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::OpaqueMetadata;
+use sp_core::{OpaqueMetadata, H256};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
@@ -731,6 +731,10 @@ impl_runtime_apis! {
             domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
             crate::domains::extract_core_bundles(extrinsics, domain_id)
+        }
+
+        fn extract_stored_bundle_hashes() -> Vec<H256> {
+            crate::domains::extract_stored_bundle_hashes()
         }
 
         fn extract_receipts(

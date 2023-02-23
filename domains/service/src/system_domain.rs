@@ -38,6 +38,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
+use subspace_transaction_pool::bundle_validator::SkipBundleValidation;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -98,6 +99,7 @@ where
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
     Block,
     FullClient<RuntimeApi, Executor>,
+    SkipBundleValidation,
     FraudProofVerifier<PBlock, PClient, Executor>,
 >;
 
@@ -183,8 +185,15 @@ where
         task_manager.spawn_handle(),
     );
 
-    let transaction_pool =
-        subspace_transaction_pool::new_full(config, &task_manager, client.clone(), proof_verifier);
+    let transaction_pool = subspace_transaction_pool::new_full(
+        config,
+        &task_manager,
+        client.clone(),
+        proof_verifier,
+        // Check nothing here because for the system domain the bundle is extract from the
+        // primary block thus it is already validated and accepted by the consensus chain.
+        SkipBundleValidation,
+    );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
         client.clone(),

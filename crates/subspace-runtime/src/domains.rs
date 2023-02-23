@@ -1,6 +1,7 @@
-use crate::{Block, BlockNumber, Hash, RuntimeCall, UncheckedExtrinsic};
+use crate::{Block, BlockNumber, Hash, RuntimeCall, RuntimeEvent, System, UncheckedExtrinsic};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt};
@@ -55,6 +56,17 @@ pub(crate) fn extract_core_bundles(
         .collect()
 }
 
+pub(crate) fn extract_stored_bundle_hashes() -> Vec<H256> {
+    System::read_events_no_consensus()
+        .filter_map(|e| match e.event {
+            RuntimeEvent::Domains(pallet_domains::Event::BundleStored { bundle_hash, .. }) => {
+                Some(bundle_hash)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+}
+
 pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
@@ -99,7 +111,7 @@ pub(crate) fn extract_pre_validation_object(
         }
         RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
             signed_opaque_bundle,
-        }) => PreValidationObject::Receipts(signed_opaque_bundle.bundle.receipts),
+        }) => PreValidationObject::Bundle(signed_opaque_bundle),
         _ => PreValidationObject::Null,
     }
 }

@@ -23,7 +23,7 @@ derive_more = "0.99.17"
 dirs = "4.0.0"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
-futures = "0.3.25"
+futures = "0.3.26"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.2", features = ["client", "macros", "server"] }
 lru = "0.8.1"

@@ -199,7 +199,7 @@ fn main() -> Result<(), Error> {
                     client,
                     import_queue,
                     task_manager,
-                    other: (_block_import, subspace_link, _telemetry),
+                    other: (_block_import, subspace_link, _telemetry, _bundle_validator),
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
@@ -572,49 +572,53 @@ fn main() -> Result<(), Error> {
                                 ))
                             })?;
 
-                        let core_domain_node = match core_domain_cli.domain_id {
-                            DomainId::CORE_PAYMENTS => {
-                                domain_service::new_full_core::<
-                                    _,
-                                    _,
-                                    _,
-                                    _,
-                                    _,
-                                    _,
-                                    _,
-                                    core_payments_domain_runtime::RuntimeApi,
-                                    CorePaymentsDomainExecutorDispatch,
-                                >(
-                                    core_domain_cli.domain_id,
-                                    core_domain_config,
-                                    system_domain_node.client.clone(),
-                                    system_domain_node.network.clone(),
-                                    primary_chain_node.client.clone(),
-                                    primary_chain_node.network.clone(),
-                                    &primary_chain_node.select_chain,
-                                    imported_block_notification_stream(),
-                                    new_slot_notification_stream(),
-                                    block_import_throttling_buffer_size,
-                                    gossip_msg_sink,
-                                )
-                                .await?
-                            }
-                            _ => {
-                                return Err(Error::Other(format!(
-                                    "Invalid domain id, currently only core-payments domain is \
-                                    supported, please rerun with `--domain-id={:?}`",
-                                    u32::from(DomainId::CORE_PAYMENTS)
-                                )));
-                            }
+                        let core_domain_params = domain_service::CoreDomainParams {
+                            domain_id: core_domain_cli.domain_id,
+                            core_domain_config,
+                            system_domain_client: system_domain_node.client.clone(),
+                            system_domain_network: system_domain_node.network.clone(),
+                            primary_chain_client: primary_chain_node.client.clone(),
+                            primary_network: primary_chain_node.network.clone(),
+                            select_chain: primary_chain_node.select_chain.clone(),
+                            imported_block_notification_stream: imported_block_notification_stream(
+                            ),
+                            new_slot_notification_stream: new_slot_notification_stream(),
+                            block_import_throttling_buffer_size,
+                            gossip_message_sink: gossip_msg_sink,
                         };
 
-                        domain_tx_pool_sinks
-                            .insert(core_domain_cli.domain_id, core_domain_node.tx_pool_sink);
-                        primary_chain_node
-                            .task_manager
-                            .add_child(core_domain_node.task_manager);
+                        match core_domain_cli.domain_id {
+                            DomainId::CORE_PAYMENTS => {
+                                let core_domain_node =
+                                    domain_service::new_full_core::<
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        core_payments_domain_runtime::RuntimeApi,
+                                        CorePaymentsDomainExecutorDispatch,
+                                    >(core_domain_params)
+                                    .await?;
 
-                        core_domain_node.network_starter.start_network();
+                                domain_tx_pool_sinks.insert(
+                                    core_domain_cli.domain_id,
+                                    core_domain_node.tx_pool_sink,
+                                );
+                                primary_chain_node
+                                    .task_manager
+                                    .add_child(core_domain_node.task_manager);
+
+                                core_domain_node.network_starter.start_network();
+                            }
+                            core_domain_id => {
+                                return Err(Error::Other(format!(
+                                    "{core_domain_id:?} unimplemented",
+                                )));
+                            }
+                        }
                     }
 
                     let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(

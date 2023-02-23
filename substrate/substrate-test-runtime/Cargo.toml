@@ -52,7 +52,7 @@ sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
-futures = "0.3.25"
+futures = "0.3.26"
 
 [build-dependencies]
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", optional = true }

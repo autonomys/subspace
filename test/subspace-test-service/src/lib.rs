@@ -49,6 +49,7 @@ use subspace_test_client::{
 use subspace_test_runtime::{
     BlockHashCount, Runtime, RuntimeApi, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
+use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -270,7 +271,8 @@ pub struct PrimaryTestNode {
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, FraudProofVerifier>>,
+    pub transaction_pool:
+        Arc<FullPool<Block, Client, BundleValidator<Block, Client>, FraudProofVerifier>>,
 }
 
 impl PrimaryTestNode {
