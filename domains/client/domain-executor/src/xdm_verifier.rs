@@ -5,6 +5,7 @@ use sc_transaction_pool_api::error::Error as TxPoolError;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend, HeaderMetadata};
 use sp_core::traits::SpawnNamed;
+use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor};
@@ -63,6 +64,64 @@ where
                 core_domain_info.block_hash,
             )? {
                 if expected_core_domain_state_root != core_domain_state_root {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    Ok(true)
+}
+
+#[allow(dead_code)]
+/// Verifies if the xdm has the correct proof generated from known parent block.
+/// This is used by the System domain to validate Extrinsics.
+/// Returns either true if the XDM is valid else false.
+/// Returns Error when required calls to fetch header info fails.
+pub(crate) fn verify_xdm_with_primary_chain_client<PClient, SClient, SBlock, PBlock>(
+    primary_chain_client: &Arc<PClient>,
+    system_domain_client: &Arc<SClient>,
+    extrinsic: &SBlock::Extrinsic,
+) -> Result<bool, Error>
+where
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SBlock: BlockT,
+    PBlock: BlockT,
+    NumberFor<PBlock>: From<NumberFor<SBlock>>,
+    PBlock::Hash: From<SBlock::Hash>,
+{
+    let system_domain_runtime = system_domain_client.runtime_api();
+    let block_id = BlockId::Hash(system_domain_client.info().best_hash);
+    if let Ok(Some(state_roots)) =
+        system_domain_runtime.extract_xdm_proof_state_roots(&block_id, extrinsic)
+    {
+        // verify system domain state root
+        let block_id = BlockId::Hash(primary_chain_client.info().best_hash);
+        let primary_runtime = primary_chain_client.runtime_api();
+        if let Some(system_domain_state_root) = primary_runtime.system_domain_state_root_at(
+            &block_id,
+            state_roots.system_domain_block_info.block_number.into(),
+            state_roots.system_domain_block_info.block_hash,
+        )? {
+            if system_domain_state_root != state_roots.system_domain_state_root.into() {
+                return Ok(false);
+            }
+        }
+
+        if let Some((domain_id, info, state_root)) = state_roots.core_domain_info {
+            // verify core domain state root if there is one
+            let block_id = BlockId::Hash(system_domain_client.info().best_hash);
+            if let Some(core_domain_state_root) = system_domain_runtime.core_domain_state_root_at(
+                &block_id,
+                domain_id,
+                info.block_number,
+                info.block_hash,
+            )? {
+                if state_root != core_domain_state_root {
                     return Ok(false);
                 }
             }
