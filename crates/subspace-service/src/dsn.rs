@@ -209,5 +209,5 @@ pub(crate) async fn publish_pieces(
         // empty body
     }
 
-    info!(%segment_index, "Piece publishing was successful.");
+    info!(%segment_index, "Segment publishing was successful.");
 }
