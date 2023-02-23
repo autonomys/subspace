@@ -24,7 +24,7 @@ use libp2p::kad::{
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
-use libp2p::{futures, Multiaddr, PeerId, Swarm};
+use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
@@ -486,7 +486,19 @@ where
                         // One peer is possibly a node peer is connected to, hence expecting more
                         // than one for online status
                         if shared.connected_peers_count.load(Ordering::Relaxed) > 1 {
-                            self.temporary_bans.lock().create_or_extend(peer_id);
+                            let should_temporary_ban = match &error {
+                                DialError::Transport(addresses) => {
+                                    // Ignoring other errors, those are likely temporary ban errors
+                                    !matches!(
+                                        addresses.first(),
+                                        Some((_multiaddr, TransportError::Other(_error)))
+                                    )
+                                }
+                                _ => true,
+                            };
+                            if should_temporary_ban {
+                                self.temporary_bans.lock().create_or_extend(peer_id);
+                            }
                         }
                     };
                 }
