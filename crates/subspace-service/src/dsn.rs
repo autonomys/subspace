@@ -25,7 +25,7 @@ use subspace_networking::{
     RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::sync::Semaphore;
-use tracing::{error, info, trace, warn, Instrument};
+use tracing::{debug, error, info, trace, warn, Instrument};
 
 /// Provider records cache size
 const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
@@ -108,9 +108,11 @@ where
                 let segment_indexes = match req {
                     RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
                     RootBlockRequest::LastRootBlocks { root_block_number } => {
+                        let mut block_limit = *root_block_number;
                         if *root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
-                            error!(%root_block_number, "Root block number exceeded the limit.");
-                            return None;
+                            debug!(%root_block_number, "Root block number exceeded the limit.");
+
+                            block_limit = ROOT_BLOCK_NUMBER_LIMIT;
                         }
 
                         let max_segment_index = root_block_cache.max_segment_index();
@@ -118,7 +120,7 @@ where
                         // several last segment indexes
                         (0..=max_segment_index)
                             .rev()
-                            .take(*root_block_number as usize)
+                            .take(block_limit as usize)
                             .collect::<Vec<_>>()
                     }
                 };

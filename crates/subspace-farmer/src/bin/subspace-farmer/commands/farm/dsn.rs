@@ -23,7 +23,7 @@ use subspace_networking::{
     RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::runtime::Handle;
-use tracing::{debug, error, info, Instrument, Span};
+use tracing::{debug, error, info, warn, Instrument, Span};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
     NonZeroUsize::new(2000).expect("Not zero; qed");
@@ -169,7 +169,7 @@ pub(super) async fn configure_dsn(
                     RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
                     RootBlockRequest::LastRootBlocks { root_block_number } => {
                         if *root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
-                            error!(%root_block_number, "Root block number exceeded the limit.");
+                            debug!(%root_block_number, "Root block number exceeded the limit.");
                             return None;
                         }
 
@@ -192,7 +192,12 @@ pub(super) async fn configure_dsn(
                 .map(|root_blocks| {
                     root_blocks
                         .iter()
-                        .filter_map(|rb| *rb)
+                        .filter_map(|rb| {
+                            if rb.is_none() {
+                                warn!("Received empty optional root block!");
+                            }
+                            *rb
+                        })
                         .collect::<Vec<RootBlock>>()
                 });
 

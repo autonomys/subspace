@@ -18,11 +18,10 @@ pub struct RecordsRootPieceValidator {
 
 impl RecordsRootPieceValidator {
     pub fn new(dsn_node: Node, kzg: Kzg, root_blocks: Vec<RootBlock>) -> Self {
-        let records_root_cache = BTreeMap::from_iter(
-            root_blocks
-                .iter()
-                .map(|rb| (rb.segment_index(), rb.records_root())),
-        );
+        let records_root_cache = root_blocks
+            .iter()
+            .map(|rb| (rb.segment_index(), rb.records_root()))
+            .collect();
 
         Self {
             dsn_node,

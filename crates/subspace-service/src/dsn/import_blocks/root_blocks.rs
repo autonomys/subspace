@@ -1,10 +1,10 @@
 use futures::StreamExt;
-use parking_lot::Mutex;
+use std::cell::RefCell;
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, RootBlock, SegmentIndex};
+use subspace_core_primitives::{RootBlock, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, RootBlockRequest, RootBlockResponse};
 use tracing::{debug, error, trace, warn};
@@ -12,8 +12,8 @@ use tracing::{debug, error, trace, warn};
 const ROOT_BLOCK_NUMBER_PER_REQUEST: u64 = 10;
 /// Minimum peers number to participate in root block election.
 const ROOT_BLOCK_CONSENSUS_MIN_SET: usize = 2; //TODO: change the value
-/// Threshold for the root block election success (minimum peer number with the same root block).
-const ROOT_BLOCK_CONSENSUS_THRESHOLD: u64 = 2; //TODO: change the value
+/// Threshold for the root block election success (percentage).
+const ROOT_BLOCK_CONSENSUS_THRESHOLD: u64 = 51; //TODO: change the value
 
 /// Helps gathering root blocks from DSN
 pub struct RootBlockHandler {
@@ -72,7 +72,7 @@ impl RootBlockHandler {
     /// among peer set with minimum size of ROOT_BLOCK_CONSENSUS_MIN_SET peers.
     async fn get_last_root_block(&self) -> Result<RootBlock, Box<dyn Error>> {
         trace!("Getting last root block...");
-        let peer_blocks = Arc::new(Mutex::new(BTreeMap::<PeerId, Vec<RootBlock>>::new()));
+        let peer_blocks = Arc::new(RefCell::new(HashMap::<PeerId, Vec<RootBlock>>::new()));
 
         // Get random peers. Some of them could be bootstrap nodes with no support for
         // request-response protocol for records root.
@@ -81,14 +81,14 @@ impl RootBlockHandler {
             .get_closest_peers(PeerId::random().into())
             .await;
 
-        let mut peer_handles = Vec::new();
+        let mut peer_block_tasks = Vec::new();
         // Acquire root blocks from peers.
         match get_peers_result {
             Ok(mut get_peers_stream) => {
                 while let Some(peer_id) = get_peers_stream.next().await {
                     let peer_blocks = peer_blocks.clone();
                     let dsn_node = self.dsn_node.clone();
-                    let join_handle = tokio::spawn(async move {
+                    let peer_block_fut = async move {
                         trace!(%peer_id, "get_closest_peers returned an item");
 
                         let request_result = dsn_node
@@ -108,15 +108,15 @@ impl RootBlockHandler {
                                     "Last root block request succeeded."
                                 );
 
-                                peer_blocks.lock().insert(peer_id, root_blocks);
+                                peer_blocks.borrow_mut().insert(peer_id, root_blocks);
                             }
                             Err(error) => {
                                 debug!(%peer_id, ?error, "Last root block request failed.");
                             }
                         };
-                    });
+                    };
 
-                    peer_handles.push(join_handle);
+                    peer_block_tasks.push(peer_block_fut);
                 }
             }
             Err(err) => {
@@ -126,10 +126,9 @@ impl RootBlockHandler {
             }
         }
 
-        for handle in peer_handles {
-            if let Err(err) = handle.await {
-                error!(?err, "Task for root blocks returned an error");
-            }
+        // Driving future task forward.
+        for task in peer_block_tasks {
+            task.await;
         }
 
         let peer_blocks = Arc::try_unwrap(peer_blocks)
@@ -146,39 +145,42 @@ impl RootBlockHandler {
         }
 
         // Calculate votes
-        let mut root_block_score: BTreeMap<Blake2b256Hash, u64> = BTreeMap::new();
-        let mut root_block_dict: BTreeMap<Blake2b256Hash, RootBlock> = BTreeMap::new();
+        let mut root_block_score: HashMap<RootBlock, u64> = HashMap::new();
 
-        for (peer_id, root_blocks) in peer_blocks {
-            if !self.validate_root_blocks(peer_id, &root_blocks).await {
+        for (peer_id, root_blocks) in &peer_blocks {
+            if !self.validate_root_blocks(*peer_id, root_blocks).await {
                 continue;
             }
 
             for root_block in root_blocks {
                 root_block_score
-                    .entry(root_block.hash())
+                    .entry(*root_block)
                     .and_modify(|val| *val += 1)
                     .or_insert(1);
-                root_block_dict
-                    .entry(root_block.hash())
-                    .or_insert(root_block);
             }
         }
 
         // Sort the collection to get highest blocks first.
-        let mut root_blocks = root_block_dict.values().collect::<Vec<_>>();
+        let mut root_blocks = root_block_score.keys().collect::<Vec<_>>();
         root_blocks.sort_by_key(|rb| Reverse(rb.segment_index()));
 
         for root_block in root_blocks {
             let score = root_block_score
-                .get(&root_block.hash())
+                .get(root_block)
                 .expect("Must be present because of the manual adding.");
 
-            if *score >= ROOT_BLOCK_CONSENSUS_THRESHOLD {
+            // peer_blocks.len() >= 1 because it's not less than ROOT_BLOCK_CONSENSUS_MIN_SET
+            let peer_count = peer_blocks.len() as u64;
+            let percentage = score * 100 / peer_count;
+
+            trace!(%percentage, limit=%ROOT_BLOCK_CONSENSUS_THRESHOLD, "Root blocks voting ended.");
+
+            if percentage >= ROOT_BLOCK_CONSENSUS_THRESHOLD {
                 return Ok(*root_block);
             }
         }
 
+        // TODO: consider adding retries
         Err("Root block consensus failed: can't pass the threshold.".into())
     }
 
