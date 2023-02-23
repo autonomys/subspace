@@ -65,6 +65,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&sector_codec),
                 black_box(io::sink()),
                 black_box(io::sink()),
+                Default::default(),
             ))
             .unwrap();
         })
@@ -87,6 +88,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         black_box(&sector_codec),
                         black_box(io::sink()),
                         black_box(io::sink()),
+                        Default::default(),
                     ))
                     .unwrap();
                 });
