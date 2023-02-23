@@ -267,8 +267,8 @@ where
                     Ok(valid) => valid,
                     Err(err) => {
                         tracing::error!(
-                            target = "xdm_validator",
-                            "failed to validate extrinsic: {}",
+                            target = "core_domain_xdm_filter",
+                            "failed to verify extrinsic: {}",
                             err
                         );
                         false
