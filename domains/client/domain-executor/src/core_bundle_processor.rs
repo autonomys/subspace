@@ -3,7 +3,7 @@ use crate::domain_block_processor::{
 };
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::{translate_number_type, DomainBundles};
-use crate::xdm_validator::validate_xdm_with_system_domain_client;
+use crate::xdm_verifier::verify_xdm_with_system_domain_client;
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
@@ -260,7 +260,7 @@ where
     fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
-                match validate_xdm_with_system_domain_client::<_, Block, SBlock, PBlock>(
+                match verify_xdm_with_system_domain_client::<_, Block, SBlock, PBlock>(
                     &self.system_domain_client,
                     &(ext.clone().into()),
                 ) {

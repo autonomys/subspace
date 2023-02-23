@@ -12,7 +12,7 @@ use sp_runtime::transaction_validity::TransactionSource;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_transaction_pool::{BlockExtrinsicOf, ValidateExtrinsic, ValidationFuture};
+use subspace_transaction_pool::{BlockExtrinsicOf, ValidationFuture, VerifyExtrinsic};
 use system_runtime_primitives::SystemDomainApi;
 
 /// Verifies if the xdm has the correct proof generated from known parent block.
@@ -21,7 +21,7 @@ use system_runtime_primitives::SystemDomainApi;
 /// System domain node use this to verify the XDM while validating fraud proof.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub(crate) fn validate_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
+pub(crate) fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
     system_domain_client: &Arc<Client>,
     extrinsic: &SBlock::Extrinsic,
 ) -> Result<bool, Error>
@@ -72,12 +72,12 @@ where
     Ok(true)
 }
 
-pub struct CoreDomainXDMValidator<SDC, PBlock, SBlock> {
+pub struct CoreDomainXDMVerifier<SDC, PBlock, SBlock> {
     _data: PhantomData<(PBlock, SBlock)>,
     system_domain_client: Arc<SDC>,
 }
 
-impl<SDC, PBlock, SBlock> CoreDomainXDMValidator<SDC, PBlock, SBlock> {
+impl<SDC, PBlock, SBlock> CoreDomainXDMVerifier<SDC, PBlock, SBlock> {
     pub fn new(system_domain_client: Arc<SDC>) -> Self {
         Self {
             _data: Default::default(),
@@ -86,7 +86,7 @@ impl<SDC, PBlock, SBlock> CoreDomainXDMValidator<SDC, PBlock, SBlock> {
     }
 }
 
-impl<SDC, PBlock, SBlock> Clone for CoreDomainXDMValidator<SDC, PBlock, SBlock> {
+impl<SDC, PBlock, SBlock> Clone for CoreDomainXDMVerifier<SDC, PBlock, SBlock> {
     fn clone(&self) -> Self {
         Self {
             _data: Default::default(),
@@ -95,9 +95,8 @@ impl<SDC, PBlock, SBlock> Clone for CoreDomainXDMValidator<SDC, PBlock, SBlock> 
     }
 }
 
-impl<Block, Client, SDC, SBlock, PBlock>
-    ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
-    for CoreDomainXDMValidator<SDC, PBlock, SBlock>
+impl<Block, Client, SDC, SBlock, PBlock> VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>>
+    for CoreDomainXDMVerifier<SDC, PBlock, SBlock>
 where
     Block: BlockT,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
@@ -117,7 +116,7 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>,
 {
-    fn validate_extrinsic(
+    fn verify_extrinsic(
         &self,
         at: &BlockId<Block>,
         source: TransactionSource,
@@ -125,7 +124,7 @@ where
         _spawner: Box<dyn SpawnNamed>,
         chain_api: Arc<FullChainApi<Client, Block>>,
     ) -> ValidationFuture {
-        let result = validate_xdm_with_system_domain_client::<SDC, Block, SBlock, PBlock>(
+        let result = verify_xdm_with_system_domain_client::<SDC, Block, SBlock, PBlock>(
             &self.system_domain_client,
             &(uxt.clone().into()),
         );
