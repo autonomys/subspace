@@ -1,0 +1,35 @@
+{
+        "attested_header": {
+            "slot": 4485282,
+            "proposer_index": 214594,
+            "parent_root": "0x87cde56b77933809b4dd5ed94dc0bee65022c58fcb0c9f66a73ba25266d4be02",
+            "state_root": "0xae65ffd9e692e21577b3230a15b3496126459c48f114da3c90d5f4f2f384bb6c",
+            "body_root": "0x2ce5991e2b4fb97c0cdee0c2b9181718dce8ac7088d2b960d803fe1e5b8410fb"
+        },
+        "next_sync_committee": {
+          "pubkeys": [],
+          "aggregate_pubkey": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "next_sync_committee_branch": [],
+        "finalized_header": {
+            "slot": 4485216,
+            "proposer_index": 206238,
+            "parent_root": "0x450f29e947878f7c863d97881f81b7ea474c5fed94d121556039c485249973a4",
+            "state_root": "0x93e7314c0131ccca9f917dec41e04832f36a5dd287919be6d8566a712aa3072c",
+            "body_root": "0x485a0a3cd8d4c854b8eff39cc8b74ae1ce4487578ee40c0d0f706b0382d6e5ff"
+        },
+        "finality_branch": [
+            "0x8323020000000000000000000000000000000000000000000000000000000000",
+            "0x3e506c3db25d67a9366046f6c5cca30d63b120aaaacf43c50b597c3f3b8a3fcd",
+            "0xead30bf6ac2e74806da4fd3887fcf8e91f45cb67a9e26305454e0324ca519def",
+            "0xb16033261796f3088e75b5246cc653fc09355735c5eb2ce8d7ae69a31b184444",
+            "0x2ad0e2710728b77d483b84269f21493474452b426e163e89c7fe292f19693ce3",
+            "0xa5bb29267c0eee38693a281e536bce80353345a342ceaea737666311a16d2a2c"
+        ],
+        "sync_aggregate": {
+            "sync_committee_bits": "0xfebd2fffeffffffff7ff77f7ffffffdffdfffffffcfebfdeffb7fffdfff7fffffdfffedfcfff57f7bfffdfffbffeffdffffffdbf6defffff7fffefefeff5df7f",
+            "sync_committee_signature": "0xa01b52a2122521ec16be5586826d5dc009e32b02b6fc9c162a0b9c84b5ba24d1887feceb4b368edeff6806f57d0b5c1f18887834257628a017df8ce4cba6301945a13052cd1c50c1cd865dfa2ea01285a5a731d9a298992927f8a43c6b1243ac"
+        },
+        "signature_slot": 4485283,
+        "sync_committee_period": 547
+}

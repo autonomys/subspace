@@ -358,6 +358,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "amcl"
+version = "0.3.0"
+source = "git+https://github.com/subspace/milagro_bls?rev=7b4f7609b16ee82415a4c8c56c837e57a1c2e83e#7b4f7609b16ee82415a4c8c56c837e57a1c2e83e"
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2590,6 +2595,33 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "ethereum-beacon-client"
+version = "0.0.1"
+dependencies = [
+ "byte-slice-cast",
+ "cfg-if",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "hex-literal",
+ "milagro_bls",
+ "pallet-timestamp",
+ "parity-scale-codec",
+ "rlp",
+ "scale-info",
+ "serde",
+ "serde_json",
+ "snowbridge-beacon-primitives",
+ "sp-core",
+ "sp-io",
+ "sp-keyring",
+ "sp-runtime",
+ "sp-std",
+ "ssz-rs",
+ "ssz-rs-derive",
 ]
 
 [[package]]
@@ -5204,6 +5236,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "milagro_bls"
+version = "1.5.0"
+source = "git+https://github.com/subspace/milagro_bls?rev=7b4f7609b16ee82415a4c8c56c837e57a1c2e83e#7b4f7609b16ee82415a4c8c56c837e57a1c2e83e"
+dependencies = [
+ "amcl",
+ "hex",
+ "lazy_static",
+ "rand 0.8.5",
+ "zeroize",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7053,6 +7097,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlp"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
+dependencies = [
+ "bytes",
+ "rustc-hex",
+]
+
+[[package]]
 name = "rpassword"
 version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8659,6 +8713,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "snowbridge-beacon-primitives"
+version = "0.0.1"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "hex",
+ "parity-scale-codec",
+ "rlp",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9434,6 +9505,28 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-xid",
+]
+
+[[package]]
+name = "ssz-rs"
+version = "0.8.0"
+source = "git+https://github.com/ralexstokes/ssz-rs?rev=d18af912abacbf84219be37ab3b42a9abcf10d2a#d18af912abacbf84219be37ab3b42a9abcf10d2a"
+dependencies = [
+ "bitvec",
+ "num-bigint",
+ "sha2 0.9.9",
+ "ssz-rs-derive",
+ "thiserror",
+]
+
+[[package]]
+name = "ssz-rs-derive"
+version = "0.8.0"
+source = "git+https://github.com/ralexstokes/ssz-rs?rev=d18af912abacbf84219be37ab3b42a9abcf10d2a#d18af912abacbf84219be37ab3b42a9abcf10d2a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

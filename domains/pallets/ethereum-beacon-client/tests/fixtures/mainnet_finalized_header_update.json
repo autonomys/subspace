@@ -1,0 +1,35 @@
+{
+    "attested_header": {
+        "slot": 5773507,
+        "proposer_index": 202475,
+        "parent_root": "0x87a40fc625badcf0329d03437cdccc837c1300f39767b7642d696b30f952c79c",
+        "state_root": "0x6e83202bf5d050abffaa3474ba9dd5cd55d1f0c9b098a0080202f19a7f32d1e6",
+        "body_root": "0x730f80358e368ae8994a38940bdc0f6cfd13bc210ecb500e61a5414bc6caee59"
+    },
+    "next_sync_committee": {
+        "pubkeys": [],
+        "aggregate_pubkey": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "next_sync_committee_branch": [],
+    "finalized_header": {
+        "slot": 5773440,
+        "proposer_index": 374765,
+        "parent_root": "0x77280c061154032f90f1db3dba57bf4ad9c623f3b2b78050e6666c8ac0c0f7f9",
+        "state_root": "0x9dea23251b705d3531e885008abcc8419f38b08b6d2770bb1ca4ca05821c7e3e",
+        "body_root": "0x44051fd7a82d0da2a09933c50a89498f787f00c98e475fa231f5ae5be4242386"
+    },
+    "finality_branch": [
+        "0xc4c0020000000000000000000000000000000000000000000000000000000000",
+        "0xba36822aa73c3ed26b55609d4ce147c28807d6725e9b0df07e2a5e9f7bb5ae63",
+        "0xface3dc67c95bb935ff35fe437182872fbcede9398bd9262a5f35e4a13ec8058",
+        "0xd26b7beb5a8af3bf8d2f3a53131e9f60addec0314db2b902f6393e3fdaa211c2",
+        "0x044795c327183b7919db4bb0139ec628c509ac7c7378153613ab05d3bd986bd4",
+        "0x21b9dd19599e4c7640762b9e446f393fbbbe928d52445b3626bf8523d5475725"
+    ],
+    "sync_aggregate": {
+        "sync_committee_bits": "0x7ffffbffffffffffeffffffffffffffffffffffffffffffffff7ffffffffffffffffffffffffffffffffffffffffffffff7fffffffff7fffffbffffffffffffb",
+        "sync_committee_signature": "0xa6cc6036e4b8056509b10eee14f1a128a4fe0eef3c495b520dda82d41709ddc1418d717902e81860a2f10f006ee1fb600b20020f6d785b0844a478c70dcdf23b8b8bbe835b4f941e9d474a812d486800e12c015edbd71b967f950556d84d4002"
+    },
+    "signature_slot": 5773508,
+    "sync_committee_period": 704
+}

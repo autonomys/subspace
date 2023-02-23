@@ -1,0 +1,34 @@
+[package]
+name = "snowbridge-beacon-primitives"
+version = "0.0.1"
+authors = [ "Parth Desai <desaiparth08@gmail.com>, Snowfork <contact@snowfork.com>" ]
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0.137", optional = true, features = [ "derive" ] }
+hex = { version = "0.4", default-features = false }
+codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false }
+scale-info = { version = "2.2.0", default-features = false, features = [ "derive" ] }
+rlp = { version = "0.5", default-features = false }
+
+frame-support = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
+frame-system = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
+sp-std = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
+sp-io = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34", default-features = false }
+
+[features]
+default = [ "std" ]
+std = [
+    "serde",
+    "codec/std",
+    "scale-info/std",
+    "frame-support/std",
+    "frame-system/std",
+    "sp-std/std",
+    "sp-core/std",
+    "sp-runtime/std",
+    "sp-io/std",
+    "rlp/std"
+]
