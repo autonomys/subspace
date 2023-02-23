@@ -14,6 +14,7 @@ use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
+use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
@@ -406,7 +407,9 @@ where
 
         roots.push(state_root);
 
-        let trace_root = crate::merkle_tree::construct_trace_merkle_tree(roots.clone())?.root();
+        let trace_root = MerkleTree::from_leaves(&roots).root().ok_or_else(|| {
+            sp_blockchain::Error::Application(Box::from("Failed to get merkle root of trace"))
+        })?;
         let trace = roots
             .into_iter()
             .map(|r| {

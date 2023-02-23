@@ -830,7 +830,7 @@ impl<T: Config> Pallet<T> {
 
         let core_block_number = T::BlockNumber::from(*core_block_number);
 
-        // Considering this senario, a core domain stalls at block 1 for a long time and then
+        // Considering this scenario, a core domain stalls at block 1 for a long time and then
         // resumes at block 1000, assuming `MaximumReceiptDrift` is 128 and the receipt of
         // block 1 had been submitted, the range of receipts in the new bundle created at
         // block 1000 would be (1, 1+128] , thus the state root corresponding to block 1000,i.e.,
