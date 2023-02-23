@@ -768,7 +768,10 @@ impl_runtime_apis! {
             MaximumReceiptDrift::get()
         }
 
-        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: domain_runtime_primitives::Hash) -> Option<domain_runtime_primitives::Hash>{
+        fn system_domain_state_root_at(
+            number: NumberFor<Block>,
+            domain_hash: domain_runtime_primitives::Hash
+        ) -> Option<domain_runtime_primitives::Hash>{
             Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
     }

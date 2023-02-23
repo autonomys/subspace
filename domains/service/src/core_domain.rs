@@ -186,7 +186,7 @@ where
 
     let core_domain_xdm_verifier =
         CoreDomainXDMValidator::<SDC, PBlock, SBlock>::new(system_domain_client);
-    let transaction_pool = subspace_transaction_pool::new_full_with_validator(
+    let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
         config,
         &task_manager,
         client.clone(),

@@ -62,6 +62,8 @@ sp_api::decl_runtime_apis! {
 
     /// Api to provide XDM extraction from Runtime Calls.
     pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
-        fn extract_xdm_proof_state_roots(extrinsic: &Block::Extrinsic) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
+        fn extract_xdm_proof_state_roots(
+            extrinsic: &Block::Extrinsic
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
     }
 }

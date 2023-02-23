@@ -573,7 +573,7 @@ where
 }
 
 /// Constructs a transaction pool with provided verifier.
-pub fn new_full_with_validator<Block, Client, Verifier>(
+pub fn new_full_with_verifier<Block, Client, Verifier>(
     config: &Configuration,
     task_manager: &TaskManager,
     client: Arc<Client>,
