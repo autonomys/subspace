@@ -203,13 +203,10 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
         })
         .collect::<FuturesOrdered<_>>();
 
-    let mut pieces = Vec::new();
     while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
         let piece = piece_result
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
-
-        pieces.push((PieceIndexHash::from_index(piece_index), piece.clone()));
 
         in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
             Scalar::from(
@@ -217,9 +214,9 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
                     .expect("Chunked into scalar safe bytes above; qed"),
             )
         }));
-    }
 
-    piece_memory_cache.add_pieces(pieces);
+        piece_memory_cache.add_piece(PieceIndexHash::from_index(piece_index), piece);
+    }
 
     info!(%sector_index, "Plotting was successful.");
 

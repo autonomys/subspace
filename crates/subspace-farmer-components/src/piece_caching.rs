@@ -5,7 +5,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::trace;
 
-const CACHE_ITEMS_LIMIT: usize = 10000; // TODO: adjust after piece size change
+const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(10000).expect("Manually set value > 0."); // TODO: adjust after piece size change
 
 #[derive(Clone)]
 pub struct PieceMemoryCache {
@@ -13,16 +13,14 @@ pub struct PieceMemoryCache {
 }
 impl Default for PieceMemoryCache {
     fn default() -> Self {
-        Self::new()
+        Self::new(CACHE_ITEMS_LIMIT)
     }
 }
 
 impl PieceMemoryCache {
-    pub fn new() -> Self {
+    pub fn new(items_limit: NonZeroUsize) -> Self {
         Self {
-            cache: Arc::new(Mutex::new(LruCache::new(
-                NonZeroUsize::new(CACHE_ITEMS_LIMIT).expect("Manually set value > 0."),
-            ))),
+            cache: Arc::new(Mutex::new(LruCache::new(items_limit))),
         }
     }
 

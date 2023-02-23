@@ -64,7 +64,7 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let piece_memory_cache = PieceMemoryCache::new();
+    let piece_memory_cache = PieceMemoryCache::default();
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
