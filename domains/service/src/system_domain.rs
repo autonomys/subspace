@@ -99,8 +99,8 @@ where
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
     Block,
     FullClient<RuntimeApi, Executor>,
-    SkipBundleValidation,
     FraudProofVerifier<PBlock, PClient, Executor>,
+    SkipBundleValidation,
 >;
 
 type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::ProofVerifier<

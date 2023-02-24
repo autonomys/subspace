@@ -36,6 +36,7 @@ use subspace_core_primitives::{
     PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting::PieceGetter;
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
@@ -271,6 +272,8 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub kzg: Kzg,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
+    /// Additional memory cache for pieces from archival storage
+    pub piece_memory_cache: PieceMemoryCache,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -472,6 +475,7 @@ impl SingleDiskPlot {
             piece_getter,
             kzg,
             concurrent_plotting_semaphore,
+            piece_memory_cache,
         } = options;
 
         // TODO: Account for plot overhead
@@ -709,6 +713,7 @@ impl SingleDiskPlot {
                                 &sector_codec,
                                 sector,
                                 sector_metadata,
+                                piece_memory_cache.clone(),
                             );
                             let plotted_sector = match plot_sector_fut.await {
                                 Ok(plotted_sector) => {

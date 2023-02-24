@@ -20,6 +20,7 @@ sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/subs
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
@@ -31,11 +32,14 @@ sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", re
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-domain-digests = { version = "0.1.0", path = "../../primitives/digests" }
 sp-keystore = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
+sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-subspace-fraud-proof = { version = "0.1.0", path = "../../../crates/subspace-fraud-proof" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
+subspace-fraud-proof = { version = "0.1.0", path = "../../../crates/subspace-fraud-proof" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
+subspace-transaction-pool = { version = "0.1.0", path = "../../../crates/subspace-transaction-pool" }
 subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
 system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime" }
 tracing = "0.1.37"

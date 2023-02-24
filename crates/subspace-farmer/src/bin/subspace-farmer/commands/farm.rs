@@ -21,6 +21,7 @@ use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
+use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
@@ -63,6 +64,8 @@ pub(crate) async fn farm_multi_disk(
         farming_args.max_concurrent_plots.get(),
     ));
 
+    let piece_memory_cache = PieceMemoryCache::default();
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -89,6 +92,7 @@ pub(crate) async fn farm_multi_disk(
             dsn,
             &readers_and_pieces,
             node_client.clone(),
+            piece_memory_cache.clone(),
         )
         .await?
     };
@@ -145,6 +149,7 @@ pub(crate) async fn farm_multi_disk(
             kzg: kzg.clone(),
             piece_getter: piece_getter.clone(),
             concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
+            piece_memory_cache: piece_memory_cache.clone(),
         });
 
         let single_disk_plot = single_disk_plot_fut.await?;
