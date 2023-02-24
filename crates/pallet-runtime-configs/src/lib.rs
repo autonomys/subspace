@@ -22,6 +22,7 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
+    use sp_runtime::traits::Zero;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub trait Store)]
@@ -37,26 +38,47 @@ mod pallet {
     #[pallet::getter(fn enable_transfer)]
     pub type EnableTransfer<T> = StorageValue<_, bool, ValueQuery>;
 
+    #[pallet::storage]
+    pub type ConfirmationDepthK<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
+
     #[pallet::config]
     pub trait Config: frame_system::Config {}
 
     #[pallet::genesis_config]
-    #[derive(Default)]
-    pub struct GenesisConfig {
+    pub struct GenesisConfig<T: Config> {
         pub enable_executor: bool,
         pub enable_transfer: bool,
+        pub confirmation_depth_k: T::BlockNumber,
+    }
+
+    #[cfg(feature = "std")]
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            Self {
+                enable_executor: false,
+                enable_transfer: false,
+                confirmation_depth_k: T::BlockNumber::from(100u32),
+            }
+        }
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
             let Self {
                 enable_executor,
                 enable_transfer,
+                confirmation_depth_k,
             } = self;
+
+            assert!(
+                !confirmation_depth_k.is_zero(),
+                "ConfirmationDepthK can not be zero"
+            );
 
             <EnableExecutor<T>>::put(enable_executor);
             <EnableTransfer<T>>::put(enable_transfer);
+            <ConfirmationDepthK<T>>::put(confirmation_depth_k);
         }
     }
 }
