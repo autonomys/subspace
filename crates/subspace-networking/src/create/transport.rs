@@ -28,21 +28,18 @@ pub(super) fn build_transport(
     yamux_config: YamuxConfig,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let transport = {
-        let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
-            GenTcpConfig::default().nodelay(true),
+        let dns_tcp = TokioDnsConfig::system(CustomTransportWrapper::new(
+            TokioTcpTransport::new(GenTcpConfig::default().nodelay(true)),
+            allow_non_global_addresses_in_dht,
+            temporary_bans.clone(),
         ))?;
-        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpTransport::new(
-            GenTcpConfig::default().nodelay(true),
-        ))?);
-
-        let dns_tcp_or_ws_transport = dns_tcp.or_transport(ws).boxed();
-
-        CustomTransportWrapper::new(
-            dns_tcp_or_ws_transport,
+        let ws = WsConfig::new(TokioDnsConfig::system(CustomTransportWrapper::new(
+            TokioTcpTransport::new(GenTcpConfig::default().nodelay(true)),
             allow_non_global_addresses_in_dht,
             temporary_bans,
-        )
-        .boxed()
+        ))?);
+
+        dns_tcp.or_transport(ws).boxed()
     };
 
     let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
@@ -113,8 +110,7 @@ where
                 }
             }
             _ => {
-                debug!(?addr, "Not dialing unsupported Multiaddress.");
-                return Err(TransportError::MultiaddrNotSupported(addr));
+                // TODO: This will not catch DNS records pointing to private addresses
             }
         }
 
