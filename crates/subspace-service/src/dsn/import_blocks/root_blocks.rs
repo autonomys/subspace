@@ -1,3 +1,4 @@
+use futures::future::join_all;
 use futures::StreamExt;
 use std::cell::RefCell;
 use std::cmp::Reverse;
@@ -126,10 +127,7 @@ impl RootBlockHandler {
             }
         }
 
-        // Driving future task forward.
-        for task in peer_block_tasks {
-            task.await;
-        }
+        join_all(peer_block_tasks).await;
 
         let peer_blocks = Arc::try_unwrap(peer_blocks)
             .expect("We manually waited for each other usage to be dropped.")
