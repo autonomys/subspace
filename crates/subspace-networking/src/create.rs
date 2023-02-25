@@ -321,7 +321,7 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create<ProviderStorage>(
+pub fn create<ProviderStorage>(
     config: Config<ProviderStorage>,
 ) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
 where
@@ -362,76 +362,66 @@ where
         yamux_config,
     )?;
 
-    // libp2p uses blocking API, hence we need to create a blocking task.
-    let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let behaviour = Behavior::new(BehaviorConfig {
-            peer_id: local_peer_id,
-            identify,
-            kademlia,
-            gossipsub,
-            record_store: ProviderOnlyRecordStore::new(provider_storage),
-            request_response_protocols,
-        });
-
-        let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
-            .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
-            .build();
-
-        // Setup listen_on addresses
-        for mut addr in listen_on {
-            if let Err(error) = swarm.listen_on(addr.clone()) {
-                if !listen_on_fallback_to_random_port {
-                    return Err(error.into());
-                }
-
-                let addr_string = addr.to_string();
-                // Listen on random port if specified is already occupied
-                if let Some(Protocol::Tcp(_port)) = addr.pop() {
-                    info!(
-                        "Failed to listen on {addr_string} ({error}), falling back to random port"
-                    );
-                    addr.push(Protocol::Tcp(0));
-                    swarm.listen_on(addr)?;
-                }
-            }
-        }
-
-        // Create final structs
-        let (command_sender, command_receiver) = mpsc::channel(1);
-
-        let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
-        let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
-
-        let shared = Arc::new(Shared::new(
-            local_peer_id,
-            command_sender,
-            kademlia_tasks_semaphore,
-            regular_tasks_semaphore,
-        ));
-        let shared_weak = Arc::downgrade(&shared);
-
-        let node = Node::new(shared);
-        let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
-            allow_non_global_addresses_in_dht,
-            command_receiver,
-            swarm,
-            shared_weak,
-            next_random_query_interval: initial_random_query_interval,
-            networking_parameters_registry,
-            reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-            max_established_incoming_connections,
-            max_established_outgoing_connections,
-            temporary_bans,
-            metrics,
-        });
-
-        Ok((node, node_runner))
-    });
-
     info!(%allow_non_global_addresses_in_dht, peer_id = %local_peer_id, "DSN instance configured.");
 
-    create_swarm_fut.await.expect(
-        "Blocking tasks never panics, if it does it is an implementation bug and everything \
-        must crash",
-    )
+    let behaviour = Behavior::new(BehaviorConfig {
+        peer_id: local_peer_id,
+        identify,
+        kademlia,
+        gossipsub,
+        record_store: ProviderOnlyRecordStore::new(provider_storage),
+        request_response_protocols,
+    });
+
+    let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
+        .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
+        .build();
+
+    // Setup listen_on addresses
+    for mut addr in listen_on {
+        if let Err(error) = swarm.listen_on(addr.clone()) {
+            if !listen_on_fallback_to_random_port {
+                return Err(error.into());
+            }
+
+            let addr_string = addr.to_string();
+            // Listen on random port if specified is already occupied
+            if let Some(Protocol::Tcp(_port)) = addr.pop() {
+                info!("Failed to listen on {addr_string} ({error}), falling back to random port");
+                addr.push(Protocol::Tcp(0));
+                swarm.listen_on(addr)?;
+            }
+        }
+    }
+
+    // Create final structs
+    let (command_sender, command_receiver) = mpsc::channel(1);
+
+    let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
+    let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
+
+    let shared = Arc::new(Shared::new(
+        local_peer_id,
+        command_sender,
+        kademlia_tasks_semaphore,
+        regular_tasks_semaphore,
+    ));
+    let shared_weak = Arc::downgrade(&shared);
+
+    let node = Node::new(shared);
+    let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
+        allow_non_global_addresses_in_dht,
+        command_receiver,
+        swarm,
+        shared_weak,
+        next_random_query_interval: initial_random_query_interval,
+        networking_parameters_registry,
+        reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
+        max_established_incoming_connections,
+        max_established_outgoing_connections,
+        temporary_bans,
+        metrics,
+    });
+
+    Ok((node, node_runner))
 }

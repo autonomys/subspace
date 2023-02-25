@@ -55,7 +55,7 @@ pub struct DsnConfig {
 type DsnProviderStorage<AS> =
     NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
 
-pub(crate) async fn create_dsn_instance<Block, AS>(
+pub(crate) fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     root_block_cache: RootBlockCache<AS>,
@@ -125,7 +125,7 @@ where
         ..subspace_networking::Config::default()
     };
 
-    subspace_networking::create(networking_config).await
+    subspace_networking::create(networking_config)
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using

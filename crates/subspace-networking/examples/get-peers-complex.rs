@@ -33,7 +33,7 @@ async fn main() {
         };
         let libp2p::identity::Keypair::Ed25519(keypair) = config.keypair.clone();
 
-        let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+        let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
         println!("Node {} ID is {}", i, node.id());
 
@@ -92,7 +92,7 @@ async fn main() {
         ..Config::default()
     };
 
-    let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+    let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
     println!("Source Node ID is {}", node.id());
     println!("Expected Peer ID:{expected_node_id}");
