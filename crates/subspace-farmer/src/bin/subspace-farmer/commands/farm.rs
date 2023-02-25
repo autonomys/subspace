@@ -20,6 +20,7 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
+use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
@@ -312,24 +313,36 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
-    futures::select!(
-        // Signal future
-        _ = signal.fuse() => {},
-
-        // Plotting future
-        result = Box::pin(async move {
+    let farm_fut = run_future_in_dedicated_thread(
+        Box::pin(async move {
             while let Some(result) = single_disk_plots_stream.next().await {
                 result?;
 
                 info!("Farm exited successfully");
             }
             anyhow::Ok(())
-        }).fuse() => {
-            result?;
+        }),
+        "farmer-farm".to_string(),
+    )?;
+    let mut farm_fut = Box::pin(farm_fut).fuse();
+
+    let networking_fut = run_future_in_dedicated_thread(
+        Box::pin(async move { node_runner.run().await }),
+        "farmer-networking".to_string(),
+    )?;
+    let mut networking_fut = Box::pin(networking_fut).fuse();
+
+    futures::select!(
+        // Signal future
+        _ = signal.fuse() => {},
+
+        // Farm future
+        result = farm_fut => {
+            result??;
         },
 
         // Node runner future
-        _ = node_runner.run().fuse() => {
+        _ = networking_fut => {
             info!("Node runner exited.")
         },
     );
