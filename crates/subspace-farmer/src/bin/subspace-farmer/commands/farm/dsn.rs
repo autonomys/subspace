@@ -13,6 +13,7 @@ use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
+use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
@@ -30,7 +31,8 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 
-pub(super) async fn configure_dsn(
+#[allow(clippy::type_complexity)]
+pub(super) fn configure_dsn(
     base_path: PathBuf,
     keypair: Keypair,
     DsnArgs {
@@ -42,6 +44,7 @@ pub(super) async fn configure_dsn(
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
+    piece_memory_cache: PieceMemoryCache,
 ) -> Result<
     (
         Node,
@@ -102,11 +105,18 @@ pub(super) async fn configure_dsn(
                 debug!(?piece_index_hash, "Piece request received. Trying cache...");
                 let multihash = piece_index_hash.to_multihash();
 
-                let piece_from_cache = piece_store.get(&multihash.into());
                 let weak_readers_and_pieces = weak_readers_and_pieces.clone();
+                let piece_store = piece_store.clone();
+                let piece_memory_cache = piece_memory_cache.clone();
 
                 async move {
-                    if let Some(piece) = piece_from_cache {
+                    if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
+                        return Some(PieceByHashResponse { piece: Some(piece) });
+                    }
+
+                    let piece_from_store = piece_store.get(&multihash.into());
+
+                    if let Some(piece) = piece_from_store {
                         Some(PieceByHashResponse { piece: Some(piece) })
                     } else {
                         debug!(
@@ -171,7 +181,6 @@ pub(super) async fn configure_dsn(
     };
 
     create(config)
-        .await
         .map(|(node, node_runner)| (node, node_runner, piece_cache))
         .map_err(Into::into)
 }

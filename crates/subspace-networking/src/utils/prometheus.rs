@@ -40,6 +40,7 @@ pub async fn start_prometheus_metrics_server(
     let runtime = tokio::runtime::Runtime::new()?;
 
     // We need a dedicated thread because actix-web App is !Send and won't work with tokio.
+    // TODO: This is not cancellable, it should be though
     thread::spawn(move || {
         if let Err(err) = runtime.block_on(server) {
             error!(

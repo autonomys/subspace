@@ -17,7 +17,9 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 #[cfg(any(feature = "std", test))]
@@ -577,6 +579,10 @@ impl_runtime_apis! {
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
+
+        fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
+            Receipts::domain_state_root_at(domain_id, number, domain_hash)
+        }
     }
 
     impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
@@ -606,6 +612,14 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
+        }
+    }
+
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: &<Block as BlockT>::Extrinsic,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
         }
     }
 
@@ -662,5 +676,14 @@ impl_runtime_apis! {
 
             Ok(batches)
         }
+    }
+}
+
+fn extract_xdm_proof_state_roots(
+    ext: &UncheckedExtrinsic,
+) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+    match &ext.function {
+        RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
+        _ => None,
     }
 }

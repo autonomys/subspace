@@ -28,6 +28,7 @@ use sp_runtime::transaction_validity::{
 };
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -45,8 +46,14 @@ type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
-pub type FullPool<Block, Client, BundleValidator, Verifier> =
-    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, BundleValidator, Verifier>>;
+pub type FullPool<Block, Client, Verifier, BundleValidator> = BasicPoolWrapper<
+    Block,
+    FullChainApiWrapper<Block, Client, FullChainVerifier<Block, Client, Verifier, BundleValidator>>,
+>;
+
+/// A transaction pool with chain verifier.
+pub type FullPoolWithChainVerifier<Block, Client, Verifier> =
+    BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>;
 
 type BoxedReadyIterator<Hash, Data> =
     Box<dyn ReadyTransactions<Item = Arc<Transaction<Hash, Data>>> + Send>;
@@ -55,16 +62,14 @@ type ReadyIteratorFor<PoolApi> = BoxedReadyIterator<ExtrinsicHash<PoolApi>, Extr
 
 type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<PoolApi>> + Send>>;
 
-pub struct FullChainApiWrapper<Block, Client, BundleValidator, Verifier> {
+pub struct FullChainApiWrapper<Block, Client, Verifier> {
     inner: Arc<FullChainApi<Client, Block>>,
     client: Arc<Client>,
-    bundle_validator: BundleValidator,
     verifier: Verifier,
     spawner: Box<dyn SpawnNamed>,
 }
 
-impl<Block, Client, BundleValidator, Verifier>
-    FullChainApiWrapper<Block, Client, BundleValidator, Verifier>
+impl<Block, Client, Verifier> FullChainApiWrapper<Block, Client, Verifier>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -75,18 +80,13 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    BundleValidator:
-        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
 {
     fn new(
         client: Arc<Client>,
         prometheus: Option<&PrometheusRegistry>,
         task_manager: &TaskManager,
         verifier: Verifier,
-        bundle_validator: BundleValidator,
     ) -> Self {
         Self {
             inner: Arc::new(FullChainApi::new(
@@ -95,7 +95,6 @@ where
                 &task_manager.spawn_essential_handle(),
             )),
             client,
-            bundle_validator,
             verifier,
             spawner: Box::new(task_manager.spawn_handle()),
         }
@@ -105,14 +104,70 @@ where
         &self,
         at: &BlockId<Block>,
         source: TransactionSource,
-        uxt: ExtrinsicFor<Self>,
+        uxt: BlockExtrinsicOf<Block>,
     ) -> TxPoolResult<TransactionValidity> {
         self.inner.validate_transaction_blocking(at, source, uxt)
     }
 }
 
-impl<Block, Client, BundleValidator, Verifier> ChainApi
-    for FullChainApiWrapper<Block, Client, BundleValidator, Verifier>
+pub type BlockExtrinsicOf<Block> = <Block as BlockT>::Extrinsic;
+
+/// Abstracts and provides just the validation hook for a transaction pool.
+pub trait ValidateExtrinsic<Block: BlockT, Client, ChainApi> {
+    fn validate_extrinsic(
+        &self,
+        at: &BlockId<Block>,
+        source: TransactionSource,
+        uxt: BlockExtrinsicOf<Block>,
+        spawner: Box<dyn SpawnNamed>,
+        chain_api: Arc<ChainApi>,
+    ) -> ValidationFuture;
+}
+
+/// Verifier to verify the Fraud proofs and receipts.
+pub struct FullChainVerifier<Block, Client, FraudProofVerifier, BundleValidator> {
+    _phantom_data: PhantomData<Block>,
+    client: Arc<Client>,
+    verifier: FraudProofVerifier,
+    bundle_validator: BundleValidator,
+}
+
+impl<Block, Client, Verifier, BundleValidator> Clone
+    for FullChainVerifier<Block, Client, Verifier, BundleValidator>
+where
+    Block: Clone,
+    Verifier: Clone,
+    BundleValidator: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            _phantom_data: Default::default(),
+            client: self.client.clone(),
+            verifier: self.verifier.clone(),
+            bundle_validator: self.bundle_validator.clone(),
+        }
+    }
+}
+
+impl<Block, Client, Verifier, BundleValidator>
+    FullChainVerifier<Block, Client, Verifier, BundleValidator>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
+{
+    fn new(client: Arc<Client>, verifier: Verifier, bundle_validator: BundleValidator) -> Self {
+        Self {
+            _phantom_data: Default::default(),
+            verifier,
+            client,
+            bundle_validator,
+        }
+    }
+}
+
+impl<Block, Client, Verifier, BundleValidator>
+    ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
+    for FullChainVerifier<Block, Client, Verifier, BundleValidator>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -129,21 +184,14 @@ where
         ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
-    type Block = Block;
-    type Error = sc_transaction_pool::error::Error;
-    type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<TransactionValidity>> + Send>>;
-    type BodyFuture = Ready<TxPoolResult<Option<Vec<<Self::Block as BlockT>::Extrinsic>>>>;
-
-    fn block_body(&self, id: <Self::Block as BlockT>::Hash) -> Self::BodyFuture {
-        self.inner.block_body(id)
-    }
-
-    fn validate_transaction(
+    fn validate_extrinsic(
         &self,
-        at: &BlockId<Self::Block>,
+        at: &BlockId<Block>,
         source: TransactionSource,
-        uxt: ExtrinsicFor<Self>,
-    ) -> Self::ValidationFuture {
+        uxt: BlockExtrinsicOf<Block>,
+        spawner: Box<dyn SpawnNamed>,
+        chain_api: Arc<FullChainApi<Client, Block>>,
+    ) -> ValidationFuture {
         match self
             .client
             .runtime_api()
@@ -162,8 +210,8 @@ where
                         }
                     }
                     PreValidationObject::FraudProof(fraud_proof) => {
-                        let inner = self.inner.clone();
-                        let spawner = self.spawner.clone();
+                        let inner = chain_api.clone();
+                        let spawner = spawner.clone();
                         let fraud_proof_verifier = self.verifier.clone();
                         let at = *at;
 
@@ -181,10 +229,10 @@ where
                                         .send(verified_result)
                                         .expect("Failed to send the verified fraud proof result");
                                 }
-                                .boxed(),
+                                    .boxed(),
                             );
 
-                            match verified_result_receiver.await  {
+                            match verified_result_receiver.await {
                                 Ok(verified_result) => {
                                     match verified_result {
                                         Ok(_) => inner.validate_transaction(&at, source, uxt).await,
@@ -193,7 +241,7 @@ where
                                             Err(TxPoolError::InvalidTransaction(
                                                 InvalidTransactionCode::FraudProof.into(),
                                             )
-                                            .into())
+                                                .into())
                                         }
                                     }
                                 }
@@ -203,19 +251,55 @@ where
                                 }
                             }
                         }
-                        .boxed();
+                            .boxed();
                     }
                 }
             }
             Err(err) => {
                 return async move {
-                        Err(sc_transaction_pool::error::Error::Blockchain(err.into()))
-                    }
+                    Err(sc_transaction_pool::error::Error::Blockchain(err.into()))
+                }
                     .boxed();
             }
         }
 
-        self.inner.validate_transaction(at, source, uxt)
+        chain_api.validate_transaction(at, source, uxt)
+    }
+}
+
+pub type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<TransactionValidity>> + Send>>;
+
+impl<Block, Client, Verifier> ChainApi for FullChainApiWrapper<Block, Client, Verifier>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + BlockIdTo<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
+    Verifier: ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+{
+    type Block = Block;
+    type Error = sc_transaction_pool::error::Error;
+    type ValidationFuture = ValidationFuture;
+    type BodyFuture = Ready<TxPoolResult<Option<Vec<<Self::Block as BlockT>::Extrinsic>>>>;
+
+    fn validate_transaction(
+        &self,
+        at: &BlockId<Self::Block>,
+        source: TransactionSource,
+        uxt: ExtrinsicFor<Self>,
+    ) -> Self::ValidationFuture {
+        self.verifier
+            .validate_extrinsic(at, source, uxt, self.spawner.clone(), self.inner.clone())
     }
 
     fn block_id_to_number(
@@ -231,6 +315,10 @@ where
 
     fn hash_and_length(&self, ex: &ExtrinsicFor<Self>) -> (ExtrinsicHash<Self>, usize) {
         self.inner.hash_and_length(ex)
+    }
+
+    fn block_body(&self, id: <Self::Block as BlockT>::Hash) -> Self::BodyFuture {
+        self.inner.block_body(id)
     }
 
     fn block_header(
@@ -298,8 +386,8 @@ where
     }
 }
 
-impl<Block, Client, BundleValidator, Verifier> sc_transaction_pool_api::LocalTransactionPool
-    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, BundleValidator, Verifier>>
+impl<Block, Client, Verifier> sc_transaction_pool_api::LocalTransactionPool
+    for BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, Verifier>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -310,15 +398,16 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    BundleValidator:
-        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
+    Verifier: ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     type Block = Block;
-    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, BundleValidator, Verifier>>;
-    type Error = <FullChainApiWrapper<Block, Client, BundleValidator, Verifier> as ChainApi>::Error;
+    type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, Verifier>>;
+    type Error = <FullChainApiWrapper<Block, Client, Verifier> as ChainApi>::Error;
 
     fn submit_local(
         &self,
@@ -391,6 +480,14 @@ where
         self.inner.submit_and_watch(at, source, xt)
     }
 
+    fn ready_at(&self, at: NumberFor<Self::Block>) -> PolledIterator<PoolApi> {
+        self.inner.ready_at(at)
+    }
+
+    fn ready(&self) -> ReadyIteratorFor<PoolApi> {
+        self.inner.ready()
+    }
+
     fn remove_invalid(&self, hashes: &[TxHash<Self>]) -> Vec<Arc<Self::InPoolTransaction>> {
         self.inner.remove_invalid(hashes)
     }
@@ -403,24 +500,16 @@ where
         self.inner.import_notification_stream()
     }
 
-    fn hash_of(&self, xt: &TransactionFor<Self>) -> TxHash<Self> {
-        self.inner.hash_of(xt)
-    }
-
     fn on_broadcasted(&self, propagations: HashMap<TxHash<Self>, Vec<String>>) {
         self.inner.on_broadcasted(propagations)
     }
 
+    fn hash_of(&self, xt: &TransactionFor<Self>) -> TxHash<Self> {
+        self.inner.hash_of(xt)
+    }
+
     fn ready_transaction(&self, hash: &TxHash<Self>) -> Option<Arc<Self::InPoolTransaction>> {
         self.inner.ready_transaction(hash)
-    }
-
-    fn ready_at(&self, at: NumberFor<Self::Block>) -> PolledIterator<PoolApi> {
-        self.inner.ready_at(at)
-    }
-
-    fn ready(&self) -> ReadyIteratorFor<PoolApi> {
-        self.inner.ready()
     }
 }
 
@@ -441,7 +530,7 @@ pub fn new_full<Block, Client, BundleValidator, Verifier>(
     client: Arc<Client>,
     verifier: Verifier,
     bundle_validator: BundleValidator,
-) -> Arc<BasicPoolWrapper<Block, FullChainApiWrapper<Block, Client, BundleValidator, Verifier>>>
+) -> Arc<FullPool<Block, Client, Verifier, BundleValidator>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -465,9 +554,58 @@ where
         client.clone(),
         prometheus,
         task_manager,
-        verifier,
-        bundle_validator,
+        FullChainVerifier::new(client.clone(), verifier, bundle_validator),
     ));
+    let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
+        config,
+        pool_api,
+        prometheus,
+        task_manager.spawn_essential_handle(),
+        client.clone(),
+    ));
+
+    // make transaction pool available for off-chain runtime calls.
+    client
+        .execution_extensions()
+        .register_transaction_pool(&pool);
+
+    pool
+}
+
+/// Constructs a transaction pool with provided verifier.
+pub fn new_full_with_verifier<Block, Client, Verifier>(
+    config: &Configuration,
+    task_manager: &TaskManager,
+    client: Arc<Client>,
+    verifier: Verifier,
+) -> Arc<FullPoolWithChainVerifier<Block, Client, Verifier>>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>
+        + BlockBackend<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + ExecutorProvider<Block>
+        + UsageProvider<Block>
+        + BlockIdTo<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: TaggedTransactionQueue<Block>,
+    Verifier: ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+{
+    let prometheus = config.prometheus_registry();
+    let pool_api = Arc::new(FullChainApiWrapper::new(
+        client.clone(),
+        prometheus,
+        task_manager,
+        verifier,
+    ));
+
     let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
         config,
         pool_api,

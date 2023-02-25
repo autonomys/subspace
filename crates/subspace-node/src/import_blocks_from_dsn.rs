@@ -70,7 +70,6 @@ impl ImportBlocksFromDsnCmd {
             })],
             ..Config::default()
         })
-        .await
         .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
         spawner.spawn_essential(

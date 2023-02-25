@@ -2,9 +2,9 @@ pub mod multihash;
 pub mod piece_provider;
 pub mod pieces;
 pub(crate) mod prometheus;
-pub(crate) mod record_binary_heap;
 #[cfg(test)]
 mod tests;
+pub(crate) mod unique_record_binary_heap;
 
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};

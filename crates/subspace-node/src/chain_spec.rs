@@ -140,7 +140,7 @@ pub fn gemini_3c_compiled(
                     ),
                     enable_executor: true,
                     enable_transfer: false,
-                    confirmation_depth_k: 100,
+                    confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
         },
@@ -229,7 +229,7 @@ pub fn devnet_config_compiled(
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
                     enable_transfer: true,
-                    confirmation_depth_k: 100,
+                    confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
         },

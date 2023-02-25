@@ -114,9 +114,8 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
                 ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
-            let (node, mut node_runner) = subspace_networking::create(config)
-                .await
-                .expect("Networking stack creation failed.");
+            let (node, mut node_runner) =
+                subspace_networking::create(config).expect("Networking stack creation failed.");
 
             node.on_new_listener(Arc::new({
                 let node_id = node.id();
