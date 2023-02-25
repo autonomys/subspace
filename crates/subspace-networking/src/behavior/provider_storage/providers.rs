@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
 const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
@@ -236,9 +236,9 @@ impl ParityDbProviderStorage {
         }
 
         if heap.size() > 0 {
-            info!(size = heap.size(), ?path, "Record cache loaded.");
+            debug!(size = heap.size(), ?path, "Record cache loaded.");
         } else {
-            info!(?path, "New record cache initialized.");
+            debug!(?path, "New record cache initialized.");
         }
 
         Ok(Self {
@@ -246,6 +246,10 @@ impl ParityDbProviderStorage {
             heap,
             local_peer_id,
         })
+    }
+
+    pub fn size(&self) -> usize {
+        self.heap.size()
     }
 
     fn add_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
