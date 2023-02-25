@@ -264,6 +264,15 @@ impl ParityDbProviderStorage {
         self.save_providers(key, providers);
     }
 
+    fn remove_providers_from_db(&self, key: &Key) {
+        let tx = [(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME, key, None)];
+
+        let result = self.db.commit(tx);
+        if let Err(err) = &result {
+            error!(?key, ?err, "Failed to delete providers from Parity DB.");
+        }
+    }
+
     fn add_local_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
         let key: &[u8] = key.borrow();
 
@@ -365,8 +374,8 @@ impl ProviderStorage for ParityDbProviderStorage {
         if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
 
-            let local_peer_id = self.local_peer_id;
-            self.remove_provider(&key, &local_peer_id);
+            self.remove_local_provider_to_db(&key);
+            self.remove_providers_from_db(&key);
         }
 
         Ok(())
