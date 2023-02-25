@@ -81,6 +81,8 @@ mod pallet {
         Receipt(ExecutionReceiptError),
         /// The Bundle is created too long ago.
         StaleBundle,
+        /// Bundle was created on an unknown primary block (probably a fork block).
+        UnknownBlock,
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -419,7 +421,7 @@ impl<T: Config> Pallet<T> {
                             InvalidTransactionCode::ExecutionReceipt.into(),
                         ));
                     }
-                    // New nest receipt.
+                    // New best receipt.
                 } else if primary_number == best_number + One::one() {
                     if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
@@ -582,6 +584,29 @@ impl<T: Config> Pallet<T> {
                     return Err(BundleError::StaleBundle);
                 }
             }
+        }
+
+        let bundle_created_on_valid_primary_block =
+            match pallet_receipts::PrimaryBlockHash::<T>::get(
+                DomainId::SYSTEM,
+                bundle.header.primary_number,
+            ) {
+                Some(block_hash) => block_hash == bundle.header.primary_hash,
+                // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
+                // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
+                // is unavailable in pallet-receipts at this point.
+                None => frame_system::Pallet::<T>::parent_hash() == bundle.header.primary_hash,
+            };
+
+        if !bundle_created_on_valid_primary_block {
+            log::error!(
+                target: "runtime::domains",
+                "Bundle is probabaly created on a primary fork #{:?}, expected: {:?}, got: {:?}",
+                bundle.header.primary_number,
+                pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, bundle.header.primary_number),
+                bundle.header.primary_hash,
+            );
+            return Err(BundleError::UnknownBlock);
         }
 
         let proof_of_election = bundle_solution.proof_of_election();
