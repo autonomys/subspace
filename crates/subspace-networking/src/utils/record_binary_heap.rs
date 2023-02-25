@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use libp2p::kad::kbucket::Distance;
 pub use libp2p::kad::record::Key;
 pub use libp2p::PeerId;
