@@ -6,7 +6,7 @@ use std::sync::Arc;
 use subspace_core_primitives::Piece;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::RecordBinaryHeap;
+use subspace_networking::UniqueRecordBinaryHeap;
 use tracing::{info, trace, warn};
 
 /// Piece cache with limited size where pieces closer to provided peer ID are retained.
@@ -15,7 +15,7 @@ pub struct FarmerPieceCache {
     // Underlying unbounded store.
     store: ParityDbStore<Key, Piece>,
     // Maintains a heap to limit total number of entries.
-    heap: Arc<Mutex<RecordBinaryHeap>>,
+    heap: Arc<Mutex<UniqueRecordBinaryHeap>>,
 }
 
 impl FarmerPieceCache {
@@ -24,7 +24,7 @@ impl FarmerPieceCache {
         max_items_limit: NonZeroUsize,
         peer_id: PeerId,
     ) -> Self {
-        let mut heap = RecordBinaryHeap::new(peer_id, max_items_limit.get());
+        let mut heap = UniqueRecordBinaryHeap::new(peer_id, max_items_limit.get());
 
         match store.iter() {
             Ok(pieces_iter) => {

@@ -5,7 +5,7 @@ use libp2p::kad::kbucket::Distance;
 pub use libp2p::kad::record::Key;
 pub use libp2p::PeerId;
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
+use std::collections::BTreeSet;
 
 type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
 
@@ -48,59 +48,77 @@ impl Ord for RecordHeapKey {
 }
 
 /// Limited-size max binary heap for Kademlia records' keys.
+///
 /// The heap metrics depends on the Kademlia distance to the provided PeerId.
 /// It maintains limited size and evicts (pops) items when this limited is exceeded.
+/// Unique keys are only inserted once.
 #[derive(Debug, Clone)]
-pub struct RecordBinaryHeap {
+pub struct UniqueRecordBinaryHeap {
     peer_key: KademliaBucketKey<PeerId>,
-    max_heap: BinaryHeap<RecordHeapKey>,
+    set: BTreeSet<RecordHeapKey>,
     limit: usize,
 }
 
-impl RecordBinaryHeap {
+impl UniqueRecordBinaryHeap {
     /// Constructs a heap with given PeerId and size limit.
     pub fn new(peer_id: PeerId, limit: usize) -> Self {
         Self {
             peer_key: KademliaBucketKey::from(peer_id),
-            max_heap: BinaryHeap::new(),
+            set: BTreeSet::new(),
             limit,
         }
     }
 
     /// Returns heap-size
     pub fn size(&self) -> usize {
-        self.max_heap.len()
+        self.set.len()
     }
 
     /// Insert a key in the heap evicting (popping) if the size limit is exceeded.
+    ///
+    /// If key doesn't pass [`UniqueRecordBinaryHeap::should_include_key`] check, it will be
+    /// silently ignored.
     pub fn insert(&mut self, key: Key) -> Option<Key> {
-        let heap_key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key));
-        self.max_heap.push(heap_key);
+        let key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key));
 
-        if self.is_limit_exceeded() {
-            let evicted = self.max_heap.pop();
-
-            return evicted.map(|key| key.key.preimage().clone());
+        if !self.should_include_key_internal(&key) {
+            return None;
         }
 
-        None
+        let evicted = if self.is_limit_reached() {
+            self.set.pop_last().map(|key| key.key.into_preimage())
+        } else {
+            None
+        };
+
+        self.set.insert(key);
+
+        evicted
     }
 
     /// Removes a key from the heap.
     pub fn remove(&mut self, key: &Key) {
-        self.max_heap.retain(|k| {
-            *k != RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()))
-        });
+        let key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()));
+        self.set.remove(&key);
     }
 
     /// Checks whether we include the key
     pub fn should_include_key(&self, key: &Key) -> bool {
+        let new_key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()));
+
+        self.should_include_key_internal(&new_key)
+    }
+
+    fn should_include_key_internal(&self, new_key: &RecordHeapKey) -> bool {
+        if self.set.contains(new_key) {
+            return false;
+        }
+
         if !self.is_limit_reached() {
             return true;
         }
 
-        let new_key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()));
-        let top_key = self.max_heap.peek().cloned();
+        let top_key = self.set.last();
 
         if let Some(top_key) = top_key {
             top_key > new_key
@@ -111,14 +129,10 @@ impl RecordBinaryHeap {
 
     /// Iterator over all keys in arbitrary order
     pub fn keys(&self) -> impl Iterator<Item = &'_ Key> {
-        self.max_heap.iter().map(|key| key.key.preimage())
+        self.set.iter().map(|key| key.key.preimage())
     }
 
     fn is_limit_reached(&self) -> bool {
         self.size() >= self.limit
-    }
-
-    fn is_limit_exceeded(&self) -> bool {
-        self.size() > self.limit
     }
 }

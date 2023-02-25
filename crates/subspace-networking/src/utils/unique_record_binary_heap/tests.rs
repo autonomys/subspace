@@ -1,4 +1,4 @@
-use crate::utils::record_binary_heap::RecordBinaryHeap;
+use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
 use libp2p::kad::record::Key;
 use libp2p::multihash::{Code, Multihash};
 use libp2p::PeerId;
@@ -8,14 +8,21 @@ fn binary_heap_insert_works() {
     let peer_id =
         PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
             .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 10);
+    let mut heap = UniqueRecordBinaryHeap::new(peer_id, 10);
+
+    assert_eq!(heap.size(), 0);
 
     let key1 = Key::from(vec![1]);
     let key2 = Key::from(vec![2]);
 
     heap.insert(key1);
-    heap.insert(key2);
+    assert_eq!(heap.size(), 1);
 
+    heap.insert(key2.clone());
+    assert_eq!(heap.size(), 2);
+
+    // Duplicates are ignored
+    heap.insert(key2);
     assert_eq!(heap.size(), 2);
 }
 
@@ -24,7 +31,7 @@ fn binary_heap_remove_works() {
     let peer_id =
         PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
             .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 10);
+    let mut heap = UniqueRecordBinaryHeap::new(peer_id, 10);
 
     let key1 = Key::from(vec![1]);
     let key2 = Key::from(vec![2]);
@@ -44,7 +51,7 @@ fn binary_heap_limit_works() {
     let peer_id =
         PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
             .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+    let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     let key1 = Key::from(vec![1]);
     let key2 = Key::from(vec![2]);
@@ -65,7 +72,7 @@ fn binary_heap_eviction_works() {
     let peer_id =
         PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
             .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+    let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     let key1 = Key::from(vec![1]);
     let key2 = Key::from(vec![2]);
@@ -95,7 +102,7 @@ fn binary_heap_should_include_key_works() {
     let peer_id =
         PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [2u8].as_slice()).unwrap())
             .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 1);
+    let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     // Limit not reached
     let key1 = Key::from(vec![1]);
