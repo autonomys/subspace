@@ -93,8 +93,7 @@ pub(crate) async fn farm_multi_disk(
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
-        )
-        .await?
+        )?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));

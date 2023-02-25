@@ -31,7 +31,8 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 
-pub(super) async fn configure_dsn(
+#[allow(clippy::type_complexity)]
+pub(super) fn configure_dsn(
     base_path: PathBuf,
     keypair: Keypair,
     DsnArgs {
@@ -180,7 +181,6 @@ pub(super) async fn configure_dsn(
     };
 
     create(config)
-        .await
         .map(|(node, node_runner)| (node, node_runner, piece_cache))
         .map_err(Into::into)
 }
