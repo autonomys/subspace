@@ -343,10 +343,7 @@ mod pallet {
         // TODO: proper weight
         #[pallet::call_index(4)]
         #[pallet::weight(10_000)]
-        pub fn withdraw_decreased_stake(
-            origin: OriginFor<T>,
-            withdrawal_index: u32,
-        ) -> DispatchResult {
+        pub fn withdraw_stake(origin: OriginFor<T>, withdrawal_index: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             Executors::<T>::try_mutate(&who, |maybe_executor_config| -> DispatchResult {
