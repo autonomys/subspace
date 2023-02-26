@@ -7,7 +7,7 @@ use subspace_core_primitives::Piece;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::UniqueRecordBinaryHeap;
-use tracing::{info, trace, warn};
+use tracing::{debug, trace, warn};
 
 /// Piece cache with limited size where pieces closer to provided peer ID are retained.
 #[derive(Clone)]
@@ -33,9 +33,9 @@ impl FarmerPieceCache {
                 }
 
                 if heap.size() > 0 {
-                    info!(size = heap.size(), "Local piece cache loaded.");
+                    debug!(size = heap.size(), "Local piece cache loaded.");
                 } else {
-                    info!("New local piece cache initialized.");
+                    debug!("New local piece cache initialized.");
                 }
             }
             Err(err) => {
@@ -47,6 +47,10 @@ impl FarmerPieceCache {
             store,
             heap: Arc::new(Mutex::new(heap)),
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.heap.lock().size()
     }
 }
 

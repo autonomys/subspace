@@ -19,7 +19,6 @@ use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -56,6 +55,9 @@ struct FarmingArgs {
     /// Number of plots that can be plotted concurrently, impacts RAM usage.
     #[arg(long, default_value = "10")]
     max_concurrent_plots: NonZeroUsize,
+    /// Do not print info about configured farms on startup.
+    #[arg(long)]
+    no_info: bool,
 }
 
 /// Arguments for DSN
@@ -71,6 +73,9 @@ struct DsnArgs {
     /// Piece cache size in pieces.
     #[arg(long, default_value = "65536")]
     piece_cache_size: NonZeroUsize,
+    /// Number of provided keys (by other peers) that will be stored.
+    #[arg(long, default_value = "655360")]
+    provided_keys_limit: NonZeroUsize,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     disable_private_ips: bool,
@@ -202,7 +207,7 @@ struct Command {
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(
-            fmt::layer().with_span_events(FmtSpan::CLOSE).with_filter(
+            fmt::layer().with_filter(
                 EnvFilter::builder()
                     .with_default_directive(LevelFilter::INFO.into())
                     .from_env_lossy(),
