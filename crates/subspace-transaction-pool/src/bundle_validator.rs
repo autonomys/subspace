@@ -241,7 +241,7 @@ where
             self.bundle_collector
                 .on_new_best_block(new_best_hash, bundles)
         }) {
-            tracing::error!(
+            tracing::debug!(
                 %err,
                 "Failed to update recent stored bundles for bundle-validator"
             );
