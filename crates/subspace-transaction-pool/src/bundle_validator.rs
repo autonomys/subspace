@@ -228,6 +228,15 @@ impl<Block: BlockT> BundleStoredInLastK<Block> {
             .iter()
             .any(|bb| bb.bundle_hashes.contains(&hash))
     }
+
+    // Get the canonical block hash by the given block number
+    fn get_canonical_block_hash(&self, number: NumberFor<Block>) -> Option<Block::Hash> {
+        let block_bundles = self.bundle_syncer.read();
+        block_bundles
+            .iter()
+            .find(|b| b.block_number == number)
+            .map(|b| b.block_hash)
+    }
 }
 
 pub struct BundleValidator<Block: BlockT, Client> {
@@ -278,6 +287,7 @@ where
 pub enum BundleError {
     DuplicatedBundle,
     ReceiptInFuture,
+    ReceiptPointToUnknownBlock,
     BlockChain(sp_blockchain::Error),
 }
 
@@ -345,6 +355,14 @@ where
         for receipt in signed_opaque_bundle.bundle.receipts.iter() {
             if receipt.primary_number > best_primary_number {
                 return Err(BundleError::ReceiptInFuture);
+            }
+            if let Some(expected_hash) = self
+                .bundle_stored_in_last_k
+                .get_canonical_block_hash(receipt.primary_number)
+            {
+                if receipt.primary_hash != expected_hash {
+                    return Err(BundleError::ReceiptPointToUnknownBlock);
+                }
             }
         }
         Ok(())
