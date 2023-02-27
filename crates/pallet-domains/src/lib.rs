@@ -586,29 +586,6 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        let bundle_created_on_valid_primary_block =
-            match pallet_receipts::PrimaryBlockHash::<T>::get(
-                DomainId::SYSTEM,
-                bundle.header.primary_number,
-            ) {
-                Some(block_hash) => block_hash == bundle.header.primary_hash,
-                // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
-                // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
-                // is unavailable in pallet-receipts at this point.
-                None => frame_system::Pallet::<T>::parent_hash() == bundle.header.primary_hash,
-            };
-
-        if !bundle_created_on_valid_primary_block {
-            log::error!(
-                target: "runtime::domains",
-                "Bundle is probabaly created on a primary fork #{:?}, expected: {:?}, got: {:?}",
-                bundle.header.primary_number,
-                pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, bundle.header.primary_number),
-                bundle.header.primary_hash,
-            );
-            return Err(BundleError::UnknownBlock);
-        }
-
         let proof_of_election = bundle_solution.proof_of_election();
 
         if !proof_of_election
@@ -636,6 +613,29 @@ impl<T: Config> Pallet<T> {
             } = bundle_solution else {
                 unreachable!("Must be system domain bundle solution as we just checked; qed ")
             };
+
+            let bundle_created_on_valid_primary_block =
+                match pallet_receipts::PrimaryBlockHash::<T>::get(
+                    DomainId::SYSTEM,
+                    bundle.header.primary_number,
+                ) {
+                    Some(block_hash) => block_hash == bundle.header.primary_hash,
+                    // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
+                    // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
+                    // is unavailable in pallet-receipts at this point.
+                    None => frame_system::Pallet::<T>::parent_hash() == bundle.header.primary_hash,
+                };
+
+            if !bundle_created_on_valid_primary_block {
+                log::error!(
+                    target: "runtime::domains",
+                    "Bundle is probabaly created on a primary fork #{:?}, expected: {:?}, got: {:?}",
+                    bundle.header.primary_number,
+                    pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, bundle.header.primary_number),
+                    bundle.header.primary_hash,
+                );
+                return Err(BundleError::UnknownBlock);
+            }
 
             Self::validate_system_bundle_solution(
                 &bundle.receipts,
