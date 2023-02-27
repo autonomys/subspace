@@ -250,8 +250,6 @@ services:
       - farmer-data:/var/subspace:rw
 #      - /path/to/subspace-farmer:/var/subspace:rw
     ports:
-# Un-comment following line to unlock farmer's RPC
-#      - "127.0.0.1:9955:9955"
 # If port 30433 is already occupied by something else, replace all
 # occurrences of `30533` in this file with another value
       - "0.0.0.0:30533:30533"
