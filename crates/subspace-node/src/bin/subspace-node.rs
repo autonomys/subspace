@@ -24,6 +24,7 @@ use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
+use sc_storage_monitor::StorageMonitorService;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
@@ -361,6 +362,7 @@ fn main() -> Result<(), Error> {
             set_default_ss58_version(&runner.config().chain_spec);
             runner.run_node_until_exit(|primary_chain_config| async move {
                 let tokio_handle = primary_chain_config.tokio_handle.clone();
+                let database_source = primary_chain_config.database.clone();
 
                 let maybe_system_domain_chain_spec = primary_chain_config
                     .chain_spec
@@ -474,6 +476,15 @@ fn main() -> Result<(), Error> {
                         ))
                     })?
                 };
+
+                StorageMonitorService::try_spawn(
+                    cli.storage_monitor,
+                    database_source,
+                    &primary_chain_node.task_manager.spawn_essential_handle(),
+                )
+                .map_err(|error| {
+                    sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
+                })?;
 
                 // Run an executor node, an optional component of Subspace full node.
                 if !cli.domain_args.is_empty() {

@@ -12,7 +12,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::DomainId;
-use sp_runtime::generic::{BlockId, Digest, DigestItem};
+use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use tempfile::TempDir;
 
@@ -141,7 +141,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let intermediate_roots = alice
         .client
         .runtime_api()
-        .intermediate_roots(&BlockId::Hash(best_hash))
+        .intermediate_roots(best_hash)
         .expect("Get intermediate roots");
 
     if intermediate_roots.len() != test_txs.len() + 1 {

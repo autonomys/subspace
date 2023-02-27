@@ -34,8 +34,8 @@ where
     PBlock: BlockT,
 {
     let api = system_domain_client.runtime_api();
-    let block_id = BlockId::Hash(system_domain_client.info().best_hash);
-    if let Ok(Some(state_roots)) = api.extract_xdm_proof_state_roots(&block_id, extrinsic) {
+    let best_hash = system_domain_client.info().best_hash;
+    if let Ok(Some(state_roots)) = api.extract_xdm_proof_state_roots(best_hash, extrinsic) {
         // verify system domain state root
         let header = system_domain_client
             .header(state_roots.system_domain_block_info.block_hash)?
@@ -57,7 +57,7 @@ where
             state_roots.core_domain_info
         {
             if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
-                &block_id,
+                best_hash,
                 domain_id,
                 core_domain_info.block_number,
                 core_domain_info.block_hash,
@@ -119,7 +119,7 @@ where
 {
     fn validate_extrinsic(
         &self,
-        at: &BlockId<Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<Block>,
         _spawner: Box<dyn SpawnNamed>,
@@ -132,7 +132,7 @@ where
         match result {
             Ok(valid) => {
                 if valid {
-                    chain_api.validate_transaction(at, source, uxt)
+                    chain_api.validate_transaction(&BlockId::Hash(at), source, uxt)
                 } else {
                     tracing::trace!(target: "xdm_validator", "Dropped invalid XDM extrinsic");
                     async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()

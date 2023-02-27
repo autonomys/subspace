@@ -27,7 +27,7 @@ dusk-plonk = { version = "0.12.0", default-features = false, features = ["alloc"
 hex = { version  = "0.4.3", default-features = false, features = ["alloc"] }
 num-integer = { version = "0.1.45", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
-parity-scale-codec = { version = "3.2.1", default-features = false, features = ["derive"] }
+parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive"] }
 rand = { version = "0.8.5", features = ["min_const_gen"], optional = true }
 rand_chacha = { version = "0.3.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false, features = ["alloc"] }

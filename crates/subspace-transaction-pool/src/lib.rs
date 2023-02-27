@@ -62,6 +62,7 @@ type ReadyIteratorFor<PoolApi> = BoxedReadyIterator<ExtrinsicHash<PoolApi>, Extr
 
 type PolledIterator<PoolApi> = Pin<Box<dyn Future<Output = ReadyIteratorFor<PoolApi>> + Send>>;
 
+#[derive(Clone)]
 pub struct FullChainApiWrapper<Block, Client, Verifier> {
     inner: Arc<FullChainApi<Client, Block>>,
     client: Arc<Client>,
@@ -116,7 +117,7 @@ pub type BlockExtrinsicOf<Block> = <Block as BlockT>::Extrinsic;
 pub trait ValidateExtrinsic<Block: BlockT, Client, ChainApi> {
     fn validate_extrinsic(
         &self,
-        at: &BlockId<Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<Block>,
         spawner: Box<dyn SpawnNamed>,
@@ -186,7 +187,7 @@ where
 {
     fn validate_extrinsic(
         &self,
-        at: &BlockId<Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<Block>,
         spawner: Box<dyn SpawnNamed>,
@@ -203,7 +204,10 @@ where
                         // No pre-validation is required.
                     }
                     PreValidationObject::Bundle(bundle) => {
-                        if let Err(err) = self.bundle_validator.validate_bundle(*at, &bundle) {
+                        if let Err(err) = self
+                            .bundle_validator
+                            .validate_bundle(&BlockId::Hash(at), &bundle)
+                        {
                             tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
                             return async move { Err(TxPoolError::ImmediatelyDropped.into()) }
                                 .boxed();
@@ -213,7 +217,6 @@ where
                         let inner = chain_api.clone();
                         let spawner = spawner.clone();
                         let fraud_proof_verifier = self.verifier.clone();
-                        let at = *at;
 
                         return async move {
                             let (verified_result_sender, verified_result_receiver) = oneshot::channel();
@@ -235,7 +238,7 @@ where
                             match verified_result_receiver.await {
                                 Ok(verified_result) => {
                                     match verified_result {
-                                        Ok(_) => inner.validate_transaction(&at, source, uxt).await,
+                                        Ok(_) => inner.validate_transaction(&BlockId::Hash(at), source, uxt).await,
                                         Err(err) => {
                                             tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
                                             Err(TxPoolError::InvalidTransaction(
@@ -263,7 +266,7 @@ where
             }
         }
 
-        chain_api.validate_transaction(at, source, uxt)
+        chain_api.validate_transaction(&BlockId::Hash(at), source, uxt)
     }
 }
 
@@ -298,6 +301,22 @@ where
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
+        let at = match self.client.block_hash_from_id(at) {
+            Ok(Some(at)) => at,
+            Ok(None) => {
+                let error = sc_transaction_pool::error::Error::BlockIdConversion(format!(
+                    "Failed to convert block id {at} to hash: block not found"
+                ));
+                return Box::pin(async move { Err(error) });
+            }
+            Err(error) => {
+                let error = sc_transaction_pool::error::Error::BlockIdConversion(format!(
+                    "Failed to convert block id {at} to hash: {error}"
+                ));
+                return Box::pin(async move { Err(error) });
+            }
+        };
+
         self.verifier
             .validate_extrinsic(at, source, uxt, self.spawner.clone(), self.inner.clone())
     }

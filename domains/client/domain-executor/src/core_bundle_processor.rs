@@ -12,7 +12,6 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -196,7 +195,7 @@ where
         let head_receipt_number = self
             .system_domain_client
             .runtime_api()
-            .head_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
+            .head_receipt_number(system_domain_hash, self.domain_id)?;
         let head_receipt_number =
             translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(head_receipt_number);
 
@@ -209,7 +208,7 @@ where
         let oldest_receipt_number = self
             .system_domain_client
             .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(system_domain_hash), self.domain_id)?;
+            .oldest_receipt_number(system_domain_hash, self.domain_id)?;
         let oldest_receipt_number =
             translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(oldest_receipt_number);
 

@@ -34,7 +34,6 @@ use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, P
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
@@ -147,19 +146,19 @@ where
     ) -> Option<Self::Claim> {
         debug!(target: "subspace", "Attempting to claim slot {}", slot);
 
-        let parent_block_id = BlockId::Hash(parent_header.hash());
+        let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
         let global_randomness =
-            extract_global_randomness_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+            extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
         let (solution_range, voting_solution_range) =
-            extract_solution_ranges_for_block(self.client.as_ref(), &parent_block_id).ok()?;
+            extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
         let global_challenge = derive_global_challenge(&global_randomness, slot.into());
 
         let maybe_root_plot_public_key = self
             .client
             .runtime_api()
-            .root_plot_public_key(&parent_block_id)
+            .root_plot_public_key(parent_hash)
             .ok()?;
 
         let new_slot_info = NewSlotInfo {
@@ -192,7 +191,7 @@ where
             // TODO: We need also need to check for equivocation of farmers connected to *this node*
             //  during block import, currently farmers connected to this node are considered trusted
             if runtime_api
-                .is_in_block_list(&parent_block_id, &solution.public_key)
+                .is_in_block_list(parent_hash, &solution.public_key)
                 .ok()?
             {
                 warn!(
@@ -210,11 +209,10 @@ where
             let piece_index =
                 sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
             let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
-            let mut maybe_records_root = runtime_api
-                .records_root(&parent_block_id, segment_index)
-                .ok()?;
+            let mut maybe_records_root =
+                runtime_api.records_root(parent_hash, segment_index).ok()?;
             // TODO: This will be necessary for verifying sector expiration in the future
-            let _total_pieces = runtime_api.total_pieces(&parent_block_id).ok()?;
+            let _total_pieces = runtime_api.total_pieces(parent_hash).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with root blocks are not yet in runtime.
@@ -273,7 +271,7 @@ where
                     // verification wouldn't be possible due to empty records root
                     info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
-                    self.create_vote(solution, slot, parent_header, &parent_block_id)
+                    self.create_vote(solution, slot, parent_header, parent_hash)
                         .await;
                 }
             }
@@ -389,7 +387,7 @@ where
         solution: Solution<FarmerPublicKey, FarmerPublicKey>,
         slot: Slot,
         parent_header: &Block::Header,
-        parent_block_id: &BlockId<Block>,
+        parent_hash: Block::Hash,
     ) {
         let runtime_api = self.client.runtime_api();
 
@@ -418,7 +416,7 @@ where
 
         let signed_vote = SignedVote { vote, signature };
 
-        if let Err(error) = runtime_api.submit_vote_extrinsic(parent_block_id, signed_vote) {
+        if let Err(error) = runtime_api.submit_vote_extrinsic(parent_hash, signed_vote) {
             error!(
                 target: "subspace",
                 "Failed to submit vote at slot {slot}: {error:?}",
@@ -472,7 +470,7 @@ where
 /// Extract global randomness for block, given ID of the parent block.
 pub(crate) fn extract_global_randomness_for_block<Block, Client>(
     client: &Client,
-    parent_block_id: &BlockId<Block>,
+    parent_hash: Block::Hash,
 ) -> Result<Randomness, ApiError>
 where
     Block: BlockT,
@@ -481,7 +479,7 @@ where
 {
     client
         .runtime_api()
-        .global_randomnesses(parent_block_id)
+        .global_randomnesses(parent_hash)
         .map(|randomnesses| randomnesses.next.unwrap_or(randomnesses.current))
 }
 
@@ -489,7 +487,7 @@ where
 /// Extract solution ranges for block and votes, given ID of the parent block.
 pub(crate) fn extract_solution_ranges_for_block<Block, Client>(
     client: &Client,
-    parent_block_id: &BlockId<Block>,
+    parent_hash: Block::Hash,
 ) -> Result<(u64, u64), ApiError>
 where
     Block: BlockT,
@@ -498,7 +496,7 @@ where
 {
     client
         .runtime_api()
-        .solution_ranges(parent_block_id)
+        .solution_ranges(parent_hash)
         .map(|solution_ranges| {
             (
                 solution_ranges.next.unwrap_or(solution_ranges.current),

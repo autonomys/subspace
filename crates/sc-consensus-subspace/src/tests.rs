@@ -168,7 +168,7 @@ impl DummyProposer {
         let block_builder = self
             .factory
             .client
-            .new_block_at(&BlockId::Hash(self.parent_hash), pre_digests, false)
+            .new_block_at(self.parent_hash, pre_digests, false)
             .unwrap();
 
         let mut block = match block_builder.build() {
