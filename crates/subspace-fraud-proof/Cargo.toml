@@ -37,5 +37,5 @@ sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substr
 sp-domain-digests = { version = "0.1.0", path = "../../domains/primitives/digests" }
 sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-tempfile = "3.3.0"
-tokio = "1.23.0"
+tempfile = "3.4.0"
+tokio = "1.25.0"

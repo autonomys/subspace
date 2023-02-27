@@ -12,13 +12,13 @@ description = "Primitives of domains pallet"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-blake2 = { version = "0.10.5", default-features = false }
+blake2 = { version = "0.10.6", default-features = false }
 merlin = { version = "2.0.1", default-features = false }
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive"] }
 rs_merkle = { version = "1.2.0", default-features = false }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
-serde = { version = "1.0.147", optional = true, features = ["derive"] }
+serde = { version = "1.0.152", optional = true, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 sp-application-crypto = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
@@ -30,7 +30,7 @@ sp-std = { version = "5.0.0", default-features = false, git = "https://github.co
 sp-trie = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
-thiserror = { version = "1.0.32", optional = true }
+thiserror = { version = "1.0.38", optional = true }
 
 [features]
 default = ["std"]

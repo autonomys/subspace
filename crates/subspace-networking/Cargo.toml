@@ -16,32 +16,32 @@ include = [
 ]
 
 [dependencies]
-actix-web = "4.2.1"
+actix-web = "4.3.1"
 anyhow = "1.0.66"
-async-trait = "0.1.58"
+async-trait = "0.1.64"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.4.0"
-bytesize = "1.1.0"
-chrono = {version = "0.4.21", features = ["clock", "serde", "std",]}
-clap = { version = "4.0.26", features = ["color", "derive"] }
+bytesize = "1.2.0"
+chrono = {version = "0.4.23", features = ["clock", "serde", "std",]}
+clap = { version = "4.1.6", features = ["color", "derive"] }
 derive_more = "0.99.17"
 either = "1.8.0"
 event-listener-primitives = "2.0.1"
 futures = "0.3.26"
 hex = "0.4.3"
-lru = "0.8.1"
+lru = "0.9.0"
 nohash-hasher = "0.2.0"
 parity-db = "0.4.2"
 parity-scale-codec = "3.4.0"
 parking_lot = "0.12.1"
 pin-project = "1.0.11"
 prometheus-client = "0.19.0"
-serde = { version = "1.0.147", features = ["derive"] }
-serde_json = "1.0.83"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "1.0.93"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
-tempfile = "3.3.0"
-thiserror = "1.0.32"
-tokio = { version = "1.23.0", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
+tempfile = "3.4.0"
+thiserror = "1.0.38"
+tokio = { version = "1.25.0", features = ["macros", "parking_lot", "rt-multi-thread", "time"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }

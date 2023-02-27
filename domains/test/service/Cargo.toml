@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-async-trait = "0.1.58"
+async-trait = "0.1.64"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../client/cross-domain-message-gossip" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../../client/consensus-relay-chain" }
 domain-client-executor = { version = "0.1.0", path = "../../client/domain-executor" }
@@ -49,5 +49,5 @@ subspace-test-client = { version = "0.1.0", path = "../../../test/subspace-test-
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-test-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-tokio = { version = "1.23.0", features = ["macros"] }
+tokio = { version = "1.25.0", features = ["macros"] }
 tracing = "0.1.37"

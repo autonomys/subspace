@@ -43,8 +43,8 @@ subspace-transaction-pool = { version = "0.1.0", path = "../../../crates/subspac
 subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
 system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime" }
 tracing = "0.1.37"
-thiserror = "1.0.32"
-tokio = { version = "1.23.0", features = ["macros"] }
+thiserror = "1.0.38"
+tokio = { version = "1.25.0", features = ["macros"] }
 
 [dev-dependencies]
 core-payments-domain-runtime = { version = "0.1.0", path = "../../runtime/core-payments" }
@@ -61,4 +61,4 @@ subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../../../substrate/substrate-test-runtime-client" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-tempfile = "3.3.0"
+tempfile = "3.4.0"

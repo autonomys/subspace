@@ -13,7 +13,7 @@ repository = "https://github.com/paritytech/substrate/"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.58"
+async-trait = "0.1.64"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
@@ -35,4 +35,4 @@ substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-r
 substrate-test-runtime = { version = "2.0.0", path = "../substrate-test-runtime" }
 sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
 sc-service = { version = "0.10.0-dev", default-features = false, features = ["test-helpers"],  git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-tokio = "1.23.0"
+tokio = "1.25.0"
