@@ -18,15 +18,15 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-trait = "0.1.64"
 futures = "0.3.26"
 schnorrkel = "0.9.1"
-sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-client-api = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-client-api = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
-sc-executor = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-service = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee", default-features = false }
-sp-api = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sc-executor = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-service = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c", default-features = false }
+sp-api = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
-sp-core = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }

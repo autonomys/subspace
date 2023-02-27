@@ -14,25 +14,25 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-trait = "0.1.64"
-sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-network-light = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 log = "0.4.17"
 parking_lot = "0.12.1"
 futures = "0.3.26"
 futures-timer = "3.0.1"
 rand = "0.8.5"
 libp2p = { version = "0.50.0", default-features = false }
-sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../substrate-test-runtime-client" }
 substrate-test-runtime = { version = "2.0.0", path = "../substrate-test-runtime" }
-sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
-sc-service = { version = "0.10.0-dev", default-features = false, features = ["test-helpers"],  git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
+sc-service = { version = "0.10.0-dev", default-features = false, features = ["test-helpers"],  git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 tokio = "1.25.0"

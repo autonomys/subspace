@@ -11,5 +11,5 @@ include = [
 ]
 
 [dependencies]
-sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "bfffb76a4946b96beab4e1dfe4e16fae76c8acee" }
+sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
