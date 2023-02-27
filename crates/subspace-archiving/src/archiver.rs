@@ -133,7 +133,7 @@ pub enum SegmentItem {
     #[codec(index = 0)]
     Padding,
     /// Contains full block inside
-    #[codec(index = 3)]
+    #[codec(index = 1)]
     Block {
         /// Block bytes
         bytes: Vec<u8>,
@@ -143,7 +143,7 @@ pub enum SegmentItem {
         object_mapping: BlockObjectMapping,
     },
     /// Contains the beginning of the block inside, remainder will be found in subsequent segments
-    #[codec(index = 4)]
+    #[codec(index = 2)]
     BlockStart {
         /// Block bytes
         bytes: Vec<u8>,
@@ -153,7 +153,7 @@ pub enum SegmentItem {
         object_mapping: BlockObjectMapping,
     },
     /// Continuation of the partial block spilled over into the next segment
-    #[codec(index = 5)]
+    #[codec(index = 3)]
     BlockContinuation {
         /// Block bytes
         bytes: Vec<u8>,
@@ -163,7 +163,7 @@ pub enum SegmentItem {
         object_mapping: BlockObjectMapping,
     },
     /// Root block
-    #[codec(index = 6)]
+    #[codec(index = 4)]
     RootBlock(RootBlock),
 }
 
