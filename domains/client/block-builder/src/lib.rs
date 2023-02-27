@@ -383,6 +383,6 @@ mod tests {
         assert!(backend
             .storage(sp_core::storage::well_known_keys::CODE)
             .unwrap_err()
-            .contains("Database missing expected key"),);
+            .contains("Database missing expected key"));
     }
 }

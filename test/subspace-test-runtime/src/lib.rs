@@ -49,7 +49,7 @@ use sp_consensus_subspace::{
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::{Hasher, OpaqueMetadata};
+use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
@@ -74,7 +74,7 @@ use subspace_core_primitives::{
     PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
 };
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
+    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
     MIN_REPLICATION_FACTOR, STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 use subspace_verification::derive_randomness;
@@ -234,7 +234,7 @@ parameter_types! {
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
-    pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
+    pub const ConfirmationDepthK: u32 = 100;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -481,7 +481,6 @@ impl pallet_receipts::Config for Runtime {
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = ();
 }
 
 parameter_types! {
@@ -501,6 +500,7 @@ impl pallet_rewards::Config for Runtime {
 
 /// Polkadot-like chain.
 struct PolkadotLike;
+
 impl Chain for PolkadotLike {
     type BlockNumber = u32;
     type Hash = <BlakeTwo256 as Hasher>::Out;
@@ -510,6 +510,7 @@ impl Chain for PolkadotLike {
 
 /// Type used to represent a FeedId or ChainId
 pub type FeedId = u64;
+
 pub struct GrandpaValidator<C>(PhantomData<C>);
 
 impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
@@ -875,6 +876,17 @@ fn extract_core_bundles(
         .collect()
 }
 
+fn extract_stored_bundle_hashes() -> Vec<H256> {
+    System::read_events_no_consensus()
+        .filter_map(|e| match e.event {
+            RuntimeEvent::Domains(pallet_domains::Event::BundleStored { bundle_hash, .. }) => {
+                Some(bundle_hash)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+}
+
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
@@ -919,7 +931,7 @@ fn extract_pre_validation_object(
         }
         RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
             signed_opaque_bundle,
-        }) => PreValidationObject::Receipts(signed_opaque_bundle.bundle.receipts),
+        }) => PreValidationObject::Bundle(signed_opaque_bundle),
         _ => PreValidationObject::Null,
     }
 }
@@ -1136,7 +1148,7 @@ impl_runtime_apis! {
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, <Block as BlockT>::Hash>,
         ) {
             Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
@@ -1161,6 +1173,10 @@ impl_runtime_apis! {
             domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
             extract_core_bundles(extrinsics, domain_id)
+        }
+
+        fn extract_stored_bundle_hashes() -> Vec<H256> {
+            extract_stored_bundle_hashes()
         }
 
         fn extract_receipts(
@@ -1192,6 +1208,13 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn system_domain_state_root_at(
+            number: NumberFor<Block>,
+            domain_hash: domain_runtime_primitives::Hash
+        ) -> Option<domain_runtime_primitives::Hash>{
+            Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
     }
 

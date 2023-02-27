@@ -49,6 +49,7 @@ use subspace_test_client::{
 use subspace_test_runtime::{
     BlockHashCount, Runtime, RuntimeApi, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
+use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -193,6 +194,7 @@ pub async fn run_validator_node(
             force_new_slot_notifications: true,
             subspace_networking: SubspaceNetworking::Create {
                 config: DsnConfig {
+                    base_path: None,
                     listen_on: vec!["/ip4/127.0.0.1/tcp/0"
                         .parse()
                         .expect("Correct multiaddr; qed")],
@@ -204,6 +206,7 @@ pub async fn run_validator_node(
                 piece_cache_size: 1024 * 1024 * 1024,
             },
             segment_publish_concurrency: NonZeroUsize::new(10).unwrap(),
+            sync_from_dsn: false,
         };
 
         let partial_components = subspace_service::new_partial::<RuntimeApi, TestExecutorDispatch>(
@@ -268,7 +271,8 @@ pub struct PrimaryTestNode {
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, FraudProofVerifier>>,
+    pub transaction_pool:
+        Arc<FullPool<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>>,
 }
 
 impl PrimaryTestNode {

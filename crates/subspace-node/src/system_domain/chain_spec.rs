@@ -71,7 +71,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                         min_operator_stake: 100 * SSC,
                     },
                     get_account_id_from_seed("Alice"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(get_account_id_from_seed("Alice")),
                 vec![(
@@ -133,7 +133,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                         min_operator_stake: 100 * SSC,
                     },
                     get_account_id_from_seed("Alice"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(get_account_id_from_seed("Alice")),
                 vec![
@@ -162,12 +162,12 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3b System Domain",
+        "Subspace Gemini 3c System Domain",
         // ID
-        "subspace_gemini_3b_system_domain",
+        "subspace_gemini_3c_system_domain",
         ChainType::Local,
         move || {
             let sudo_account =
@@ -178,6 +178,8 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
                     // Genesis executor
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
+                    // Sudo account
+                    sudo_account.clone(),
                 ],
                 vec![(
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
@@ -206,7 +208,7 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
                     },
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
-                    Percent::one(),
+                    Percent::from_percent(10),
                 )],
                 Some(sudo_account),
                 Default::default(),
@@ -217,7 +219,7 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3b-system-domain"),
+        Some("subspace-gemini-3c-system-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -226,19 +228,24 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace X-Net 2 Execution",
+        "Subspace Devnet System domain",
         // ID
-        "subspace_x_net_2a_execution",
-        ChainType::Local,
+        "subspace_devnet_system_domain",
+        ChainType::Custom("Testnet".to_string()),
         move || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Invalid Sudo account");
             testnet_genesis(
                 vec![
                     // Genesis executor
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
+                    // Sudo account
+                    sudo_account.clone(),
                 ],
                 vec![(
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
@@ -252,24 +259,29 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
                     .expect("Wrong executor public key"),
                 )],
                 vec![(
-                    get_account_id_from_seed("Alice"),
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
                     1_000 * SSC,
-                    // TODO: proper genesis domain config
                     DomainConfig {
                         wasm_runtime_hash: blake2b_256_hash(
                             system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
                         )
                         .into(),
-                        max_bundle_size: 1024 * 1024,
+                        max_bundle_size: 4 * 1024 * 1024,
                         bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
                         min_operator_stake: 100 * SSC,
                     },
-                    get_account_id_from_seed("Alice"),
-                    Percent::one(),
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                    Percent::from_percent(10),
                 )],
-                None,
-                Default::default(),
+                Some(sudo_account.clone()),
+                vec![(
+                    sudo_account,
+                    RelayerId::from_ss58check("5D7kgfacBsP6pkMB628221HG98mz2euaytthdoeZPGceQusS")
+                        .expect("Invalid relayer id account"),
+                )],
             )
         },
         // Bootnodes
@@ -277,7 +289,7 @@ pub fn x_net_2_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-x-net-2a-execution"),
+        Some("subspace-devnet-execution"),
         None,
         // Properties
         Some(chain_spec_properties()),

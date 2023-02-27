@@ -16,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 frame-system = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-futures = "0.3.25"
+futures = "0.3.26"
 rand = "0.8.5"
 pallet-balances = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 pallet-transaction-payment = { git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }

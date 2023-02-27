@@ -1,12 +1,13 @@
-use crate::utils::to_number_primitive;
+use crate::utils::{to_number_primitive, translate_block_hash_type};
 use sc_client_api::ProofProvider;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::bundle_election::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
     is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
-    BundleElectionParams,
+    BundleElectionSolverParams,
 };
+use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
 use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::generic::BlockId;
@@ -33,6 +34,15 @@ impl<SBlock, PBlock, SClient> Clone for BundleElectionSolver<SBlock, PBlock, SCl
     }
 }
 
+pub(super) enum PreliminaryBundleSolution<DomainHash> {
+    System {
+        authority_stake_weight: StakeWeight,
+        authority_witness: Witness,
+        proof_of_election: ProofOfElection<DomainHash>,
+    },
+    Core(ProofOfElection<DomainHash>),
+}
+
 impl<SBlock, PBlock, SClient> BundleElectionSolver<SBlock, PBlock, SClient>
 where
     SBlock: BlockT,
@@ -48,23 +58,23 @@ where
         }
     }
 
-    pub(super) fn solve_bundle_election_challenge(
+    pub(super) fn solve_bundle_election_challenge<Block: BlockT>(
         &self,
         best_hash: SBlock::Hash,
         best_number: NumberFor<SBlock>,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection<SBlock::Hash>>> {
+    ) -> sp_blockchain::Result<Option<PreliminaryBundleSolution<Block::Hash>>> {
         let best_block_id = BlockId::Hash(best_hash);
 
-        let BundleElectionParams {
+        let BundleElectionSolverParams {
             authorities,
             total_stake_weight,
             slot_probability,
         } = self
             .system_domain_client
             .runtime_api()
-            .bundle_elections_params(&best_block_id, domain_id)?;
+            .bundle_election_solver_params(&best_block_id, domain_id)?;
 
         assert!(
             total_stake_weight
@@ -77,7 +87,7 @@ where
 
         let transcript_data = make_local_randomness_transcript_data(&global_challenge);
 
-        for (authority_id, stake_weight) in authorities {
+        for (index, (authority_id, stake_weight)) in authorities.iter().enumerate() {
             if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
                 &*self.keystore,
                 ExecutorPublicKey::ID,
@@ -87,7 +97,7 @@ where
                 let election_solution = derive_bundle_election_solution(
                     domain_id,
                     vrf_signature.output.to_bytes(),
-                    &authority_id,
+                    authority_id,
                     &global_challenge,
                 )
                 .map_err(|err| {
@@ -97,7 +107,7 @@ where
                 })?;
 
                 let threshold = calculate_bundle_election_threshold(
-                    stake_weight,
+                    *stake_weight,
                     total_stake_weight,
                     slot_probability,
                 );
@@ -106,7 +116,7 @@ where
                     // TODO: bench how large the storage proof we can afford and try proving a single
                     // electioned executor storage instead of the whole authority set.
                     let storage_proof = if domain_id.is_system() {
-                        let storage_keys = well_known_keys::bundle_election_storage_keys(domain_id);
+                        let storage_keys = well_known_keys::system_bundle_election_storage_keys();
                         self.system_domain_client
                             .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else if domain_id.is_core() {
@@ -137,19 +147,44 @@ where
                         .expect("Best block header must exist; qed")
                         .state_root();
 
+                    let block_hash = translate_block_hash_type::<SBlock, Block>(best_hash);
+                    let state_root = translate_block_hash_type::<SBlock, Block>(state_root);
+
                     let proof_of_election = ProofOfElection {
                         domain_id,
                         vrf_output: vrf_signature.output.to_bytes(),
                         vrf_proof: vrf_signature.proof.to_bytes(),
-                        executor_public_key: authority_id,
+                        executor_public_key: authority_id.clone(),
                         global_challenge,
                         state_root,
                         storage_proof,
                         block_number: to_number_primitive(best_number),
-                        block_hash: best_hash,
+                        block_hash,
                     };
 
-                    return Ok(Some(proof_of_election));
+                    let preliminary_bundle_solution = if domain_id.is_system() {
+                        let merkle_tree = authorities_merkle_tree(&authorities);
+                        let authority_witness = Witness {
+                            leaf_index: index.try_into().expect("Leaf index must fit into u32"),
+                            number_of_leaves: authorities
+                                .len()
+                                .try_into()
+                                .expect("Authorities size must fit into u32"),
+                            proof: merkle_tree.proof(&[index]).to_bytes(),
+                        };
+
+                        PreliminaryBundleSolution::System {
+                            authority_stake_weight: *stake_weight,
+                            authority_witness,
+                            proof_of_election,
+                        }
+                    } else if domain_id.is_core() {
+                        PreliminaryBundleSolution::Core(proof_of_election)
+                    } else {
+                        unreachable!("Open domain has been handled above")
+                    };
+
+                    return Ok(Some(preliminary_bundle_solution));
                 }
             }
         }

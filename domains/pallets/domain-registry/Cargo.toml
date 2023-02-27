@@ -29,7 +29,6 @@ sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", re
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-pallet-domain-tracker = { version = "0.1.0", path = "../../pallets/domain-tracker" }
 pallet-executor-registry = { version = "0.1.0", path = "../executor-registry" }
 sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 

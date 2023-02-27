@@ -18,7 +18,7 @@ domain-client-consensus-relay-chain = { version = "0.1.0", path = "../../client/
 domain-client-executor = { version = "0.1.0", path = "../../client/domain-executor" }
 domain-service = { version = "0.1.0", path = "../../service" }
 domain-test-runtime = { version = "0.1.0", path = "../runtime" }
-futures = "0.3.25"
+futures = "0.3.26"
 frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 rand = "0.8.5"

@@ -210,14 +210,14 @@ where
     }
 
     fn header(&self, hash: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {
-        self.client.header(hash)?.ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Header not found for {:?}", hash))
-        })
+        self.client
+            .header(hash)?
+            .ok_or_else(|| sp_blockchain::Error::Backend(format!("Header not found for {hash:?}")))
     }
 
     fn block_body(&self, at: Block::Hash) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
         self.client.block_body(at)?.ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Block body not found for {:?}", at))
+            sp_blockchain::Error::Backend(format!("Block body not found for {at:?}"))
         })
     }
 

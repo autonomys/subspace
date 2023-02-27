@@ -4,7 +4,6 @@ use memmap2::Mmap;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use std::{env, fs, io};
 use subspace_archiving::archiver::Archiver;
@@ -19,7 +18,7 @@ use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::plot_sector;
 use subspace_farmer_components::FarmerProtocolInfo;
-use utils::BenchPieceReceiver;
+use utils::BenchPieceGetter;
 
 mod utils;
 
@@ -54,7 +53,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     )
     .unwrap();
 
-    let cancelled = AtomicBool::new(false);
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
         recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
@@ -70,13 +68,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         block_on(plot_sector(
             &public_key,
             sector_index,
-            &BenchPieceReceiver::new(piece),
-            &cancelled,
+            &BenchPieceGetter::new(piece),
             &farmer_protocol_info,
             &kzg,
             &sector_codec,
             plotted_sector.as_mut_slice(),
             io::sink(),
+            Default::default(),
         ))
         .unwrap();
 

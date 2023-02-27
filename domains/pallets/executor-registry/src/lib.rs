@@ -25,6 +25,7 @@ pub use pallet::*;
 use sp_arithmetic::Percent;
 use sp_domains::ExecutorPublicKey;
 use sp_executor_registry::ExecutorRegistry;
+use sp_runtime::traits::{CheckedAdd, CheckedSub};
 use sp_runtime::BoundedVec;
 use sp_std::vec::Vec;
 
@@ -42,16 +43,31 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
     use frame_system::pallet_prelude::*;
+    use sp_arithmetic::traits::{BaseArithmetic, Unsigned};
+    use sp_domains::merkle_tree::authorities_merkle_tree;
     use sp_domains::ExecutorPublicKey;
     use sp_executor_registry::OnNewEpoch;
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, CheckedAdd, CheckedSub,
-        MaybeSerializeDeserialize, Zero,
+        BlockNumberProvider, CheckedAdd, CheckedSub, MaybeSerializeDeserialize, Zero,
     };
     use sp_runtime::FixedPointOperand;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
+    use subspace_core_primitives::Blake2b256Hash;
+
+    /// Same sematic as `AtLeast32Bit` but requires at least `u128`.
+    pub trait AtLeast128Bit:
+        BaseArithmetic + From<u16> + From<u32> + From<u64> + From<u128>
+    {
+    }
+
+    impl<T: BaseArithmetic + From<u16> + From<u32> + From<u64> + From<u128>> AtLeast128Bit for T {}
+
+    /// Same as `AtLeast128Bit` but bounded to be unsigned.
+    pub trait AtLeast128BitUnsigned: AtLeast128Bit + Unsigned {}
+
+    impl<T: AtLeast128Bit + Unsigned> AtLeast128BitUnsigned for T {}
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -62,7 +78,7 @@ mod pallet {
         /// The stake weight of an executor.
         type StakeWeight: Parameter
             + Member
-            + AtLeast32BitUnsigned
+            + AtLeast128BitUnsigned
             + Codec
             + Default
             + Copy
@@ -196,7 +212,7 @@ mod pallet {
             );
 
             let executor_config =
-                Self::apply_register(&who, public_key, reward_address, is_active, stake);
+                Self::apply_register(&who, public_key, reward_address, is_active, stake)?;
 
             Self::deposit_event(Event::<T>::NewExecutor {
                 who,
@@ -255,9 +271,7 @@ mod pallet {
                     Self::lock_fund(&who, executor_config.stake);
 
                     if executor_config.is_active {
-                        TotalActiveStake::<T>::mutate(|total| {
-                            *total += amount;
-                        });
+                        Self::increase_total_active_stake(amount)?;
                     }
 
                     Ok(())
@@ -308,9 +322,7 @@ mod pallet {
                         .map_err(|_| Error::<T>::TooManyWithdrawals)?;
 
                     if executor_config.is_active {
-                        TotalActiveStake::<T>::mutate(|total| {
-                            *total -= amount;
-                        });
+                        Self::decrease_total_active_stake(amount)?;
                     }
 
                     Ok(())
@@ -399,9 +411,7 @@ mod pallet {
 
                     executor_config.is_active = false;
 
-                    TotalActiveStake::<T>::mutate(|total| {
-                        *total -= executor_config.stake;
-                    });
+                    Self::decrease_total_active_stake(executor_config.stake)?;
                     TotalActiveExecutors::<T>::mutate(|total| {
                         *total -= 1;
                     });
@@ -428,9 +438,7 @@ mod pallet {
                 if !executor_config.is_active {
                     executor_config.is_active = true;
 
-                    TotalActiveStake::<T>::mutate(|total| {
-                        *total += executor_config.stake;
-                    });
+                    Self::increase_total_active_stake(executor_config.stake)?;
                     TotalActiveExecutors::<T>::mutate(|total| {
                         *total += 1;
                     });
@@ -549,11 +557,18 @@ mod pallet {
                     reward_address,
                     true,
                     initial_stake,
-                );
+                )
+                .expect("Genesis executor registration can not fail");
 
                 let stake_weight: T::StakeWeight = initial_stake.into();
                 authorities.push((public_key, stake_weight));
             }
+
+            let merkle_tree = authorities_merkle_tree(authorities.as_slice());
+            let merkle_root = merkle_tree
+                .root()
+                .expect("Merkle root must exist as authorities are always non-empty; qed");
+            AuthoritiesRoot::<T>::put(merkle_root);
 
             let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
                 .expect("T::MaxExecutors bound is checked above; qed");
@@ -600,11 +615,17 @@ mod pallet {
         /// The withdrawal entry is still undue.
         PrematureWithdrawal,
 
-        /// Foo few active executors.
+        /// Too few active executors.
         TooFewActiveExecutors,
 
         /// Executor public key is already occupied.
         DuplicatedKey,
+
+        /// An arithmetic overflow error.
+        ArithmeticOverflow,
+
+        /// An arithmetic underflow error.
+        ArithmeticUnderflow,
     }
 
     #[pallet::event]
@@ -662,8 +683,6 @@ mod pallet {
             if (block_number % T::EpochDuration::get()).is_zero() {
                 let mut executor_weights = BTreeMap::new();
 
-                let mut total_stake_weight = T::StakeWeight::zero();
-
                 // TODO: currently, we are iterating the Executors map, figure out how many executors
                 // we can support with this approach and optimize it when it does not satisfy our requirement.
                 let authorities = Executors::<T>::iter()
@@ -693,17 +712,17 @@ mod pallet {
 
                         let stake_weight: T::StakeWeight = executor_config.stake.into();
 
-                        total_stake_weight = total_stake_weight.checked_add(&stake_weight).expect(
-                            "
-                                `total_stake_weight` as u128 won't overflow even with 100K executor and \
-                                each of them has 1_000_000_000 SSC at stake; qed",
-                        );
-
                         executor_weights.insert(who, stake_weight);
 
                         (public_key, stake_weight)
                     })
                     .collect::<Vec<_>>();
+
+                let merkle_tree = authorities_merkle_tree(authorities.as_slice());
+                let merkle_root = merkle_tree
+                    .root()
+                    .expect("Merkle root must exist as authorities are always non-empty; qed");
+                AuthoritiesRoot::<T>::put(merkle_root);
 
                 let bounded_authorities = BoundedVec::<_, T::MaxExecutors>::try_from(authorities)
                     .expect(
@@ -711,6 +730,7 @@ mod pallet {
                     );
                 Authorities::<T>::put(bounded_authorities);
 
+                let total_stake_weight: T::StakeWeight = TotalActiveStake::<T>::get().into();
                 TotalStakeWeight::<T>::put(total_stake_weight);
 
                 T::OnNewEpoch::on_new_epoch(executor_weights);
@@ -761,6 +781,10 @@ mod pallet {
         BoundedVec<(ExecutorPublicKey, T::StakeWeight), T::MaxExecutors>,
         ValueQuery,
     >;
+
+    /// Merkle root of authorities.
+    #[pallet::storage]
+    pub(super) type AuthoritiesRoot<T> = StorageValue<_, Blake2b256Hash, ValueQuery>;
 
     /// Total stake weight of authorities.
     #[pallet::storage]
@@ -819,7 +843,7 @@ impl<T: Config> Pallet<T> {
         reward_address: T::AccountId,
         is_active: bool,
         stake: BalanceOf<T>,
-    ) -> ExecutorConfig<T> {
+    ) -> Result<ExecutorConfig<T>, Error<T>> {
         Self::lock_fund(who, stake);
 
         KeyOwner::<T>::insert(&public_key, who);
@@ -834,14 +858,30 @@ impl<T: Config> Pallet<T> {
         Executors::<T>::insert(who, &executor_config);
 
         if is_active {
-            TotalActiveStake::<T>::mutate(|total| {
-                *total += stake;
-            });
+            Self::increase_total_active_stake(stake)?;
             TotalActiveExecutors::<T>::mutate(|total| {
                 *total += 1;
             });
         }
 
-        executor_config
+        Ok(executor_config)
+    }
+
+    fn increase_total_active_stake(value: BalanceOf<T>) -> Result<(), Error<T>> {
+        let old = TotalActiveStake::<T>::get();
+        let new = old
+            .checked_add(&value)
+            .ok_or(Error::<T>::ArithmeticOverflow)?;
+        TotalActiveStake::<T>::put(new);
+        Ok(())
+    }
+
+    fn decrease_total_active_stake(value: BalanceOf<T>) -> Result<(), Error<T>> {
+        let old = TotalActiveStake::<T>::get();
+        let new = old
+            .checked_sub(&value)
+            .ok_or(Error::<T>::ArithmeticUnderflow)?;
+        TotalActiveStake::<T>::put(new);
+        Ok(())
     }
 }

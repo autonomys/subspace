@@ -15,7 +15,13 @@
 
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
-#![feature(binary_heap_retain, const_option, ip, try_blocks)]
+#![feature(
+    binary_heap_retain,
+    const_option,
+    ip,
+    try_blocks,
+    type_alias_impl_trait
+)]
 
 mod behavior;
 mod create;
@@ -34,10 +40,8 @@ pub use crate::node::{
     TopicSubscription,
 };
 pub use crate::node_runner::NodeRunner;
-pub use behavior::custom_record_store::{
-    CustomRecordStore, GetOnlyRecordStorage, LimitedSizeRecordStorageWrapper,
-    MemoryProviderStorage, MemoryRecordStorage, NoRecordStorage, ParityDbRecordStorage,
-    RecordStorage,
+pub use behavior::provider_storage::{
+    MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage,
 };
 pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;
@@ -49,10 +53,13 @@ pub use request_handlers::peer_info::{
     PeerInfo, PeerInfoRequest, PeerInfoRequestHandler, PeerInfoResponse, PeerSyncStatus,
 };
 pub use request_handlers::piece_by_key::{
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, PieceKey,
+    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
 };
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
-pub use utils::multihash::ToMultihash;
+pub use request_handlers::root_block::{
+    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
+};
 pub use utils::prometheus::start_prometheus_metrics_server;
+pub use utils::unique_record_binary_heap::UniqueRecordBinaryHeap;

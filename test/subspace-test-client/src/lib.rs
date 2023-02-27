@@ -32,7 +32,6 @@ use sp_core::{Decode, Encode};
 use std::error::Error;
 use std::io::Cursor;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::crypto::kzg;
@@ -44,11 +43,12 @@ use subspace_core_primitives::{
     RECORD_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceReceiver};
+use subspace_farmer_components::plotting::{plot_sector, PieceGetter};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_transaction_pool::bundle_validator::BundleValidator;
 use zeroize::Zeroizing;
 
 /// Subspace native executor instance.
@@ -78,7 +78,9 @@ pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
 /// Run a farmer.
-pub fn start_farmer(new_full: &NewFull<Client, FraudProofVerifier>) {
+pub fn start_farmer(
+    new_full: &NewFull<Client, BundleValidator<Block, Client>, FraudProofVerifier>,
+) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let reward_signing_notification_stream = new_full.reward_signing_notification_stream.clone();
@@ -195,12 +197,12 @@ async fn start_farming<Client>(
     }
 }
 
-struct TestPieceReceiver {
+struct TestPieceGetter {
     archived_segment: ArchivedSegment,
 }
 
 #[async_trait]
-impl PieceReceiver for TestPieceReceiver {
+impl PieceGetter for TestPieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
@@ -240,7 +242,7 @@ where
     let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;
-    let piece_receiver = TestPieceReceiver { archived_segment };
+    let piece_getter = TestPieceGetter { archived_segment };
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
@@ -253,13 +255,13 @@ where
     plot_sector(
         &public_key,
         sector_index,
-        &piece_receiver,
-        &AtomicBool::new(false),
+        &piece_getter,
         &farmer_protocol_info,
         &kzg,
         sector_codec,
         Cursor::new(sector.as_mut_slice()),
         Cursor::new(sector_metadata.as_mut_slice()),
+        Default::default(),
     )
     .await
     .expect("Plotting one sector in memory must not fail");

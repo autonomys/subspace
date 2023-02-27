@@ -1,8 +1,9 @@
-use crate::behavior::custom_record_store::CustomRecordStore;
 use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
-use crate::behavior::{Behavior, Event};
+use crate::behavior::{provider_storage, Behavior, Event};
+use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
-    KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER, REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
+    ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
+    REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
@@ -12,8 +13,9 @@ use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::core::ConnectedPoint;
-use libp2p::gossipsub::{GossipsubEvent, TopicHash};
+use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
+use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     AddProviderError, AddProviderOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError,
     GetProvidersOk, GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent,
@@ -22,18 +24,19 @@ use libp2p::kad::{
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
-use libp2p::{futures, Multiaddr, PeerId, Swarm};
+use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
+use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -71,14 +74,14 @@ enum QueryResultSender {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<RecordStore = CustomRecordStore>
+pub struct NodeRunner<ProviderStorage>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior<RecordStore>>,
+    swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -100,33 +103,38 @@ where
     max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     max_established_outgoing_connections: u32,
+    /// Temporarily banned peers.
+    temporary_bans: Arc<Mutex<TemporaryBans>>,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
+    /// Mapping from specific peer to number of established connections
+    established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<RecordStore = CustomRecordStore>
+pub(crate) struct NodeRunnerConfig<ProviderStorage>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
 {
-    pub allow_non_global_addresses_in_dht: bool,
-    pub command_receiver: mpsc::Receiver<Command>,
-    pub swarm: Swarm<Behavior<RecordStore>>,
-    pub shared_weak: Weak<Shared>,
-    pub next_random_query_interval: Duration,
-    pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
-    pub reserved_peers: HashMap<PeerId, Multiaddr>,
-    pub max_established_incoming_connections: u32,
-    pub max_established_outgoing_connections: u32,
-    pub metrics: Option<Metrics>,
+    pub(crate) allow_non_global_addresses_in_dht: bool,
+    pub(crate) command_receiver: mpsc::Receiver<Command>,
+    pub(crate) swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
+    pub(crate) shared_weak: Weak<Shared>,
+    pub(crate) next_random_query_interval: Duration,
+    pub(crate) networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
+    pub(crate) max_established_incoming_connections: u32,
+    pub(crate) max_established_outgoing_connections: u32,
+    pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
+    pub(crate) metrics: Option<Metrics>,
 }
 
-impl<RecordStore> NodeRunner<RecordStore>
+impl<ProviderStorage> NodeRunner<ProviderStorage>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
 {
     pub(crate) fn new(
-        NodeRunnerConfig::<RecordStore> {
+        NodeRunnerConfig {
             allow_non_global_addresses_in_dht,
             command_receiver,
             swarm,
@@ -136,8 +144,9 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            temporary_bans,
             metrics,
-        }: NodeRunnerConfig<RecordStore>,
+        }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
             allow_non_global_addresses_in_dht,
@@ -156,7 +165,9 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            temporary_bans,
             metrics,
+            established_connections: HashMap::new(),
         }
     }
 
@@ -326,10 +337,13 @@ where
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
-                num_established,
                 endpoint,
+                num_established,
                 ..
             } => {
+                // Remove temporary ban if there was any
+                self.temporary_bans.lock().remove(&peer_id);
+
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
                     None => {
@@ -340,16 +354,29 @@ where
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
                 debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
 
+                // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
+                self.established_connections
+                    .entry((peer_id, endpoint.clone()))
+                    .and_modify(|entry| {
+                        *entry += 1;
+                    })
+                    .or_insert(1);
                 if shared.connected_peers_count.fetch_add(1, Ordering::SeqCst)
                     >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The peer count exceeded the threshold, bump up the quota.
-                    shared
+                    if let Err(error) = shared
                         .kademlia_tasks_semaphore
-                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
-                    shared
+                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to expand Kademlia concurrent tasks");
+                    }
+                    if let Err(error) = shared
                         .regular_tasks_semaphore
-                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
+                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to expand regular concurrent tasks");
+                    }
                 }
 
                 let (in_connections_number, out_connections_number) = {
@@ -399,6 +426,7 @@ where
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
+                endpoint,
                 num_established,
                 ..
             } => {
@@ -410,41 +438,95 @@ where
                 };
                 debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
 
+                // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
+                {
+                    match self.established_connections.entry((peer_id, endpoint)) {
+                        Entry::Vacant(_) => {
+                            // Nothing to do here, we are not aware of the connection being closed
+                            warn!(
+                                ?peer_id,
+                                "Connection closed, but it is not known as open connection, \
+                                this is likely a bug in libp2p: \
+                                https://github.com/libp2p/rust-libp2p/discussions/3418"
+                            );
+                            return;
+                        }
+                        Entry::Occupied(mut entry) => {
+                            let value = entry.get_mut();
+                            if *value == 1 {
+                                entry.remove_entry();
+                            } else {
+                                *value -= 1;
+                            }
+                        }
+                    };
+                }
                 if shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst)
                     > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The previous peer count was over the threshold, reclaim the quota.
-                    shared
+                    if let Err(error) = shared
                         .kademlia_tasks_semaphore
-                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER);
-                    shared
+                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to shrink Kademlia concurrent tasks");
+                    }
+                    if let Err(error) = shared
                         .regular_tasks_semaphore
-                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER);
+                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+                    {
+                        warn!(%error, "Failed to shrink regular concurrent tasks");
+                    }
                 }
             }
-            SwarmEvent::OutgoingConnectionError { peer_id, error } => match error {
-                DialError::Transport(ref addresses) => {
-                    for (addr, _) in addresses {
-                        debug!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError (DialError::Transport) for peer.");
-                        if let Some(peer_id) = peer_id {
-                            self.networking_parameters_registry
-                                .remove_known_peer_addresses(peer_id, vec![addr.clone()])
-                                .await;
+            SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+                if let Some(peer_id) = &peer_id {
+                    // Create or extend temporary ban, but only if we are not offline
+                    if let Some(shared) = self.shared_weak.upgrade() {
+                        // One peer is possibly a node peer is connected to, hence expecting more
+                        // than one for online status
+                        if shared.connected_peers_count.load(Ordering::Relaxed) > 1 {
+                            let should_temporary_ban = match &error {
+                                DialError::Transport(addresses) => {
+                                    // Ignoring other errors, those are likely temporary ban errors
+                                    !matches!(
+                                        addresses.first(),
+                                        Some((_multiaddr, TransportError::Other(_error)))
+                                    )
+                                }
+                                _ => true,
+                            };
+                            if should_temporary_ban {
+                                self.temporary_bans.lock().create_or_extend(peer_id);
+                            }
+                        }
+                    };
+                }
+
+                match error {
+                    DialError::Transport(ref addresses) => {
+                        for (addr, _) in addresses {
+                            debug!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError (DialError::Transport) for peer.");
+                            if let Some(peer_id) = peer_id {
+                                self.networking_parameters_registry
+                                    .remove_known_peer_addresses(peer_id, vec![addr.clone()])
+                                    .await;
+                            }
                         }
                     }
-                }
-                DialError::WrongPeerId { obtained, .. } => {
-                    debug!(?error, ?peer_id, obtained_peer_id=?obtained, "SwarmEvent::WrongPeerId (DialError::WrongPeerId) for peer.");
+                    DialError::WrongPeerId { obtained, .. } => {
+                        debug!(?error, ?peer_id, obtained_peer_id=?obtained, "SwarmEvent::WrongPeerId (DialError::WrongPeerId) for peer.");
 
-                    if let Some(ref peer_id) = peer_id {
-                        let kademlia = &mut self.swarm.behaviour_mut().kademlia;
-                        let _ = kademlia.remove_peer(peer_id);
+                        if let Some(ref peer_id) = peer_id {
+                            let kademlia = &mut self.swarm.behaviour_mut().kademlia;
+                            let _ = kademlia.remove_peer(peer_id);
+                        }
+                    }
+                    _ => {
+                        debug!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
                     }
                 }
-                _ => {
-                    debug!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
-                }
-            },
+            }
             other => {
                 trace!("Other swarm event: {:?}", other);
             }
@@ -520,10 +602,10 @@ where
 
         match event {
             KademliaEvent::InboundRequest {
-                request: InboundRequest::AddProvider { record },
+                request: InboundRequest::AddProvider { record, guard },
             } => {
                 trace!("Add provider request received: {:?}", record);
-                if let Some(record) = record {
+                if let (Some(record), Some(guard)) = (record, guard) {
                     if let Err(err) = self
                         .swarm
                         .behaviour_mut()
@@ -533,6 +615,15 @@ where
                     {
                         error!(?err, "Failed to add provider record: {:?}", record);
                     }
+
+                    let shared = match self.shared_weak.upgrade() {
+                        Some(shared) => shared,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    shared.handlers.announcement.call_simple(&record, &guard);
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
@@ -710,7 +801,7 @@ where
                 {
                     match result {
                         Ok(AddProviderOk { key }) => {
-                            trace!("Start providing query for {} succeeded", hex::encode(&key),);
+                            trace!("Start providing query for {} succeeded", hex::encode(&key));
 
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
@@ -723,7 +814,7 @@ where
                         Err(error) => {
                             let AddProviderError::Timeout { key } = error;
 
-                            debug!("Start providing query for {} failed.", hex::encode(&key),);
+                            debug!("Start providing query for {} failed.", hex::encode(&key));
                         }
                     }
                 }
@@ -745,7 +836,7 @@ where
                 {
                     match result {
                         Ok(PutRecordOk { key, .. }) => {
-                            trace!("Put record query for {} succeeded", hex::encode(&key),);
+                            trace!("Put record query for {} succeeded", hex::encode(&key));
 
                             cancelled = Self::unbounded_send_and_cancel_on_error(
                                 &mut self.swarm.behaviour_mut().kademlia,
@@ -772,7 +863,7 @@ where
 
     // Returns `true` if query was cancelled
     fn unbounded_send_and_cancel_on_error<T>(
-        kademlia: &mut Kademlia<RecordStore>,
+        kademlia: &mut Kademlia<ProviderOnlyRecordStore<ProviderStorage>>,
         sender: &mut mpsc::UnboundedSender<T>,
         value: T,
         channel: &'static str,
@@ -998,7 +1089,7 @@ where
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .start_providing(key.into());
+                    .start_providing(key.clone());
 
                 match res {
                     Ok(query_id) => {
@@ -1043,11 +1134,18 @@ where
                 );
             }
             Command::BanPeer { peer_id } => {
+                // Remove temporary ban if there is any before creating a permanent one
+                self.temporary_bans.lock().remove(&peer_id);
+
+                info!(?peer_id, "Banning peer on network level");
                 self.swarm.ban_peer_id(peer_id);
                 self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                 self.networking_parameters_registry
                     .remove_all_known_peer_addresses(peer_id)
                     .await;
+            }
+            Command::Dial { address } => {
+                let _ = self.swarm.dial(address);
             }
         }
     }

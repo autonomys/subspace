@@ -1,3 +1,4 @@
+use crate::piece_caching::PieceMemoryCache;
 use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
 use futures::stream::FuturesOrdered;
@@ -5,22 +6,38 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PieceIndexHash, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE,
+    PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::info;
 
+/// Duplicate trait for the subspace_networking::PieceReceiver. The goal of this trait is
+/// simplifying dependency graph.
 #[async_trait]
-pub trait PieceReceiver {
+pub trait PieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
+
+#[async_trait]
+impl<T> PieceGetter for Arc<T>
+where
+    T: PieceGetter + Send + Sync,
+{
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.as_ref().get_piece(piece_index).await
+    }
 }
 
 /// Information about sector that was plotted
@@ -39,9 +56,6 @@ pub struct PlottedSector {
 /// Plotting status
 #[derive(Debug, Error)]
 pub enum PlottingError {
-    /// Plotting was cancelled
-    #[error("Plotting was cancelled")]
-    Cancelled,
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
     PieceNotFound {
@@ -73,19 +87,19 @@ pub enum PlottingError {
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
 #[allow(clippy::too_many_arguments)]
-pub async fn plot_sector<PR, S, SM>(
+pub async fn plot_sector<PG, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
-    piece_receiver: &PR,
-    cancelled: &AtomicBool,
+    piece_getter: &PG,
     farmer_protocol_info: &FarmerProtocolInfo,
     kzg: &Kzg,
     sector_codec: &SectorCodec,
     mut sector_output: S,
     mut sector_metadata_output: SM,
+    piece_memory_cache: PieceMemoryCache,
 ) -> Result<PlottedSector, PlottingError>
 where
-    PR: PieceReceiver,
+    PG: PieceGetter,
     S: io::Write,
     SM: io::Write,
 {
@@ -115,9 +129,9 @@ where
     plot_pieces_in_batches_non_blocking(
         &mut in_memory_sector_scalars,
         sector_index,
-        piece_receiver,
+        piece_getter,
         &piece_indexes,
-        cancelled,
+        piece_memory_cache,
     )
     .await?;
 
@@ -174,27 +188,22 @@ where
     })
 }
 
-async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
+async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
     in_memory_sector_scalars: &mut Vec<Scalar>,
     sector_index: u64,
-    piece_receiver: &PR,
+    piece_getter: &PG,
     piece_indexes: &[PieceIndex],
-    cancelled: &AtomicBool,
+    piece_memory_cache: PieceMemoryCache,
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| async {
-            let piece_result = match check_cancellation(cancelled, sector_index) {
-                Ok(()) => piece_receiver.get_piece(*piece_index).await,
-                Err(error) => Err(error.into()),
-            };
+            let piece_result = piece_getter.get_piece(*piece_index).await;
             (*piece_index, piece_result)
         })
         .collect::<FuturesOrdered<_>>();
 
     while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
-        check_cancellation(cancelled, sector_index)?;
-
         let piece = piece_result
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
@@ -205,21 +214,11 @@ async fn plot_pieces_in_batches_non_blocking<PR: PieceReceiver>(
                     .expect("Chunked into scalar safe bytes above; qed"),
             )
         }));
+
+        piece_memory_cache.add_piece(PieceIndexHash::from_index(piece_index), piece);
     }
 
     info!(%sector_index, "Plotting was successful.");
-
-    Ok(())
-}
-
-fn check_cancellation(cancelled: &AtomicBool, sector_index: u64) -> Result<(), PlottingError> {
-    if cancelled.load(Ordering::Acquire) {
-        debug!(
-            %sector_index,
-            "Plotting was cancelled, interrupting plotting"
-        );
-        return Err(PlottingError::Cancelled);
-    }
 
     Ok(())
 }

@@ -5,7 +5,8 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PieceIndexHash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config, ToMultihash};
+use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 #[tokio::main]
 async fn main() {
@@ -14,9 +15,9 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
-    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).unwrap();
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -48,10 +49,10 @@ async fn main() {
         .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
 
-    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 
@@ -67,8 +68,13 @@ async fn main() {
         piece_index_hash.to_multihash()
     };
 
-    node_2.start_announcing(key).await.unwrap().next().await;
-    println!("Node 2 announced key: {:?}", key);
+    node_2
+        .start_announcing(key.into())
+        .await
+        .unwrap()
+        .next()
+        .await;
+    println!("Node 2 announced key: {key:?}");
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -77,7 +83,7 @@ async fn main() {
         Err(error) => Err(error),
     };
 
-    println!("Node 1 get_providers result: {:?}", providers_result);
+    println!("Node 1 get_providers result: {providers_result:?}");
 
     node_2.stop_announcing(key).await.unwrap();
 
@@ -88,7 +94,7 @@ async fn main() {
         Err(error) => Err(error),
     };
 
-    println!("Node 1 get_providers result: {:?}", providers_result);
+    println!("Node 1 get_providers result: {providers_result:?}");
 
     println!("Exiting..");
 }

@@ -55,17 +55,12 @@ parameter_types! {
     pub const MaxFeeds: u32 = 1;
 }
 
-#[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
+#[derive(Default, Debug, Copy, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]
 pub enum MockFeedProcessorKind {
+    #[default]
     Content,
     ContentWithin,
     Custom([u8; 32]),
-}
-
-impl Default for MockFeedProcessorKind {
-    fn default() -> Self {
-        MockFeedProcessorKind::Content
-    }
 }
 
 impl pallet_feeds::Config for Test {

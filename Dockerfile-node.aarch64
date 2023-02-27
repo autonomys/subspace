@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-ARG RUSTC_VERSION=nightly-2022-11-16
+ARG RUSTC_VERSION=nightly-2023-01-15
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583

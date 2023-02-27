@@ -1,34 +1,34 @@
+pub mod import_blocks;
+pub mod node_provider_storage;
+
+use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
-use backoff::future::retry;
-use backoff::ExponentialBackoff;
+use crate::RootBlockCache;
+use either::Either;
 use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
+use sc_consensus_subspace_rpc::RootBlockProvider;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
-use std::error::Error;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndex, RootBlock, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_networking::{
-    BootstrappedNetworkingParameters, CreationError, CustomRecordStore, MemoryProviderStorage,
-    Node, NodeRunner, PieceByHashRequestHandler, PieceByHashResponse, PieceKey, ToMultihash,
+    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
+    NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
 use tokio::sync::Semaphore;
-use tokio::time::error::Elapsed;
-use tokio::time::timeout;
-use tracing::{debug, error, info, trace, warn, Instrument};
+use tracing::{error, info, trace, warn, Instrument};
 
-/// Max time allocated for putting piece from DSN before attempt is considered to fail
-const PUBLISH_PIECE_TIMEOUT: Duration = Duration::from_secs(120);
-/// Defines initial duration between put_piece calls.
-const PUBLISH_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
-/// Defines max duration between put_piece calls.
-const PUBLISH_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(30);
+/// Provider records cache size
+const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -47,57 +47,85 @@ pub struct DsnConfig {
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     pub allow_non_global_addresses_in_dht: bool,
+
+    /// System base path.
+    pub base_path: Option<PathBuf>,
 }
 
-pub(crate) async fn create_dsn_instance<Block, AS>(
+type DsnProviderStorage<AS> =
+    NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
+
+pub(crate) fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-) -> Result<
-    (
-        Node,
-        NodeRunner<CustomRecordStore<PieceCache<AS>, MemoryProviderStorage>>,
-    ),
-    CreationError,
->
+    root_block_cache: RootBlockCache<AS>,
+) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), CreationError>
 where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
 
-    let record_store =
-        CustomRecordStore::new(piece_cache.clone(), MemoryProviderStorage::default());
+    let peer_id = peer_id(&dsn_config.keypair);
+
+    let external_provider_storage = if let Some(path) = dsn_config.base_path {
+        let db_path = path.join("storage_providers_db");
+
+        let cache_size: NonZeroUsize = NonZeroUsize::new(MAX_PROVIDER_RECORDS_LIMIT)
+            .expect("Manual value should be greater than zero.");
+
+        Either::Left(ParityDbProviderStorage::new(&db_path, cache_size, peer_id)?)
+    } else {
+        Either::Right(MemoryProviderStorage::new(peer_id))
+    };
+
+    let provider_storage =
+        NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
 
     let networking_config = subspace_networking::Config {
-        keypair: dsn_config.keypair,
+        keypair: dsn_config.keypair.clone(),
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry: BootstrappedNetworkingParameters::new(
             dsn_config.bootstrap_nodes,
         )
         .boxed(),
-        request_response_protocols: vec![PieceByHashRequestHandler::create(move |req| {
-            let result = if let PieceKey::PieceIndex(piece_index) = req.key {
-                match piece_cache.get_piece(piece_index) {
+        request_response_protocols: vec![
+            PieceByHashRequestHandler::create(move |req| {
+                let result = match piece_cache.get_piece(req.piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
                     Err(error) => {
-                        error!(key=?req.key, %error, "Failed to get piece from cache");
+                        error!(piece_index_hash = ?req.piece_index_hash, %error, "Failed to get piece from cache");
                         None
                     }
-                }
-            } else {
-                debug!(key=?req.key, "Incorrect piece request - unsupported key type.");
+                };
 
-                None
-            };
+                async { Some(PieceByHashResponse { piece: result }) }
+            }),
+            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
+                let internal_result = req
+                    .segment_indexes
+                    .iter()
+                    .map(|segment_index| root_block_cache.get_root_block(*segment_index))
+                    .collect::<Result<Vec<Option<RootBlock>>, _>>();
 
-            Some(PieceByHashResponse { piece: result })
-        })],
-        record_store,
-        ..subspace_networking::Config::with_generated_keypair()
+                let result = match internal_result {
+                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                    Err(error) => {
+                        error!(%error, "Failed to get root blocks from cache");
+
+                        None
+                    }
+                };
+
+                async move { result }
+            }),
+        ],
+        provider_storage,
+        ..subspace_networking::Config::default()
     };
 
-    subspace_networking::create(networking_config).await
+    subspace_networking::create(networking_config)
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
@@ -174,86 +202,12 @@ pub(crate) async fn publish_pieces(
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
 
     let mut pieces_publishing_futures = pieces_indexes
-        .zip(archived_segment.pieces.as_pieces())
-        .map(|(piece_index, piece)| {
-            publish_single_piece_with_backoff(node, piece_index, piece.to_vec())
-        })
+        .map(|piece_index| announce_single_piece_index_with_backoff(piece_index, node))
         .collect::<FuturesUnordered<_>>();
 
     while pieces_publishing_futures.next().await.is_some() {
         // empty body
     }
 
-    info!(%segment_index, "Piece publishing was successful.");
-}
-
-async fn publish_single_piece_with_backoff(
-    node: &Node,
-    piece_index: PieceIndex,
-    piece: Vec<u8>,
-) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let backoff = ExponentialBackoff {
-        initial_interval: PUBLISH_PIECE_INITIAL_INTERVAL,
-        max_interval: PUBLISH_PIECE_MAX_INTERVAL,
-        // Try until we get a valid piece
-        max_elapsed_time: None,
-        ..ExponentialBackoff::default()
-    };
-
-    retry(backoff, || async {
-        let publish_timeout_result: Result<Result<(), _>, Elapsed> = timeout(
-            PUBLISH_PIECE_TIMEOUT,
-            publish_single_piece(node, piece_index, piece.clone()),
-        )
-        .await;
-
-        if let Ok(publish_result) = publish_timeout_result {
-            if publish_result.is_ok() {
-                return Ok(());
-            }
-        }
-
-        debug!(%piece_index, "Couldn't publish a piece. Retrying...");
-
-        Err(backoff::Error::transient(
-            "Couldn't publish piece to DSN".into(),
-        ))
-    })
-    .await
-}
-
-async fn publish_single_piece(
-    node: &Node,
-    piece_index: PieceIndex,
-    piece: Vec<u8>,
-) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let key = PieceIndexHash::from_index(piece_index).to_multihash();
-
-    //TODO: restore announcing after https://github.com/libp2p/rust-libp2p/issues/3048
-    // trace!(?key, ?piece_index, "Announcing key...");
-    //
-    // let announcing_result = node.start_announcing(key).await;
-    //
-    // trace!(?key, "Announcing result: {:?}", announcing_result);
-
-    let result = node.put_value(key, piece).await;
-
-    match result {
-        Err(error) => {
-            debug!(?error, %piece_index, ?key, "Piece publishing returned an error");
-
-            Err("Piece publishing failed".into())
-        }
-        Ok(mut stream) => {
-            if stream.next().await.is_some() {
-                trace!(%piece_index, ?key, "Piece publishing succeeded");
-
-                Ok(())
-            } else {
-                debug!(%piece_index, ?key, "Piece publishing failed");
-
-                Err("Piece publishing was unsuccessful".into())
-            }
-        }
-    }
+    info!(%segment_index, "Segment publishing was successful.");
 }

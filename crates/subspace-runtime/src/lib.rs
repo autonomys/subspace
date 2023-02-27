@@ -44,7 +44,7 @@ use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::num::NonZeroU64;
 use core::time::Duration;
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Contains, Get};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -58,7 +58,7 @@ use sp_consensus_subspace::{
     SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::OpaqueMetadata;
+use sp_core::{OpaqueMetadata, H256};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
@@ -74,7 +74,7 @@ use subspace_core_primitives::{
     Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
 };
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
+    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
     MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
@@ -91,7 +91,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 0,
+    spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -170,25 +170,12 @@ pub type SS58Prefix = ConstU16<2254>;
 
 // Configure FRAME pallets to include in runtime.
 
-pub struct CallFilter;
-
-impl Contains<RuntimeCall> for CallFilter {
-    fn contains(c: &RuntimeCall) -> bool {
-        // Disable executor and all balance transfers
-        !matches!(
-            c,
-            RuntimeCall::Balances(
-                pallet_balances::Call::transfer { .. }
-                    | pallet_balances::Call::transfer_keep_alive { .. }
-                    | pallet_balances::Call::transfer_all { .. }
-            )
-        )
-    }
-}
-
 impl frame_system::Config for Runtime {
     /// The basic call filter to use in dispatchable.
-    type BaseCallFilter = CallFilter;
+    ///
+    /// `Everything` is used here as we use the signed extension
+    /// `DisablePallets` as the actual call filter.
+    type BaseCallFilter = Everything;
     /// Block & extrinsics weights: base values and limits.
     type BlockWeights = SubspaceBlockWeights;
     /// The maximum length of a block (in bytes).
@@ -245,7 +232,14 @@ parameter_types! {
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
-    pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
+}
+
+pub struct ConfirmationDepthK;
+
+impl Get<BlockNumber> for ConfirmationDepthK {
+    fn get() -> BlockNumber {
+        <pallet_runtime_configs::Pallet<Runtime> as pallet_runtime_configs::Store>::ConfirmationDepthK::get()
+    }
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -395,7 +389,6 @@ impl pallet_receipts::Config for Runtime {
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = ();
 }
 
 parameter_types! {
@@ -720,7 +713,7 @@ impl_runtime_apis! {
         }
 
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<<Block as BlockT>::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, <Block as BlockT>::Hash>,
         ) {
             Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
         }
@@ -745,6 +738,10 @@ impl_runtime_apis! {
             domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
             crate::domains::extract_core_bundles(extrinsics, domain_id)
+        }
+
+        fn extract_stored_bundle_hashes() -> Vec<H256> {
+            crate::domains::extract_stored_bundle_hashes()
         }
 
         fn extract_receipts(
@@ -776,6 +773,13 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn system_domain_state_root_at(
+            number: NumberFor<Block>,
+            domain_hash: domain_runtime_primitives::Hash
+        ) -> Option<domain_runtime_primitives::Hash>{
+            Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
     }
 

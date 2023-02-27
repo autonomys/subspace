@@ -19,10 +19,11 @@
 
 pub mod bundle_election;
 pub mod fraud_proof;
-pub mod state_root_tracker;
+pub mod merkle_tree;
 pub mod transaction;
 
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
@@ -169,7 +170,9 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
 /// Header of bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleHeader<Hash> {
+pub struct BundleHeader<Number, Hash> {
+    /// The block number of primary block at which the bundle was created.
+    pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
     pub primary_hash: Hash,
     /// The slot number.
@@ -178,7 +181,7 @@ pub struct BundleHeader<Hash> {
     pub extrinsics_root: H256,
 }
 
-impl<Hash: Encode> BundleHeader<Hash> {
+impl<Number: Encode, Hash: Encode> BundleHeader<Number, Hash> {
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -228,7 +231,14 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum BundleSolution<DomainHash> {
     /// System domain bundle election.
-    System(ProofOfElection<DomainHash>),
+    System {
+        /// Authority's stake weight.
+        authority_stake_weight: StakeWeight,
+        /// Authority membership witness.
+        authority_witness: Witness,
+        /// Proof of election
+        proof_of_election: ProofOfElection<DomainHash>,
+    },
     /// Core domain bundle election.
     Core {
         /// Proof of election.
@@ -245,7 +255,9 @@ pub enum BundleSolution<DomainHash> {
 impl<DomainHash> BundleSolution<DomainHash> {
     pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
         match self {
-            Self::System(proof_of_election)
+            Self::System {
+                proof_of_election, ..
+            }
             | Self::Core {
                 proof_of_election, ..
             } => proof_of_election,
@@ -257,17 +269,23 @@ impl<DomainHash> BundleSolution<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
-    pub header: BundleHeader<Hash>,
+    pub header: BundleHeader<Number, Hash>,
     /// Expected receipts by the primay chain when the bundle was created.
+    ///
+    /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
+    /// wrapped in an unsigned extrinsic, therefore the number of receipts
+    /// in a bundle is inherently constrained by the max extrinsic size limit.
     pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
 
-impl<Extrinsic, Number, Hash: Encode, DomainHash> Bundle<Extrinsic, Number, Hash, DomainHash> {
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
+    Bundle<Extrinsic, Number, Hash, DomainHash>
+{
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
-        self.header.hash()
+        BlakeTwo256::hash_of(self)
     }
 }
 
@@ -339,6 +357,20 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash>
     }
 }
 
+impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, DomainHash> {
+    /// Consumes [`SignedBundle`] to extract the inner executor public key.
+    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
+        match self.bundle_solution {
+            BundleSolution::System {
+                proof_of_election, ..
+            }
+            | BundleSolution::Core {
+                proof_of_election, ..
+            } => proof_of_election.executor_public_key,
+        }
+    }
+}
+
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainHash> {
@@ -380,7 +412,7 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the bundle equivocation proof via an unsigned extrinsic.
         fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<Block::Hash>,
+            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, Block::Hash>,
         );
 
         /// Submits the invalid transaction proof via an unsigned extrinsic.
@@ -398,6 +430,9 @@ sp_api::decl_runtime_apis! {
             extrinsics: Vec<Block::Extrinsic>,
             domain_id: DomainId,
         ) -> OpaqueBundles<Block, DomainHash>;
+
+        /// Extract the hashes of bundles stored in the block
+        fn extract_stored_bundle_hashes() -> Vec<H256>;
 
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(
@@ -422,5 +457,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;
+
+        // Returns the state root of the system domain at specific number and hash.
+        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
     }
 }

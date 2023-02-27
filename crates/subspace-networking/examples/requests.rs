@@ -34,14 +34,14 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| {
+        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
             println!("Request handler for request");
             Some(ExampleResponse)
         })],
         metrics: Some(metrics),
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
-    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).await.unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).unwrap();
 
     // Init prometheus
     let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
@@ -88,11 +88,13 @@ async fn main() {
         .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(|_| None)],
-        ..Config::with_generated_keypair()
+        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
+            |_| async { None },
+        )],
+        ..Config::default()
     };
 
-    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).await.unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 
@@ -108,7 +110,7 @@ async fn main() {
             .await
             .unwrap();
 
-        println!("Response: {:?}", resp);
+        println!("Response: {resp:?}");
     });
 
     tokio::time::sleep(Duration::from_secs(50)).await;

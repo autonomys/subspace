@@ -6,6 +6,7 @@
     let_chains,
     trait_alias,
     try_blocks,
+    type_alias_impl_trait,
     type_changing_struct_update
 )]
 
@@ -35,7 +36,7 @@ pub mod node_client;
 pub(crate) mod object_mappings;
 pub mod reward_signing;
 pub mod single_disk_plot;
-mod utils;
+pub mod utils;
 pub mod ws_rpc_server;
 
 pub use identity::Identity;

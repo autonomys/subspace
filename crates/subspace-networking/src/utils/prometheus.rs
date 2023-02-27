@@ -14,7 +14,7 @@ type SharedRegistry = Arc<Mutex<Registry>>;
 
 #[get("/metrics")]
 async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn Error>> {
-    let mut encoded: Vec<u8> = Vec::new();
+    let mut encoded = String::new();
     encode(&mut encoded, &registry.lock())?;
 
     let resp = HttpResponse::build(StatusCode::OK).body(encoded);
@@ -40,6 +40,7 @@ pub async fn start_prometheus_metrics_server(
     let runtime = tokio::runtime::Runtime::new()?;
 
     // We need a dedicated thread because actix-web App is !Send and won't work with tokio.
+    // TODO: This is not cancellable, it should be though
     thread::spawn(move || {
         if let Err(err) = runtime.block_on(server) {
             error!(

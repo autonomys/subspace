@@ -236,7 +236,7 @@ impl<T: Config, O: Offence<FarmerPublicKey>> ReportIndexStorage<T, O> {
         // slot.
         let pos = self
             .same_kind_reports
-            .partition_point(|&(ref when, _)| when <= time_slot);
+            .partition_point(|(when, _)| when <= time_slot);
         self.same_kind_reports
             .insert(pos, (time_slot.clone(), report_id));
 

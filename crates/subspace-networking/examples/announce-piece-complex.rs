@@ -1,12 +1,12 @@
 use futures::channel::oneshot;
 use futures::StreamExt;
-use libp2p::identity::ed25519::Keypair;
 use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PieceIndexHash;
-use subspace_networking::{BootstrappedNetworkingParameters, Config, ToMultihash};
+use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 #[tokio::main]
 async fn main() {
@@ -18,7 +18,6 @@ async fn main() {
 
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
-        let keypair = Keypair::generate();
         let config = Config {
             networking_parameters_registry: BootstrappedNetworkingParameters::new(
                 bootstrap_nodes.clone(),
@@ -26,10 +25,10 @@ async fn main() {
             .boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_global_addresses_in_dht: true,
-            ..Config::with_keypair(keypair.clone())
+            ..Config::default()
         };
 
-        let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+        let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
         println!("Node {} ID is {}", i, node.id());
 
@@ -69,10 +68,10 @@ async fn main() {
             bootstrap_nodes.clone(),
         )
         .boxed(),
-        ..Config::with_generated_keypair()
+        ..Config::default()
     };
 
-    let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+    let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
     tokio::spawn(async move {
         node_runner.run().await;
@@ -86,8 +85,12 @@ async fn main() {
         piece_index_hash.to_multihash()
     };
 
-    node.start_announcing(key).await.unwrap().next().await;
-    println!("Node announced key: {:?}", key);
+    node.start_announcing(key.into())
+        .await
+        .unwrap()
+        .next()
+        .await;
+    println!("Node announced key: {key:?}");
 
     tokio::time::sleep(Duration::from_secs(15)).await;
 
@@ -97,10 +100,7 @@ async fn main() {
         Err(error) => Err(error),
     };
 
-    println!(
-        "Some Node get_piece_providers result: {:?}",
-        providers_result
-    );
+    println!("Some Node get_piece_providers result: {providers_result:?}");
 
     tokio::time::sleep(Duration::from_secs(20)).await;
 
@@ -109,10 +109,7 @@ async fn main() {
         Err(error) => Err(error),
     };
 
-    println!(
-        "Some Node get_piece_providers result: {:?}",
-        providers_result
-    );
+    println!("Some Node get_piece_providers result: {providers_result:?}");
 
     println!("Exiting..");
 }

@@ -16,14 +16,15 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 derive_more = "0.99.17"
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
+either = "1.8.0"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
-futures = "0.3.25"
+futures = "0.3.26"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 parity-scale-codec = "3.2.1"
+parking_lot = "0.12.1"
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "100d6c90d4122578006a47c1dcaf155b9c685f34" }

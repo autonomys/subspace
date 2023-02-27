@@ -15,14 +15,17 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
-#![feature(type_changing_struct_update)]
+#![feature(type_alias_impl_trait, type_changing_struct_update)]
 
-mod dsn;
+pub mod dsn;
 pub mod piece_cache;
+pub mod root_blocks;
 pub mod rpc;
 
 use crate::dsn::create_dsn_instance;
+use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::piece_cache::PieceCache;
+use crate::root_blocks::{start_root_block_archiver, RootBlockCache};
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -33,7 +36,7 @@ use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::{BlockBackend, HeaderBackend, StateBackendFor};
+use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, StateBackendFor};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -51,7 +54,7 @@ use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
-use sp_consensus::Error as ConsensusError;
+use sp_consensus::{Error as ConsensusError, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
@@ -68,9 +71,10 @@ use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::Node;
+use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
+use subspace_transaction_pool::bundle_validator::{BundleValidator, ValidateBundle};
 use subspace_transaction_pool::FullPool;
 use tracing::{error, info, Instrument};
 
@@ -161,6 +165,8 @@ pub struct SubspaceConfiguration {
     pub subspace_networking: SubspaceNetworking,
     /// Max number of segments that can be published concurrently.
     pub segment_publish_concurrency: NonZeroUsize,
+    /// Enables DSN-sync on startup.
+    pub sync_from_dsn: bool,
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -177,6 +183,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         >,
         (
             impl BlockImport<
@@ -186,6 +193,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
             >,
             SubspaceLink<Block>,
             Option<Telemetry>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
     ServiceError,
@@ -243,6 +251,8 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
+    let bundle_validator = BundleValidator::new(client.clone());
+
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         client.clone(),
         backend.clone(),
@@ -254,6 +264,7 @@ where
         &task_manager,
         client.clone(),
         proof_verifier.clone(),
+        bundle_validator.clone(),
     );
 
     let fraud_proof_block_import =
@@ -317,12 +328,12 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, telemetry),
+        other: (block_import, subspace_link, telemetry, bundle_validator),
     })
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, Verifier>
+pub struct NewFull<Client, Validator, Verifier>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -333,6 +344,8 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    Validator:
+        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
     /// Task manager.
@@ -360,11 +373,12 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Verifier, Validator>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
+    BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -381,10 +395,15 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         >,
-        (I, SubspaceLink<Block>, Option<Telemetry>),
+        (
+            I,
+            SubspaceLink<Block>,
+            Option<Telemetry>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+        ),
     >,
-
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
@@ -418,12 +437,14 @@ where
         client,
         backend,
         mut task_manager,
-        import_queue,
+        mut import_queue,
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, mut telemetry),
+        other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
     } = partial_components;
+
+    let root_block_cache = RootBlockCache::new(client.clone());
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -434,13 +455,14 @@ where
             config,
             piece_cache_size,
         } => {
-            let piece_cache = PieceCache::new(client.clone(), piece_cache_size);
+            let piece_cache =
+                PieceCache::new(client.clone(), piece_cache_size, peer_id(&config.keypair));
 
             // Start before archiver below, so we don't have potential race condition and miss pieces
             task_manager
                 .spawn_handle()
                 .spawn_blocking("subspace-piece-cache", None, {
-                    let piece_cache = piece_cache.clone();
+                    let mut piece_cache = piece_cache.clone();
                     let mut archived_segment_notification_stream = subspace_link
                         .archived_segment_notification_stream()
                         .subscribe();
@@ -467,13 +489,11 @@ where
                     }
                 });
 
-            let (node, mut node_runner) =
-                create_dsn_instance::<Block, _>(config.clone(), piece_cache.clone())
-                    .instrument(tracing::info_span!(
-                        sc_tracing::logging::PREFIX_LOG_SPAN,
-                        name = "DSN"
-                    ))
-                    .await?;
+            let (node, mut node_runner) = create_dsn_instance::<Block, _>(
+                config.clone(),
+                piece_cache,
+                root_block_cache.clone(),
+            )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 
@@ -502,9 +522,22 @@ where
     );
 
     task_manager.spawn_essential_handle().spawn_essential(
-        "archiver",
+        "dsn-archiver",
         Some("subspace-networking"),
         Box::pin(dsn_archiving_fut.in_current_span()),
+    );
+
+    let root_block_archiving_fut = start_root_block_archiver(
+        root_block_cache.clone(),
+        subspace_link
+            .archived_segment_notification_stream()
+            .subscribe(),
+    );
+
+    task_manager.spawn_essential_handle().spawn_essential(
+        "root-block-archiver",
+        Some("subspace-networking"),
+        Box::pin(root_block_archiving_fut.in_current_span()),
     );
 
     let dsn_bootstrap_nodes = {
@@ -559,6 +592,14 @@ where
         &task_manager.spawn_essential_handle(),
     );
 
+    if config.sync_from_dsn {
+        import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
+            .await
+            .map_err(|error| {
+                sc_service::Error::Other(format!("Failed to import blocks from DSN: {error:?}"))
+            })?;
+    }
+
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -569,6 +610,24 @@ where
             block_announce_validator_builder: None,
             warp_sync: None,
         })?;
+
+    let sync_oracle = network.clone();
+    let best_hash = client.info().best_hash;
+    let mut imported_blocks_stream = client.import_notification_stream();
+    task_manager.spawn_handle().spawn(
+        "maintain-bundles-stored-in-last-k",
+        None,
+        Box::pin(async move {
+            if !sync_oracle.is_major_syncing() {
+                bundle_validator.update_recent_stored_bundles(best_hash);
+            }
+            while let Some(incoming_block) = imported_blocks_stream.next().await {
+                if !sync_oracle.is_major_syncing() && incoming_block.is_new_best {
+                    bundle_validator.update_recent_stored_bundles(incoming_block.hash);
+                }
+            }
+        }),
+    );
 
     if config.offchain_worker.enabled {
         sc_service::build_offchain_workers(
@@ -677,6 +736,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     subspace_link: subspace_link.clone(),
+                    root_blocks_provider: root_block_cache.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

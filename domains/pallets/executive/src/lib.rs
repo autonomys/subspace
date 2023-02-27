@@ -291,7 +291,7 @@ where
         );
 
         if let Err(i) = System::ensure_inherents_are_first(block) {
-            panic!("Invalid inherent position for extrinsic at index {}", i);
+            panic!("Invalid inherent position for extrinsic at index {i}");
         }
     }
 

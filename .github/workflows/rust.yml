@@ -19,6 +19,10 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # Not needed in CI, should make things a bit faster
   CARGO_INCREMENTAL: 0

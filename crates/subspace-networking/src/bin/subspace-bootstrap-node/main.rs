@@ -1,11 +1,21 @@
 //! Simple bootstrap node implementation
 
-use clap::Parser;
+#![feature(type_changing_struct_update)]
+
+use anyhow::anyhow;
+use bytesize::ByteSize;
+use clap::{Parser, ValueHint};
+use either::Either;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::Multiaddr;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{BootstrappedNetworkingParameters, Config};
+use subspace_networking::{
+    peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
+    ParityDbProviderStorage,
+};
 use tracing::info;
 
 // The default maximum incoming connections number for the peer.
@@ -38,6 +48,13 @@ enum Command {
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
         disable_private_ips: bool,
+        /// Defines path for the provider record storage DB (optional).
+        /// No value will enable memory storage instead.
+        #[arg(long, value_hint = ValueHint::FilePath)]
+        db_path: Option<PathBuf>,
+        /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
+        #[arg(long, default_value = "100MiB")]
+        piece_providers_cache_size: ByteSize,
     },
     /// Generate a new keypair
     GenerateKeypair,
@@ -60,7 +77,29 @@ async fn main() -> anyhow::Result<()> {
             in_peers,
             out_peers,
             disable_private_ips,
+            db_path,
+            piece_providers_cache_size,
         } => {
+            const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
+            let recs = piece_providers_cache_size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
+            let converted_cache_size =
+                NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
+
+            let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
+            let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
+
+            let provider_storage = if let Some(path) = db_path {
+                let db_path = path.join("subspace_storage_providers_db");
+
+                Either::Left(ParityDbProviderStorage::new(
+                    &db_path,
+                    converted_cache_size,
+                    local_peer_id,
+                )?)
+            } else {
+                Either::Right(MemoryProviderStorage::new(local_peer_id))
+            };
+
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
                     bootstrap_nodes,
@@ -73,11 +112,10 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
                 max_established_outgoing_connections: out_peers
                     .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
-                ..Config::with_keypair(Keypair::decode(hex::decode(keypair)?.as_mut_slice())?)
+                ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
-            let (node, mut node_runner) = subspace_networking::create(config)
-                .await
-                .expect("Networking stack creation failed.");
+            let (node, mut node_runner) =
+                subspace_networking::create(config).expect("Networking stack creation failed.");
 
             node.on_new_listener(Arc::new({
                 let node_id = node.id();

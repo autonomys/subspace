@@ -128,6 +128,7 @@ async fn run_executor(
             force_new_slot_notifications: true,
             subspace_networking: SubspaceNetworking::Create {
                 config: DsnConfig {
+                    base_path: None,
                     listen_on: vec!["/ip4/127.0.0.1/tcp/0"
                         .parse()
                         .expect("Correct multiaddr; qed")],
@@ -139,6 +140,7 @@ async fn run_executor(
                 piece_cache_size: 1024 * 1024 * 1024,
             },
             segment_publish_concurrency: NonZeroUsize::new(10).unwrap(),
+            sync_from_dsn: false,
         };
 
         let partial_components = subspace_service::new_partial::<
@@ -427,7 +429,7 @@ pub fn node_config(
     let spec = Box::new(chain_spec::get_chain_spec());
 
     let mut network_config = NetworkConfiguration::new(
-        format!("{} (SystemDomain)", key_seed),
+        format!("{key_seed} (SystemDomain)"),
         "network/test/0.1",
         Default::default(),
         None,

@@ -1,12 +1,13 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::DomainTxPoolSink;
+use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_executor::xdm_validator::CoreDomainXDMValidator;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
 use futures::channel::mpsc;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, ProofProvider, StateBackendFor};
@@ -18,6 +19,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -25,13 +27,14 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
+use sp_core::Encode;
 use sp_domains::{DomainId, ExecutorApi};
-use sp_messenger::RelayerApi;
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -44,7 +47,7 @@ type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDi
         FullClient<RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
-        FullPool<RuntimeApi, ExecutorDispatch>,
+        FullPool<RuntimeApi, ExecutorDispatch, CoreDomainXDMValidator<SClient, PBlock, SBlock>>,
         FullBackend,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
@@ -77,6 +80,10 @@ pub struct NewFullCore<
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -99,22 +106,29 @@ pub struct NewFullCore<
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
-pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool<
-    sc_transaction_pool::FullChainApi<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    Block,
->;
+pub type FullPool<RuntimeApi, ExecutorDispatch, Verifier> =
+    subspace_transaction_pool::FullPoolWithChainVerifier<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        Verifier,
+    >;
 
 /// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor>(
+fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
     config: &ServiceConfiguration,
+    system_domain_client: Arc<SDC>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, Executor>,
         TFullBackend<Block>,
         (),
         sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
-        sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, Executor>>,
+        subspace_transaction_pool::FullPoolWithChainVerifier<
+            Block,
+            FullClient<RuntimeApi, Executor>,
+            CoreDomainXDMValidator<SDC, PBlock, SBlock>,
+        >,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
@@ -129,6 +143,12 @@ where
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
     Executor: NativeExecutionDispatch + 'static,
+    SBlock: BlockT,
+    PBlock: BlockT,
+    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
+    SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -164,12 +184,13 @@ where
         telemetry
     });
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
+    let core_domain_xdm_verifier =
+        CoreDomainXDMValidator::<SDC, PBlock, SBlock>::new(system_domain_client);
+    let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
+        config,
+        &task_manager,
         client.clone(),
+        core_domain_xdm_verifier,
     );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
@@ -192,6 +213,24 @@ where
     Ok(params)
 }
 
+pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>
+where
+    SBlock: BlockT,
+    PBlock: BlockT,
+{
+    pub domain_id: DomainId,
+    pub core_domain_config: DomainConfiguration,
+    pub system_domain_client: Arc<SClient>,
+    pub system_domain_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
+    pub primary_chain_client: Arc<PClient>,
+    pub primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    pub select_chain: SC,
+    pub imported_block_notification_stream: IBNS,
+    pub new_slot_notification_stream: NSNS,
+    pub block_import_throttling_buffer_size: u32,
+    pub gossip_message_sink: GossipMessageSink,
+}
+
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
@@ -207,17 +246,7 @@ pub async fn new_full_core<
     RuntimeApi,
     ExecutorDispatch,
 >(
-    domain_id: DomainId,
-    mut core_domain_config: DomainConfiguration,
-    system_domain_client: Arc<SClient>,
-    system_domain_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
-    primary_chain_client: Arc<PClient>,
-    primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
-    select_chain: &SC,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
-    block_import_throttling_buffer_size: u32,
-    gossip_message_sink: GossipMessageSink,
+    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>,
 ) -> sc_service::error::Result<
     NewFullCore<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -234,10 +263,12 @@ where
     PBlock: BlockT,
     SBlock: BlockT,
     SBlock::Hash: Into<Hash>,
+    NumberFor<SBlock>: Into<BlockNumber>,
+    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
-        + sp_domains::state_root_tracker::DomainTrackerApi<SBlock, NumberFor<SBlock>>
+        + MessengerApi<SBlock, NumberFor<SBlock>>
         + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -266,6 +297,20 @@ where
         + RelayerApi<Block, RelayerId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
+    let CoreDomainParams {
+        domain_id,
+        mut core_domain_config,
+        system_domain_client,
+        system_domain_network,
+        primary_chain_client,
+        primary_network,
+        select_chain,
+        imported_block_notification_stream,
+        new_slot_notification_stream,
+        block_import_throttling_buffer_size,
+        gossip_message_sink,
+    } = core_domain_params;
+
     // TODO: Do we even need block announcement on core domain node?
     // core_domain_config.announce_block = false;
 
@@ -275,7 +320,10 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial(&core_domain_config.service_config)?;
+    let params = new_partial::<_, _, _, SBlock, PBlock>(
+        &core_domain_config.service_config,
+        system_domain_client.clone(),
+    )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
@@ -338,7 +386,7 @@ where
         domain_id,
         system_domain_client.clone(),
         &spawn_essential,
-        select_chain,
+        &select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),
             primary_network,
@@ -385,7 +433,7 @@ where
             system_domain_client,
             system_domain_network,
             network.clone(),
-            gossip_message_sink,
+            gossip_message_sink.clone(),
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -410,6 +458,32 @@ where
         None,
         Box::pin(core_domain_listener),
     );
+
+    spawn_essential.spawn_blocking("core-domain-transaction-gossip", None, {
+        Box::pin(async move {
+            while let Some(hash) = transaction_pool.import_notification_stream().next().await {
+                let maybe_transaction = transaction_pool.ready_transaction(&hash).and_then(
+                    // Only propagable transactions should be resolved for network service.
+                    |tx| {
+                        if tx.is_propagable() {
+                            Some(tx.data().clone())
+                        } else {
+                            None
+                        }
+                    },
+                );
+                if let Some(tx) = maybe_transaction {
+                    let msg = GossipMessage {
+                        domain_id,
+                        encoded_data: tx.encode(),
+                    };
+                    if let Err(_e) = gossip_message_sink.unbounded_send(msg) {
+                        return;
+                    }
+                }
+            }
+        })
+    });
 
     let new_full = NewFullCore {
         task_manager,

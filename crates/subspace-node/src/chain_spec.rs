@@ -31,8 +31,8 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-const GEMINI_3B_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3b.json");
-const X_NET_2_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-x-net-2.json");
+const GEMINI_3C_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3c.json");
+const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -67,20 +67,22 @@ struct GenesisParams {
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
+    enable_transfer: bool,
+    confirmation_depth_k: u32,
 }
 
-pub fn gemini_3b() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3B_CHAIN_SPEC)
+pub fn gemini_3c() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+    ConsensusChainSpec::from_json_bytes(GEMINI_3C_CHAIN_SPEC)
 }
 
-pub fn gemini_3b_compiled(
+pub fn gemini_3c_compiled(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3b",
+        "Subspace Gemini 3c",
         // ID
-        "subspace_gemini_3b",
-        ChainType::Custom("Subspace Gemini 3b".to_string()),
+        "subspace_gemini_3c",
+        ChainType::Custom("Subspace Gemini 3c".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
@@ -137,6 +139,8 @@ pub fn gemini_3b_compiled(
                         )),
                     ),
                     enable_executor: true,
+                    enable_transfer: false,
+                    confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
         },
@@ -148,30 +152,30 @@ pub fn gemini_3b_compiled(
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3b"),
+        Some("subspace-gemini-3c"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::gemini_3b_config(),
+            execution_chain_spec: system_domain::chain_spec::gemini_3c_config(),
         },
     ))
 }
 
-pub fn x_net_2_config(
+pub fn devnet_config(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(X_NET_2_CHAIN_SPEC)
+    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC)
 }
 
-pub fn x_net_2_config_compiled(
+pub fn devnet_config_compiled(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace X-Net 2",
+        "Subspace Dev network",
         // ID
-        "subspace_x_net_2a",
-        ChainType::Custom("Subspace X-Net 2".to_string()),
+        "subspace_devnet",
+        ChainType::Custom("Testnet".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
@@ -224,6 +228,8 @@ pub fn x_net_2_config_compiled(
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
+                    enable_transfer: true,
+                    confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
         },
@@ -235,13 +241,13 @@ pub fn x_net_2_config_compiled(
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-x-net-2a"),
+        Some("subspace-devnet"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::x_net_2_config(),
+            execution_chain_spec: system_domain::chain_spec::devnet_config(),
         },
     ))
 }
@@ -274,6 +280,8 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
+                    enable_transfer: true,
+                    confirmation_depth_k: 1,
                 },
             )
         },
@@ -329,6 +337,8 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
+                    enable_transfer: true,
+                    confirmation_depth_k: 1,
                 },
             )
         },
@@ -362,6 +372,8 @@ fn subspace_genesis_config(
         enable_storage_access,
         allow_authoring_by,
         enable_executor,
+        enable_transfer,
+        confirmation_depth_k,
     } = genesis_params;
 
     GenesisConfig {
@@ -381,6 +393,10 @@ fn subspace_genesis_config(
             allow_authoring_by,
         },
         vesting: VestingConfig { vesting },
-        runtime_configs: RuntimeConfigsConfig { enable_executor },
+        runtime_configs: RuntimeConfigsConfig {
+            enable_executor,
+            enable_transfer,
+            confirmation_depth_k,
+        },
     }
 }

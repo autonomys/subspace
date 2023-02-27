@@ -1,9 +1,9 @@
 use crate::{self as pallet_domains};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
-use pallet_receipts::{BlockHash, ReceiptVotes};
+use pallet_receipts::{PrimaryBlockHash, ReceiptVotes};
 use sp_core::crypto::Pair;
-use sp_core::{H256, U256};
+use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
@@ -14,6 +14,7 @@ use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_trie::StorageProof;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -64,7 +65,26 @@ impl frame_system::Config for Test {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
-    pub const ConfirmationDepthK: u32 = 10;
+}
+
+static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
+
+pub struct ConfirmationDepthK;
+
+impl ConfirmationDepthK {
+    fn set(new: BlockNumber) {
+        CONFIRMATION_DEPTH_K.store(new, Ordering::SeqCst);
+    }
+
+    fn get() -> BlockNumber {
+        CONFIRMATION_DEPTH_K.load(Ordering::SeqCst)
+    }
+}
+
+impl Get<BlockNumber> for ConfirmationDepthK {
+    fn get() -> BlockNumber {
+        Self::get()
+    }
 }
 
 impl pallet_domains::Config for Test {
@@ -77,7 +97,6 @@ impl pallet_receipts::Config for Test {
     type DomainHash = H256;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = ();
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
@@ -116,6 +135,7 @@ fn create_dummy_bundle(
 
     let bundle = Bundle {
         header: BundleHeader {
+            primary_number,
             primary_hash,
             slot_number: 0u64,
             extrinsics_root: Default::default(),
@@ -129,7 +149,11 @@ fn create_dummy_bundle(
     let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
 
     let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System(proof_of_election)
+        BundleSolution::System {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
+        }
     } else if domain_id.is_core() {
         BundleSolution::Core {
             proof_of_election,
@@ -150,12 +174,14 @@ fn create_dummy_bundle(
 
 fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
+    primary_number: BlockNumber,
     primary_hash: Hash,
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
 
     let header = BundleHeader {
+        primary_number,
         primary_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
@@ -172,7 +198,11 @@ fn create_dummy_bundle_with_receipts(
     let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
 
     let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System(proof_of_election)
+        BundleSolution::System {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
+        }
     } else if domain_id.is_core() {
         BundleSolution::Core {
             proof_of_election,
@@ -213,12 +243,12 @@ fn submit_execution_receipt_incrementally_should_work() {
 
     new_test_ext().execute_with(|| {
         let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
-        BlockHash::<Test>::insert(DomainId::SYSTEM, 0, genesis_hash);
+        PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, 0, genesis_hash);
         Receipts::initialize_genesis_receipt(DomainId::SYSTEM, genesis_hash);
 
         (0..256).for_each(|index| {
             let block_hash = block_hashes[index];
-            BlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
+            PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
 
             assert_ok!(pallet_domains::Pallet::<Test>::pre_dispatch(
                 &pallet_domains::Call::submit_bundle {
@@ -276,7 +306,6 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
         .unzip();
 
     let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
-        System::set_block_number(1);
         System::initialize(&1, &System::parent_hash(), &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(1);
         System::finalize();
@@ -304,26 +333,26 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
         });
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[255].clone(),
         ));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[256].clone(),
         ));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[257].clone(),
         ));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
     });
 }
@@ -338,7 +367,8 @@ fn submit_bundle_with_many_reeipts_should_work() {
         .unzip();
 
     let primary_hash_255 = *block_hashes.last().unwrap();
-    let bundle1 = create_dummy_bundle_with_receipts(DomainId::SYSTEM, primary_hash_255, receipts);
+    let bundle1 =
+        create_dummy_bundle_with_receipts(DomainId::SYSTEM, 255u64, primary_hash_255, receipts);
 
     let primary_hash_256 = Hash::random();
     block_hashes.push(primary_hash_256);
@@ -353,7 +383,6 @@ fn submit_bundle_with_many_reeipts_should_work() {
     let bundle4 = create_dummy_bundle(DomainId::SYSTEM, 258, primary_hash_258);
 
     let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
-        System::set_block_number(1);
         System::initialize(&1, &System::parent_hash(), &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(1);
         System::finalize();
@@ -377,19 +406,19 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle2));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 1);
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle3));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 2);
 
-        assert!(BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle4));
-        assert!(!BlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
+        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 3);
         assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
         assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 258);
@@ -403,12 +432,14 @@ fn only_system_domain_receipts_are_maintained_on_primary_chain() {
     let system_receipt = create_dummy_receipt(1, primary_hash);
     let system_bundle = create_dummy_bundle_with_receipts(
         DomainId::SYSTEM,
+        1,
         primary_hash,
         vec![system_receipt.clone()],
     );
     let core_receipt = create_dummy_receipt(1, primary_hash);
     let core_bundle = create_dummy_bundle_with_receipts(
         DomainId::new(1),
+        1,
         primary_hash,
         vec![core_receipt.clone()],
     );
@@ -448,7 +479,7 @@ fn submit_fraud_proof_should_work() {
     new_test_ext().execute_with(|| {
         (0usize..256usize).for_each(|index| {
             let block_hash = block_hashes[index];
-            BlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
+            PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
 
             assert_ok!(Domains::submit_bundle(
                 RuntimeOrigin::none(),
@@ -513,4 +544,106 @@ fn test_receipts_are_consecutive() {
     let receipts = vec![create_dummy_receipt(1, Hash::random())];
     assert!(Domains::receipts_are_consecutive(&receipts));
     assert!(Domains::receipts_are_consecutive(&[]));
+}
+
+#[test]
+fn test_stale_bundle_should_be_rejected() {
+    // Small macro in order to be more readable.
+    //
+    // We only care about whether the error type is `StaleBundle`.
+    macro_rules! assert_stale {
+        ($validate_bundle_result:expr) => {
+            assert_eq!(
+                $validate_bundle_result,
+                Err(pallet_domains::BundleError::StaleBundle)
+            )
+        };
+    }
+
+    macro_rules! assert_not_stale {
+        ($validate_bundle_result:expr) => {
+            assert_ne!(
+                $validate_bundle_result,
+                Err(pallet_domains::BundleError::StaleBundle)
+            )
+        };
+    }
+
+    ConfirmationDepthK::set(1);
+    new_test_ext().execute_with(|| {
+        // Create a bundle at genesis block -> #1
+        let bundle0 = create_dummy_bundle(DomainId::SYSTEM, 0, System::parent_hash());
+        System::initialize(&1, &System::parent_hash(), &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(1);
+        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
+
+        // Create a bundle at block #1 -> #2
+        let block_hash1 = Hash::random();
+        let bundle1 = create_dummy_bundle(DomainId::SYSTEM, 1, block_hash1);
+        System::initialize(&2, &block_hash1, &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(2);
+        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
+        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle1));
+    });
+
+    ConfirmationDepthK::set(2);
+    new_test_ext().execute_with(|| {
+        // Create a bundle at genesis block -> #1
+        let bundle0 = create_dummy_bundle(DomainId::SYSTEM, 0, System::parent_hash());
+        System::initialize(&1, &System::parent_hash(), &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(1);
+        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
+
+        // Create a bundle at block #1 -> #2
+        let block_hash1 = Hash::random();
+        let bundle1 = create_dummy_bundle(DomainId::SYSTEM, 1, block_hash1);
+        System::initialize(&2, &block_hash1, &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(2);
+        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
+        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle1));
+
+        // Create a bundle at block #2 -> #3
+        let block_hash2 = Hash::random();
+        let bundle2 = create_dummy_bundle(DomainId::SYSTEM, 2, block_hash2);
+        System::initialize(&3, &block_hash2, &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(3);
+        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
+        assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle1));
+        assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle2));
+    });
+
+    ConfirmationDepthK::set(10);
+    let confirmation_depth_k = ConfirmationDepthK::get();
+    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1..=confirmation_depth_k + 2)
+        .map(|n| {
+            let primary_hash = Hash::random();
+            (
+                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                primary_hash,
+            )
+        })
+        .unzip();
+
+    let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
+        System::initialize(&1, &System::parent_hash(), &Default::default());
+        <Domains as Hooks<BlockNumber>>::on_initialize(1);
+        System::finalize();
+
+        for b in 2..=n {
+            System::set_block_number(b);
+            System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
+            <Domains as Hooks<BlockNumber>>::on_initialize(b);
+            System::finalize();
+        }
+    };
+
+    new_test_ext().execute_with(|| {
+        run_to_block(confirmation_depth_k + 2, block_hashes);
+        for bundle in dummy_bundles.iter().take(2) {
+            assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(bundle));
+        }
+        for bundle in dummy_bundles.iter().skip(2) {
+            assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(bundle));
+        }
+    });
 }

@@ -13,7 +13,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
-use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
@@ -309,18 +309,11 @@ impl pallet_receipts::Config for Runtime {
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
-    type CoreDomainTracker = DomainTracker;
 }
 
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
     pub const RelayConfirmationDepth: BlockNumber = 7;
-}
-
-impl pallet_domain_tracker::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type ConfirmedStateRootsBound = StateRootsBound;
-    type RelayerConfirmationDepth = RelayConfirmationDepth;
 }
 
 parameter_types! {
@@ -332,7 +325,6 @@ parameter_types! {
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = SystemDomainId;
-    type DomainTracker = DomainTracker;
 
     fn get_endpoint_response_handler(
         _endpoint: &Endpoint,
@@ -376,7 +368,6 @@ construct_runtime!(
         ExecutorRegistry: pallet_executor_registry,
         Receipts: pallet_receipts,
         DomainRegistry: pallet_domain_registry,
-        DomainTracker: pallet_domain_tracker,
         Messenger: pallet_messenger,
     }
 );
@@ -525,9 +516,9 @@ impl_runtime_apis! {
                 .collect()
         }
 
-        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
+        fn bundle_election_solver_params(domain_id: DomainId) -> BundleElectionSolverParams {
             if domain_id.is_system() {
-                BundleElectionParams {
+                BundleElectionSolverParams {
                     authorities: ExecutorRegistry::authorities().into(),
                     total_stake_weight: ExecutorRegistry::total_stake_weight(),
                     slot_probability: ExecutorRegistry::slot_probability(),
@@ -539,13 +530,13 @@ impl_runtime_apis! {
                     DomainRegistry::domain_slot_probability(domain_id),
                 ) {
                     (authorities, Some(total_stake_weight), Some(slot_probability)) => {
-                        BundleElectionParams {
+                        BundleElectionSolverParams {
                             authorities,
                             total_stake_weight,
                             slot_probability,
                         }
                     }
-                    _ => BundleElectionParams::empty(),
+                    _ => BundleElectionSolverParams::empty(),
                 }
             }
         }
@@ -575,14 +566,9 @@ impl_runtime_apis! {
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
-    }
 
-    impl sp_domains::state_root_tracker::DomainTrackerApi<Block, BlockNumber> for Runtime {
-        fn storage_key_for_core_domain_state_root(
-            domain_id: DomainId,
-            block_number: BlockNumber,
-        ) -> Option<Vec<u8>> {
-            DomainTracker::storage_key_for_core_domain_state_root(domain_id, block_number)
+        fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
+            Receipts::domain_state_root_at(domain_id, number, domain_hash)
         }
     }
 
@@ -599,11 +585,11 @@ impl_runtime_apis! {
             Messenger::relayer_assigned_messages(relayer_id)
         }
 
-        fn outbox_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::outbox_message_unsigned(msg)
         }
 
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<<Block as BlockT>::Hash, BlockNumber>) -> Option<<Block as BlockT>::Extrinsic> {
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
             Messenger::inbox_response_message_unsigned(msg)
         }
 

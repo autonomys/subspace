@@ -1,37 +1,42 @@
-pub use crate::behavior::custom_record_store::ValueGetter;
-use crate::behavior::custom_record_store::{
-    CustomRecordStore, MemoryProviderStorage, NoRecordStorage,
+pub(crate) mod temporary_bans;
+mod transport;
+
+use crate::behavior::persistent_parameters::{
+    BootstrappedNetworkingParameters, NetworkingParametersRegistry,
 };
-use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
-use crate::behavior::{Behavior, BehaviorConfig};
+use crate::behavior::provider_storage::MemoryProviderStorage;
+use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
+use crate::create::temporary_bans::TemporaryBans;
+use crate::create::transport::build_transport;
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
-use crate::BootstrappedNetworkingParameters;
+use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
-use libp2p::core::muxing::StreamMuxerBox;
-use libp2p::core::transport::Boxed;
-use libp2p::dns::TokioDnsConfig;
 use libp2p::gossipsub::{
-    GossipsubConfig, GossipsubConfigBuilder, GossipsubMessage, MessageId, ValidationMode,
+    Config as GossipsubConfig, ConfigBuilder as GossipsubConfigBuilder,
+    Message as GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::Config as IdentifyConfig;
-use libp2p::kad::{KademliaBucketInserts, KademliaCaching, KademliaConfig, KademliaStoreInserts};
+use libp2p::kad::record::Key;
+use libp2p::kad::store::RecordStore;
+use libp2p::kad::{
+    store, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts, ProviderRecord, Record,
+};
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
-use libp2p::noise::NoiseConfig;
 use libp2p::swarm::SwarmBuilder;
-use libp2p::tcp::tokio::Transport as TokioTcpTransport;
-use libp2p::tcp::Config as GenTcpConfig;
-use libp2p::websocket::WsConfig;
 use libp2p::yamux::YamuxConfig;
-use libp2p::{core, identity, noise, Multiaddr, PeerId, Transport, TransportError};
+use libp2p::{identity, Multiaddr, PeerId, TransportError};
+use parking_lot::Mutex;
+use std::borrow::Cow;
+use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::Duration;
-use std::{fmt, io};
+use std::time::{Duration, Instant};
+use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
 use tracing::{error, info};
@@ -50,26 +55,19 @@ const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs
 // Defines a republication interval for item providers in Kademlia network.
 const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
     Some(Duration::from_secs(3600)); /* 1 hour */
-// Object replication factor. It must consider different peer types with no record stores.
-const KADEMLIA_RECORD_REPLICATION_FACTOR: NonZeroUsize =
-    NonZeroUsize::new(10).expect("Manually set value should be > 0");
 // Defines a replication factor for Kademlia on get_record operation.
 // "Good citizen" supports the network health.
-const KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS: u16 = 3;
 const YAMUX_MAX_STREAMS: usize = 256;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
-/// Kademlia has 32 substream as a hardcoded constant, we leave 2 for auxiliary internal functions
-/// like periodic random walk.
-///
-/// We restrict this so we don't exceed number of incoming streams for single peer, but this value
-/// will be boosted depending on number of connected peers.
-const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
+/// We restrict this so we can manage outgoing requests a bit better by cancelling low-priority
+/// requests, but this value will be boosted depending on number of connected peers.
+const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(25).expect("Not zero; qed");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
+pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 /// Base limit for number of any concurrent tasks except Kademlia.
 ///
 /// We configure total number of streams per connection to 256. Here we assume half of them might be
@@ -78,11 +76,71 @@ pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
 /// We restrict this so we don't exceed number of streams for single peer, but this value will be
 /// boosted depending on number of connected peers.
 const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
-    NonZeroUsize::new(120 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
+    NonZeroUsize::new(80 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
+pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 50;
+
+const TEMPORARY_BANS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
+const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
+const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
+
+/// Record store that can't be created, only
+pub(crate) struct ProviderOnlyRecordStore<ProviderStorage> {
+    provider_storage: ProviderStorage,
+}
+
+impl<ProviderStorage> ProviderOnlyRecordStore<ProviderStorage> {
+    fn new(provider_storage: ProviderStorage) -> Self {
+        Self { provider_storage }
+    }
+}
+
+impl<ProviderStorage> RecordStore for ProviderOnlyRecordStore<ProviderStorage>
+where
+    ProviderStorage: provider_storage::ProviderStorage,
+{
+    type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
+    type ProvidedIter<'a> = ProviderStorage::ProvidedIter<'a> where Self: 'a;
+
+    fn get(&self, _key: &Key) -> Option<Cow<'_, Record>> {
+        // Not supported
+        None
+    }
+
+    fn put(&mut self, _record: Record) -> store::Result<()> {
+        // Not supported
+        Ok(())
+    }
+
+    fn remove(&mut self, _key: &Key) {
+        // Not supported
+    }
+
+    fn records(&self) -> Self::RecordsIter<'_> {
+        // We don't use Kademlia's periodic replication
+        iter::empty()
+    }
+
+    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
+        self.provider_storage.add_provider(record)
+    }
+
+    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
+        self.provider_storage.providers(key)
+    }
+
+    fn provided(&self) -> Self::ProvidedIter<'_> {
+        self.provider_storage.provided()
+    }
+
+    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
+        self.provider_storage.remove_provider(key, provider)
+    }
+}
 
 /// Defines relay configuration for the Node
 #[derive(Clone, Debug)]
@@ -106,7 +164,7 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-pub struct Config<RecordStore = CustomRecordStore> {
+pub struct Config<ProviderStorage> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -122,8 +180,8 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
     pub gossipsub: GossipsubConfig,
-    /// Externally provided implementation of the custom record store for Kademlia DHT,
-    pub record_store: RecordStore,
+    /// Externally provided implementation of the custom provider storage for Kademlia DHT,
+    pub provider_storage: ProviderStorage,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
@@ -140,34 +198,42 @@ pub struct Config<RecordStore = CustomRecordStore> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// How many temporarily banned unreachable peers to keep in memory.
+    pub temporary_bans_cache_size: NonZeroUsize,
+    /// Backoff policy for temporary banning of unreachable peers.
+    pub temporary_ban_backoff: ExponentialBackoff,
     /// Optional external prometheus metrics. None will disable metrics gathering.
     pub metrics: Option<Metrics>,
 }
 
-impl fmt::Debug for Config {
+impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }
 }
 
-impl Config {
-    pub fn with_generated_keypair() -> Self {
-        Self::with_keypair(identity::ed25519::Keypair::generate())
+impl Default for Config<MemoryProviderStorage> {
+    fn default() -> Self {
+        let keypair = identity::ed25519::Keypair::generate();
+        let peer_id = identity::PublicKey::Ed25519(keypair.public()).to_peer_id();
+        Self::with_keypair_and_provider_storage(keypair, MemoryProviderStorage::new(peer_id))
     }
+}
 
-    pub fn with_keypair(keypair: identity::ed25519::Keypair) -> Self {
+impl<ProviderStorage> Config<ProviderStorage>
+where
+    ProviderStorage: provider_storage::ProviderStorage,
+{
+    pub fn with_keypair_and_provider_storage(
+        keypair: identity::ed25519::Keypair,
+        provider_storage: ProviderStorage,
+    ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
             .set_max_packet_size(2 * PIECE_SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
-            .set_replication_factor(KADEMLIA_RECORD_REPLICATION_FACTOR)
-            .set_caching(KademliaCaching::Enabled {
-                max_peers: KADEMLIA_CACHING_FACTOR_ON_GET_RECORDS,
-            })
-            // Ignore any puts
-            // TODO change back to FilterBoth after https://github.com/libp2p/rust-libp2p/issues/3048
-            .set_record_filtering(KademliaStoreInserts::Unfiltered)
+            .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Providers' settings
             .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
             .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)
@@ -193,6 +259,17 @@ impl Config {
         let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
+        let temporary_ban_backoff = ExponentialBackoff {
+            current_interval: TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL,
+            initial_interval: TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL,
+            randomization_factor: TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR,
+            multiplier: TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER,
+            max_interval: TEMPORARY_BANS_DEFAULT_MAX_INTERVAL,
+            start_time: Instant::now(),
+            max_elapsed_time: None,
+            clock: SystemClock::default(),
+        };
+
         Self {
             keypair,
             listen_on: vec![],
@@ -201,7 +278,7 @@ impl Config {
             identify,
             kademlia,
             gossipsub,
-            record_store: CustomRecordStore::new(NoRecordStorage, MemoryProviderStorage::default()),
+            provider_storage,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
@@ -210,6 +287,8 @@ impl Config {
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
+            temporary_ban_backoff,
             metrics: None,
         }
     }
@@ -230,6 +309,9 @@ pub enum CreationError {
     /// Transport error when attempting to listen on multiaddr.
     #[error("Transport error when attempting to listen on multiaddr: {0}")]
     TransportError(#[from] TransportError<io::Error>),
+    /// ParityDb storage error
+    #[error("ParityDb storage error: {0}")]
+    ParityDbStorageError(#[from] parity_db::Error),
 }
 
 /// Converts public key from keypair to PeerId.
@@ -239,11 +321,11 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create<RecordStore>(
-    config: Config<RecordStore>,
-) -> Result<(Node, NodeRunner<RecordStore>), CreationError>
+pub fn create<ProviderStorage>(
+    config: Config<ProviderStorage>,
+) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
 where
-    RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
+    ProviderStorage: Send + Sync + provider_storage::ProviderStorage + 'static,
 {
     let Config {
         keypair,
@@ -253,7 +335,7 @@ where
         identify,
         kademlia,
         gossipsub,
-        record_store,
+        provider_storage,
         yamux_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
@@ -262,110 +344,84 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        temporary_bans_cache_size,
+        temporary_ban_backoff,
         metrics,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
-    let transport = build_transport(&keypair, timeout, yamux_config)?;
-
-    // libp2p uses blocking API, hence we need to create a blocking task.
-    let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let behaviour = Behavior::new(BehaviorConfig {
-            peer_id: local_peer_id,
-            identify,
-            kademlia,
-            gossipsub,
-            record_store,
-            request_response_protocols,
-        });
-
-        let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
-            .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
-            .build();
-
-        // Setup listen_on addresses
-        for mut addr in listen_on {
-            if let Err(error) = swarm.listen_on(addr.clone()) {
-                if !listen_on_fallback_to_random_port {
-                    return Err(error.into());
-                }
-
-                let addr_string = addr.to_string();
-                // Listen on random port if specified is already occupied
-                if let Some(Protocol::Tcp(_port)) = addr.pop() {
-                    info!(
-                        "Failed to listen on {addr_string} ({error}), falling back to random port"
-                    );
-                    addr.push(Protocol::Tcp(0));
-                    swarm.listen_on(addr)?;
-                }
-            }
-        }
-
-        // Create final structs
-        let (command_sender, command_receiver) = mpsc::channel(1);
-
-        let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
-        let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
-
-        let shared = Arc::new(Shared::new(
-            local_peer_id,
-            command_sender,
-            kademlia_tasks_semaphore.clone(),
-            regular_tasks_semaphore.clone(),
-        ));
-        let shared_weak = Arc::downgrade(&shared);
-
-        let node = Node::new(shared, kademlia_tasks_semaphore, regular_tasks_semaphore);
-        let node_runner = NodeRunner::<RecordStore>::new(NodeRunnerConfig::<RecordStore> {
-            allow_non_global_addresses_in_dht,
-            command_receiver,
-            swarm,
-            shared_weak,
-            next_random_query_interval: initial_random_query_interval,
-            networking_parameters_registry,
-            reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-            max_established_incoming_connections,
-            max_established_outgoing_connections,
-            metrics,
-        });
-
-        Ok((node, node_runner))
-    });
+    let temporary_bans = Arc::new(Mutex::new(TemporaryBans::new(
+        temporary_bans_cache_size,
+        temporary_ban_backoff,
+    )));
+    let transport = build_transport(
+        allow_non_global_addresses_in_dht,
+        &keypair,
+        Arc::clone(&temporary_bans),
+        timeout,
+        yamux_config,
+    )?;
 
     info!(%allow_non_global_addresses_in_dht, peer_id = %local_peer_id, "DSN instance configured.");
 
-    create_swarm_fut.await.expect(
-        "Blocking tasks never panics, if it does it is an implementation bug and everything \
-        must crash",
-    )
-}
+    let behaviour = Behavior::new(BehaviorConfig {
+        peer_id: local_peer_id,
+        identify,
+        kademlia,
+        gossipsub,
+        record_store: ProviderOnlyRecordStore::new(provider_storage),
+        request_response_protocols,
+    });
 
-// Builds the transport stack that LibP2P will communicate over along with a relay client.
-fn build_transport(
-    keypair: &identity::Keypair,
-    timeout: Duration,
-    yamux_config: YamuxConfig,
-) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
-    let transport = {
-        let dns_tcp = TokioDnsConfig::system(TokioTcpTransport::new(
-            GenTcpConfig::default().nodelay(true),
-        ))?;
-        let ws = WsConfig::new(TokioDnsConfig::system(TokioTcpTransport::new(
-            GenTcpConfig::default().nodelay(true),
-        ))?);
+    let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
+        .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
+        .build();
 
-        dns_tcp.or_transport(ws)
-    };
+    // Setup listen_on addresses
+    for mut addr in listen_on {
+        if let Err(error) = swarm.listen_on(addr.clone()) {
+            if !listen_on_fallback_to_random_port {
+                return Err(error.into());
+            }
 
-    let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(keypair)
-        .expect("Signing libp2p-noise static DH keypair failed.");
+            let addr_string = addr.to_string();
+            // Listen on random port if specified is already occupied
+            if let Some(Protocol::Tcp(_port)) = addr.pop() {
+                info!("Failed to listen on {addr_string} ({error}), falling back to random port");
+                addr.push(Protocol::Tcp(0));
+                swarm.listen_on(addr)?;
+            }
+        }
+    }
 
-    Ok(transport
-        .upgrade(core::upgrade::Version::V1Lazy)
-        .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(yamux_config)
-        .timeout(timeout)
-        .boxed())
+    // Create final structs
+    let (command_sender, command_receiver) = mpsc::channel(1);
+
+    let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
+    let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
+
+    let shared = Arc::new(Shared::new(
+        local_peer_id,
+        command_sender,
+        kademlia_tasks_semaphore,
+        regular_tasks_semaphore,
+    ));
+    let shared_weak = Arc::downgrade(&shared);
+
+    let node = Node::new(shared);
+    let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
+        allow_non_global_addresses_in_dht,
+        command_receiver,
+        swarm,
+        shared_weak,
+        next_random_query_interval: initial_random_query_interval,
+        networking_parameters_registry,
+        reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
+        max_established_incoming_connections,
+        max_established_outgoing_connections,
+        temporary_bans,
+        metrics,
+    });
+
+    Ok((node, node_runner))
 }

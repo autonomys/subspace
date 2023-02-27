@@ -197,6 +197,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub dsn_disable_private_ips: bool,
 
+    /// Enables DSN-sync on startup.
+    #[arg(long, default_value_t = false)]
+    pub sync_from_dsn: bool,
+
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[arg(long, default_value = "1GiB")]
     pub piece_cache_size: ByteSize,
@@ -252,10 +256,10 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
-            "gemini-3b" => chain_spec::gemini_3b()?,
-            "gemini-3b-compiled" => chain_spec::gemini_3b_compiled()?,
-            "x-net-2" => chain_spec::x_net_2_config()?,
-            "x-net-2-compiled" => chain_spec::x_net_2_config_compiled()?,
+            "gemini-3c" => chain_spec::gemini_3c()?,
+            "gemini-3c-compiled" => chain_spec::gemini_3c_compiled()?,
+            "devnet" => chain_spec::devnet_config()?,
+            "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
             "" | "local" => chain_spec::local_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,

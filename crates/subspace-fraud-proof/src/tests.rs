@@ -9,9 +9,10 @@ use sc_client_api::{HeaderBackend, StorageProof};
 use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
 use sp_domains::DomainId;
-use sp_runtime::generic::BlockId;
+use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use tempfile::TempDir;
 
@@ -218,10 +219,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         let storage_changes = create_block_builder()
             .prepare_storage_changes_before(target_extrinsic_index)
             .unwrap_or_else(|_| {
-                panic!(
-                    "Get StorageChanges before extrinsic #{}",
-                    target_extrinsic_index
-                )
+                panic!("Get StorageChanges before extrinsic #{target_extrinsic_index}")
             });
 
         let delta = storage_changes.transaction;
@@ -410,7 +408,12 @@ async fn invalid_execution_proof_should_not_work() {
             parent_header.hash(),
             *parent_header.number(),
             RecordProof::No,
-            Default::default(),
+            Digest {
+                logs: vec![DigestItem::primary_block_info((
+                    *header.number(),
+                    header.hash(),
+                ))],
+            },
             &*alice.backend,
             test_txs.clone().into_iter().map(Into::into).collect(),
         )
@@ -426,7 +429,7 @@ async fn invalid_execution_proof_should_not_work() {
     let create_extrinsic_proof = |extrinsic_index: usize| {
         let storage_changes = create_block_builder()
             .prepare_storage_changes_before(extrinsic_index)
-            .unwrap_or_else(|_| panic!("Get StorageChanges before extrinsic #{}", extrinsic_index));
+            .unwrap_or_else(|_| panic!("Get StorageChanges before extrinsic #{extrinsic_index}"));
 
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;

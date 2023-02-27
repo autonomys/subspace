@@ -15,8 +15,9 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::core_bundle_processor::CoreBundleProcessor;
-use crate::core_bundle_producer::CoreBundleProducer;
+use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
+use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -37,6 +38,7 @@ use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub(super) async fn start_worker<
     Block,
     SBlock,
@@ -52,7 +54,17 @@ pub(super) async fn start_worker<
 >(
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
-    bundle_producer: CoreBundleProducer<Block, SBlock, PBlock, Client, SClient, TransactionPool>,
+    is_authority: bool,
+    bundle_producer: DomainBundleProducer<
+        Block,
+        SBlock,
+        PBlock,
+        SBlock,
+        Client,
+        SClient,
+        CoreDomainParentChain<SClient, SBlock, PBlock>,
+        TransactionPool,
+    >,
     bundle_processor: CoreBundleProcessor<
         Block,
         SBlock,
@@ -153,9 +165,13 @@ pub(super) async fn start_worker<
         ),
     );
 
-    let _ = future::select(
-        Box::pin(handle_block_import_notifications_fut),
-        Box::pin(handle_slot_notifications_fut),
-    )
-    .await;
+    if is_authority {
+        let _ = future::select(
+            Box::pin(handle_block_import_notifications_fut),
+            Box::pin(handle_slot_notifications_fut),
+        )
+        .await;
+    } else {
+        handle_block_import_notifications_fut.await
+    }
 }

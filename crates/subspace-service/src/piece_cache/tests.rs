@@ -4,7 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE};
-use subspace_networking::{RecordStorage, ToMultihash};
+use subspace_networking::libp2p::PeerId;
+use subspace_networking::utils::multihash::ToMultihash;
 
 #[derive(Default)]
 pub struct TestAuxStore {
@@ -43,9 +44,10 @@ impl AuxStore for TestAuxStore {
 
 #[test]
 fn basic() {
-    let store = PieceCache::new(
+    let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
         u64::from(PIECES_IN_SEGMENT) * PIECE_SIZE as u64,
+        PeerId::random(),
     );
 
     store
@@ -53,26 +55,26 @@ fn basic() {
         .unwrap();
 
     let piece_index = 0u64;
-
     let piece_by_kad_key = store
-        .get(
+        .get_piece_by_index_multihash(
             &PieceIndexHash::from_index(piece_index)
                 .to_multihash()
-                .into(),
+                .to_bytes(),
         )
         .unwrap()
-        .value
-        .clone();
+        .unwrap();
 
-    let piece_res = store.get_piece(piece_index).unwrap();
+    let piece_res = store
+        .get_piece(PieceIndexHash::from_index(piece_index))
+        .unwrap();
     let piece = piece_res.unwrap();
 
-    assert_eq!(piece_by_kad_key.as_slice(), piece.as_ref());
+    assert_eq!(piece_by_kad_key.as_ref(), piece.as_ref());
 }
 
 #[test]
 fn cache_nothing() {
-    let store = PieceCache::new(Arc::new(TestAuxStore::default()), 0);
+    let mut store = PieceCache::new(Arc::new(TestAuxStore::default()), 0, PeerId::random());
 
     store
         .add_pieces(0, &FlatPieces::new(PIECES_IN_SEGMENT as usize))
@@ -80,22 +82,38 @@ fn cache_nothing() {
 
     let piece_index = 0u64;
 
-    assert!(store.get_piece(piece_index).unwrap().is_none());
+    assert!(store
+        .get_piece(PieceIndexHash::from_index(piece_index))
+        .unwrap()
+        .is_none());
 }
 
 #[test]
 fn auto_cleanup() {
-    let store = PieceCache::new(Arc::new(TestAuxStore::default()), PIECE_SIZE as u64);
+    let mut store = PieceCache::new(
+        Arc::new(TestAuxStore::default()),
+        PIECE_SIZE as u64,
+        PeerId::random(),
+    );
 
     // Store the first piece
     store.add_pieces(0, &FlatPieces::new(1)).unwrap();
     // It must be stored
-    store.get_piece(0).unwrap().unwrap();
+    store
+        .get_piece(PieceIndexHash::from_index(0))
+        .unwrap()
+        .unwrap();
 
     // Store second piece
     store.add_pieces(1, &FlatPieces::new(1)).unwrap();
     // It must be stored
-    store.get_piece(1).unwrap().unwrap();
+    store
+        .get_piece(PieceIndexHash::from_index(1))
+        .unwrap()
+        .unwrap();
     // But the first piece is evicted because it exceeds cache size
-    assert!(store.get_piece(0).unwrap().is_none());
+    assert!(store
+        .get_piece(PieceIndexHash::from_index(0))
+        .unwrap()
+        .is_none());
 }

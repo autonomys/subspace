@@ -110,12 +110,12 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3b Core Payments Domain",
+        "Subspace Gemini 3c Core Payments Domain",
         // ID
-        "subspace_gemini_3b_core_payments_domain",
+        "subspace_gemini_3c_core_payments_domain",
         ChainType::Local,
         move || {
             let sudo_account =
@@ -126,6 +126,8 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
                     // Genesis executor
                     AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
+                    // Sudo account
+                    sudo_account.clone(),
                 ],
                 Some(sudo_account),
                 Default::default(),
@@ -136,13 +138,65 @@ pub fn gemini_3b_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3b-core-payments-domain"),
+        Some("subspace-gemini-3c-core-payments-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         None,
     )
+}
+
+pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
+    ExecutionChainSpec::from_genesis(
+        // Name
+        "Subspace Devnet Core Payments Domain",
+        // ID
+        "subspace_devnet_core_payments_domain",
+        ChainType::Custom("Testnet".to_string()),
+        move || {
+            let sudo_account =
+                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                    .expect("Invalid Sudo account");
+            testnet_genesis(
+                vec![
+                    // Genesis executor
+                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                        .expect("Wrong executor account address"),
+                    // Sudo account
+                    sudo_account.clone(),
+                ],
+                Some(sudo_account.clone()),
+                vec![(
+                    sudo_account,
+                    RelayerId::from_ss58check("5D7kgfacBsP6pkMB628221HG98mz2euaytthdoeZPGceQusS")
+                        .expect("Wrong relayer account address"),
+                )],
+            )
+        },
+        // Bootnodes
+        vec![],
+        // Telemetry
+        None,
+        // Protocol ID
+        Some("subspace-devnet-core-payments-domain"),
+        None,
+        // Properties
+        Some(chain_spec_properties()),
+        // Extensions
+        None,
+    )
+}
+
+pub fn load_chain_spec(spec_id: &str) -> std::result::Result<Box<dyn sc_cli::ChainSpec>, String> {
+    let chain_spec = match spec_id {
+        "dev" => development_config(),
+        "gemini-3c" => gemini_3c_config(),
+        "devnet" => devnet_config(),
+        "" | "local" => local_testnet_config(),
+        path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+    };
+    Ok(Box::new(chain_spec))
 }
 
 fn testnet_genesis(

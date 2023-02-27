@@ -1,9 +1,12 @@
+#![feature(const_option)]
+
 //! Components of the reference implementation of Subspace Farmer for Subspace Network Blockchain.
 //!
 //! These components are used to implement farmer itself, but can also be used independently if necessary.
 
 pub mod farming;
 pub mod file_ext;
+pub mod piece_caching;
 pub mod plotting;
 
 use parity_scale_codec::{Decode, Encode};
