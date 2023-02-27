@@ -261,7 +261,6 @@ services:
       "farm",
       "--disable-private-ips",
       "--node-rpc-url", "ws://node:9944",
-      "--ws-server-listen-addr", "0.0.0.0:9955",
       "--listen-on", "/ip4/0.0.0.0/tcp/30533",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",
