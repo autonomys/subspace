@@ -54,6 +54,8 @@ where
     pub fork_choice: ForkChoiceStrategy,
 }
 
+// TODO: unify this with trait bounds set directly on block traits.
+// Maybe we dont need these translations.?
 /// Converts the block number from the generic type `N1` to `N2`.
 pub(crate) fn translate_number_type<N1, N2>(block_number: N1) -> N2
 where
