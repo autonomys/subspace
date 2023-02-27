@@ -71,18 +71,18 @@ where
     fn initialize_recent_stored_bundles(
         &self,
         mut hash: Block::Hash,
-        bundle_stored_in_last_k: &mut VecDeque<(Block::Hash, HashSet<Hash>)>,
+        bundle_stored_in_last_k: &mut VecDeque<BlockBundle<Block>>,
     ) -> sp_blockchain::Result<()> {
         assert!(
             bundle_stored_in_last_k.is_empty(),
             "recent stored bundle already initialized"
         );
-        // `block_hashes` sorted from older block to newer block
-        let mut block_hashes = VecDeque::new();
+        // `blocks` sorted from older block to newer block
+        let mut blocks = VecDeque::new();
         for _ in 0..self.confirm_depth_k {
-            block_hashes.push_front(hash);
             match self.client.header(hash)? {
                 Some(header) => {
+                    blocks.push_front((hash, *header.number()));
                     if header.number().is_zero() {
                         break;
                     }
@@ -95,9 +95,9 @@ where
                 }
             }
         }
-        for h in block_hashes {
-            let bundles = self.extract_stored_bundles_at(h)?;
-            bundle_stored_in_last_k.push_front((h, bundles));
+        for (hash, number) in blocks {
+            let bundles = self.extract_stored_bundles_at(hash)?;
+            bundle_stored_in_last_k.push_front(BlockBundle::new(hash, number, bundles));
         }
         Ok(())
     }
@@ -108,7 +108,7 @@ where
     fn on_new_best_block(
         &self,
         new_best_hash: Block::Hash,
-        bundle_stored_in_last_k: &mut VecDeque<(Block::Hash, HashSet<Hash>)>,
+        bundle_stored_in_last_k: &mut VecDeque<BlockBundle<Block>>,
     ) -> sp_blockchain::Result<()> {
         let current_best_hash =
             match BundleStoredInLastK::<Block>::best_hash(bundle_stored_in_last_k) {
@@ -125,7 +125,7 @@ where
         // Remove bundles from the stale fork
         for retracted_block in retracted {
             match bundle_stored_in_last_k.front() {
-                Some((block_hash, _)) if *block_hash == retracted_block.hash => {
+                Some(bb) if bb.block_hash == retracted_block.hash => {
                     bundle_stored_in_last_k.pop_front();
                 }
                 bb => {
@@ -133,7 +133,7 @@ where
                         format!(
                             "Got wrong block from the bundle-collector, expect {:?}, got {:?}, this should not happen",
                             retracted_block,
-                            bb.map(|(block_hash, _)| block_hash),
+                            bb.map(|bb| bb.block_hash),
                         ),
                     )));
                 }
@@ -143,7 +143,11 @@ where
         // Add bundles from the new block of the best fork
         for enacted_block in enacted {
             let bundles = self.extract_stored_bundles_at(enacted_block.hash)?;
-            bundle_stored_in_last_k.push_front((enacted_block.hash, bundles));
+            bundle_stored_in_last_k.push_front(BlockBundle::new(
+                enacted_block.hash,
+                enacted_block.number,
+                bundles,
+            ));
         }
 
         // Remove blocks from the back end to keep at most the bundle of the last K blocks
@@ -153,13 +157,34 @@ where
     }
 }
 
-/// `BundleStoredInLastK` contains the bundles stored in last K blocks and is used to shared
-/// them between thread.
+#[derive(Clone)]
+struct BlockBundle<Block: BlockT> {
+    block_hash: Block::Hash,
+    block_number: NumberFor<Block>,
+    bundle_hashes: HashSet<Hash>,
+}
+
+impl<Block: BlockT> BlockBundle<Block> {
+    fn new(
+        block_hash: Block::Hash,
+        block_number: NumberFor<Block>,
+        bundle_hashes: HashSet<Hash>,
+    ) -> Self {
+        BlockBundle {
+            block_hash,
+            block_number,
+            bundle_hashes,
+        }
+    }
+}
+
+/// `BundleStoredInLastK` maintains the last consecutive K blocks of the canonical chain and the bundles
+/// stored within these blocks, it also used to share them between thread.
 struct BundleStoredInLastK<Block: BlockT> {
     // Bundles stored in last K blocks, sorted from newer block to older block.
-    bundles: Mutex<VecDeque<(Block::Hash, HashSet<Hash>)>>,
+    bundles: Mutex<VecDeque<BlockBundle<Block>>>,
     // `bundle_syncer` used to sync `bundles` to other thread
-    bundle_syncer: RwLock<VecDeque<(Block::Hash, HashSet<Hash>)>>,
+    bundle_syncer: RwLock<VecDeque<BlockBundle<Block>>>,
 }
 
 impl<Block: BlockT> BundleStoredInLastK<Block> {
@@ -170,8 +195,8 @@ impl<Block: BlockT> BundleStoredInLastK<Block> {
         }
     }
 
-    fn best_hash(bundles: &VecDeque<(Block::Hash, HashSet<Hash>)>) -> Option<Block::Hash> {
-        bundles.front().map(|(h, _)| *h)
+    fn best_hash(bundles: &VecDeque<BlockBundle<Block>>) -> Option<Block::Hash> {
+        bundles.front().map(|bb| bb.block_hash)
     }
 
     // Update the recent stored bundles with the given closure, the `Mutex` of `bundles` will be held
@@ -179,7 +204,7 @@ impl<Block: BlockT> BundleStoredInLastK<Block> {
     // be held an error will be returned instead of blocking.
     fn update_with<UpdateFn>(&self, update_fn: UpdateFn) -> sp_blockchain::Result<()>
     where
-        UpdateFn: FnOnce(&mut VecDeque<(Block::Hash, HashSet<Hash>)>) -> sp_blockchain::Result<()>,
+        UpdateFn: FnOnce(&mut VecDeque<BlockBundle<Block>>) -> sp_blockchain::Result<()>,
     {
         let mut bundles = match self.bundles.try_lock() {
             Some(b) => b,
@@ -197,11 +222,11 @@ impl<Block: BlockT> BundleStoredInLastK<Block> {
         res
     }
 
-    fn contains(&self, hash: Hash) -> bool {
+    fn contains_bundle(&self, hash: Hash) -> bool {
         let block_bundles = self.bundle_syncer.read();
         block_bundles
             .iter()
-            .any(|(_, bundle_hashes)| bundle_hashes.contains(&hash))
+            .any(|bb| bb.bundle_hashes.contains(&hash))
     }
 }
 
@@ -303,7 +328,10 @@ where
         // but it may return false positive result (i.e return `Ok` for a duplicated bundle) if
         // `BundleCollector::on_new_best_block` return error and left some blocks unhandled, and it
         // will be recovered after successfully handling the next best block.
-        if self.bundle_stored_in_last_k.contains(incoming_bundle) {
+        if self
+            .bundle_stored_in_last_k
+            .contains_bundle(incoming_bundle)
+        {
             return Err(BundleError::DuplicatedBundle);
         }
 
