@@ -43,8 +43,6 @@ use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
 use scale_info::{Type, TypeInfo};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use std::hash::{Hash, Hasher};
 
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
@@ -544,7 +542,7 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum RootBlock {
@@ -561,25 +559,6 @@ pub enum RootBlock {
         /// Last archived block
         last_archived_block: LastArchivedBlock,
     },
-}
-
-#[cfg(feature = "std")]
-impl Hash for RootBlock {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            RootBlock::V0 {
-                segment_index,
-                records_root: _,
-                prev_root_block_hash,
-                last_archived_block,
-            } => {
-                segment_index.hash(state);
-                prev_root_block_hash.hash(state);
-                last_archived_block.hash(state);
-                // we skip records_root
-            }
-        }
-    }
 }
 
 impl RootBlock {

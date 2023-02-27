@@ -128,16 +128,15 @@ where
                 let internal_result = segment_indexes
                     .iter()
                     .map(|segment_index| root_block_cache.get_root_block(*segment_index))
-                    .collect::<Result<Vec<Option<RootBlock>>, _>>()
-                    .map(|root_blocks| {
-                        root_blocks
-                            .iter()
-                            .filter_map(|rb| *rb)
-                            .collect::<Vec<RootBlock>>()
-                    });
+                    .collect::<Result<Option<Vec<RootBlock>>, _>>();
 
                 match internal_result {
-                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                    Ok(Some(root_blocks)) => Some(RootBlockResponse { root_blocks }),
+                    Ok(None) => {
+                        error!("Root block collection contained empty root blocks.");
+
+                        None
+                    }
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 

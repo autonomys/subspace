@@ -1,4 +1,5 @@
 use crate::DsnArgs;
+use anyhow::Context;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -23,7 +24,7 @@ use subspace_networking::{
     RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::runtime::Handle;
-use tracing::{debug, error, info, warn, Instrument, Span};
+use tracing::{debug, error, info, Instrument, Span};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
     NonZeroUsize::new(2000).expect("Not zero; qed");
@@ -31,7 +32,7 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
-const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
+const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
 pub(super) async fn configure_dsn(
     base_path: PathBuf,
@@ -97,11 +98,12 @@ pub(super) async fn configure_dsn(
 
     let last_archived_segment_index = Arc::new(AtomicU64::default());
     tokio::spawn({
-        let mut archived_segments_notifications =
-            node_client
-                .subscribe_archived_segments()
-                .await
-                .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+        let mut archived_segments_notifications = node_client
+            .subscribe_archived_segments()
+            .await
+            .map_err(|err| anyhow::anyhow!(err.to_string()))
+            .context("Failed to subscribe to archived segments")?;
+
         let last_archived_segment_index = last_archived_segment_index.clone();
 
         async move {
@@ -194,7 +196,7 @@ pub(super) async fn configure_dsn(
                         .iter()
                         .filter_map(|rb| {
                             if rb.is_none() {
-                                warn!("Received empty optional root block!");
+                                error!("Received empty optional root block!");
                             }
                             *rb
                         })
