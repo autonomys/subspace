@@ -13,7 +13,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
-use sp_domains::bundle_election::BundleElectionParams;
+use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
@@ -518,9 +518,9 @@ impl_runtime_apis! {
                 .collect()
         }
 
-        fn bundle_elections_params(domain_id: DomainId) -> BundleElectionParams {
+        fn bundle_election_solver_params(domain_id: DomainId) -> BundleElectionSolverParams {
             if domain_id.is_system() {
-                BundleElectionParams {
+                BundleElectionSolverParams {
                     authorities: ExecutorRegistry::authorities().into(),
                     total_stake_weight: ExecutorRegistry::total_stake_weight(),
                     slot_probability: ExecutorRegistry::slot_probability(),
@@ -532,13 +532,13 @@ impl_runtime_apis! {
                     DomainRegistry::domain_slot_probability(domain_id),
                 ) {
                     (authorities, Some(total_stake_weight), Some(slot_probability)) => {
-                        BundleElectionParams {
+                        BundleElectionSolverParams {
                             authorities,
                             total_stake_weight,
                             slot_probability,
                         }
                     }
-                    _ => BundleElectionParams::empty(),
+                    _ => BundleElectionSolverParams::empty(),
                 }
             }
         }

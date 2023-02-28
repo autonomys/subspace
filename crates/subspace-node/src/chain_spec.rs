@@ -68,6 +68,7 @@ struct GenesisParams {
     allow_authoring_by: AllowAuthoringBy,
     enable_executor: bool,
     enable_transfer: bool,
+    confirmation_depth_k: u32,
 }
 
 pub fn gemini_3c() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
@@ -139,6 +140,7 @@ pub fn gemini_3c_compiled(
                     ),
                     enable_executor: true,
                     enable_transfer: false,
+                    confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
         },
@@ -227,6 +229,7 @@ pub fn devnet_config_compiled(
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     enable_executor: true,
                     enable_transfer: true,
+                    confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
         },
@@ -278,6 +281,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
                     enable_transfer: true,
+                    confirmation_depth_k: 1,
                 },
             )
         },
@@ -334,6 +338,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
                     enable_transfer: true,
+                    confirmation_depth_k: 1,
                 },
             )
         },
@@ -368,6 +373,7 @@ fn subspace_genesis_config(
         allow_authoring_by,
         enable_executor,
         enable_transfer,
+        confirmation_depth_k,
     } = genesis_params;
 
     GenesisConfig {
@@ -390,6 +396,7 @@ fn subspace_genesis_config(
         runtime_configs: RuntimeConfigsConfig {
             enable_executor,
             enable_transfer,
+            confirmation_depth_k,
         },
     }
 }

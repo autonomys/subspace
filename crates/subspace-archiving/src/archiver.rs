@@ -23,7 +23,7 @@ use alloc::collections::VecDeque;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
-use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
+use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
@@ -32,7 +32,7 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     crypto, ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock,
-    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, WITNESS_SIZE,
+    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, WITNESS_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -47,14 +47,71 @@ const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
 };
 
 /// Segment represents a collection of items stored in archival history of the Subspace blockchain
-#[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Segment {
     // V0 of the segment data structure
-    #[codec(index = 0)]
     V0 {
         /// Segment items
         items: Vec<SegmentItem>,
     },
+}
+
+impl Encode for Segment {
+    fn size_hint(&self) -> usize {
+        RECORDED_HISTORY_SEGMENT_SIZE as usize
+    }
+
+    fn encode_to<T: Output + ?Sized>(&self, dest: &mut T) {
+        match self {
+            Segment::V0 { items } => {
+                dest.push_byte(0);
+                for item in items {
+                    item.encode_to(dest);
+                }
+            }
+        }
+    }
+}
+
+impl Decode for Segment {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        let variant = input
+            .read_byte()
+            .map_err(|e| e.chain("Could not decode `Segment`, failed to read variant byte"))?;
+        match variant {
+            0 => {
+                let mut items = Vec::new();
+                loop {
+                    match input.remaining_len()? {
+                        Some(0) => {
+                            break;
+                        }
+                        Some(_) => {
+                            // Processing continues below
+                        }
+                        None => {
+                            return Err(
+                                "Source doesn't report remaining length, decoding not possible"
+                                    .into(),
+                            );
+                        }
+                    }
+
+                    match SegmentItem::decode(input) {
+                        Ok(item) => {
+                            items.push(item);
+                        }
+                        Err(error) => {
+                            return Err(error.chain("Could not decode `Segment::V0::items`"));
+                        }
+                    }
+                }
+
+                Ok(Segment::V0 { items })
+            }
+            _ => Err("Could not decode `Segment`, variant doesn't exist".into()),
+        }
+    }
 }
 
 impl Segment {
@@ -72,8 +129,11 @@ impl Segment {
 /// Kinds of items that are contained within a segment
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub enum SegmentItem {
+    /// Special dummy enum variant only used as an implementation detail for padding purposes
+    #[codec(index = 0)]
+    Padding,
     /// Contains full block inside
-    #[codec(index = 3)]
+    #[codec(index = 1)]
     Block {
         /// Block bytes
         bytes: Vec<u8>,
@@ -83,7 +143,7 @@ pub enum SegmentItem {
         object_mapping: BlockObjectMapping,
     },
     /// Contains the beginning of the block inside, remainder will be found in subsequent segments
-    #[codec(index = 4)]
+    #[codec(index = 2)]
     BlockStart {
         /// Block bytes
         bytes: Vec<u8>,
@@ -93,7 +153,7 @@ pub enum SegmentItem {
         object_mapping: BlockObjectMapping,
     },
     /// Continuation of the partial block spilled over into the next segment
-    #[codec(index = 5)]
+    #[codec(index = 3)]
     BlockContinuation {
         /// Block bytes
         bytes: Vec<u8>,
@@ -103,7 +163,7 @@ pub enum SegmentItem {
         object_mapping: BlockObjectMapping,
     },
     /// Root block
-    #[codec(index = 6)]
+    #[codec(index = 4)]
     RootBlock(RootBlock),
 }
 
@@ -395,6 +455,9 @@ impl Archiver {
                 // last segment item insertion needs to be skipped to avoid out of range panic when
                 // trying to cut segment item internal bytes.
                 let inner_bytes_size = match &segment_item {
+                    SegmentItem::Padding => {
+                        unreachable!("Buffer never contains SegmentItem::Padding; qed");
+                    }
                     SegmentItem::Block { bytes, .. } => bytes.len(),
                     SegmentItem::BlockStart { .. } => {
                         unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
@@ -415,6 +478,9 @@ impl Archiver {
             }
 
             match &segment_item {
+                SegmentItem::Padding => {
+                    unreachable!("Buffer never contains SegmentItem::Padding; qed");
+                }
                 SegmentItem::Block { .. } => {
                     // Skip block number increase in case of the very first block
                     if last_archived_block != INITIAL_LAST_ARCHIVED_BLOCK {
@@ -462,6 +528,9 @@ impl Archiver {
                 .expect("Segment over segment size always has at least one item; qed");
 
             let segment_item = match segment_item {
+                SegmentItem::Padding => {
+                    unreachable!("Buffer never contains SegmentItem::Padding; qed");
+                }
                 SegmentItem::Block {
                     mut bytes,
                     mut object_mapping,
@@ -584,9 +653,14 @@ impl Archiver {
             ];
             let Segment::V0 { items } = &segment;
             // `+1` corresponds to enum variant encoding
-            let mut base_offset_in_segment = 1 + Compact::compact_len(&(items.len() as u32));
+            let mut base_offset_in_segment = 1;
             for segment_item in items {
                 match segment_item {
+                    SegmentItem::Padding => {
+                        unreachable!(
+                            "Segment during archiving never contains SegmentItem::Padding; qed"
+                        );
+                    }
                     SegmentItem::Block {
                         bytes,
                         object_mapping,

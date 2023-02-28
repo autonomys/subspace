@@ -13,11 +13,12 @@ use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
+use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
-    ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
+    ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
     RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
 use tokio::runtime::Handle;
@@ -30,18 +31,21 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 
-pub(super) async fn configure_dsn(
+#[allow(clippy::type_complexity)]
+pub(super) fn configure_dsn(
     base_path: PathBuf,
     keypair: Keypair,
     DsnArgs {
         listen_on,
         bootstrap_nodes,
         piece_cache_size,
+        provided_keys_limit,
         disable_private_ips,
         reserved_peers,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
+    piece_memory_cache: PieceMemoryCache,
 ) -> Result<
     (
         Node,
@@ -60,35 +64,48 @@ pub(super) async fn configure_dsn(
             fs::rename(&records_cache_db_path, &piece_cache_db_path)?;
         }
     }
-    let provider_cache_db_path = base_path.join("provider_cache_db");
-    let provider_cache_size =
-        piece_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
+    let provider_db_path = base_path.join("providers_db");
+    // TODO: Remove this migration code in the future
+    {
+        let provider_cache_db_path = base_path.join("provider_cache_db");
+        if provider_cache_db_path.exists() {
+            fs::rename(&provider_cache_db_path, &provider_db_path)?;
+        }
+    }
 
-    info!(
-        ?piece_cache_db_path,
-        ?piece_cache_size,
-        ?provider_cache_db_path,
-        ?provider_cache_size,
-        "Record cache DB configured."
-    );
-
-    let piece_protocol_handle = Handle::current();
-    let root_blocks_protocol_handle = Handle::current();
     let default_config = Config::default();
     let peer_id = peer_id(&keypair);
 
-    let db_provider_storage =
-        ParityDbProviderStorage::new(&provider_cache_db_path, provider_cache_size, peer_id)
+    info!(
+        db_path = ?provider_db_path,
+        keys_limit = ?provided_keys_limit,
+        "Initializing provider storage..."
+    );
+    let persistent_provider_storage =
+        ParityDbProviderStorage::new(&provider_db_path, provided_keys_limit, peer_id)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    info!(
+        current_size = ?persistent_provider_storage.size(),
+        "Provider storage initialized successfully"
+    );
 
+    info!(
+        db_path = ?piece_cache_db_path,
+        size = ?piece_cache_size,
+        "Initializing piece cache..."
+    );
     let piece_store =
         ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
+    info!(
+        current_size = ?piece_cache.size(),
+        "Piece cache initialized successfully"
+    );
 
     let farmer_provider_storage = FarmerProviderStorage::new(
         peer_id,
         readers_and_pieces.clone(),
-        db_provider_storage,
+        persistent_provider_storage,
         piece_cache.clone(),
     );
 
@@ -100,17 +117,28 @@ pub(super) async fn configure_dsn(
         networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
             .boxed(),
         request_response_protocols: vec![
-            PieceByHashRequestHandler::create(move |req| {
-                let result = {
-                    debug!(piece_index_hash = ?req.piece_index_hash, "Piece request received. Trying cache...");
-                    let multihash = req.piece_index_hash.to_multihash();
+            PieceByHashRequestHandler::create(move |&PieceByHashRequest { piece_index_hash }| {
+                debug!(?piece_index_hash, "Piece request received. Trying cache...");
+                let multihash = piece_index_hash.to_multihash();
 
-                    let piece_from_cache = piece_store.get(&multihash.into());
+                let weak_readers_and_pieces = weak_readers_and_pieces.clone();
+                let piece_store = piece_store.clone();
+                let piece_memory_cache = piece_memory_cache.clone();
 
-                    if piece_from_cache.is_some() {
-                        piece_from_cache
+                async move {
+                    if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
+                        return Some(PieceByHashResponse { piece: Some(piece) });
+                    }
+
+                    let piece_from_store = piece_store.get(&multihash.into());
+
+                    if let Some(piece) = piece_from_store {
+                        Some(PieceByHashResponse { piece: Some(piece) })
                     } else {
-                        debug!(piece_index_hash = ?req.piece_index_hash, "No piece in the cache. Trying archival storage...");
+                        debug!(
+                            ?piece_index_hash,
+                            "No piece in the cache. Trying archival storage..."
+                        );
 
                         let read_piece_fut = {
                             let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
@@ -125,40 +153,43 @@ pub(super) async fn configure_dsn(
                                 Some(readers_and_pieces) => readers_and_pieces,
                                 None => {
                                     debug!(
-                                        ?req.piece_index_hash,
+                                        ?piece_index_hash,
                                         "Readers and pieces are not initialized yet"
                                     );
                                     return None;
                                 }
                             };
 
-                            readers_and_pieces.read_piece(&req.piece_index_hash)?
+                            readers_and_pieces
+                                .read_piece(&piece_index_hash)?
+                                .instrument(Span::current())
                         };
 
-                        let handle = piece_protocol_handle.clone();
-                        tokio::task::block_in_place(move || handle.block_on(read_piece_fut))
-                    }
-                };
+                        let piece = read_piece_fut.await;
 
-                Some(PieceByHashResponse { piece: result })
-            }),
-            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
-                debug!(segment_indexes_count = ?req.segment_indexes.len(), "Root blocks request received.");
-
-                let handle = root_blocks_protocol_handle.clone();
-                let node_client = node_client.clone();
-                let internal_result = tokio::task::block_in_place(move || {
-                    handle.block_on(node_client.root_blocks(req.segment_indexes.clone()))
-                });
-
-                match internal_result {
-                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
-                    Err(error) => {
-                        error!(%error, "Failed to get root blocks from cache");
-
-                        None
+                        Some(PieceByHashResponse { piece })
                     }
                 }
+                .instrument(Span::current())
+            }),
+            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
+                let segment_indexes = req.segment_indexes.clone();
+
+                debug!(segment_indexes_count = ?segment_indexes.len(), "Root blocks request received.");
+
+                let node_client = node_client.clone();
+
+                async move {
+                    match node_client.root_blocks(segment_indexes).await {
+                        Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                        Err(error) => {
+                            error!(%error, "Failed to get root blocks from cache");
+
+                            None
+                        }
+                    }
+                }
+                .instrument(Span::current())
             }),
         ],
         provider_storage: farmer_provider_storage,
@@ -166,7 +197,6 @@ pub(super) async fn configure_dsn(
     };
 
     create(config)
-        .await
         .map(|(node, node_runner)| (node, node_runner, piece_cache))
         .map_err(Into::into)
 }
@@ -221,13 +251,13 @@ pub(crate) fn start_announcements_processor(
         .name("ann-processor".to_string())
         .spawn(move || {
             let processor_fut = async {
-                while let Some((provider_record, _guard)) = provider_records_receiver.next().await {
+                while let Some((provider_record, guard)) = provider_records_receiver.next().await {
                     if weak_readers_and_pieces.upgrade().is_none() {
                         // `ReadersAndPieces` was dropped, nothing left to be done
                         return;
                     }
                     provider_record_processor
-                        .process_provider_record(provider_record)
+                        .process_provider_record(provider_record, guard)
                         .await;
                 }
             };

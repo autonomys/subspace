@@ -491,14 +491,9 @@ where
 
             let (node, mut node_runner) = create_dsn_instance::<Block, _>(
                 config.clone(),
-                piece_cache.clone(),
+                piece_cache,
                 root_block_cache.clone(),
-            )
-            .instrument(tracing::info_span!(
-                sc_tracing::logging::PREFIX_LOG_SPAN,
-                name = "DSN"
-            ))
-            .await?;
+            )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 

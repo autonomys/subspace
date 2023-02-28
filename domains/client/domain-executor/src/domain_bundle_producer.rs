@@ -1,4 +1,4 @@
-use crate::bundle_election_solver::BundleElectionSolver;
+use crate::bundle_election_solver::{BundleElectionSolver, PreliminaryBundleSolution};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
@@ -10,8 +10,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, ProofOfElection,
-    SignedBundle,
+    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
@@ -148,7 +147,7 @@ where
         let best_hash = self.system_domain_client.info().best_hash;
         let best_number = self.system_domain_client.info().best_number;
 
-        if let Some(proof_of_election) = self
+        if let Some(preliminary_bundle_solution) = self
             .bundle_election_solver
             .solve_bundle_election_challenge::<Block>(
                 best_hash,
@@ -164,7 +163,7 @@ where
                 .propose_bundle_at::<PBlock, _, _>(slot, primary_info, self.parent_chain.clone())
                 .await?;
 
-            let bundle_solution = self.construct_bundle_solution(proof_of_election)?;
+            let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
 
             Ok(Some(sign_new_bundle::<Block, PBlock>(
                 bundle,
@@ -178,26 +177,33 @@ where
 
     fn construct_bundle_solution(
         &self,
-        proof_of_election: ProofOfElection<Block::Hash>,
+        preliminary_bundle_solution: PreliminaryBundleSolution<Block::Hash>,
     ) -> Result<BundleSolution<Block::Hash>, sp_blockchain::Error> {
-        if self.domain_id.is_system() {
-            Ok(BundleSolution::System(proof_of_election))
-        } else if self.domain_id.is_core() {
-            let core_block_number = to_number_primitive(self.client.info().best_number);
-            let core_block_hash = self.client.info().best_hash;
-            let core_state_root = *self
-                .client
-                .header(core_block_hash)?
-                .expect("Best block header must exist; qed")
-                .state_root();
-            Ok(BundleSolution::Core {
+        match preliminary_bundle_solution {
+            PreliminaryBundleSolution::System {
+                authority_stake_weight,
+                authority_witness,
                 proof_of_election,
-                core_block_number,
-                core_block_hash,
-                core_state_root,
-            })
-        } else {
-            unreachable!("Open domains are unsupported")
+            } => Ok(BundleSolution::System {
+                authority_stake_weight,
+                authority_witness,
+                proof_of_election,
+            }),
+            PreliminaryBundleSolution::Core(proof_of_election) => {
+                let core_block_number = to_number_primitive(self.client.info().best_number);
+                let core_block_hash = self.client.info().best_hash;
+                let core_state_root = *self
+                    .client
+                    .header(core_block_hash)?
+                    .expect("Best block header must exist; qed")
+                    .state_root();
+                Ok(BundleSolution::Core {
+                    proof_of_election,
+                    core_block_number,
+                    core_block_hash,
+                    core_state_root,
+                })
+            }
         }
     }
 }

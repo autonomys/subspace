@@ -115,6 +115,7 @@ impl Farmer {
             &sector_codec,
             Cursor::new(sector.as_mut_slice()),
             Cursor::new(sector_metadata.as_mut_slice()),
+            Default::default(),
         ))
         .unwrap();
 

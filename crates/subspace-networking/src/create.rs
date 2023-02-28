@@ -1,3 +1,4 @@
+pub(crate) mod temporary_bans;
 mod transport;
 
 use crate::behavior::persistent_parameters::{
@@ -5,12 +6,14 @@ use crate::behavior::persistent_parameters::{
 };
 use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
+use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
+use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::gossipsub::{
     Config as GossipsubConfig, ConfigBuilder as GossipsubConfigBuilder,
@@ -27,11 +30,12 @@ use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, TransportError};
+use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
@@ -57,16 +61,13 @@ const YAMUX_MAX_STREAMS: usize = 256;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
-/// Kademlia has 32 substream as a hardcoded constant, we leave 2 for auxiliary internal functions
-/// like periodic random walk.
-///
-/// We restrict this so we don't exceed number of incoming streams for single peer, but this value
-/// will be boosted depending on number of connected peers.
-const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
+/// We restrict this so we can manage outgoing requests a bit better by cancelling low-priority
+/// requests, but this value will be boosted depending on number of connected peers.
+const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(25).expect("Not zero; qed");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
+pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 /// Base limit for number of any concurrent tasks except Kademlia.
 ///
 /// We configure total number of streams per connection to 256. Here we assume half of them might be
@@ -75,11 +76,17 @@ pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 1;
 /// We restrict this so we don't exceed number of streams for single peer, but this value will be
 /// boosted depending on number of connected peers.
 const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
-    NonZeroUsize::new(120 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
+    NonZeroUsize::new(80 - KADEMLIA_BASE_CONCURRENT_TASKS.get()).expect("Not zero; qed");
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 2;
+pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 50;
+
+const TEMPORARY_BANS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
+const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
+const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
 /// Record store that can't be created, only
 pub(crate) struct ProviderOnlyRecordStore<ProviderStorage> {
@@ -191,6 +198,10 @@ pub struct Config<ProviderStorage> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// How many temporarily banned unreachable peers to keep in memory.
+    pub temporary_bans_cache_size: NonZeroUsize,
+    /// Backoff policy for temporary banning of unreachable peers.
+    pub temporary_ban_backoff: ExponentialBackoff,
     /// Optional external prometheus metrics. None will disable metrics gathering.
     pub metrics: Option<Metrics>,
 }
@@ -248,6 +259,17 @@ where
         let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
+        let temporary_ban_backoff = ExponentialBackoff {
+            current_interval: TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL,
+            initial_interval: TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL,
+            randomization_factor: TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR,
+            multiplier: TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER,
+            max_interval: TEMPORARY_BANS_DEFAULT_MAX_INTERVAL,
+            start_time: Instant::now(),
+            max_elapsed_time: None,
+            clock: SystemClock::default(),
+        };
+
         Self {
             keypair,
             listen_on: vec![],
@@ -265,6 +287,8 @@ where
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
+            temporary_ban_backoff,
             metrics: None,
         }
     }
@@ -297,7 +321,7 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub async fn create<ProviderStorage>(
+pub fn create<ProviderStorage>(
     config: Config<ProviderStorage>,
 ) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
 where
@@ -320,86 +344,84 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        temporary_bans_cache_size,
+        temporary_ban_backoff,
         metrics,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
+    let temporary_bans = Arc::new(Mutex::new(TemporaryBans::new(
+        temporary_bans_cache_size,
+        temporary_ban_backoff,
+    )));
     let transport = build_transport(
         allow_non_global_addresses_in_dht,
         &keypair,
+        Arc::clone(&temporary_bans),
         timeout,
         yamux_config,
     )?;
 
-    // libp2p uses blocking API, hence we need to create a blocking task.
-    let create_swarm_fut = tokio::task::spawn_blocking(move || {
-        let behaviour = Behavior::new(BehaviorConfig {
-            peer_id: local_peer_id,
-            identify,
-            kademlia,
-            gossipsub,
-            record_store: ProviderOnlyRecordStore::new(provider_storage),
-            request_response_protocols,
-        });
-
-        let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
-            .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
-            .build();
-
-        // Setup listen_on addresses
-        for mut addr in listen_on {
-            if let Err(error) = swarm.listen_on(addr.clone()) {
-                if !listen_on_fallback_to_random_port {
-                    return Err(error.into());
-                }
-
-                let addr_string = addr.to_string();
-                // Listen on random port if specified is already occupied
-                if let Some(Protocol::Tcp(_port)) = addr.pop() {
-                    info!(
-                        "Failed to listen on {addr_string} ({error}), falling back to random port"
-                    );
-                    addr.push(Protocol::Tcp(0));
-                    swarm.listen_on(addr)?;
-                }
-            }
-        }
-
-        // Create final structs
-        let (command_sender, command_receiver) = mpsc::channel(1);
-
-        let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
-        let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
-
-        let shared = Arc::new(Shared::new(
-            local_peer_id,
-            command_sender,
-            kademlia_tasks_semaphore,
-            regular_tasks_semaphore,
-        ));
-        let shared_weak = Arc::downgrade(&shared);
-
-        let node = Node::new(shared);
-        let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
-            allow_non_global_addresses_in_dht,
-            command_receiver,
-            swarm,
-            shared_weak,
-            next_random_query_interval: initial_random_query_interval,
-            networking_parameters_registry,
-            reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-            max_established_incoming_connections,
-            max_established_outgoing_connections,
-            metrics,
-        });
-
-        Ok((node, node_runner))
-    });
-
     info!(%allow_non_global_addresses_in_dht, peer_id = %local_peer_id, "DSN instance configured.");
 
-    create_swarm_fut.await.expect(
-        "Blocking tasks never panics, if it does it is an implementation bug and everything \
-        must crash",
-    )
+    let behaviour = Behavior::new(BehaviorConfig {
+        peer_id: local_peer_id,
+        identify,
+        kademlia,
+        gossipsub,
+        record_store: ProviderOnlyRecordStore::new(provider_storage),
+        request_response_protocols,
+    });
+
+    let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
+        .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
+        .build();
+
+    // Setup listen_on addresses
+    for mut addr in listen_on {
+        if let Err(error) = swarm.listen_on(addr.clone()) {
+            if !listen_on_fallback_to_random_port {
+                return Err(error.into());
+            }
+
+            let addr_string = addr.to_string();
+            // Listen on random port if specified is already occupied
+            if let Some(Protocol::Tcp(_port)) = addr.pop() {
+                info!("Failed to listen on {addr_string} ({error}), falling back to random port");
+                addr.push(Protocol::Tcp(0));
+                swarm.listen_on(addr)?;
+            }
+        }
+    }
+
+    // Create final structs
+    let (command_sender, command_receiver) = mpsc::channel(1);
+
+    let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
+    let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
+
+    let shared = Arc::new(Shared::new(
+        local_peer_id,
+        command_sender,
+        kademlia_tasks_semaphore,
+        regular_tasks_semaphore,
+    ));
+    let shared_weak = Arc::downgrade(&shared);
+
+    let node = Node::new(shared);
+    let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
+        allow_non_global_addresses_in_dht,
+        command_receiver,
+        swarm,
+        shared_weak,
+        next_random_query_interval: initial_random_query_interval,
+        networking_parameters_registry,
+        reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
+        max_established_incoming_connections,
+        max_established_outgoing_connections,
+        temporary_bans,
+        metrics,
+    });
+
+    Ok((node, node_runner))
 }

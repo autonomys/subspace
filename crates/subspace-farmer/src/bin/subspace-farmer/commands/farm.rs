@@ -1,6 +1,7 @@
 mod dsn;
 
 use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
+use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
@@ -20,7 +21,9 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
+use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
+use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
@@ -53,15 +56,18 @@ pub(crate) async fn farm_multi_disk(
         disable_farming,
         mut dsn,
         max_concurrent_plots,
+        no_info: _,
     } = farming_args;
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
-    info!("Connecting to node RPC at {}", node_rpc_url);
+    info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = NodeRpcClient::new(&node_rpc_url).await?;
     let concurrent_plotting_semaphore = Arc::new(tokio::sync::Semaphore::new(
         farming_args.max_concurrent_plots.get(),
     ));
+
+    let piece_memory_cache = PieceMemoryCache::default();
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
@@ -89,8 +95,8 @@ pub(crate) async fn farm_multi_disk(
             dsn,
             &readers_and_pieces,
             node_client.clone(),
-        )
-        .await?
+            piece_memory_cache.clone(),
+        )?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
@@ -123,7 +129,7 @@ pub(crate) async fn farm_multi_disk(
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
-    for disk_farm in disk_farms {
+    for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
 
         if disk_farm.allocated_plotting_space < minimum_plot_size {
@@ -134,20 +140,28 @@ pub(crate) async fn farm_multi_disk(
             ));
         }
 
-        info!("Connecting to node RPC at {}", node_rpc_url);
+        debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-        let single_disk_plot_fut = SingleDiskPlot::new(SingleDiskPlotOptions {
-            directory: disk_farm.directory,
-            allocated_space: disk_farm.allocated_plotting_space,
-            node_client,
-            reward_address,
-            kzg: kzg.clone(),
-            piece_getter: piece_getter.clone(),
-            concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
-        });
+        let single_disk_plot_fut = SingleDiskPlot::new(
+            SingleDiskPlotOptions {
+                directory: disk_farm.directory.clone(),
+                allocated_space: disk_farm.allocated_plotting_space,
+                node_client,
+                reward_address,
+                kzg: kzg.clone(),
+                piece_getter: piece_getter.clone(),
+                concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
+                piece_memory_cache: piece_memory_cache.clone(),
+            },
+            disk_farm_index,
+        );
 
         let single_disk_plot = single_disk_plot_fut.await?;
+
+        if !farming_args.no_info {
+            print_disk_farm_info(disk_farm.directory, disk_farm_index);
+        }
 
         single_disk_plots.push(single_disk_plot);
     }
@@ -158,7 +172,7 @@ pub(crate) async fn farm_multi_disk(
         .map(|single_disk_plot| single_disk_plot.piece_reader())
         .collect::<Vec<_>>();
 
-    debug!("Collecting already plotted pieces");
+    info!("Collecting already plotted pieces (this will take some time)...");
 
     // Collect already plotted pieces
     let plotted_pieces: HashMap<PieceIndexHash, PieceDetails> = single_disk_plots
@@ -200,7 +214,7 @@ pub(crate) async fn farm_multi_disk(
         // We implicitly ignore duplicates here, reading just from one of the plots
         .collect();
 
-    debug!("Finished collecting already plotted pieces");
+    info!("Finished collecting already plotted pieces successfully");
 
     readers_and_pieces
         .lock()
@@ -220,9 +234,10 @@ pub(crate) async fn farm_multi_disk(
             // Collect newly plotted pieces
             // TODO: Once we have replotting, this will have to be updated
             single_disk_plot
-                .on_sector_plotted(Arc::new(move |(plotted_sector, plotting_permit)| {
+                .on_sector_plotted(Arc::new(move |(sector_offset, plotted_sector, plotting_permit)| {
                     let plotting_permit = Arc::clone(plotting_permit);
                     let node = node.clone();
+                    let sector_offset = *sector_offset;
                     let sector_index = plotted_sector.sector_index;
 
                     let mut dropped_receiver = dropped_sender.subscribe();
@@ -271,6 +286,7 @@ pub(crate) async fn farm_multi_disk(
                         return;
                     }
 
+                    // TODO: Skip those that were already announced (because they cached)
                     let publish_fut = async move {
                         let mut pieces_publishing_futures = new_pieces
                             .into_iter()
@@ -283,7 +299,7 @@ pub(crate) async fn farm_multi_disk(
                             // Nothing is needed here, just driving all futures to completion
                         }
 
-                        info!("Piece publishing was successful.");
+                        info!(%sector_offset, ?sector_index, "Sector publishing was successful.");
 
                         // Release only after publishing is finished
                         drop(plotting_permit);
@@ -307,24 +323,36 @@ pub(crate) async fn farm_multi_disk(
     // event handlers
     drop(readers_and_pieces);
 
-    futures::select!(
-        // Signal future
-        _ = signal.fuse() => {},
-
-        // Plotting future
-        result = Box::pin(async move {
+    let farm_fut = run_future_in_dedicated_thread(
+        Box::pin(async move {
             while let Some(result) = single_disk_plots_stream.next().await {
                 result?;
 
                 info!("Farm exited successfully");
             }
             anyhow::Ok(())
-        }).fuse() => {
-            result?;
+        }),
+        "farmer-farm".to_string(),
+    )?;
+    let mut farm_fut = Box::pin(farm_fut).fuse();
+
+    let networking_fut = run_future_in_dedicated_thread(
+        Box::pin(async move { node_runner.run().await }),
+        "farmer-networking".to_string(),
+    )?;
+    let mut networking_fut = Box::pin(networking_fut).fuse();
+
+    futures::select!(
+        // Signal future
+        _ = signal.fuse() => {},
+
+        // Farm future
+        result = farm_fut => {
+            result??;
         },
 
         // Node runner future
-        _ = node_runner.run().fuse() => {
+        _ = networking_fut => {
             info!("Node runner exited.")
         },
     );
