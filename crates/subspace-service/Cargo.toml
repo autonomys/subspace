@@ -18,7 +18,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 derive_more = "0.99.17"
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
-either = "1.8.0"
+either = "1.8.1"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 futures = "0.3.26"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
