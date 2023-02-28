@@ -18,17 +18,17 @@ codec = { package = "parity-scale-codec", version = "3.4.0", default-features = 
 log = { version = "0.4.17", default-features = false }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-application-crypto = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-arithmetic = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c" }
-sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "50fdd4fd3853b15c019fc96a0eb7dbffe1ff042c", default-features = false }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-application-crypto = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-arithmetic = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }

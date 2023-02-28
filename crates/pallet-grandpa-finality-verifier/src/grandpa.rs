@@ -19,7 +19,7 @@ use finality_grandpa::voter_set::VoterSet;
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_finality_grandpa::{
+use sp_consensus_grandpa::{
     AuthorityId, AuthorityList, AuthoritySignature, ConsensusLog, SetId, GRANDPA_ENGINE_ID,
 };
 use sp_runtime::traits::Header as HeaderT;
@@ -187,7 +187,7 @@ where
             .checked_add(authority_info.weight().0.into())
             .ok_or(Error::ArithematicOverflow)?;
         // verify authority signature
-        if !sp_finality_grandpa::check_message_signature_with_buffer(
+        if !sp_consensus_grandpa::check_message_signature_with_buffer(
             &finality_grandpa::Message::Precommit(signed.precommit.clone()),
             &signed.id,
             &signed.signature,
@@ -216,7 +216,7 @@ where
 
 pub(crate) fn find_scheduled_change<H: HeaderT>(
     header: &H,
-) -> Option<sp_finality_grandpa::ScheduledChange<H::Number>> {
+) -> Option<sp_consensus_grandpa::ScheduledChange<H::Number>> {
     use sp_runtime::generic::OpaqueDigestItemId;
 
     let id = OpaqueDigestItemId::Consensus(&GRANDPA_ENGINE_ID);
@@ -237,7 +237,7 @@ pub(crate) fn find_scheduled_change<H: HeaderT>(
 /// extracts it.
 pub(crate) fn find_forced_change<H: HeaderT>(
     header: &H,
-) -> Option<(H::Number, sp_finality_grandpa::ScheduledChange<H::Number>)> {
+) -> Option<(H::Number, sp_consensus_grandpa::ScheduledChange<H::Number>)> {
     use sp_runtime::generic::OpaqueDigestItemId;
 
     let id = OpaqueDigestItemId::Consensus(&GRANDPA_ENGINE_ID);
