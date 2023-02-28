@@ -23,8 +23,6 @@ use sp_runtime::MultiSignature;
 use sp_std::vec::Vec;
 pub use subspace_core_primitives::BlockNumber;
 
-// TODO: Proper value here
-pub const CONFIRMATION_DEPTH_K: BlockNumber = 100;
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
 // TODO: Proper value here

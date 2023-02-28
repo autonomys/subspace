@@ -62,4 +62,4 @@ pub use request_handlers::root_block::{
     RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 pub use utils::prometheus::start_prometheus_metrics_server;
-pub use utils::record_binary_heap::RecordBinaryHeap;
+pub use utils::unique_record_binary_heap::UniqueRecordBinaryHeap;

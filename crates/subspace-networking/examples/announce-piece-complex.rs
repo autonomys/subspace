@@ -28,7 +28,7 @@ async fn main() {
             ..Config::default()
         };
 
-        let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+        let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
         println!("Node {} ID is {}", i, node.id());
 
@@ -71,7 +71,7 @@ async fn main() {
         ..Config::default()
     };
 
-    let (node, mut node_runner) = subspace_networking::create(config).await.unwrap();
+    let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
     tokio::spawn(async move {
         node_runner.run().await;

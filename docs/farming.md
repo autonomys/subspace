@@ -250,8 +250,6 @@ services:
       - farmer-data:/var/subspace:rw
 #      - /path/to/subspace-farmer:/var/subspace:rw
     ports:
-# Un-comment following line to unlock farmer's RPC
-#      - "127.0.0.1:9955:9955"
 # If port 30533 is already occupied by something else, replace all
 # occurrences of `30533` in this file with another value
       - "0.0.0.0:30533:30533"
@@ -261,7 +259,6 @@ services:
       "farm",
       "--disable-private-ips",
       "--node-rpc-url", "ws://node:9944",
-      "--ws-server-listen-addr", "0.0.0.0:9955",
       "--listen-on", "/ip4/0.0.0.0/tcp/30533",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",

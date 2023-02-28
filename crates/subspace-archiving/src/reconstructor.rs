@@ -163,6 +163,9 @@ impl Reconstructor {
 
         for segment_item in items {
             match segment_item {
+                SegmentItem::Padding => {
+                    // Doesn't contain anything
+                }
                 SegmentItem::Block { bytes, .. } => {
                     if !partial_block.is_empty() {
                         reconstructed_contents

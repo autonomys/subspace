@@ -121,7 +121,7 @@ fn archiver() {
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 1);
-        assert_eq!(last_archived_block.partial_archived(), Some(63380));
+        assert_eq!(last_archived_block.partial_archived(), Some(63381));
     }
 
     // 4 objects fit into the first segment
@@ -208,13 +208,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(105531));
+        assert_eq!(last_archived_block.partial_archived(), Some(105533));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(232209));
+        assert_eq!(last_archived_block.partial_archived(), Some(232212));
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -248,7 +248,7 @@ fn archiver() {
     }
 
     // Add a block such that it fits in the next segment exactly
-    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 21472]>().to_vec();
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 21468]>().to_vec();
     let archived_segments = archiver.add_block(block_3.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
@@ -295,7 +295,7 @@ fn archiver() {
 fn invalid_usage() {
     let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
     assert_matches!(
-        Archiver::new(5, SEGMENT_SIZE, kzg.clone()),
+        Archiver::new(4, SEGMENT_SIZE, kzg.clone()),
         Err(ArchiverInstantiationError::RecordSizeTooSmall),
     );
 
@@ -390,9 +390,6 @@ fn one_byte_smaller_segment() {
     let block_size = SEGMENT_SIZE as usize
         // Segment enum variant
         - 1
-        // Compact length of number of segment items
-        - 1
-        // Block continuation segment item enum variant
         - 1
         // This is a rough number (a bit fewer bytes will be included in practice), but it is
         // close enough and practically will always result in the same compact length.
@@ -425,8 +422,6 @@ fn spill_over_edge_case() {
     // internal bytes of the segment item anyway
     let block_size = SEGMENT_SIZE as usize
         // Segment enum variant
-        - 1
-        // Compact length of number of segment items
         - 1
         // Block continuation segment item enum variant
         - 1
@@ -494,8 +489,6 @@ fn object_on_the_edge_of_segment() {
         // Offset is designed to fall exactly on the edge of the segment
         offset: SEGMENT_SIZE
             // Segment enum variant
-            - 1
-            // Compact length of number of segment items
             - 1
             // Root block segment item
             - SegmentItem::RootBlock(RootBlock::V0 {

@@ -414,7 +414,7 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotted: Handler<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
+    sector_plotted: Handler<(usize, PlottedSector, Arc<OwnedSemaphorePermit>)>,
     solution: Handler<SolutionResponse>,
 }
 
@@ -460,6 +460,7 @@ impl SingleDiskPlot {
     /// NOTE: Thought this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG>(
         options: SingleDiskPlotOptions<NC, PG>,
+        disk_farm_index: usize,
     ) -> Result<Self, SingleDiskPlotError>
     where
         NC: NodeClient,
@@ -554,7 +555,6 @@ impl SingleDiskPlot {
             }
         };
 
-        let single_disk_plot_id = *single_disk_plot_info.id();
         let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Consider file locking to prevent other apps from modifying it
@@ -642,18 +642,20 @@ impl SingleDiskPlot {
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
 
+        let span = info_span!("single_disk_plot", %disk_farm_index);
+
         let plotting_join_handle = thread::Builder::new()
-            .name(format!("p-{single_disk_plot_id}"))
+            .name(format!("plotting-{disk_farm_index}"))
             .spawn({
                 let handle = handle.clone();
                 let metadata_header = Arc::clone(&metadata_header);
                 let handlers = Arc::clone(&handlers);
                 let node_client = node_client.clone();
                 let error_sender = Arc::clone(&error_sender);
+                let span = span.clone();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
                     // Initial plotting
@@ -677,12 +679,19 @@ impl SingleDiskPlot {
                                 metadata_header.lock().sector_count as usize,
                             )
                             .map(|(sector_offset, (sector, metadata))| {
-                                (sector_offset as u64 + first_sector_index, sector, metadata)
+                                (
+                                    sector_offset,
+                                    sector_offset as u64 + first_sector_index,
+                                    sector,
+                                    metadata,
+                                )
                             });
 
                         // TODO: Concurrency
-                        for (sector_index, sector, sector_metadata) in plot_initial_sector {
-                            trace!(%sector_index, "Preparing to plot sector");
+                        for (sector_offset, sector_index, sector, sector_metadata) in
+                            plot_initial_sector
+                        {
+                            trace!(%sector_offset, %sector_index, "Preparing to plot sector");
 
                             let plotting_permit =
                                 match concurrent_plotting_semaphore.clone().acquire_owned().await {
@@ -697,7 +706,7 @@ impl SingleDiskPlot {
                                     }
                                 };
 
-                            debug!(%sector_index, "Plotting sector");
+                            debug!(%sector_offset, %sector_index, "Plotting sector");
 
                             let farmer_app_info = node_client
                                 .farmer_app_info()
@@ -717,7 +726,7 @@ impl SingleDiskPlot {
                             );
                             let plotted_sector = match plot_sector_fut.await {
                                 Ok(plotted_sector) => {
-                                    debug!(%sector_index, "Sector plotted");
+                                    debug!(%sector_offset, %sector_index, "Sector plotted");
 
                                     plotted_sector
                                 }
@@ -731,9 +740,11 @@ impl SingleDiskPlot {
                                     .copy_from_slice(metadata_header.encode().as_slice());
                             }
 
-                            handlers
-                                .sector_plotted
-                                .call_simple(&(plotted_sector, Arc::new(plotting_permit)));
+                            handlers.sector_plotted.call_simple(&(
+                                sector_offset,
+                                plotted_sector,
+                                Arc::new(plotting_permit),
+                            ));
                         }
 
                         Ok(())
@@ -801,7 +812,7 @@ impl SingleDiskPlot {
         }));
 
         let farming_join_handle = thread::Builder::new()
-            .name(format!("f-{single_disk_plot_id}"))
+            .name(format!("farming-{disk_farm_index}"))
             .spawn({
                 let handle = handle.clone();
                 let handlers = Arc::clone(&handlers);
@@ -810,10 +821,10 @@ impl SingleDiskPlot {
                 let mut stop_receiver = stop_sender.subscribe();
                 let identity = identity.clone();
                 let node_client = node_client.clone();
+                let span = span.clone();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
                     let farming_fut = async move {
@@ -945,14 +956,14 @@ impl SingleDiskPlot {
         let (piece_reader, mut read_piece_receiver) = PieceReader::new();
 
         let reading_join_handle = thread::Builder::new()
-            .name(format!("r-{single_disk_plot_id}"))
+            .name(format!("reading-{disk_farm_index}"))
             .spawn({
                 let metadata_header = Arc::clone(&metadata_header);
                 let mut stop_receiver = stop_sender.subscribe();
+                let span = span.clone();
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let span = info_span!("single_disk_plot", %single_disk_plot_id);
                     let _span_guard = span.enter();
 
                     let reading_fut = async move {
@@ -999,7 +1010,7 @@ impl SingleDiskPlot {
             single_disk_plot_info,
             sector_metadata_mmap: global_sector_metadata_mmap,
             metadata_header,
-            span: Span::current(),
+            span,
             tasks,
             handlers,
             piece_reader,
@@ -1089,7 +1100,7 @@ impl SingleDiskPlot {
     /// throttling of the plotting process is desired.
     pub fn on_sector_plotted(
         &self,
-        callback: HandlerFn<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
+        callback: HandlerFn<(usize, PlottedSector, Arc<OwnedSemaphorePermit>)>,
     ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
     }

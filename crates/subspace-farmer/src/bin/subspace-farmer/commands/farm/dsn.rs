@@ -31,13 +31,15 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 
-pub(super) async fn configure_dsn(
+#[allow(clippy::type_complexity)]
+pub(super) fn configure_dsn(
     base_path: PathBuf,
     keypair: Keypair,
     DsnArgs {
         listen_on,
         bootstrap_nodes,
         piece_cache_size,
+        provided_keys_limit,
         disable_private_ips,
         reserved_peers,
     }: DsnArgs,
@@ -62,33 +64,48 @@ pub(super) async fn configure_dsn(
             fs::rename(&records_cache_db_path, &piece_cache_db_path)?;
         }
     }
-    let provider_cache_db_path = base_path.join("provider_cache_db");
-    let provider_cache_size =
-        piece_cache_size.saturating_mul(NonZeroUsize::new(10).expect("10 > 0")); // TODO: add proper value
-
-    info!(
-        ?piece_cache_db_path,
-        ?piece_cache_size,
-        ?provider_cache_db_path,
-        ?provider_cache_size,
-        "Record cache DB configured."
-    );
+    let provider_db_path = base_path.join("providers_db");
+    // TODO: Remove this migration code in the future
+    {
+        let provider_cache_db_path = base_path.join("provider_cache_db");
+        if provider_cache_db_path.exists() {
+            fs::rename(&provider_cache_db_path, &provider_db_path)?;
+        }
+    }
 
     let default_config = Config::default();
     let peer_id = peer_id(&keypair);
 
-    let db_provider_storage =
-        ParityDbProviderStorage::new(&provider_cache_db_path, provider_cache_size, peer_id)
+    info!(
+        db_path = ?provider_db_path,
+        keys_limit = ?provided_keys_limit,
+        "Initializing provider storage..."
+    );
+    let persistent_provider_storage =
+        ParityDbProviderStorage::new(&provider_db_path, provided_keys_limit, peer_id)
             .map_err(|err| anyhow::anyhow!(err.to_string()))?;
+    info!(
+        current_size = ?persistent_provider_storage.size(),
+        "Provider storage initialized successfully"
+    );
 
+    info!(
+        db_path = ?piece_cache_db_path,
+        size = ?piece_cache_size,
+        "Initializing piece cache..."
+    );
     let piece_store =
         ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
     let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
+    info!(
+        current_size = ?piece_cache.size(),
+        "Piece cache initialized successfully"
+    );
 
     let farmer_provider_storage = FarmerProviderStorage::new(
         peer_id,
         readers_and_pieces.clone(),
-        db_provider_storage,
+        persistent_provider_storage,
         piece_cache.clone(),
     );
 
@@ -180,7 +197,6 @@ pub(super) async fn configure_dsn(
     };
 
     create(config)
-        .await
         .map(|(node, node_runner)| (node, node_runner, piece_cache))
         .map_err(Into::into)
 }
