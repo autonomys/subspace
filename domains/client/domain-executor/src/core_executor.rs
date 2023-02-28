@@ -15,6 +15,7 @@ use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_domains::{DomainId, ExecutorApi};
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -53,6 +54,7 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
 where
     Block: BlockT,
     SBlock: BlockT,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -69,8 +71,9 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api: DomainCoreApi<SBlock, AccountId>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
