@@ -2,17 +2,17 @@ use crate::config;
 use frame_support::traits::Get;
 use hex_literal::hex;
 use snowbridge_beacon_primitives::{
-	Attestation, AttestationData, BeaconBlock, BeaconHeader, BlockUpdate, Body, Checkpoint,
-	Eth1Data, ExecutionPayload, FinalizedHeaderUpdate, InitialSync, PublicKey, SyncAggregate,
-	SyncCommittee, SyncCommitteePeriodUpdate,
+    Attestation, AttestationData, BeaconBlock, BeaconHeader, BlockUpdate, Body, Checkpoint,
+    Eth1Data, ExecutionPayload, FinalizedHeaderUpdate, InitialSync, PublicKey, SyncAggregate,
+    SyncCommittee, SyncCommitteePeriodUpdate,
 };
 use sp_core::U256;
 use sp_std::vec;
 
 pub fn initial_sync<SyncCommitteeSize: Get<u32>, ProofSize: Get<u32>>(
 ) -> InitialSync<SyncCommitteeSize, ProofSize> {
-	if config::IS_MINIMAL {
-		return InitialSync{
+    if config::IS_MINIMAL {
+        return InitialSync{
             header: BeaconHeader{
                 slot: 16,
                 proposer_index: 5,
@@ -66,8 +66,8 @@ pub fn initial_sync<SyncCommitteeSize: Get<u32>, ProofSize: Get<u32>>(
             ].try_into().expect("too many branch proof items"),
             validators_root: hex!("270d43e74ce340de4bca2b1936beca0f4f5408d9e78aec4850920baf659d5b69").into()
         };
-	}
-	return InitialSync{
+    }
+    return InitialSync{
         header: BeaconHeader{
             slot: 4485184,
             proposer_index: 175032,
@@ -604,12 +604,12 @@ pub fn initial_sync<SyncCommitteeSize: Get<u32>, ProofSize: Get<u32>>(
 }
 
 pub fn sync_committee_update<
-	SignatureSize: Get<u32>,
-	ProofSize: Get<u32>,
-	SyncCommitteeSize: Get<u32>,
+    SignatureSize: Get<u32>,
+    ProofSize: Get<u32>,
+    SyncCommitteeSize: Get<u32>,
 >() -> SyncCommitteePeriodUpdate<SignatureSize, ProofSize, SyncCommitteeSize> {
-	if config::IS_MINIMAL {
-		return SyncCommitteePeriodUpdate {
+    if config::IS_MINIMAL {
+        return SyncCommitteePeriodUpdate {
             attested_header: BeaconHeader {
                 slot: 80,
                 proposer_index: 7,
@@ -683,8 +683,8 @@ pub fn sync_committee_update<
             signature_slot: 81,
             sync_committee_period: 0,
         };
-	}
-	SyncCommitteePeriodUpdate {
+    }
+    SyncCommitteePeriodUpdate {
 		attested_header: BeaconHeader {
 			slot: 4484921,
 			proposer_index: 296453,
@@ -1241,12 +1241,12 @@ pub fn sync_committee_update<
 }
 
 pub fn finalized_header_update<
-	SignatureSize: Get<u32>,
-	ProofSize: Get<u32>,
-	SyncCommitteeSize: Get<u32>,
+    SignatureSize: Get<u32>,
+    ProofSize: Get<u32>,
+    SyncCommitteeSize: Get<u32>,
 >() -> FinalizedHeaderUpdate<SignatureSize, ProofSize, SyncCommitteeSize> {
-	if config::IS_MINIMAL {
-		return FinalizedHeaderUpdate{
+    if config::IS_MINIMAL {
+        return FinalizedHeaderUpdate{
             attested_header: BeaconHeader{
                 slot: 104,
                 proposer_index: 7,
@@ -1275,8 +1275,8 @@ pub fn finalized_header_update<
             },
 	        signature_slot: 105,
         };
-	}
-	return FinalizedHeaderUpdate{
+    }
+    return FinalizedHeaderUpdate{
         attested_header: BeaconHeader{
             slot: 4485282,
             proposer_index: 214594,
@@ -1308,36 +1308,36 @@ pub fn finalized_header_update<
 }
 
 pub fn block_update<
-	FeeRecipientSize: Get<u32>,
-	LogsBloomSize: Get<u32>,
-	ExtraDataSize: Get<u32>,
-	DepositDataSize: Get<u32>,
-	PublicKeySize: Get<u32>,
-	SignatureSize: Get<u32>,
-	ProofSize: Get<u32>,
-	ProposerSlashingSize: Get<u32>,
-	AttesterSlashingSize: Get<u32>,
-	VoluntaryExitSize: Get<u32>,
-	AttestationSize: Get<u32>,
-	ValidatorCommitteeSize: Get<u32>,
-	SyncCommitteeSize: Get<u32>,
+    FeeRecipientSize: Get<u32>,
+    LogsBloomSize: Get<u32>,
+    ExtraDataSize: Get<u32>,
+    DepositDataSize: Get<u32>,
+    PublicKeySize: Get<u32>,
+    SignatureSize: Get<u32>,
+    ProofSize: Get<u32>,
+    ProposerSlashingSize: Get<u32>,
+    AttesterSlashingSize: Get<u32>,
+    VoluntaryExitSize: Get<u32>,
+    AttestationSize: Get<u32>,
+    ValidatorCommitteeSize: Get<u32>,
+    SyncCommitteeSize: Get<u32>,
 >() -> BlockUpdate<
-	FeeRecipientSize,
-	LogsBloomSize,
-	ExtraDataSize,
-	DepositDataSize,
-	PublicKeySize,
-	SignatureSize,
-	ProofSize,
-	ProposerSlashingSize,
-	AttesterSlashingSize,
-	VoluntaryExitSize,
-	AttestationSize,
-	ValidatorCommitteeSize,
-	SyncCommitteeSize,
+    FeeRecipientSize,
+    LogsBloomSize,
+    ExtraDataSize,
+    DepositDataSize,
+    PublicKeySize,
+    SignatureSize,
+    ProofSize,
+    ProposerSlashingSize,
+    AttesterSlashingSize,
+    VoluntaryExitSize,
+    AttestationSize,
+    ValidatorCommitteeSize,
+    SyncCommitteeSize,
 > {
-	if config::IS_MINIMAL {
-		return BlockUpdate{
+    if config::IS_MINIMAL {
+        return BlockUpdate{
             block: BeaconBlock{
                 slot: 87,
                 proposer_index: 0,
@@ -1406,8 +1406,8 @@ pub fn block_update<
             },
             signature_slot: 88,
         };
-	}
-	return BlockUpdate{
+    }
+    return BlockUpdate{
         block: BeaconBlock{
             slot: 4485185,
             proposer_index: 74188,
