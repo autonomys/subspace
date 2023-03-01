@@ -1,14 +1,13 @@
 use core::array::TryFromSliceError;
 
-use crate::config;
 use crate::ssz::*;
+use crate::{config, BlockBodyOf};
 use byte_slice_cast::AsByteSlice;
-use frame_support::traits::Get;
 use frame_support::BoundedVec;
 use snowbridge_beacon_primitives::{
-    Attestation, AttestationData, AttesterSlashing, BeaconHeader, Body, Checkpoint, Deposit,
-    Eth1Data, ExecutionPayload, ForkData, ProposerSlashing, SigningData, SyncAggregate,
-    SyncCommittee, VoluntaryExit,
+    Attestation, AttestationData, AttesterSlashing, BeaconHeader, Checkpoint, Deposit, Eth1Data,
+    ExecutionPayload, ForkData, ProposerSlashing, SigningData, SyncAggregate, SyncCommittee,
+    VoluntaryExit,
 };
 use sp_std::convert::TryInto;
 use sp_std::iter::FromIterator;
@@ -33,13 +32,13 @@ pub enum MerkleizationError {
 
 impl From<TryFromSliceError> for MerkleizationError {
     fn from(_: TryFromSliceError) -> Self {
-        return MerkleizationError::InvalidLength;
+        MerkleizationError::InvalidLength
     }
 }
 
 impl From<DeserializeError> for MerkleizationError {
     fn from(_: DeserializeError) -> Self {
-        return MerkleizationError::DeserializeError;
+        MerkleizationError::DeserializeError
     }
 }
 

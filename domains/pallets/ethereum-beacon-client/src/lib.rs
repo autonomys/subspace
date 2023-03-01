@@ -1,32 +1,31 @@
 //! # Ethereum Beacon Client
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(clippy::large_enum_variant)] // Runtime-generated enums
 
-pub mod config;
-mod merkleization;
 #[cfg(test)]
 mod mock;
-pub mod weights;
-
-mod ssz;
 #[cfg(test)]
 mod tests;
-
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-pub use weights::WeightInfo;
+mod merkleization;
+mod config;
+mod ssz;
+pub mod weights;
 
+
+use weights::WeightInfo;
 use crate::merkleization::get_sync_committee_bits;
 use frame_support::dispatch::DispatchResult;
 use frame_support::traits::UnixTime;
 use frame_support::{log, transactional};
 use frame_system::ensure_signed;
 use snowbridge_beacon_primitives::{
-    BeaconHeader, BlockUpdate, Domain, ExecutionHeader, ExecutionHeaderState, FinalizedHeaderState,
-    FinalizedHeaderUpdate, ForkData, ForkVersion, InitialSync, PublicKey, Root, SigningData,
-    SyncCommittee, SyncCommitteePeriodUpdate,
+    BeaconHeader, BlockUpdate, Body, Domain, ExecutionHeader, ExecutionHeaderState,
+    FinalizedHeaderState, FinalizedHeaderUpdate, ForkData, ForkVersion, InitialSync,
+    LightClientUpdate, PublicKey, Root, SigningData, SyncCommittee,
 };
-use snowbridge_core::{Message, Verifier};
 use sp_core::H256;
 use sp_io::hashing::sha2_256;
 use sp_std::prelude::*;
@@ -73,9 +72,7 @@ pub mod pallet {
 
     use milagro_bls::{AggregatePublicKey, AggregateSignature, AmclError, Signature};
     use snowbridge_beacon_primitives::ForkVersions;
-    use snowbridge_core::Proof;
-    use snowbridge_ethereum::{Header as EthereumHeader, Log, Receipt};
-    use sp_core::{H160, U256};
+    use sp_core::H160;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
@@ -122,6 +119,7 @@ pub mod pallet {
     pub enum Event<T: Config> {
         BeaconHeaderImported { block_hash: H256, slot: u64 },
         ExecutionHeaderImported { block_hash: H256, block_number: u64 },
+        SyncCommitteeUpdated { period: u64 },
     }
 
     #[pallet::error]
@@ -131,13 +129,19 @@ pub mod pallet {
         SyncCommitteeMissing,
         Unknown,
         SyncCommitteeParticipantsNotSupermajority,
+        /// Merkle proof of the consensus data against state root is invalid
         InvalidHeaderMerkleProof,
+        /// Merkle proof of sync committee against state root is invalid
         InvalidSyncCommitteeMerkleProof,
+        /// Invalid bls signature
         InvalidSignature,
+        /// Invalid bls signature point
         InvalidSignaturePoint,
+        /// BLS aggregated public keys are invalid
         InvalidAggregatePublicKeys,
         InvalidHash,
         InvalidSyncCommitteeBits,
+        /// Unable to verify bls aggregate signature
         SignatureVerificationFailed,
         NoBranchExpected,
         HeaderNotFinalized,
@@ -145,9 +149,13 @@ pub mod pallet {
         InvalidProof,
         DecodeFailed,
         BlockBodyHashTreeRootFailed,
+        /// Calculating hash tree root of beacon block header failed
         HeaderHashTreeRootFailed,
+        /// Calculating hash tree root of sync committee failed
         SyncCommitteeHashTreeRootFailed,
+        /// Calculating hash tree root of signing data failed
         SigningRootHashTreeRootFailed,
+        /// Calculating hash tree root of fork data failed
         ForkDataHashTreeRootFailed,
         ExecutionHeaderNotLatest,
         BridgeBlocked,
@@ -156,10 +164,7 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
 
-    #[pallet::storage]
-    pub(super) type FinalizedBeaconHeaders<T: Config> =
-        StorageMap<_, Identity, H256, BeaconHeader, OptionQuery>;
-
+    /// Historical execution headers
     #[pallet::storage]
     pub(super) type ExecutionHeaders<T: Config> =
         StorageMap<_, Identity, H256, ExecutionHeaderOf<T>, OptionQuery>;
@@ -170,20 +175,25 @@ pub mod pallet {
     pub(super) type SyncCommittees<T: Config> =
         StorageMap<_, Identity, u64, SyncCommitteeOf<T>, ValueQuery>;
 
+    /// Genesis validators root
     #[pallet::storage]
-    pub(super) type ValidatorsRoot<T: Config> = StorageValue<_, H256, ValueQuery>;
+    pub(super) type GenesisValidatorsRoot<T: Config> = StorageValue<_, H256, ValueQuery>;
 
+    /// Latest finalized header observed
     #[pallet::storage]
     pub(super) type LatestFinalizedHeaderState<T: Config> =
         StorageValue<_, FinalizedHeaderState, ValueQuery>;
 
+    /// Latest execution header observed
     #[pallet::storage]
     pub(super) type LatestExecutionHeaderState<T: Config> =
         StorageValue<_, ExecutionHeaderState, ValueQuery>;
 
+    /// Latest sync committee period observed
     #[pallet::storage]
     pub(super) type LatestSyncCommitteePeriod<T: Config> = StorageValue<_, u64, ValueQuery>;
 
+    /// Boolean signifying whether the bridge is blocked or not
     #[pallet::storage]
     pub(super) type Blocked<T: Config> = StorageValue<_, bool, ValueQuery>;
 
@@ -193,12 +203,6 @@ pub mod pallet {
     }
 
     #[cfg(feature = "std")]
-    impl<T: Config> Default for GenesisConfig<T> {
-        fn default() -> Self {
-            GenesisConfig { initial_sync: None }
-        }
-    }
-
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
