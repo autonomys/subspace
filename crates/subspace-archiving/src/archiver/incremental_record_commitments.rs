@@ -67,15 +67,11 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
 impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
     fn drop(&mut self) {
         if self.full {
-            // How many bytes to read before the start of the next record
-            let bytes_before_next_record = ((self.processed_bytes / self.record_size) + 1)
-                * self.record_size
-                - self.processed_bytes;
-            let padding_bytes = bytes_before_next_record % self.record_size;
-            if padding_bytes > 0 {
+            let record_offset = self.processed_bytes % self.record_size;
+            if record_offset > 0 {
                 // This is fine since we'll have at most a few iterations and allocation is less
                 // desirable than a loop here
-                for _ in 0..padding_bytes {
+                for _ in 0..(self.record_size - record_offset) {
                     self.update_commitment_state(&[0]);
                 }
                 self.create_commitment();
@@ -85,28 +81,26 @@ impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
 }
 
 impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
-    fn write(&mut self, bytes: &[u8]) {
+    fn write(&mut self, mut bytes: &[u8]) {
         // Try to finish last partial record if possible
-        let bytes = {
-            // How many bytes to read before the start of the next record
-            let bytes_before_next_record = ((self.processed_bytes / self.record_size) + 1)
-                * self.record_size
-                - self.processed_bytes;
-            let (remaining_record_bytes, bytes) =
-                bytes.split_at(if bytes.len() >= bytes_before_next_record {
-                    bytes_before_next_record
+
+        let record_offset = self.processed_bytes % self.record_size;
+        let bytes_left_in_record = self.record_size - record_offset;
+        if bytes_left_in_record > 0 {
+            let remaining_record_bytes;
+            (remaining_record_bytes, bytes) =
+                bytes.split_at(if bytes.len() >= bytes_left_in_record {
+                    bytes_left_in_record
                 } else {
                     bytes.len()
                 });
 
             self.update_commitment_state(remaining_record_bytes);
 
-            if remaining_record_bytes.len() == bytes_before_next_record {
+            if remaining_record_bytes.len() == bytes_left_in_record {
                 self.create_commitment();
             }
-
-            bytes
-        };
+        }
 
         // Continue processing records (full and partial) from remaining data, at this point we have
         // processed some number of full records, so can simply chunk the remaining bytes into
