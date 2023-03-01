@@ -297,6 +297,18 @@ parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 7;
 }
 
+pub struct DomainInfo;
+
+impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
+    fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
+        Some(Receipts::head_receipt_number(domain_id))
+    }
+
+    fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
+        Receipts::domain_state_root_at(domain_id, number, hash)
+    }
+}
+
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
@@ -320,6 +332,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
+    type DomainInfo = DomainInfo;
+    type ConfirmationDepth = RelayConfirmationDepth;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

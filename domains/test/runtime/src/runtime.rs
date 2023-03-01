@@ -337,6 +337,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
+    type DomainInfo = ();
+    type ConfirmationDepth = RelayConfirmationDepth;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
