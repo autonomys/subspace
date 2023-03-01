@@ -585,6 +585,14 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
+        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
+            None
+        }
+
+        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+            None
+        }
+
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
             Messenger::relayer_assigned_messages(relayer_id)
         }
