@@ -86,8 +86,7 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>,
     SBlock: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<SBlock>>,
@@ -108,21 +107,6 @@ where
         )? {
             if system_domain_state_root != state_roots.system_domain_state_root.into() {
                 return Ok(false);
-            }
-        }
-
-        if let Some((domain_id, info, state_root)) = state_roots.core_domain_info {
-            // verify core domain state root if there is one
-            let block_id = BlockId::Hash(system_domain_client.info().best_hash);
-            if let Some(core_domain_state_root) = system_domain_runtime.core_domain_state_root_at(
-                &block_id,
-                domain_id,
-                info.block_number,
-                info.block_hash,
-            )? {
-                if state_root != core_domain_state_root {
-                    return Ok(false);
-                }
             }
         }
     }
