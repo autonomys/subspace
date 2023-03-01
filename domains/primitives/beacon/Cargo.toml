@@ -1,7 +1,7 @@
 [package]
 name = "snowbridge-beacon-primitives"
 version = "0.0.1"
-authors = [ "Snowfork <contact@snowfork.com>" ]
+authors = [ "Parth Desai <desaiparth08@gmail.com>, Snowfork <contact@snowfork.com>" ]
 edition = "2021"
 
 [dependencies]
@@ -11,14 +11,12 @@ codec = { package = "parity-scale-codec", version = "3.1.5", default-features = 
 scale-info = { version = "2.2.0", default-features = false, features = [ "derive" ] }
 rlp = { version = "0.5", default-features = false }
 
-frame-support = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30", default-features = false }
-frame-system = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30", default-features = false }
-sp-runtime = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30", default-features = false }
-sp-std = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30", default-features = false }
-sp-core = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30", default-features = false }
-sp-io = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.30", default-features = false }
-
-snowbridge-ethereum = { path = "../../primitives/ethereum", default-features = false }
+frame-support = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
+frame-system = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
+sp-runtime = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
+sp-std = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
+sp-core = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
+sp-io = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false }
 
 [features]
 default = [ "std" ]
@@ -32,6 +30,5 @@ std = [
     "sp-core/std",
     "sp-runtime/std",
     "sp-io/std",
-    "rlp/std",
-    "snowbridge-ethereum/std",
+    "rlp/std"
 ]

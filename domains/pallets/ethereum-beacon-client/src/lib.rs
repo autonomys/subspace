@@ -2,24 +2,22 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::large_enum_variant)] // Runtime-generated enums
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
 mod tests;
-#[cfg(feature = "runtime-benchmarks")]
-mod benchmarking;
 
-mod merkleization;
 mod config;
+mod merkleization;
 mod ssz;
 pub mod weights;
 
-
-use weights::WeightInfo;
 use crate::merkleization::get_sync_committee_bits;
 use frame_support::dispatch::DispatchResult;
+use frame_support::log;
 use frame_support::traits::UnixTime;
-use frame_support::{log, transactional};
 use frame_system::ensure_signed;
 use snowbridge_beacon_primitives::{
     BeaconHeader, BlockUpdate, Body, Domain, ExecutionHeader, ExecutionHeaderState,
@@ -29,6 +27,7 @@ use snowbridge_beacon_primitives::{
 use sp_core::H256;
 use sp_io::hashing::sha2_256;
 use sp_std::prelude::*;
+use weights::WeightInfo;
 
 pub use pallet::*;
 
@@ -240,7 +239,6 @@ pub mod pallet {
     impl<T: Config> Pallet<T> {
         /// Updates the light client state
         #[pallet::weight(T::WeightInfo::sync_committee_period_update())]
-        #[transactional]
         #[pallet::call_index(0)]
         pub fn light_client_update(
             origin: OriginFor<T>,
@@ -277,7 +275,6 @@ pub mod pallet {
 
         /// Import an execution header
         #[pallet::weight(T::WeightInfo::import_execution_header())]
-        #[transactional]
         #[pallet::call_index(1)]
         pub fn import_execution_header(
             origin: OriginFor<T>,
@@ -317,7 +314,6 @@ pub mod pallet {
 
         /// Unblock the bridge. Can only be called by root.
         #[pallet::weight(1000)]
-        #[transactional]
         #[pallet::call_index(2)]
         pub fn unblock_bridge(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
@@ -577,7 +573,6 @@ pub mod pallet {
 
             let validators_root = <GenesisValidatorsRoot<T>>::get();
             Self::validate_light_client_update(&update, update.signature_slot, validators_root)?;
-            let sync_committee_bits = update.sync_aggregate.sync_committee_bits.clone();
 
             let stored_latest_finalized_header_state = <LatestFinalizedHeaderState<T>>::get();
             let store_period = Self::compute_sync_committee_period(
@@ -590,11 +585,11 @@ pub mod pallet {
                     && (Self::compute_sync_committee_period(update.finalized_header.slot)
                         == Self::compute_sync_committee_period(update.attested_header.slot));
 
-            if (Self::get_sync_committee_sum(sync_committee_bits.to_vec()) * 3
-                >= sync_committee_bits.clone().len() as u64 * 2)
-                && ((update.finalized_header.slot
-                    > stored_latest_finalized_header_state.beacon_slot)
-                    || update_has_finalized_next_sync_committee)
+            // Sync committee super majority check is skipped here as compared to the spec, since we are already
+            // checking it in validate light client.
+            // See: https://github.com/ethereum/consensus-specs/blob/dev/specs/altair/light-client/sync-protocol.md#process_light_client_update
+            if update.finalized_header.slot > stored_latest_finalized_header_state.beacon_slot
+                || update_has_finalized_next_sync_committee
             {
                 Self::apply_light_client_update(
                     update,
