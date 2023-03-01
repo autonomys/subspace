@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::{fs, io, thread};
-use subspace_core_primitives::RootBlock;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderRecordProcessor;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
@@ -190,21 +189,28 @@ pub(super) async fn configure_dsn(
                 let node_client = node_client.clone();
                 let internal_result = tokio::task::block_in_place(move || {
                     handle.block_on(node_client.root_blocks(segment_indexes.clone()))
-                })
-                .map(|root_blocks| {
-                    root_blocks
-                        .iter()
-                        .filter_map(|rb| {
-                            if rb.is_none() {
-                                error!("Received empty optional root block!");
-                            }
-                            *rb
-                        })
-                        .collect::<Vec<RootBlock>>()
                 });
 
                 match internal_result {
-                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                    Ok(root_blocks) => {
+                        let mut result = Vec::new();
+                        for root_block in root_blocks {
+                            match root_block {
+                                None => {
+                                    error!("Received empty optional root block!");
+
+                                    return None;
+                                }
+                                Some(root_block) => {
+                                    result.push(root_block);
+                                }
+                            }
+                        }
+
+                        Some(RootBlockResponse {
+                            root_blocks: result,
+                        })
+                    }
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 

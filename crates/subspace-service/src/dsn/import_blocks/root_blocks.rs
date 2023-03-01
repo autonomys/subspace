@@ -46,9 +46,8 @@ impl RootBlockHandler {
                 .take(ROOT_BLOCK_NUMBER_PER_REQUEST as usize)
                 .collect();
 
-            let (peer_id, root_blocks) = self
-                .get_root_blocks_batch(peers.clone(), segment_indexes)
-                .await?;
+            let (peer_id, root_blocks) =
+                self.get_root_blocks_batch(&peers, segment_indexes).await?;
 
             for root_block in root_blocks {
                 if root_block.hash() != last_root_block.prev_root_block_hash() {
@@ -96,6 +95,10 @@ impl RootBlockHandler {
             match get_peers_result {
                 Ok(mut get_peers_stream) => {
                     while let Some(peer_id) = get_peers_stream.next().await {
+                        if peer_blocks.borrow().contains_key(&peer_id) {
+                            continue;
+                        }
+
                         let peer_blocks = peer_blocks.clone();
                         let dsn_node = self.dsn_node.clone();
                         let peer_block_fut = async move {
@@ -153,13 +156,13 @@ impl RootBlockHandler {
             }
 
             // Calculate votes
-            let mut root_block_score: HashMap<RootBlock, (u64, BTreeSet<PeerId>)> = HashMap::new();
+            let mut root_block_score: HashMap<RootBlock, (u64, Vec<PeerId>)> = HashMap::new();
 
             for (peer_id, root_blocks) in &peer_blocks {
-                if !self
-                    .check_for_duplicate_root_blocks(*peer_id, root_blocks)
-                    .await
-                {
+                if !self.validate_last_root_blocks(*peer_id, root_blocks) {
+                    warn!(%peer_id, "Received last root blocks were invalid.");
+
+                    let _ = self.dsn_node.ban_peer(*peer_id).await;
                     continue;
                 }
 
@@ -168,9 +171,9 @@ impl RootBlockHandler {
                         .entry(*root_block)
                         .and_modify(|(val, peers)| {
                             *val += 1;
-                            peers.insert(*peer_id);
+                            peers.push(*peer_id);
                         })
-                        .or_insert((1, BTreeSet::from_iter(vec![*peer_id])));
+                        .or_insert((1, vec![*peer_id]));
                 }
             }
 
@@ -190,7 +193,7 @@ impl RootBlockHandler {
                 trace!(%percentage, limit=%ROOT_BLOCK_CONSENSUS_THRESHOLD, "Root blocks voting ended.");
 
                 if percentage >= ROOT_BLOCK_CONSENSUS_THRESHOLD {
-                    return Ok((*root_block, peers.iter().cloned().collect()));
+                    return Ok((*root_block, peers.clone()));
                 }
             }
 
@@ -214,6 +217,14 @@ impl RootBlockHandler {
             return false;
         }
 
+        let returned_segment_indexes =
+            BTreeSet::from_iter(root_blocks.iter().map(|rb| rb.segment_index()));
+        if returned_segment_indexes.len() != root_blocks.len() {
+            warn!(%peer_id, "Peer banned: it returned collection with duplicated root blocks.");
+
+            return false;
+        }
+
         let indexes_match = segment_indexes
             .iter()
             .zip(root_blocks.iter())
@@ -228,27 +239,29 @@ impl RootBlockHandler {
         true
     }
 
-    async fn check_for_duplicate_root_blocks(
-        &self,
-        peer_id: PeerId,
-        root_blocks: &Vec<RootBlock>,
-    ) -> bool {
-        // check for duplicates
-        let segment_indexes = BTreeSet::from_iter(root_blocks.iter().map(|rb| rb.segment_index()));
-        if segment_indexes.len() != root_blocks.len() {
-            warn!(%peer_id, "Peer banned: it returned collection with duplicated root blocks.");
-            // We don't check the result here.
-            let _ = self.dsn_node.ban_peer(peer_id).await;
+    fn validate_last_root_blocks(&self, peer_id: PeerId, root_blocks: &Vec<RootBlock>) -> bool {
+        let segment_indexes = match root_blocks.first() {
+            None => {
+                // empty collection considered as valid
+                return true;
+            }
+            Some(first_root_block) => {
+                // we expect the reverse order
+                let last_segment_index = first_root_block.segment_index();
 
-            return false;
-        }
+                (0..=last_segment_index)
+                    .rev()
+                    .take(root_blocks.len())
+                    .collect::<Vec<_>>()
+            }
+        };
 
-        true
+        self.validate_root_blocks(peer_id, &segment_indexes, root_blocks)
     }
 
     async fn get_root_blocks_batch(
         &self,
-        peers: Vec<PeerId>,
+        peers: &[PeerId],
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<(PeerId, Vec<RootBlock>), Box<dyn Error>> {
         trace!(?segment_indexes, "Getting root block batch...");
@@ -259,7 +272,7 @@ impl RootBlockHandler {
             let request_result = self
                 .dsn_node
                 .send_generic_request(
-                    peer_id,
+                    *peer_id,
                     RootBlockRequest::SegmentIndexes {
                         segment_indexes: segment_indexes.clone(),
                     },
@@ -270,13 +283,13 @@ impl RootBlockHandler {
                 Ok(RootBlockResponse { root_blocks }) => {
                     trace!(%peer_id, ?segment_indexes, "Root block request succeeded.");
 
-                    if !self.validate_root_blocks(peer_id, &segment_indexes, &root_blocks) {
+                    if !self.validate_root_blocks(*peer_id, &segment_indexes, &root_blocks) {
                         warn!(%peer_id, "Received root blocks were invalid.");
 
-                        let _ = self.dsn_node.ban_peer(peer_id).await;
+                        let _ = self.dsn_node.ban_peer(*peer_id).await;
                     }
 
-                    return Ok((peer_id, root_blocks));
+                    return Ok((*peer_id, root_blocks));
                 }
                 Err(error) => {
                     debug!(%peer_id, ?segment_indexes, ?error, "Root block request failed.");
