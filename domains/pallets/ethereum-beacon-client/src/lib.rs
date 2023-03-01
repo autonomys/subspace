@@ -122,10 +122,9 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        AncientHeader,
-        SkippedSyncCommitteePeriod,
+        /// We do not have sync committee for the given period
         SyncCommitteeMissing,
-        Unknown,
+        /// Less than supermajority of sync committee have signed the payload
         SyncCommitteeParticipantsNotSupermajority,
         /// Merkle proof of the consensus data against state root is invalid
         InvalidHeaderMerkleProof,
@@ -137,15 +136,13 @@ pub mod pallet {
         InvalidSignaturePoint,
         /// BLS aggregated public keys are invalid
         InvalidAggregatePublicKeys,
-        InvalidHash,
+        /// Invalid sync committee bits
         InvalidSyncCommitteeBits,
         /// Unable to verify bls aggregate signature
         SignatureVerificationFailed,
-        NoBranchExpected,
+        /// Execution header is not finalized
         HeaderNotFinalized,
-        MissingHeader,
-        InvalidProof,
-        DecodeFailed,
+        /// Calculating hash tree root of beacon block body failed
         BlockBodyHashTreeRootFailed,
         /// Calculating hash tree root of beacon block header failed
         HeaderHashTreeRootFailed,
@@ -155,8 +152,26 @@ pub mod pallet {
         SigningRootHashTreeRootFailed,
         /// Calculating hash tree root of fork data failed
         ForkDataHashTreeRootFailed,
-        ExecutionHeaderNotLatest,
+        /// Bridge is blocked at the moment
         BridgeBlocked,
+        /// Slot ordering of light client update is invalid
+        InvalidSlotsOrdering,
+        /// Sync committee signed the attested header is not recognized
+        UnrecognizedSyncCommittee,
+        /// Light client update does not contain any new information
+        NonRelevantUpdate,
+        /// Light client update does not contain enough information to be considered
+        NotApplicableUpdate,
+        /// Light client update should not contain finalized header
+        NonEmptyFinalizedHeader,
+        /// Light client update should not contain sync committee
+        NonEmptySyncCommittee,
+        /// Next sync committee in light client does not match stored committee for that period
+        NextSyncCommitteeMismatch,
+        /// Finalized header's sync committee period does not match store's current period
+        FinalizedPeriodMismatch,
+        /// Unable to store non sequential sync committee update
+        NonSequentialSyncCommitteeUpdate,
     }
 
     #[pallet::hooks]
