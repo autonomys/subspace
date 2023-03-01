@@ -6,6 +6,11 @@
             "state_root": "0xae65ffd9e692e21577b3230a15b3496126459c48f114da3c90d5f4f2f384bb6c",
             "body_root": "0x2ce5991e2b4fb97c0cdee0c2b9181718dce8ac7088d2b960d803fe1e5b8410fb"
         },
+        "next_sync_committee": {
+          "pubkeys": [],
+          "aggregate_pubkey": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "next_sync_committee_branch": [],
         "finalized_header": {
             "slot": 4485216,
             "proposer_index": 206238,
@@ -25,5 +30,6 @@
             "sync_committee_bits": "0xfebd2fffeffffffff7ff77f7ffffffdffdfffffffcfebfdeffb7fffdfff7fffffdfffedfcfff57f7bfffdfffbffeffdffffffdbf6defffff7fffefefeff5df7f",
             "sync_committee_signature": "0xa01b52a2122521ec16be5586826d5dc009e32b02b6fc9c162a0b9c84b5ba24d1887feceb4b368edeff6806f57d0b5c1f18887834257628a017df8ce4cba6301945a13052cd1c50c1cd865dfa2ea01285a5a731d9a298992927f8a43c6b1243ac"
         },
-        "signature_slot": 4485283
+        "signature_slot": 4485283,
+        "sync_committee_period": 547
 }
