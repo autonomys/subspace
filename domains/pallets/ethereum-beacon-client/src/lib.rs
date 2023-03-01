@@ -32,36 +32,46 @@ use sp_std::prelude::*;
 
 pub use pallet::*;
 
-pub type BlockUpdateOf<T> = BlockUpdate<
-    <T as Config>::MaxFeeRecipientSize,
-    <T as Config>::MaxLogsBloomSize,
-    <T as Config>::MaxExtraDataSize,
-    <T as Config>::MaxDepositDataSize,
-    <T as Config>::MaxPublicKeySize,
-    <T as Config>::MaxSignatureSize,
-    <T as Config>::MaxProofBranchSize,
-    <T as Config>::MaxProposerSlashingSize,
-    <T as Config>::MaxAttesterSlashingSize,
-    <T as Config>::MaxVoluntaryExitSize,
-    <T as Config>::MaxAttestationSize,
-    <T as Config>::MaxValidatorsPerCommittee,
-    <T as Config>::MaxSyncCommitteeSize,
+pub type BlockUpdateOf = BlockUpdate<
+    config::FeeRecipientSize,
+    config::BytesPerLogsBloom,
+    config::MaxExtraDataBytes,
+    config::MaxDeposits,
+    config::PublicKeySize,
+    config::SignatureSize,
+    config::DepositContractTreeDepth,
+    config::MaxProposerSlashings,
+    config::MaxAttesterSlashings,
+    config::MaxVoluntaryExits,
+    config::MaxAttestations,
+    config::MaxValidatorsPerCommittee,
+    config::SyncCommitteeSize,
 >;
-pub type InitialSyncOf<T> =
-    InitialSync<<T as Config>::MaxSyncCommitteeSize, <T as Config>::MaxProofBranchSize>;
-pub type SyncCommitteePeriodUpdateOf<T> = SyncCommitteePeriodUpdate<
-    <T as Config>::MaxSignatureSize,
-    <T as Config>::MaxProofBranchSize,
-    <T as Config>::MaxSyncCommitteeSize,
+pub type InitialSyncOf = InitialSync<config::SyncCommitteeSize, config::MaxProofBranchSize>;
+pub type LightClientUpdateOf =
+    LightClientUpdate<config::SignatureSize, config::MaxProofBranchSize, config::SyncCommitteeSize>;
+pub type FinalizedHeaderUpdateOf = FinalizedHeaderUpdate<
+    config::SignatureSize,
+    config::MaxProofBranchSize,
+    config::SyncCommitteeSize,
 >;
-pub type FinalizedHeaderUpdateOf<T> = FinalizedHeaderUpdate<
-    <T as Config>::MaxSignatureSize,
-    <T as Config>::MaxProofBranchSize,
-    <T as Config>::MaxSyncCommitteeSize,
+pub type ExecutionHeaderOf = ExecutionHeader<config::BytesPerLogsBloom, config::MaxExtraDataBytes>;
+pub type SyncCommitteeOf = SyncCommittee<config::SyncCommitteeSize>;
+pub type BlockBodyOf = Body<
+    config::FeeRecipientSize,
+    config::BytesPerLogsBloom,
+    config::MaxExtraDataBytes,
+    config::MaxDeposits,
+    config::PublicKeySize,
+    config::SignatureSize,
+    config::DepositContractTreeDepth,
+    config::MaxProposerSlashings,
+    config::MaxAttesterSlashings,
+    config::MaxVoluntaryExits,
+    config::MaxAttestations,
+    config::MaxValidatorsPerCommittee,
+    config::SyncCommitteeSize,
 >;
-pub type ExecutionHeaderOf<T> =
-    ExecutionHeader<<T as Config>::MaxLogsBloomSize, <T as Config>::MaxExtraDataSize>;
-pub type SyncCommitteeOf<T> = SyncCommittee<<T as Config>::MaxSyncCommitteeSize>;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -82,36 +92,24 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type TimeProvider: UnixTime;
-        #[pallet::constant]
-        type MaxSyncCommitteeSize: Get<u32>;
-        #[pallet::constant]
-        type MaxProofBranchSize: Get<u32>;
-        #[pallet::constant]
-        type MaxExtraDataSize: Get<u32>;
-        #[pallet::constant]
-        type MaxLogsBloomSize: Get<u32>;
-        #[pallet::constant]
-        type MaxFeeRecipientSize: Get<u32>;
-        #[pallet::constant]
-        type MaxDepositDataSize: Get<u32>;
-        #[pallet::constant]
-        type MaxPublicKeySize: Get<u32>;
-        #[pallet::constant]
-        type MaxSignatureSize: Get<u32>;
-        #[pallet::constant]
-        type MaxProposerSlashingSize: Get<u32>;
-        #[pallet::constant]
-        type MaxAttesterSlashingSize: Get<u32>;
-        #[pallet::constant]
-        type MaxVoluntaryExitSize: Get<u32>;
-        #[pallet::constant]
-        type MaxAttestationSize: Get<u32>;
-        #[pallet::constant]
-        type MaxValidatorsPerCommittee: Get<u32>;
+        /// ForkVersions refers to array of ForkVersion object with each object denoting the version
+        /// of fork and the slot at which it is activated. The objects must be sorted by the slot.
         #[pallet::constant]
         type ForkVersions: Get<ForkVersions>;
-        type WeightInfo: WeightInfo;
+
+        /// Maximum sync committees to be stored
+        #[pallet::constant]
+        type SyncCommitteePruneThreshold: Get<u64>;
+
+        /// Maximum execution headers to be stored
+        #[pallet::constant]
+        type ExecutionHeadersPruneThreshold: Get<u64>;
+
+        /// A period in which a the light client update must be submitted to this light client.
+        /// In case we did not receive it, the light client will be blocked.
         type WeakSubjectivityPeriodSeconds: Get<u32>;
+
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::event]
@@ -198,22 +196,23 @@ pub mod pallet {
     pub(super) type Blocked<T: Config> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::genesis_config]
-    pub struct GenesisConfig<T: Config> {
-        pub initial_sync: Option<InitialSyncOf<T>>,
+    #[derive(Default)]
+    pub struct GenesisConfig {
+        pub initial_sync: Option<InitialSyncOf>,
     }
 
     #[cfg(feature = "std")]
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             log::info!(
                 target: "ethereum-beacon-client",
                 "💫 Sync committee size is: {}",
-                config::SYNC_COMMITTEE_SIZE
+                config::SyncCommitteeSize::get()
             );
 
             if let Some(initial_sync) = self.initial_sync.clone() {
-                Pallet::<T>::initial_sync(initial_sync).unwrap();
+                Pallet::<T>::initial_sync(initial_sync).expect("Genesis sync cannot fail");
             }
         }
     }

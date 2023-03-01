@@ -7,4 +7,4 @@ parameter_types! {
 }
 
 #[cfg(any(test, feature = "runtime-benchmarks"))]
-pub const IS_MAINNET: bool = true;
+pub const IS_MAINNET: bool = false;

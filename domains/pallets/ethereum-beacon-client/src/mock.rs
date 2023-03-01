@@ -176,19 +176,6 @@ pub mod mock_mainnet {
     }
 
     parameter_types! {
-        pub const MaxSyncCommitteeSize: u32 = config::SYNC_COMMITTEE_SIZE as u32;
-        pub const MaxProofBranchSize: u32 = 6;
-        pub const MaxExtraDataSize: u32 = config::MAX_EXTRA_DATA_BYTES as u32;
-        pub const MaxLogsBloomSize: u32 = config::MAX_LOGS_BLOOM_SIZE as u32;
-        pub const MaxFeeRecipientSize: u32 = config::MAX_FEE_RECIPIENT_SIZE as u32;
-        pub const MaxDepositDataSize: u32 = config::MAX_DEPOSITS as u32;
-        pub const MaxPublicKeySize: u32 = config::PUBKEY_SIZE as u32;
-        pub const MaxSignatureSize: u32 = config::SIGNATURE_SIZE as u32;
-        pub const MaxProposerSlashingSize: u32 = config::MAX_PROPOSER_SLASHINGS as u32;
-        pub const MaxAttesterSlashingSize: u32 = config::MAX_ATTESTER_SLASHINGS as u32;
-        pub const MaxVoluntaryExitSize: u32 = config::MAX_VOLUNTARY_EXITS as u32;
-        pub const MaxAttestationSize: u32 = config::MAX_ATTESTATIONS as u32;
-        pub const MaxValidatorsPerCommittee: u32 = config::MAX_VALIDATORS_PER_COMMITTEE as u32;
         pub const WeakSubjectivityPeriodSeconds: u32 = 97200;
         pub const ChainForkVersions: ForkVersions = ForkVersions{
             genesis: Fork {
@@ -209,19 +196,6 @@ pub mod mock_mainnet {
     impl ethereum_beacon_client::Config for Test {
         type RuntimeEvent = RuntimeEvent;
         type TimeProvider = pallet_timestamp::Pallet<Test>;
-        type MaxSyncCommitteeSize = MaxSyncCommitteeSize;
-        type MaxProofBranchSize = MaxProofBranchSize;
-        type MaxExtraDataSize = MaxExtraDataSize;
-        type MaxLogsBloomSize = MaxLogsBloomSize;
-        type MaxFeeRecipientSize = MaxFeeRecipientSize;
-        type MaxDepositDataSize = MaxDepositDataSize;
-        type MaxPublicKeySize = MaxPublicKeySize;
-        type MaxSignatureSize = MaxSignatureSize;
-        type MaxProposerSlashingSize = MaxProposerSlashingSize;
-        type MaxAttesterSlashingSize = MaxAttesterSlashingSize;
-        type MaxVoluntaryExitSize = MaxVoluntaryExitSize;
-        type MaxAttestationSize = MaxAttestationSize;
-        type MaxValidatorsPerCommittee = MaxValidatorsPerCommittee;
         type ForkVersions = ChainForkVersions;
         type WeakSubjectivityPeriodSeconds = WeakSubjectivityPeriodSeconds;
         type WeightInfo = ();
