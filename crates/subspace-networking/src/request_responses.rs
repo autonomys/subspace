@@ -348,6 +348,12 @@ impl RequestResponsesBehaviour {
             protocol_handlers.push(handler);
         }
 
+        while let Some(mut handler) = protocol_handlers.pop() {
+            tokio::spawn(async move {
+                handler.run().await;
+            });
+        }
+
         Ok(Self {
             protocols,
             pending_requests: Default::default(),
@@ -615,12 +621,6 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                         }
                     }
                 }
-            }
-
-            // Poll request-responses protocol handlers.
-            for rq_rs_runner in &mut self.protocol_handlers {
-                // Future.Output == (), so we don't need a result here
-                let _ = rq_rs_runner.run().poll_unpin(cx);
             }
 
             // Poll request-responses protocols.
