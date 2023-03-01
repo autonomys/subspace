@@ -288,6 +288,9 @@ pub struct RequestResponsesBehaviour {
     /// Pending message request, holds `MessageRequest` as a Future state to poll it
     /// until we get a response from `Peerset`
     message_request: Option<MessageRequest>,
+
+    /// Request handlers future collection.
+    request_handlers: Vec<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
 // This is a state of processing incoming request Message.
@@ -315,8 +318,8 @@ impl RequestResponsesBehaviour {
         list: impl IntoIterator<Item = Box<dyn RequestHandler>>,
     ) -> Result<Self, RegisterError> {
         let mut protocols = HashMap::new();
-        let mut protocol_handlers = Vec::new();
-        for handler in list {
+        let mut request_handlers = Vec::new();
+        for mut handler in list {
             let config = handler.protocol_config();
 
             let mut cfg = RequestResponseConfig::default();
@@ -345,13 +348,10 @@ impl RequestResponsesBehaviour {
                 }
             };
 
-            protocol_handlers.push(handler);
-        }
+            let request_handler_run: Pin<Box<dyn Future<Output = ()> + Send>> =
+                Box::pin(async move { handler.run().await }.fuse());
 
-        while let Some(mut handler) = protocol_handlers.pop() {
-            tokio::spawn(async move {
-                handler.run().await;
-            });
+            request_handlers.push(request_handler_run);
         }
 
         Ok(Self {
@@ -359,6 +359,7 @@ impl RequestResponsesBehaviour {
             pending_requests: Default::default(),
             pending_responses: Default::default(),
             message_request: None,
+            request_handlers,
         })
     }
 
@@ -621,6 +622,11 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                         }
                     }
                 }
+            }
+
+            for rq_rs_runner in &mut self.request_handlers {
+                // Future.Output == (), so we don't need a result here
+                let _ = rq_rs_runner.poll_unpin(cx);
             }
 
             // Poll request-responses protocols.
