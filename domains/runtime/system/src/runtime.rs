@@ -643,6 +643,10 @@ impl_runtime_apis! {
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
             extract_xdm_proof_state_roots(extrinsic)
         }
+
+        fn confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {

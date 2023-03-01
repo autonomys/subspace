@@ -8,7 +8,7 @@ use sp_core::traits::SpawnNamed;
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, CheckedSub, Header, NumberFor};
 use sp_runtime::transaction_validity::TransactionSource;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
@@ -17,9 +17,8 @@ use subspace_transaction_pool::{BlockExtrinsicOf, ValidationFuture, VerifyExtrin
 use system_runtime_primitives::SystemDomainApi;
 
 /// Verifies if the xdm has the correct proof generated from known parent block.
-/// This is used by Core domain nodes and also System domain nodes
+/// This is used by Core domain nodes.
 /// Core domains nodes use this to verify an XDM coming from other domains.
-/// System domain node use this to verify the XDM while validating fraud proof.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
 pub(crate) fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
@@ -53,10 +52,19 @@ where
             return Ok(false);
         }
 
-        // verify core domain state root if there is one
+        // verify core domain state root and the if the number is K-deep.
         if let Some((domain_id, core_domain_info, core_domain_state_root)) =
             state_roots.core_domain_info
         {
+            let best_number = api.head_receipt_number(&block_id, domain_id)?;
+            if let Some(confirmed_number) =
+                best_number.checked_sub(&api.confirmation_depth(&block_id)?)
+            {
+                if confirmed_number < core_domain_info.block_number {
+                    return Ok(false);
+                }
+            }
+
             if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
                 &block_id,
                 domain_id,
