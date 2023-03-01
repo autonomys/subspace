@@ -219,84 +219,50 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        /// Updates the light client state
         #[pallet::weight(T::WeightInfo::sync_committee_period_update())]
         #[transactional]
-        pub fn sync_committee_period_update(
+        #[pallet::call_index(0)]
+        pub fn light_client_update(
             origin: OriginFor<T>,
-            sync_committee_period_update: SyncCommitteePeriodUpdateOf<T>,
+            light_client_update: LightClientUpdateOf,
         ) -> DispatchResult {
             let _sender = ensure_signed(origin)?;
 
             Self::check_bridge_blocked_state()?;
 
-            let sync_committee_period = sync_committee_period_update.sync_committee_period;
+            let sync_committee_period = light_client_update.sync_committee_period;
             log::info!(
                 target: "ethereum-beacon-client",
-                "💫 Received sync committee update for period {}. Applying update",
+                "💫 Received light client update for sync committee period {}. Applying update",
                 sync_committee_period
             );
 
-            if let Err(err) =
-                Self::process_sync_committee_period_update(sync_committee_period_update)
-            {
+            Self::process_light_client_update(light_client_update).map_err(|err| {
                 log::error!(
                     target: "ethereum-beacon-client",
-                    "💫 Sync committee period update failed with error {:?}",
+                    "💫 Light client update failed with error {:?}",
                     err
                 );
-                return Err(err);
-            }
+                err
+            })?;
 
             log::info!(
                 target: "ethereum-beacon-client",
-                "💫 Sync committee period update for period {} succeeded.",
+                "💫 Light client update for sync committee period {} succeeded.",
                 sync_committee_period
             );
 
             Ok(())
         }
 
-        #[pallet::weight(T::WeightInfo::import_finalized_header())]
-        #[transactional]
-        pub fn import_finalized_header(
-            origin: OriginFor<T>,
-            finalized_header_update: FinalizedHeaderUpdateOf<T>,
-        ) -> DispatchResult {
-            let _sender = ensure_signed(origin)?;
-
-            Self::check_bridge_blocked_state()?;
-
-            let slot = finalized_header_update.finalized_header.slot;
-
-            log::info!(
-                target: "ethereum-beacon-client",
-                "💫 Received finalized header for slot {}.",
-                slot
-            );
-
-            if let Err(err) = Self::process_finalized_header(finalized_header_update) {
-                log::error!(
-                    target: "ethereum-beacon-client",
-                    "💫 Finalized header update failed with error {:?}",
-                    err
-                );
-                return Err(err);
-            }
-
-            log::info!(
-                target: "ethereum-beacon-client",
-                "💫 Stored finalized beacon header at slot {}.",
-                slot
-            );
-
-            Ok(())
-        }
-
+        /// Import an execution header
         #[pallet::weight(T::WeightInfo::import_execution_header())]
         #[transactional]
+        #[pallet::call_index(1)]
         pub fn import_execution_header(
             origin: OriginFor<T>,
-            update: BlockUpdateOf<T>,
+            update: BlockUpdateOf,
         ) -> DispatchResult {
             let _sender = ensure_signed(origin)?;
 
@@ -311,14 +277,14 @@ pub mod pallet {
                 slot
             );
 
-            if let Err(err) = Self::process_header(update) {
+            Self::process_header(update).map_err(|err| {
                 log::error!(
                     target: "ethereum-beacon-client",
                     "💫 Header update failed with error {:?}",
                     err
                 );
-                return Err(err);
-            }
+                err
+            })?;
 
             log::info!(
                 target: "ethereum-beacon-client",
@@ -330,14 +296,18 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Unblock the bridge. Can only be called by root.
         #[pallet::weight(1000)]
         #[transactional]
+        #[pallet::call_index(2)]
         pub fn unblock_bridge(origin: OriginFor<T>) -> DispatchResult {
-            let _sender = ensure_root(origin)?;
+            ensure_root(origin)?;
 
             <Blocked<T>>::set(false);
 
             log::info!(target: "ethereum-beacon-client","💫 syncing bridge from governance provided checkpoint.");
+
+            // TODO: Import governance provided checkpoint
 
             Ok(())
         }
