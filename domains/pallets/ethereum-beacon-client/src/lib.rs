@@ -180,13 +180,17 @@ pub mod pallet {
     /// Historical execution headers
     #[pallet::storage]
     pub(super) type ExecutionHeaders<T: Config> =
-        StorageMap<_, Identity, H256, ExecutionHeaderOf<T>, OptionQuery>;
+        CountedStorageMap<_, Identity, H256, ExecutionHeaderOf, OptionQuery>;
 
-    /// Current sync committee corresponding to the active header.
-    /// TODO  prune older sync committees than xxx
+    /// Mapping of count -> Execution header hash. Used to prune older headers
+    #[pallet::storage]
+    pub(super) type ExecutionHeadersMapping<T: Config> =
+        StorageMap<_, Identity, u64, H256, ValueQuery>;
+
+    /// Historical sync committees till the sync committee of latest finalized header.
     #[pallet::storage]
     pub(super) type SyncCommittees<T: Config> =
-        StorageMap<_, Identity, u64, SyncCommitteeOf<T>, ValueQuery>;
+        CountedStorageMap<_, Identity, u64, SyncCommitteeOf, ValueQuery>;
 
     /// Genesis validators root
     #[pallet::storage]
