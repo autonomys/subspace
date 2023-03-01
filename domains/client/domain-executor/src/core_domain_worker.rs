@@ -31,6 +31,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus_slots::Slot;
 use sp_core::traits::CodeExecutor;
 use sp_domains::ExecutorApi;
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
@@ -82,6 +83,7 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     SBlock: BlockT,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -98,8 +100,9 @@ pub(super) async fn start_worker<
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api:
-        DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api: DomainCoreApi<SBlock, AccountId>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>

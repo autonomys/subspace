@@ -19,9 +19,11 @@
 
 pub mod bundle_election;
 pub mod fraud_proof;
+pub mod merkle_tree;
 pub mod transaction;
 
 use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
@@ -229,7 +231,14 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum BundleSolution<DomainHash> {
     /// System domain bundle election.
-    System(ProofOfElection<DomainHash>),
+    System {
+        /// Authority's stake weight.
+        authority_stake_weight: StakeWeight,
+        /// Authority membership witness.
+        authority_witness: Witness,
+        /// Proof of election
+        proof_of_election: ProofOfElection<DomainHash>,
+    },
     /// Core domain bundle election.
     Core {
         /// Proof of election.
@@ -246,7 +255,9 @@ pub enum BundleSolution<DomainHash> {
 impl<DomainHash> BundleSolution<DomainHash> {
     pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
         match self {
-            Self::System(proof_of_election)
+            Self::System {
+                proof_of_election, ..
+            }
             | Self::Core {
                 proof_of_election, ..
             } => proof_of_election,
@@ -350,7 +361,9 @@ impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, 
     /// Consumes [`SignedBundle`] to extract the inner executor public key.
     pub fn into_executor_public_key(self) -> ExecutorPublicKey {
         match self.bundle_solution {
-            BundleSolution::System(proof_of_election)
+            BundleSolution::System {
+                proof_of_election, ..
+            }
             | BundleSolution::Core {
                 proof_of_election, ..
             } => proof_of_election.executor_public_key,
@@ -444,5 +457,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the maximum receipt drift.
         fn maximum_receipt_drift() -> NumberFor<Block>;
+
+        // Returns the state root of the system domain at specific number and hash.
+        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
     }
 }

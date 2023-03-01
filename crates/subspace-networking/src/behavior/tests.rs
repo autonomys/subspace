@@ -1,12 +1,17 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
-use crate::utils::record_binary_heap::RecordBinaryHeap;
-use libp2p::kad::record::Key;
+use crate::{BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler};
+use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::{Code, Multihash};
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
+use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
+use std::future::Future;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
 
 #[tokio::test()]
@@ -62,113 +67,6 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 }
 
 #[test]
-fn binary_heap_insert_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 10);
-
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
-
-    heap.insert(key1);
-    heap.insert(key2);
-
-    assert_eq!(heap.size(), 2);
-}
-
-#[test]
-fn binary_heap_remove_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 10);
-
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
-
-    heap.insert(key1.clone());
-    assert_eq!(heap.size(), 1);
-
-    heap.remove(&key2);
-    assert_eq!(heap.size(), 1);
-
-    heap.remove(&key1);
-    assert_eq!(heap.size(), 0);
-}
-
-#[test]
-fn binary_heap_limit_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 1);
-
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
-
-    let evicted = heap.insert(key1);
-    assert!(evicted.is_none());
-    assert_eq!(heap.size(), 1);
-
-    let evicted = heap.insert(key2);
-    assert!(evicted.is_some());
-    assert_eq!(heap.size(), 1);
-}
-
-#[test]
-fn binary_heap_eviction_works() {
-    type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
-
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 1);
-
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
-
-    heap.insert(key1.clone());
-    let should_be_evicted = heap.should_include_key(&key2);
-    let evicted = heap.insert(key2.clone());
-    assert!(evicted.is_some());
-
-    let bucket_key1: KademliaBucketKey<Key> = KademliaBucketKey::new(key1.clone());
-    let bucket_key2: KademliaBucketKey<Key> = KademliaBucketKey::new(key2.clone());
-
-    let evicted = evicted.unwrap();
-    if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
-        > bucket_key2.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
-    {
-        assert!(should_be_evicted);
-        assert_eq!(evicted, key1);
-    } else {
-        assert!(!should_be_evicted);
-        assert_eq!(evicted, key2);
-    }
-}
-
-#[test]
-fn binary_heap_should_include_key_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [2u8].as_slice()).unwrap())
-            .unwrap();
-    let mut heap = RecordBinaryHeap::new(peer_id, 1);
-
-    // Limit not reached
-    let key1 = Key::from(vec![1]);
-    assert!(heap.should_include_key(&key1));
-
-    // Limit reached and key is not "less" than top key
-    heap.insert(key1.clone());
-    assert!(!heap.should_include_key(&key1));
-
-    // Limit reached and key is "less" than top key
-    let key2 = Key::from(vec![2]);
-    assert!(heap.should_include_key(&key2));
-}
-
-#[test]
 fn instant_conversion() {
     let inst1 = Instant::now();
     let ms = instant_to_micros(inst1);
@@ -189,4 +87,101 @@ fn instant_conversion_edge_cases() {
             * 2
     )
     .is_none());
+}
+
+#[derive(Default)]
+struct FuturePolledTwice {
+    counter: u8,
+}
+
+impl Future for FuturePolledTwice {
+    type Output = u8;
+
+    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.counter >= 1 {
+            Poll::Ready(self.counter)
+        } else {
+            self.get_mut().counter += 1;
+
+            Poll::Pending
+        }
+    }
+}
+
+#[derive(Encode, Decode)]
+struct ExampleRequest;
+
+impl GenericRequest for ExampleRequest {
+    const PROTOCOL_NAME: &'static str = "/example";
+    const LOG_TARGET: &'static str = "example_request";
+    type Response = ExampleResponse;
+}
+
+#[derive(Encode, Decode, Debug)]
+struct ExampleResponse {
+    counter: u8,
+}
+
+#[tokio::test]
+async fn test_async_handler_works_with_pending_internal_future() {
+    let config_1 = Config {
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_global_addresses_in_dht: true,
+        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
+            let fut = FuturePolledTwice::default();
+
+            Some(ExampleResponse { counter: fut.await })
+        })],
+        ..Config::default()
+    };
+    let (node_1, mut node_runner_1) = crate::create(config_1).unwrap();
+
+    let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = node_1.on_new_listener(Arc::new({
+        let node_1_address_sender = Mutex::new(Some(node_1_address_sender));
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
+                    node_1_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
+    tokio::spawn(async move {
+        node_runner_1.run().await;
+    });
+
+    // Wait for first node to know its address
+    let node_1_addr = node_1_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
+
+    let config_2 = Config {
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
+            node_1_addr.with(Protocol::P2p(node_1.id().into()))
+        ])
+        .boxed(),
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_global_addresses_in_dht: true,
+        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
+            |_| async { None },
+        )],
+        ..Config::default()
+    };
+
+    let (node_2, mut node_runner_2) = crate::create(config_2).unwrap();
+
+    tokio::spawn(async move {
+        node_runner_2.run().await;
+    });
+
+    node_2.wait_for_connected_peers().await.unwrap();
+
+    let resp = node_2
+        .send_generic_request(node_1.id(), ExampleRequest)
+        .await
+        .unwrap();
+
+    assert_eq!(resp.counter, 1);
 }

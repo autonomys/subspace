@@ -423,10 +423,11 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
         let signed_opaque_bundle = SignedBundle {
             bundle,
-            bundle_solution: BundleSolution::System(ProofOfElection::dummy(
-                DomainId::SYSTEM,
-                pair.public(),
-            )), // TODO: mock ProofOfElection properly
+            bundle_solution: BundleSolution::System {
+                authority_stake_weight: Default::default(),
+                authority_witness: Default::default(),
+                proof_of_election: ProofOfElection::dummy(DomainId::SYSTEM, pair.public()),
+            }, // TODO: mock ProofOfElection properly
             signature,
         }
         .into_signed_opaque_bundle();

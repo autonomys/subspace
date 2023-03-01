@@ -182,8 +182,8 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         >,
         (
             impl BlockImport<
@@ -373,7 +373,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Validator, Verifier>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, Verifier, Validator>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
@@ -394,8 +394,8 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         >,
         (
             I,
@@ -404,7 +404,6 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
-
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
@@ -492,14 +491,9 @@ where
 
             let (node, mut node_runner) = create_dsn_instance::<Block, _>(
                 config.clone(),
-                piece_cache.clone(),
+                piece_cache,
                 root_block_cache.clone(),
-            )
-            .instrument(tracing::info_span!(
-                sc_tracing::logging::PREFIX_LOG_SPAN,
-                name = "DSN"
-            ))
-            .await?;
+            )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 

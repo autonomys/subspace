@@ -2,7 +2,7 @@
 mod tests;
 
 use super::ProviderStorage;
-use crate::utils::record_binary_heap::RecordBinaryHeap;
+use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
 use either::Either;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{MemoryStoreConfig, RecordStore};
@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
 const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
@@ -179,7 +179,7 @@ pub struct ParityDbProviderStorage {
     /// Parity DB instance
     db: Arc<Db>,
     /// Maintains a heap to limit total item number.
-    heap: RecordBinaryHeap,
+    heap: UniqueRecordBinaryHeap,
     /// Local provider PeerID
     local_peer_id: PeerId,
 }
@@ -209,7 +209,7 @@ impl ParityDbProviderStorage {
 
         let db = Db::open_or_create(&options)?;
 
-        let mut heap = RecordBinaryHeap::new(local_peer_id, max_items_limit.get());
+        let mut heap = UniqueRecordBinaryHeap::new(local_peer_id, max_items_limit.get());
 
         let known_providers = {
             let rec_iter_result: Result<
@@ -236,9 +236,9 @@ impl ParityDbProviderStorage {
         }
 
         if heap.size() > 0 {
-            info!(size = heap.size(), ?path, "Record cache loaded.");
+            debug!(size = heap.size(), ?path, "Record cache loaded.");
         } else {
-            info!(?path, "New record cache initialized.");
+            debug!(?path, "New record cache initialized.");
         }
 
         Ok(Self {
@@ -246,6 +246,10 @@ impl ParityDbProviderStorage {
             heap,
             local_peer_id,
         })
+    }
+
+    pub fn size(&self) -> usize {
+        self.heap.size()
     }
 
     fn add_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
@@ -262,6 +266,15 @@ impl ParityDbProviderStorage {
         providers.remove_provider(provider);
 
         self.save_providers(key, providers);
+    }
+
+    fn remove_providers_from_db(&self, key: &Key) {
+        let tx = [(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME, key, None)];
+
+        let result = self.db.commit(tx);
+        if let Err(err) = &result {
+            error!(?key, ?err, "Failed to delete providers from Parity DB.");
+        }
     }
 
     fn add_local_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
@@ -365,8 +378,8 @@ impl ProviderStorage for ParityDbProviderStorage {
         if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
 
-            let local_peer_id = self.local_peer_id;
-            self.remove_provider(&key, &local_peer_id);
+            self.remove_local_provider_to_db(&key);
+            self.remove_providers_from_db(&key);
         }
 
         Ok(())

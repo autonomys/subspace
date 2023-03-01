@@ -92,7 +92,6 @@ mod domain_bundle_proposer;
 mod domain_worker;
 mod fraud_proof;
 mod gossip_message_validator;
-mod merkle_tree;
 mod parent_chain;
 mod system_bundle_processor;
 mod system_domain_worker;
@@ -101,6 +100,7 @@ mod system_gossip_message_validator;
 #[cfg(test)]
 mod tests;
 mod utils;
+pub mod xdm_verifier;
 
 pub use self::core_executor::Executor as CoreExecutor;
 pub use self::core_gossip_message_validator::CoreGossipMessageValidator;

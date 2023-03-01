@@ -74,7 +74,7 @@ use subspace_core_primitives::{
     Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
 };
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature, CONFIRMATION_DEPTH_K,
+    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
     MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
@@ -232,7 +232,14 @@ parameter_types! {
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
-    pub const ConfirmationDepthK: u32 = CONFIRMATION_DEPTH_K;
+}
+
+pub struct ConfirmationDepthK;
+
+impl Get<BlockNumber> for ConfirmationDepthK {
+    fn get() -> BlockNumber {
+        <pallet_runtime_configs::Pallet<Runtime> as pallet_runtime_configs::Store>::ConfirmationDepthK::get()
+    }
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -766,6 +773,13 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn system_domain_state_root_at(
+            number: NumberFor<Block>,
+            domain_hash: domain_runtime_primitives::Hash
+        ) -> Option<domain_runtime_primitives::Hash>{
+            Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
     }
 

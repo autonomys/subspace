@@ -65,10 +65,11 @@ impl ImportBlocksFromDsnCmd {
             )
             .boxed(),
             allow_non_global_addresses_in_dht: true,
-            request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| None)],
+            request_response_protocols: vec![PieceByHashRequestHandler::create(move |_| async {
+                None
+            })],
             ..Config::default()
         })
-        .await
         .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
         spawner.spawn_essential(

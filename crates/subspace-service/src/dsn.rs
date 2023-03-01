@@ -1,5 +1,5 @@
 pub mod import_blocks;
-mod node_provider_storage;
+pub mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
@@ -57,7 +57,7 @@ pub struct DsnConfig {
 type DsnProviderStorage<AS> =
     NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
 
-pub(crate) async fn create_dsn_instance<Block, AS>(
+pub(crate) fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     root_block_cache: RootBlockCache<AS>,
@@ -102,7 +102,7 @@ where
                     }
                 };
 
-                Some(PieceByHashResponse { piece: result })
+                async { Some(PieceByHashResponse { piece: result }) }
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
                 let segment_indexes = match req {
@@ -130,7 +130,7 @@ where
                     .map(|segment_index| root_block_cache.get_root_block(*segment_index))
                     .collect::<Result<Option<Vec<RootBlock>>, _>>();
 
-                match internal_result {
+                let result = match internal_result {
                     Ok(Some(root_blocks)) => Some(RootBlockResponse { root_blocks }),
                     Ok(None) => {
                         error!("Root block collection contained empty root blocks.");
@@ -142,14 +142,16 @@ where
 
                         None
                     }
-                }
+                };
+
+                async move { result }
             }),
         ],
         provider_storage,
         ..subspace_networking::Config::default()
     };
 
-    subspace_networking::create(networking_config).await
+    subspace_networking::create(networking_config)
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
@@ -233,5 +235,5 @@ pub(crate) async fn publish_pieces(
         // empty body
     }
 
-    info!(%segment_index, "Piece publishing was successful.");
+    info!(%segment_index, "Segment publishing was successful.");
 }

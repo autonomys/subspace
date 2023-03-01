@@ -28,8 +28,9 @@ pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::merkle_tree::Witness;
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
+use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
@@ -450,6 +451,8 @@ impl<T: Config> Pallet<T> {
 
     fn validate_system_bundle_solution(
         receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+        authority_stake_weight: sp_domains::StakeWeight,
+        authority_witness: &Witness,
         proof_of_election: &ProofOfElection<T::DomainHash>,
     ) -> Result<(), BundleError> {
         let ProofOfElection {
@@ -514,8 +517,13 @@ impl<T: Config> Pallet<T> {
         let state_root = H256::decode(&mut state_root.encode().as_slice())
             .map_err(|_| BundleError::StateRootNotH256)?;
 
-        verify_system_bundle_solution(proof_of_election, state_root)
-            .map_err(|_| BundleError::BadElectionSolution)?;
+        verify_system_bundle_solution(
+            proof_of_election,
+            state_root,
+            authority_stake_weight,
+            authority_witness,
+        )
+        .map_err(|_| BundleError::BadElectionSolution)?;
 
         Ok(())
     }
@@ -548,11 +556,31 @@ impl<T: Config> Pallet<T> {
     ) -> Result<(), BundleError> {
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
-        if let Some(last_finalized) =
-            current_block_number.checked_sub(&T::ConfirmationDepthK::get())
-        {
-            if bundle.header.primary_number <= last_finalized {
-                return Err(BundleError::StaleBundle);
+        // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
+        let confirmation_depth_k = T::ConfirmationDepthK::get();
+        if let Some(finalized) = current_block_number.checked_sub(&confirmation_depth_k) {
+            {
+                // Ideally, `bundle.header.primary_number` is `current_block_number - 1`, we need
+                // to handle the edge case that `T::ConfirmationDepthK` happens to be 1.
+                let is_stale_bundle = if confirmation_depth_k.is_zero() {
+                    unreachable!(
+                        "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
+                    )
+                } else if confirmation_depth_k == One::one() {
+                    bundle.header.primary_number < finalized
+                } else {
+                    bundle.header.primary_number <= finalized
+                };
+
+                if is_stale_bundle {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
+                        ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
+                        bundle.header.primary_number,
+                    );
+                    return Err(BundleError::StaleBundle);
+                }
             }
         }
 
@@ -576,7 +604,20 @@ impl<T: Config> Pallet<T> {
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
         if proof_of_election.domain_id.is_system() {
-            Self::validate_system_bundle_solution(&bundle.receipts, proof_of_election)?;
+            let BundleSolution::System {
+                authority_stake_weight,
+                authority_witness,
+                proof_of_election
+            } = bundle_solution else {
+                unreachable!("Must be system domain bundle solution as we just checked; qed ")
+            };
+
+            Self::validate_system_bundle_solution(
+                &bundle.receipts,
+                *authority_stake_weight,
+                authority_witness,
+                proof_of_election,
+            )?;
 
             let best_number = Self::head_receipt_number();
             let max_allowed = best_number + T::MaximumReceiptDrift::get();

@@ -1,5 +1,6 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_executor::xdm_verifier::CoreDomainXDMVerifier;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -28,7 +29,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::Encode;
 use sp_domains::{DomainId, ExecutorApi};
-use sp_messenger::RelayerApi;
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -46,7 +47,7 @@ type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDi
         FullClient<RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
-        FullPool<RuntimeApi, ExecutorDispatch>,
+        FullPool<RuntimeApi, ExecutorDispatch, CoreDomainXDMVerifier<SClient, PBlock, SBlock>>,
         FullBackend,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
@@ -79,6 +80,10 @@ pub struct NewFullCore<
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -101,22 +106,29 @@ pub struct NewFullCore<
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
-pub type FullPool<RuntimeApi, ExecutorDispatch> = sc_transaction_pool::BasicPool<
-    sc_transaction_pool::FullChainApi<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    Block,
->;
+pub type FullPool<RuntimeApi, ExecutorDispatch, Verifier> =
+    subspace_transaction_pool::FullPoolWithChainVerifier<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        Verifier,
+    >;
 
 /// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor>(
+fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
     config: &ServiceConfiguration,
+    system_domain_client: Arc<SDC>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, Executor>,
         TFullBackend<Block>,
         (),
         sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
-        sc_transaction_pool::FullPool<Block, FullClient<RuntimeApi, Executor>>,
+        subspace_transaction_pool::FullPoolWithChainVerifier<
+            Block,
+            FullClient<RuntimeApi, Executor>,
+            CoreDomainXDMVerifier<SDC, PBlock, SBlock>,
+        >,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
@@ -131,6 +143,12 @@ where
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
     Executor: NativeExecutionDispatch + 'static,
+    SBlock: BlockT,
+    PBlock: BlockT,
+    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
+    SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -166,12 +184,13 @@ where
         telemetry
     });
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
+    let core_domain_xdm_verifier =
+        CoreDomainXDMVerifier::<SDC, PBlock, SBlock>::new(system_domain_client);
+    let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
+        config,
+        &task_manager,
         client.clone(),
+        core_domain_xdm_verifier,
     );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
@@ -245,9 +264,11 @@ where
     SBlock: BlockT,
     SBlock::Hash: Into<Hash>,
     NumberFor<SBlock>: Into<BlockNumber>,
+    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>
         + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -299,7 +320,10 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial(&core_domain_config.service_config)?;
+    let params = new_partial::<_, _, _, SBlock, PBlock>(
+        &core_domain_config.service_config,
+        system_domain_client.clone(),
+    )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
 
