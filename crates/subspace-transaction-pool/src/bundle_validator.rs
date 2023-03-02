@@ -59,7 +59,7 @@ where
         let bundle_hashes: HashSet<_> = self
             .client
             .runtime_api()
-            .extract_stored_bundle_hashes(&BlockId::Hash(block_hash))?
+            .extract_stored_bundle_hashes(block_hash)?
             .into_iter()
             .collect();
         Ok(bundle_hashes)
@@ -302,7 +302,7 @@ pub trait ValidateBundle<Block: BlockT, DomainHash: Encode> {
     // For system domain, checks nothing.
     fn validate_bundle(
         &self,
-        at: BlockId<Block>,
+        at: &BlockId<Block>,
         signed_opaque_bundle: &SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
     ) -> Result<(), BundleError>;
 }
@@ -313,7 +313,7 @@ pub struct SkipBundleValidation;
 impl<Block: BlockT, DomainHash: Encode> ValidateBundle<Block, DomainHash> for SkipBundleValidation {
     fn validate_bundle(
         &self,
-        _at: BlockId<Block>,
+        _at: &BlockId<Block>,
         _signed_opaque_bundle: &SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
     ) -> Result<(), BundleError> {
         Ok(())
@@ -328,7 +328,7 @@ where
 {
     fn validate_bundle(
         &self,
-        at: BlockId<Block>,
+        at: &BlockId<Block>,
         signed_opaque_bundle: &SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
     ) -> Result<(), BundleError> {
         // The hash used here must be the same as what is maintaining in `bundle_stored_in_last_k`,
@@ -348,7 +348,7 @@ where
         let best_primary_number = self
             .bundle_collector
             .client
-            .block_number_from_id(&at)?
+            .block_number_from_id(at)?
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Can not convert BlockId {at:?} to block number"
             )))?;

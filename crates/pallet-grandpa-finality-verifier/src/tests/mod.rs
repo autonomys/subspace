@@ -14,8 +14,8 @@ use frame_support::{assert_err, assert_ok};
 use justification::*;
 use keyring::*;
 use mock::{run_test, ChainId, TestRuntime};
+use sp_consensus_grandpa::{ConsensusLog, ScheduledChange, GRANDPA_ENGINE_ID};
 use sp_core::Hasher as HasherT;
-use sp_finality_grandpa::{ConsensusLog, ScheduledChange, GRANDPA_ENGINE_ID};
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{BlakeTwo256, Hash, Header};
 use sp_runtime::{generic, Digest, DigestItem, DispatchError};
@@ -86,7 +86,7 @@ fn valid_justification_accepted_with_single_fork() {
 #[test]
 fn valid_justification_accepted_with_arbitrary_number_of_authorities() {
     use finality_grandpa::voter_set::VoterSet;
-    use sp_finality_grandpa::AuthorityId;
+    use sp_consensus_grandpa::AuthorityId;
 
     let n = 15;
     let authorities = accounts(n).iter().map(|k| (*k, 1)).collect::<Vec<_>>();

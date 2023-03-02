@@ -128,7 +128,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let intermediate_roots = alice
         .client
         .runtime_api()
-        .intermediate_roots(&BlockId::Hash(header.hash()))
+        .intermediate_roots(header.hash())
         .expect("Get intermediate roots");
 
     let prover = subspace_fraud_proof::ExecutionProver::new(
@@ -339,7 +339,7 @@ async fn extract_core_domain_wasm_bundle_in_system_domain_runtime_should_work() 
     let system_domain_bundle = ferdie
         .client
         .runtime_api()
-        .system_domain_wasm_bundle(&BlockId::Hash(ferdie.client.info().best_hash))
+        .system_domain_wasm_bundle(ferdie.client.info().best_hash)
         .unwrap();
 
     let core_payments_runtime_blob =

@@ -3,7 +3,6 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -66,7 +65,7 @@ where
         let head_receipt_number = self
             .system_domain_client
             .runtime_api()
-            .head_receipt_number(&BlockId::Hash(at), self.domain_id)?;
+            .head_receipt_number(at, self.domain_id)?;
         Ok(to_number_primitive(head_receipt_number))
     }
 
@@ -74,7 +73,7 @@ where
         let max_drift = self
             .system_domain_client
             .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(at))?;
+            .maximum_receipt_drift(at)?;
         Ok(to_number_primitive(max_drift))
     }
 
@@ -82,7 +81,7 @@ where
         let at = self.system_domain_client.info().best_hash;
         self.system_domain_client
             .runtime_api()
-            .submit_fraud_proof_unsigned(&BlockId::Hash(at), fraud_proof)?;
+            .submit_fraud_proof_unsigned(at, fraud_proof)?;
         Ok(())
     }
 }
@@ -127,7 +126,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(&BlockId::Hash(at))?;
+            .head_receipt_number(at)?;
         Ok(to_number_primitive(head_receipt_number))
     }
 
@@ -135,7 +134,7 @@ where
         let max_drift = self
             .primary_chain_client
             .runtime_api()
-            .maximum_receipt_drift(&BlockId::Hash(at))?;
+            .maximum_receipt_drift(at)?;
         Ok(to_number_primitive(max_drift))
     }
 
@@ -143,7 +142,7 @@ where
         let at = self.primary_chain_client.info().best_hash;
         self.primary_chain_client
             .runtime_api()
-            .submit_fraud_proof_unsigned(&BlockId::Hash(at), fraud_proof)?;
+            .submit_fraud_proof_unsigned(at, fraud_proof)?;
         Ok(())
     }
 }

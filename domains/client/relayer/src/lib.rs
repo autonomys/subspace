@@ -15,7 +15,6 @@ use sp_messenger::messages::{
     RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
 use sp_messenger::RelayerApi;
-use sp_runtime::generic::BlockId;
 use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{
     Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor, One, Zero,
@@ -90,19 +89,18 @@ where
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
 {
     pub(crate) fn domain_id(client: &Arc<Client>) -> Result<DomainId, Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
-        let api = client.runtime_api();
-        api.domain_id(&best_block_id)
+        client
+            .runtime_api()
+            .domain_id(client.info().best_hash)
             .map_err(|_| Error::UnableToFetchDomainId)
     }
 
     pub(crate) fn relay_confirmation_depth(
         client: &Arc<Client>,
     ) -> Result<NumberFor<Block>, Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
-        let api = client.runtime_api();
-        let relay_confirmation_depth = api
-            .relay_confirmation_depth(&best_block_id)
+        let relay_confirmation_depth = client
+            .runtime_api()
+            .relay_confirmation_depth(client.info().best_hash)
             .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)?;
         relay_confirmation_depth
             .checked_add(&NumberFor::<Block>::from(1u32))
@@ -216,10 +214,10 @@ where
         mut msgs: RelayerMessagesWithStorageKey,
     ) -> Result<RelayerMessagesWithStorageKey, Error> {
         let api = client.runtime_api();
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_hash = client.info().best_hash;
         msgs.outbox.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_outbox_message(&best_block_id, msg.dst_domain_id, id) {
+            match api.should_relay_outbox_message(best_hash, msg.dst_domain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
@@ -235,7 +233,7 @@ where
 
         msgs.inbox_responses.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_inbox_message_response(&best_block_id, msg.dst_domain_id, id) {
+            match api.should_relay_inbox_message_response(best_hash, msg.dst_domain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
@@ -260,15 +258,15 @@ where
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
         SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     {
-        let best_block_id = BlockId::Hash(system_domain_client.info().best_hash);
-        let best_block = system_domain_client.info().best_number;
+        let best_hash = system_domain_client.info().best_hash;
+        let best_number = system_domain_client.info().best_number;
         let api = system_domain_client.runtime_api();
         let confirmation_depth = api
-            .relay_confirmation_depth(&best_block_id)
+            .relay_confirmation_depth(best_hash)
             .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)?
             .checked_add(&NumberFor::<SBlock>::from(1u32))
             .ok_or(Error::ArithmeticError(ArithmeticError::Overflow))?;
-        let confirmed_block = best_block
+        let confirmed_block = best_number
             .checked_sub(&confirmation_depth)
             .ok_or(Error::ArithmeticError(ArithmeticError::Underflow))?;
 
@@ -287,9 +285,8 @@ where
         gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let api = system_domain_client.runtime_api();
-        let confirmed_block_id = BlockId::Hash(confirmed_block_hash);
         let assigned_messages: RelayerMessagesWithStorageKey = api
-            .relayer_assigned_messages(&confirmed_block_id, relayer_id)
+            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
         let filtered_messages =
             Self::filter_assigned_messages(system_domain_client, assigned_messages)?;
@@ -349,7 +346,7 @@ where
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
         let assigned_messages: RelayerMessagesWithStorageKey = core_domain_api
-            .relayer_assigned_messages(&BlockId::Hash(confirmed_block_hash), relayer_id)
+            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
 
         let filtered_messages =
@@ -443,11 +440,11 @@ where
         msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_hash = client.info().best_hash;
         let dst_domain_id = msg.dst_domain_id;
         let ext = client
             .runtime_api()
-            .outbox_message_unsigned(&best_block_id, msg)?
+            .outbox_message_unsigned(best_hash, msg)?
             .ok_or(Error::FailedToConstructExtrinsic)?;
 
         sink.unbounded_send(GossipMessage {
@@ -465,11 +462,11 @@ where
         msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_hash = client.info().best_hash;
         let dst_domain_id = msg.dst_domain_id;
         let ext = client
             .runtime_api()
-            .inbox_response_message_unsigned(&best_block_id, msg)?
+            .inbox_response_message_unsigned(best_hash, msg)?
             .ok_or(Error::FailedToConstructExtrinsic)?;
 
         sink.unbounded_send(GossipMessage {

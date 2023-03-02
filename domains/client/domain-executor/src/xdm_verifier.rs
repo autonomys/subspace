@@ -35,8 +35,8 @@ where
     PBlock: BlockT,
 {
     let api = system_domain_client.runtime_api();
-    let block_id = BlockId::Hash(system_domain_client.info().best_hash);
-    if let Ok(Some(state_roots)) = api.extract_xdm_proof_state_roots(&block_id, extrinsic) {
+    let best_hash = system_domain_client.info().best_hash;
+    if let Ok(Some(state_roots)) = api.extract_xdm_proof_state_roots(best_hash, extrinsic) {
         // verify system domain state root
         let header = system_domain_client
             .header(state_roots.system_domain_block_info.block_hash)?
@@ -58,7 +58,7 @@ where
             state_roots.core_domain_info
         {
             if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
-                &block_id,
+                best_hash,
                 domain_id,
                 core_domain_info.block_number,
                 core_domain_info.block_hash,
@@ -94,15 +94,16 @@ where
     PBlock::Hash: From<SBlock::Hash>,
 {
     let system_domain_runtime = system_domain_client.runtime_api();
-    let block_id = BlockId::Hash(system_domain_client.info().best_hash);
+    let best_hash = system_domain_client.info().best_hash;
     if let Ok(Some(state_roots)) =
-        system_domain_runtime.extract_xdm_proof_state_roots(&block_id, extrinsic)
+        system_domain_runtime.extract_xdm_proof_state_roots(best_hash, extrinsic)
     {
+        // TODO: Can't above variable be reused here?
         // verify system domain state root
-        let block_id = BlockId::Hash(primary_chain_client.info().best_hash);
+        let best_hash = primary_chain_client.info().best_hash;
         let primary_runtime = primary_chain_client.runtime_api();
         if let Some(system_domain_state_root) = primary_runtime.system_domain_state_root_at(
-            &block_id,
+            best_hash,
             state_roots.system_domain_block_info.block_number.into(),
             state_roots.system_domain_block_info.block_hash,
         )? {
@@ -112,10 +113,11 @@ where
         }
 
         if let Some((domain_id, info, state_root)) = state_roots.core_domain_info {
+            // TODO: Can't above variable be reused here?
             // verify core domain state root if there is one
-            let block_id = BlockId::Hash(system_domain_client.info().best_hash);
+            let best_hash = system_domain_client.info().best_hash;
             if let Some(core_domain_state_root) = system_domain_runtime.core_domain_state_root_at(
-                &block_id,
+                best_hash,
                 domain_id,
                 info.block_number,
                 info.block_hash,
@@ -187,7 +189,7 @@ where
 {
     fn verify_extrinsic(
         &self,
-        at: &BlockId<SBlock>,
+        at: SBlock::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<SBlock>,
         spawner: Box<dyn SpawnNamed>,
@@ -264,7 +266,7 @@ where
 {
     fn verify_extrinsic(
         &self,
-        at: &BlockId<Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<Block>,
         _spawner: Box<dyn SpawnNamed>,
@@ -277,7 +279,7 @@ where
         match result {
             Ok(valid) => {
                 if valid {
-                    chain_api.validate_transaction(at, source, uxt)
+                    chain_api.validate_transaction(&BlockId::Hash(at), source, uxt)
                 } else {
                     tracing::trace!(target: "core_domain_xdm_validator", "Dropped invalid XDM extrinsic");
                     async move { Err(TxPoolError::ImmediatelyDropped.into()) }.boxed()

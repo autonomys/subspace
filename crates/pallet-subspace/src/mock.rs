@@ -233,7 +233,7 @@ pub fn make_pre_digest(
 pub fn new_test_ext() -> sp_io::TestExternalities {
     static INITIALIZE_LOGGER: Once = Once::new();
     INITIALIZE_LOGGER.call_once(|| {
-        env_logger::init_from_env(env_logger::Env::new().default_filter_or("error"));
+        let _ = env_logger::try_init_from_env(env_logger::Env::new().default_filter_or("error"));
     });
 
     let mut t = frame_system::GenesisConfig::default()

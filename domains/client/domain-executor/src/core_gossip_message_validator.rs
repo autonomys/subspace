@@ -10,7 +10,6 @@ use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
 use sp_domains::{Bundle, DomainId, ExecutorApi, SignedBundle};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
@@ -132,7 +131,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(&BlockId::Hash(self.primary_chain_client.info().best_hash))?;
+            .head_receipt_number(self.primary_chain_client.info().best_hash)?;
         let head_receipt_number = to_number_primitive(head_receipt_number);
 
         if let Some(fraud_proof) = self.gossip_message_validator.validate_execution_receipt(
@@ -144,7 +143,7 @@ where
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    self.primary_chain_client.info().best_hash,
                     fraud_proof,
                 )?;
         }
@@ -223,7 +222,7 @@ where
             self.primary_chain_client
                 .runtime_api()
                 .submit_bundle_equivocation_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    self.primary_chain_client.info().best_hash,
                     equivocation_proof,
                 )?;
             return Err(GossipMessageError::BundleEquivocation);
@@ -262,7 +261,7 @@ where
                     self.primary_chain_client
                         .runtime_api()
                         .submit_invalid_transaction_proof_unsigned(
-                            &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                            self.primary_chain_client.info().best_hash,
                             invalid_transaction_proof,
                         )?;
                 }

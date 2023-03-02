@@ -39,7 +39,7 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_finality_grandpa::SetId;
+use sp_consensus_grandpa::SetId;
 use sp_std::fmt::Debug;
 use sp_std::vec::Vec;
 
@@ -70,7 +70,7 @@ pub mod pallet {
     use crate::{EncodedBlockHash, EncodedBlockNumber, EncodedHeader, InitializationData};
     use finality_grandpa::voter_set::VoterSet;
     use frame_support::pallet_prelude::*;
-    use sp_finality_grandpa::GRANDPA_ENGINE_ID;
+    use sp_consensus_grandpa::GRANDPA_ENGINE_ID;
     use sp_runtime::traits::{CheckedAdd, CheckedSub, Hash, Header, One, Zero};
     use sp_runtime::ArithmeticError;
     use sp_std::fmt::Debug;
@@ -282,7 +282,7 @@ pub mod pallet {
     pub(crate) fn try_enact_authority_change<T: Config, C: Chain>(
         chain_id: T::ChainId,
         header: &C::Header,
-        current_set_id: sp_finality_grandpa::SetId,
+        current_set_id: sp_consensus_grandpa::SetId,
     ) -> DispatchResult {
         // We don't support forced changes - at that point governance intervention is required.
         ensure!(
