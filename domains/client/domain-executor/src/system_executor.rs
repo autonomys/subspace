@@ -137,7 +137,7 @@ where
             DomainId::SYSTEM,
             params.client.clone(),
             params.primary_chain_client.clone(),
-            params.primary_network,
+            params.primary_network_sync_oracle,
             params.backend.clone(),
             fraud_proof_generator.clone(),
         );
