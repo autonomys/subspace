@@ -18,7 +18,9 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler};
-use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
@@ -608,6 +610,14 @@ impl_runtime_apis! {
         }
     }
 
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: &<Block as BlockT>::Extrinsic,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+    }
+
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
@@ -619,5 +629,14 @@ impl_runtime_apis! {
                 _ => PreValidationObject::Null,
             }
         }
+    }
+}
+
+fn extract_xdm_proof_state_roots(
+    ext: &UncheckedExtrinsic,
+) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+    match &ext.function {
+        RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
+        _ => None,
     }
 }

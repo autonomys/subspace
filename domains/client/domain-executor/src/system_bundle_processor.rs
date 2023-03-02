@@ -2,6 +2,7 @@ use crate::domain_block_processor::{
     preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
 };
 use crate::utils::{translate_number_type, DomainBundles};
+use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use crate::TransactionFor;
 use codec::Decode;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -13,6 +14,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
@@ -51,12 +53,15 @@ impl<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
+    NumberFor<PBlock>: From<NumberFor<Block>>,
+    PBlock::Hash: From<Block::Hash>,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<Block, NumberFor<Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
@@ -148,7 +153,9 @@ where
         let (bundles, shuffling_seed, maybe_new_runtime) =
             preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
 
-        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+        let extrinsics = self
+            .bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)
+            .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
 
         let primary_block_info = DigestItem::primary_block_info((primary_number, primary_hash));
         let digests = Digest {
@@ -248,5 +255,27 @@ where
 
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
+    }
+
+    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
+        exts.into_iter()
+            .filter(|ext| {
+                match verify_xdm_with_primary_chain_client::<PClient, Client, PBlock, Block>(
+                    &self.primary_chain_client,
+                    &self.client,
+                    ext,
+                ) {
+                    Ok(valid) => valid,
+                    Err(err) => {
+                        tracing::error!(
+                            target = "system_domain_xdm_filter",
+                            "failed to verify extrinsic: {}",
+                            err
+                        );
+                        false
+                    }
+                }
+            })
+            .collect()
     }
 }

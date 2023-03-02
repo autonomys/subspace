@@ -114,8 +114,8 @@ where
 pub type BlockExtrinsicOf<Block> = <Block as BlockT>::Extrinsic;
 
 /// Abstracts and provides just the validation hook for a transaction pool.
-pub trait ValidateExtrinsic<Block: BlockT, Client, ChainApi> {
-    fn validate_extrinsic(
+pub trait VerifyExtrinsic<Block: BlockT, Client, ChainApi> {
+    fn verify_extrinsic(
         &self,
         at: Block::Hash,
         source: TransactionSource,
@@ -156,7 +156,7 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block>,
 {
-    fn new(client: Arc<Client>, verifier: Verifier, bundle_validator: BundleValidator) -> Self {
+    pub fn new(client: Arc<Client>, verifier: Verifier, bundle_validator: BundleValidator) -> Self {
         Self {
             _phantom_data: Default::default(),
             verifier,
@@ -167,7 +167,7 @@ where
 }
 
 impl<Block, Client, Verifier, BundleValidator>
-    ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
+    VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>>
     for FullChainVerifier<Block, Client, Verifier, BundleValidator>
 where
     Block: BlockT,
@@ -185,7 +185,7 @@ where
         ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
     Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
 {
-    fn validate_extrinsic(
+    fn verify_extrinsic(
         &self,
         at: Block::Hash,
         source: TransactionSource,
@@ -284,11 +284,8 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>,
-    Verifier: ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
+    Verifier:
+        VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>> + Clone + Send + Sync + 'static,
 {
     type Block = Block;
     type Error = sc_transaction_pool::error::Error;
@@ -318,7 +315,7 @@ where
         };
 
         self.verifier
-            .validate_extrinsic(at, source, uxt, self.spawner.clone(), self.inner.clone())
+            .verify_extrinsic(at, source, uxt, self.spawner.clone(), self.inner.clone())
     }
 
     fn block_id_to_number(
@@ -418,11 +415,8 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>,
-    Verifier: ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
+    Verifier:
+        VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>> + Clone + Send + Sync + 'static,
 {
     type Block = Block;
     type Hash = ExtrinsicHash<FullChainApiWrapper<Block, Client, Verifier>>;
@@ -611,11 +605,8 @@ where
         + Sync
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>,
-    Verifier: ValidateExtrinsic<Block, Client, FullChainApi<Client, Block>>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
+    Verifier:
+        VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>> + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(

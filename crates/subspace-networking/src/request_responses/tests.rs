@@ -79,13 +79,11 @@ async fn basic_request_response_works() {
                 .spawn_obj(
                     async move {
                         while let Some(rq) = rx.next().await {
-                            let (fb_tx, fb_rx) = oneshot::channel();
                             assert_eq!(rq.payload, b"this is a request");
                             let _ = rq.pending_response.send(OutgoingResponse {
                                 result: Ok(b"this is a response".to_vec()),
-                                sent_feedback: Some(fb_tx),
+                                sent_feedback: None,
                             });
-                            fb_rx.await.unwrap();
                         }
                     }
                     .boxed()

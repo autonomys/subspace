@@ -17,6 +17,7 @@ include = [
 bench = false
 
 [dependencies]
+blake2 = { version = "0.10.5", default-features = false }
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive"] }
 reed-solomon-erasure = { version = "6.0.0", default-features = false }
 serde = { version = "1.0.152", optional = true, features = ["derive"] }
@@ -30,6 +31,7 @@ rand = { version = "0.8.5", features = ["min_const_gen"] }
 [features]
 default = ["std"]
 std = [
+    "blake2/std",
     "parity-scale-codec/std",
     "reed-solomon-erasure/simd-accel",
     "reed-solomon-erasure/std",
