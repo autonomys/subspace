@@ -7,7 +7,7 @@ use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
 use sc_consensus::ForkChoiceStrategy;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -78,6 +78,7 @@ where
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + BlockchainEvents<PBlock>
         + Send
         + Sync
         + 'static,
