@@ -122,7 +122,6 @@ type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::Proof
     Block,
     PBlock,
     PClient,
-    TFullBackend<PBlock>,
     NativeElseWasmExecutor<Executor>,
     SpawnTaskHandle,
     Hash,
@@ -133,7 +132,6 @@ type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::Proof
 fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
     config: &ServiceConfiguration,
     primary_chain_client: Arc<PClient>,
-    primary_backend: Arc<TFullBackend<PBlock>>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, Executor>,
@@ -200,7 +198,6 @@ where
 
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         primary_chain_client.clone(),
-        primary_backend,
         executor.clone(),
         task_manager.spawn_handle(),
     );
@@ -249,7 +246,6 @@ where
 pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut system_domain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
-    primary_backend: Arc<TFullBackend<PBlock>>,
     primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
     select_chain: &SC,
     imported_block_notification_stream: IBNS,
@@ -313,7 +309,6 @@ where
     let params = new_partial(
         &system_domain_config.service_config,
         primary_chain_client.clone(),
-        primary_backend,
     )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
