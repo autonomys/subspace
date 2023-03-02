@@ -9,6 +9,7 @@ pub mod piece_validator;
 pub mod readers_and_pieces;
 #[cfg(test)]
 mod tests;
+pub mod segment_reconstruction;
 
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
