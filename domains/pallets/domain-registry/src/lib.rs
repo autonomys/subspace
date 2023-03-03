@@ -778,7 +778,7 @@ impl<T: Config> Pallet<T> {
         if !bundle_created_on_valid_primary_block {
             log::error!(
                 target: "runtime::domain-registry",
-                "Bundle of {domain_id:?} is probabaly created on a primary fork #{:?}, expected: {:?}, got: {:?}",
+                "Bundle of {domain_id:?} is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
                 bundle.header.primary_number,
                 pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number),
                 bundle.header.primary_hash,

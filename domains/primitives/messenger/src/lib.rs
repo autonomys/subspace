@@ -39,6 +39,12 @@ sp_api::decl_runtime_apis! {
         /// Returns the confirmation depth to relay message
         fn relay_confirmation_depth() -> BlockNumber;
 
+        /// Returns the current best number of the domain
+        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber>;
+
+        /// Returns the domain state root at the given block.
+        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Block::Hash) -> Option<Block::Hash>;
+
         /// Returns all the outbox and inbox responses this relayer is assigned to deliver.
         /// Storage key is used to generate the storage proof for the message.
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey;
@@ -65,5 +71,7 @@ sp_api::decl_runtime_apis! {
         fn extract_xdm_proof_state_roots(
             extrinsic: &Block::Extrinsic
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
+
+        fn confirmation_depth() -> BlockNumber;
     }
 }

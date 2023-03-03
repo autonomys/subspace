@@ -7,7 +7,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus::SyncOracle;
 use sp_messenger::RelayerApi;
 use sp_runtime::scale_info::TypeInfo;
-use sp_runtime::traits::{CheckedSub, NumberFor};
+use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
 use std::sync::Arc;
 
 /// Starts relaying system domain messages to other domains.
@@ -27,8 +27,11 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SO: SyncOracle,
 {
+    // there is not confirmation depth for relayer on system domain
+    // since all the relayers will haven embed client to known the canonical chain.
     let result = relay_domain_messages(
         relayer_id,
+        NumberFor::<Block>::zero(),
         system_domain_client,
         |relayer_id, client, block_hash| {
             Relayer::submit_messages_from_system_domain(
@@ -67,7 +70,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
     Block::Hash: FullCodec,
     NumberFor<Block>: FullCodec + TypeInfo,
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-    SBlock::Hash: Into<Block::Hash>,
+    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
     CDC: BlockchainEvents<Block>
         + HeaderBackend<Block>
         + AuxStore
@@ -82,8 +85,17 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
     let combined_sync_oracle =
         CombinedSyncOracle::new(system_domain_sync_oracle, core_domain_sync_oracle);
 
+    let relay_confirmation_depth = match Relayer::relay_confirmation_depth(&core_domain_client) {
+        Ok(depth) => depth,
+        Err(err) => {
+            tracing::error!(target: LOG_TARGET, ?err, "Failed to get confirmation depth");
+            return;
+        }
+    };
+
     let result = relay_domain_messages(
         relayer_id,
+        relay_confirmation_depth,
         core_domain_client,
         |relayer_id, client, block_hash| {
             Relayer::submit_messages_from_core_domain(
@@ -108,6 +120,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
 
 async fn relay_domain_messages<Client, Block, MP, SO>(
     relayer_id: RelayerId,
+    relay_confirmation_depth: NumberFor<Block>,
     domain_client: Arc<Client>,
     message_processor: MP,
     sync_oracle: SO,
@@ -124,7 +137,6 @@ where
     SO: SyncOracle,
 {
     let domain_id = Relayer::domain_id(&domain_client)?;
-    let relay_confirmation_depth = Relayer::relay_confirmation_depth(&domain_client)?;
     tracing::info!(
         target: LOG_TARGET,
         "Starting relayer for domain: {:?}",

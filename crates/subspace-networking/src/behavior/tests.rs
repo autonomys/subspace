@@ -1,9 +1,17 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
+use crate::{BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler};
+use futures::channel::oneshot;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
+use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
+use std::future::Future;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
 
 #[tokio::test()]
@@ -79,4 +87,101 @@ fn instant_conversion_edge_cases() {
             * 2
     )
     .is_none());
+}
+
+#[derive(Default)]
+struct FuturePolledTwice {
+    counter: u8,
+}
+
+impl Future for FuturePolledTwice {
+    type Output = u8;
+
+    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+        if self.counter >= 1 {
+            Poll::Ready(self.counter)
+        } else {
+            self.get_mut().counter += 1;
+
+            Poll::Pending
+        }
+    }
+}
+
+#[derive(Encode, Decode)]
+struct ExampleRequest;
+
+impl GenericRequest for ExampleRequest {
+    const PROTOCOL_NAME: &'static str = "/example";
+    const LOG_TARGET: &'static str = "example_request";
+    type Response = ExampleResponse;
+}
+
+#[derive(Encode, Decode, Debug)]
+struct ExampleResponse {
+    counter: u8,
+}
+
+#[tokio::test]
+async fn test_async_handler_works_with_pending_internal_future() {
+    let config_1 = Config {
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_global_addresses_in_dht: true,
+        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
+            let fut = FuturePolledTwice::default();
+
+            Some(ExampleResponse { counter: fut.await })
+        })],
+        ..Config::default()
+    };
+    let (node_1, mut node_runner_1) = crate::create(config_1).unwrap();
+
+    let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
+    let on_new_listener_handler = node_1.on_new_listener(Arc::new({
+        let node_1_address_sender = Mutex::new(Some(node_1_address_sender));
+
+        move |address| {
+            if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
+                if let Some(node_1_address_sender) = node_1_address_sender.lock().take() {
+                    node_1_address_sender.send(address.clone()).unwrap();
+                }
+            }
+        }
+    }));
+
+    tokio::spawn(async move {
+        node_runner_1.run().await;
+    });
+
+    // Wait for first node to know its address
+    let node_1_addr = node_1_address_receiver.await.unwrap();
+    drop(on_new_listener_handler);
+
+    let config_2 = Config {
+        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
+            node_1_addr.with(Protocol::P2p(node_1.id().into()))
+        ])
+        .boxed(),
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
+        allow_non_global_addresses_in_dht: true,
+        request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
+            |_| async { None },
+        )],
+        ..Config::default()
+    };
+
+    let (node_2, mut node_runner_2) = crate::create(config_2).unwrap();
+
+    tokio::spawn(async move {
+        node_runner_2.run().await;
+    });
+
+    node_2.wait_for_connected_peers().await.unwrap();
+
+    let resp = node_2
+        .send_generic_request(node_1.id(), ExampleRequest)
+        .await
+        .unwrap();
+
+    assert_eq!(resp.counter, 1);
 }

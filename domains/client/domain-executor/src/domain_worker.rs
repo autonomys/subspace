@@ -7,7 +7,6 @@ use sc_consensus::ForkChoiceStrategy;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{ExecutorApi, SignedOpaqueBundle};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -180,7 +179,7 @@ where
 
     primary_chain_client
         .runtime_api()
-        .submit_bundle_unsigned(&BlockId::Hash(best_hash), opaque_bundle)?;
+        .submit_bundle_unsigned(best_hash, opaque_bundle)?;
 
     Ok(())
 }

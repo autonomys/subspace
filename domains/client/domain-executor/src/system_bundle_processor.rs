@@ -2,6 +2,7 @@ use crate::domain_block_processor::{
     preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
 };
 use crate::utils::{translate_number_type, DomainBundles};
+use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use crate::TransactionFor;
 use codec::Decode;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
@@ -13,7 +14,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
-use sp_runtime::generic::BlockId;
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
@@ -52,12 +53,15 @@ impl<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
+    NumberFor<PBlock>: From<NumberFor<Block>>,
+    PBlock::Hash: From<Block::Hash>,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<Block, NumberFor<Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
@@ -149,7 +153,9 @@ where
         let (bundles, shuffling_seed, maybe_new_runtime) =
             preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
 
-        let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
+        let extrinsics = self
+            .bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)
+            .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
 
         let logs = if primary_number == One::one() {
             // Manually inject the genesis block info.
@@ -184,7 +190,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(&BlockId::Hash(primary_hash))?;
+            .head_receipt_number(primary_hash)?;
         let head_receipt_number =
             translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(head_receipt_number);
 
@@ -196,7 +202,7 @@ where
         let oldest_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+            .oldest_receipt_number(primary_hash)?;
         let oldest_receipt_number =
             translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(oldest_receipt_number);
 
@@ -214,7 +220,7 @@ where
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    self.primary_chain_client.info().best_hash,
                     fraud_proof,
                 )?;
         }
@@ -243,7 +249,7 @@ where
         let extrinsics = self
             .client
             .runtime_api()
-            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
+            .construct_submit_core_bundle_extrinsics(parent_hash, core_bundles)?
             .into_iter()
             .filter_map(
                 |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
@@ -262,5 +268,27 @@ where
 
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
+    }
+
+    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
+        exts.into_iter()
+            .filter(|ext| {
+                match verify_xdm_with_primary_chain_client::<PClient, Client, PBlock, Block>(
+                    &self.primary_chain_client,
+                    &self.client,
+                    ext,
+                ) {
+                    Ok(valid) => valid,
+                    Err(err) => {
+                        tracing::error!(
+                            target = "system_domain_xdm_filter",
+                            "failed to verify extrinsic: {}",
+                            err
+                        );
+                        false
+                    }
+                }
+            })
+            .collect()
     }
 }

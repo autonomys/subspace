@@ -1,6 +1,6 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
-use domain_client_executor::xdm_validator::CoreDomainXDMValidator;
+use domain_client_executor::xdm_verifier::CoreDomainXDMVerifier;
 use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -47,7 +47,7 @@ type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDi
         FullClient<RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
-        FullPool<RuntimeApi, ExecutorDispatch, CoreDomainXDMValidator<SClient, PBlock, SBlock>>,
+        FullPool<RuntimeApi, ExecutorDispatch, CoreDomainXDMVerifier<SClient, PBlock, SBlock>>,
         FullBackend,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
@@ -127,7 +127,7 @@ fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
         subspace_transaction_pool::FullPoolWithChainVerifier<
             Block,
             FullClient<RuntimeApi, Executor>,
-            CoreDomainXDMValidator<SDC, PBlock, SBlock>,
+            CoreDomainXDMVerifier<SDC, PBlock, SBlock>,
         >,
         (
             Option<Telemetry>,
@@ -185,7 +185,7 @@ where
     });
 
     let core_domain_xdm_verifier =
-        CoreDomainXDMValidator::<SDC, PBlock, SBlock>::new(system_domain_client);
+        CoreDomainXDMVerifier::<SDC, PBlock, SBlock>::new(system_domain_client);
     let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
         config,
         &task_manager,
@@ -262,7 +262,7 @@ pub async fn new_full_core<
 where
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Hash>,
+    SBlock::Hash: Into<Hash> + From<Hash>,
     NumberFor<SBlock>: Into<BlockNumber>,
     <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
@@ -341,7 +341,7 @@ where
             import_queue: params.import_queue,
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
-            warp_sync: None,
+            warp_sync_params: None,
         })?;
 
     let rpc_builder = {

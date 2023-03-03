@@ -1,5 +1,6 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
     EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
 };
@@ -31,7 +32,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_core::Encode;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
-use sp_messenger::RelayerApi;
+use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -39,6 +40,7 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::bundle_validator::SkipBundleValidation;
+use subspace_transaction_pool::FullChainVerifier;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -56,8 +58,10 @@ type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Syste
 pub struct NewFullSystem<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
 where
     PBlock: BlockT,
+    NumberFor<PBlock>: From<NumberFor<Block>>,
+    PBlock::Hash: From<Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
-    PClient: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -69,6 +73,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block, AccountId>
+        + MessengerApi<Block, NumberFor<Block>>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
@@ -96,12 +101,23 @@ where
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
-pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
-    Block,
-    FullClient<RuntimeApi, Executor>,
-    FraudProofVerifier<PBlock, PClient, Executor>,
-    SkipBundleValidation,
->;
+pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_transaction_pool::FullPoolWithChainVerifier<
+        Block,
+        FullClient<RuntimeApi, Executor>,
+        SystemDomainXDMVerifier<
+            PClient,
+            FullClient<RuntimeApi, Executor>,
+            PBlock,
+            Block,
+            FullChainVerifier<
+                Block,
+                FullClient<RuntimeApi, Executor>,
+                FraudProofVerifier<PBlock, PClient, Executor>,
+                SkipBundleValidation,
+            >,
+        >,
+    >;
 
 type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::ProofVerifier<
     PBlock,
@@ -135,11 +151,15 @@ fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
 >
 where
     PBlock: BlockT,
-    PClient: ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    NumberFor<PBlock>: From<NumberFor<Block>>,
+    PBlock::Hash: From<Hash>,
+    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi:
         ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
         + PreValidationObjectApi<Block, Hash>,
     Executor: NativeExecutionDispatch + 'static,
@@ -179,20 +199,27 @@ where
     });
 
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        primary_chain_client,
+        primary_chain_client.clone(),
         primary_backend,
         executor.clone(),
         task_manager.spawn_handle(),
     );
 
-    let transaction_pool = subspace_transaction_pool::new_full(
+    // Skip bundle validation here because for the system domain the bundle is extract from the
+    // primary block thus it is already validated and accepted by the consensus chain.
+    let system_domain_fraud_proof_verifier =
+        FullChainVerifier::new(client.clone(), proof_verifier, SkipBundleValidation);
+    let system_domain_xdm_verifier = SystemDomainXDMVerifier::new(
+        primary_chain_client,
+        client.clone(),
+        system_domain_fraud_proof_verifier,
+    );
+
+    let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
         config,
         &task_manager,
         client.clone(),
-        proof_verifier,
-        // Check nothing here because for the system domain the bundle is extract from the
-        // primary block thus it is already validated and accepted by the consensus chain.
-        SkipBundleValidation,
+        system_domain_xdm_verifier,
     );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
@@ -241,6 +268,8 @@ pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, Execut
 >
 where
     PBlock: BlockT,
+    NumberFor<PBlock>: From<NumberFor<Block>>,
+    PBlock::Hash: From<Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
@@ -263,6 +292,7 @@ where
         + SessionKeys<Block>
         + DomainCoreApi<Block, AccountId>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<Block, NumberFor<Block>>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
@@ -301,7 +331,7 @@ where
             import_queue: params.import_queue,
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
-            warp_sync: None,
+            warp_sync_params: None,
         })?;
 
     let rpc_builder = {
