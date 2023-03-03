@@ -614,6 +614,11 @@ impl<T: Config> Pallet<T> {
                 unreachable!("Must be system domain bundle solution as we just checked; qed ")
             };
 
+            // TODO: currently, only the system bundles created on the primary fork can be
+            // prevented beforehand, the core bundles will be rejected by the system domain but
+            // they are still included on the primary chain as it's not feasible to check core bundles
+            // within this pallet, which may be solved if the `submit_bundle` extrinsic is no longer
+            // free in the future.
             let bundle_created_on_valid_primary_block =
                 match pallet_receipts::PrimaryBlockHash::<T>::get(
                     DomainId::SYSTEM,
