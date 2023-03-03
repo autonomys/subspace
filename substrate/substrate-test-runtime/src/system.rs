@@ -313,10 +313,10 @@ mod tests {
 	use super::*;
 
 	use crate::{wasm_binary_unwrap, Header, Transfer};
-	use sc_executor::{NativeElseWasmExecutor, WasmExecutionMethod};
+	use sc_executor::{NativeElseWasmExecutor, WasmExecutionMethod, WasmtimeInstantiationStrategy};
 	use sp_core::{
 		map,
-		traits::{CodeExecutor, RuntimeCode},
+		traits::{CallContext, CodeExecutor, RuntimeCode},
 	};
 	use sp_io::{hashing::twox_128, TestExternalities};
 	use substrate_test_runtime_client::{AccountKeyring, Sr25519Keyring};
@@ -337,7 +337,14 @@ mod tests {
 	}
 
 	fn executor() -> NativeElseWasmExecutor<NativeDispatch> {
-		NativeElseWasmExecutor::new(WasmExecutionMethod::Interpreted, None, 8, 2)
+		NativeElseWasmExecutor::new(
+			WasmExecutionMethod::Compiled {
+				instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+			},
+			None,
+			8,
+			2,
+		)
 	}
 
 	fn new_test_ext() -> TestExternalities {
@@ -400,7 +407,14 @@ mod tests {
 			};
 
 			executor()
-				.call(&mut ext, &runtime_code, "Core_execute_block", &b.encode(), false)
+				.call(
+					&mut ext,
+					&runtime_code,
+					"Core_execute_block",
+					&b.encode(),
+					false,
+					CallContext::Offchain,
+				)
 				.0
 				.unwrap();
 		})
@@ -502,7 +516,14 @@ mod tests {
 			};
 
 			executor()
-				.call(&mut ext, &runtime_code, "Core_execute_block", &b.encode(), false)
+				.call(
+					&mut ext,
+					&runtime_code,
+					"Core_execute_block",
+					&b.encode(),
+					false,
+					CallContext::Offchain,
+				)
 				.0
 				.unwrap();
 		})

@@ -16,7 +16,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
-use sp_runtime::generic::{BlockId, DigestItem};
+use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::borrow::Cow;
@@ -42,7 +42,6 @@ where
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
-    let block_id = BlockId::Hash(block_hash);
     let extrinsics = primary_chain_client
         .block_body(block_hash)?
         .ok_or_else(|| {
@@ -61,7 +60,7 @@ where
     {
         let system_domain_runtime = primary_chain_client
             .runtime_api()
-            .system_domain_wasm_bundle(&block_id)?;
+            .system_domain_wasm_bundle(block_hash)?;
 
         let new_runtime = match domain_id {
             DomainId::SYSTEM => system_domain_runtime,
@@ -84,17 +83,17 @@ where
 
     let shuffling_seed = primary_chain_client
         .runtime_api()
-        .extrinsics_shuffling_seed(&block_id, header)?;
+        .extrinsics_shuffling_seed(block_hash, header)?;
 
     let domain_bundles = if domain_id.is_system() {
         let (system_bundles, core_bundles) = primary_chain_client
             .runtime_api()
-            .extract_system_bundles(&block_id, extrinsics)?;
+            .extract_system_bundles(block_hash, extrinsics)?;
         DomainBundles::System(system_bundles, core_bundles)
     } else if domain_id.is_core() {
         let core_bundles = primary_chain_client
             .runtime_api()
-            .extract_core_bundles(&block_id, extrinsics, domain_id)?;
+            .extract_core_bundles(block_hash, extrinsics, domain_id)?;
         DomainBundles::Core(core_bundles)
     } else {
         unreachable!("Open domains are unsupported")
@@ -345,7 +344,7 @@ where
         let extrinsics: Vec<_> = match self
             .client
             .runtime_api()
-            .extract_signer(&BlockId::Hash(parent_hash), extrinsics)
+            .extract_signer(parent_hash, extrinsics)
         {
             Ok(res) => res,
             Err(e) => {
@@ -395,10 +394,7 @@ where
             from primary block #{primary_number},{primary_hash}",
         );
 
-        let mut roots = self
-            .client
-            .runtime_api()
-            .intermediate_roots(&BlockId::Hash(header_hash))?;
+        let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
 
         let state_root = state_root
             .encode()
@@ -452,7 +448,7 @@ where
             let encoded_set_code = self
                 .client
                 .runtime_api()
-                .construct_set_code_extrinsic(&BlockId::Hash(parent_hash), new_runtime.to_vec())?;
+                .construct_set_code_extrinsic(parent_hash, new_runtime.to_vec())?;
             let set_code_extrinsic =
                 Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
             extrinsics.push(set_code_extrinsic);
@@ -578,7 +574,7 @@ where
             })?;
 
         let receipts = self.primary_chain_client.runtime_api().extract_receipts(
-            &BlockId::Hash(primary_hash),
+            primary_hash,
             extrinsics.clone(),
             self.domain_id,
         )?;
@@ -632,7 +628,7 @@ where
         let fraud_proofs = self
             .primary_chain_client
             .runtime_api()
-            .extract_fraud_proofs(&BlockId::Hash(primary_hash), extrinsics, self.domain_id)?;
+            .extract_fraud_proofs(primary_hash, extrinsics, self.domain_id)?;
 
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()

@@ -29,7 +29,7 @@ use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
 use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
-    OffchainWorkerConfig, PruningMode, WasmExecutionMethod,
+    OffchainWorkerConfig, PruningMode, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration as ServiceConfiguration, Error as ServiceError,
@@ -466,7 +466,9 @@ pub fn node_config(
         state_pruning: Some(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: spec,
-        wasm_method: WasmExecutionMethod::Interpreted,
+        wasm_method: WasmExecutionMethod::Compiled {
+            instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+        },
         // NOTE: we enforce the use of the native runtime to make the errors more debuggable
         execution_strategies: ExecutionStrategies {
             syncing: sc_client_api::ExecutionStrategy::NativeWhenPossible,

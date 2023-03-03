@@ -69,7 +69,6 @@ use sp_consensus_subspace::{
 };
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::One;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -278,17 +277,17 @@ where
     Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
-    let block_id = if client.usage_info().chain.finalized_state.is_some() {
-        BlockId::Hash(client.usage_info().chain.best_hash)
+    let block_hash = if client.usage_info().chain.finalized_state.is_some() {
+        client.usage_info().chain.best_hash
     } else {
         debug!(target: "subspace", "No finalized state is available. Reading config from genesis");
-        BlockId::Hash(client.usage_info().chain.genesis_hash)
+        client.usage_info().chain.genesis_hash
     };
 
     Ok(SlotDuration::from_millis(
         client
             .runtime_api()
-            .slot_duration(&block_id)?
+            .slot_duration(block_hash)?
             .as_millis()
             .try_into()
             .expect("Slot duration in ms never exceeds u64; qed"),
@@ -567,17 +566,17 @@ where
 
         if self.is_authoring_blocks {
             // get the best block on which we will build and send the equivocation report.
-            let best_id = self
+            let best_hash = self
                 .select_chain
                 .best_chain()
                 .await
-                .map(|h| BlockId::Hash(h.hash()))
+                .map(|h| h.hash())
                 .map_err(|e| Error::Client(e.into()))?;
 
             // submit equivocation report at best block.
             self.client
                 .runtime_api()
-                .submit_report_equivocation_extrinsic(&best_id, equivocation_proof)
+                .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
                 .map_err(Error::RuntimeApi)?;
 
             info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
@@ -639,10 +638,7 @@ where
         if self
             .client
             .runtime_api()
-            .is_in_block_list(
-                &BlockId::Hash(*block.header.parent_hash()),
-                &pre_digest.solution.public_key,
-            )
+            .is_in_block_list(*block.header.parent_hash(), &pre_digest.solution.public_key)
             .or_else(|error| {
                 if block.state_action.skip_execution_checks() {
                     Ok(false)
@@ -820,7 +816,6 @@ where
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
         let parent_hash = *header.parent_hash();
-        let parent_block_id = BlockId::Hash(parent_hash);
 
         let pre_digest = &subspace_digest_items.pre_digest;
 
@@ -836,7 +831,7 @@ where
         if self
             .client
             .runtime_api()
-            .is_in_block_list(&parent_block_id, &pre_digest.solution.public_key)
+            .is_in_block_list(parent_hash, &pre_digest.solution.public_key)
             .or_else(|error| {
                 if skip_runtime_access {
                     Ok(false)
@@ -866,12 +861,10 @@ where
             // instead
             let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
                 self.client.as_ref(),
-                &parent_block_id,
+                parent_hash,
             )?;
-            let (correct_solution_range, _) = slot_worker::extract_solution_ranges_for_block(
-                self.client.as_ref(),
-                &parent_block_id,
-            )?;
+            let (correct_solution_range, _) =
+                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?;
 
             (correct_global_randomness, correct_solution_range)
         } else {
@@ -984,7 +977,7 @@ where
                     .map_err(Error::CreateInherents)?;
 
                 let inherent_res = self.client.runtime_api().check_inherents_with_context(
-                    &parent_block_id,
+                    parent_hash,
                     origin.into(),
                     Block::new(header, extrinsics),
                     inherent_data,
@@ -1058,7 +1051,7 @@ where
         let root_plot_public_key = self
             .client
             .runtime_api()
-            .root_plot_public_key(&BlockId::Hash(*block.header.parent_hash()))
+            .root_plot_public_key(*block.header.parent_hash())
             .map_err(Error::<Block::Header>::RuntimeApi)
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
@@ -1210,7 +1203,7 @@ where
             // storage access
             let chain_constants = client
                 .runtime_api()
-                .chain_constants(&BlockId::Hash(client.info().best_hash))
+                .chain_constants(client.info().best_hash)
                 .map_err(Error::<Block::Header>::RuntimeApi)?;
 
             aux_schema::write_chain_constants(&chain_constants, |values| {

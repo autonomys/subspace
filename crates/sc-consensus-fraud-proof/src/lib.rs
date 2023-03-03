@@ -21,7 +21,6 @@ use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParam
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::{CacheKeyId, Error as ConsensusError};
 use sp_domains::{DomainId, ExecutorApi};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -86,14 +85,13 @@ where
         cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         let parent_hash = *block.header.parent_hash();
-        let parent_block_id = BlockId::Hash(parent_hash);
 
         if !block.state_action.skip_execution_checks() {
             if let Some(extrinsics) = &block.body {
                 let fraud_proofs = self
                     .client
                     .runtime_api()
-                    .extract_fraud_proofs(&parent_block_id, extrinsics.clone(), DomainId::SYSTEM)
+                    .extract_fraud_proofs(parent_hash, extrinsics.clone(), DomainId::SYSTEM)
                     .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
                 for fraud_proof in fraud_proofs {

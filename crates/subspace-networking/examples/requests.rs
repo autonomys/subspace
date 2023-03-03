@@ -10,6 +10,7 @@ use subspace_networking::{
     start_prometheus_metrics_server, BootstrappedNetworkingParameters, Config, GenericRequest,
     GenericRequestHandler,
 };
+use tokio::time::sleep;
 use tracing::error;
 
 #[derive(Encode, Decode)]
@@ -35,6 +36,8 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
+            sleep(Duration::from_secs(2)).await;
+
             println!("Request handler for request");
             Some(ExampleResponse)
         })],
@@ -113,5 +116,5 @@ async fn main() {
         println!("Response: {resp:?}");
     });
 
-    tokio::time::sleep(Duration::from_secs(50)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 }

@@ -15,7 +15,6 @@ use sp_messenger::messages::{
     RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
 use sp_messenger::RelayerApi;
-use sp_runtime::generic::BlockId;
 use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
@@ -88,18 +87,18 @@ where
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
 {
     pub(crate) fn domain_id(client: &Arc<Client>) -> Result<DomainId, Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
-        let api = client.runtime_api();
-        api.domain_id(&best_block_id)
+        client
+            .runtime_api()
+            .domain_id(client.info().best_hash)
             .map_err(|_| Error::UnableToFetchDomainId)
     }
 
     pub(crate) fn relay_confirmation_depth(
         client: &Arc<Client>,
     ) -> Result<NumberFor<Block>, Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_block_id = client.info().best_hash;
         let api = client.runtime_api();
-        api.relay_confirmation_depth(&best_block_id)
+        api.relay_confirmation_depth(best_block_id)
             .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)
     }
 
@@ -210,10 +209,10 @@ where
         mut msgs: RelayerMessagesWithStorageKey,
     ) -> Result<RelayerMessagesWithStorageKey, Error> {
         let api = client.runtime_api();
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_hash = client.info().best_hash;
         msgs.outbox.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_outbox_message(&best_block_id, msg.dst_domain_id, id) {
+            match api.should_relay_outbox_message(best_hash, msg.dst_domain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
@@ -229,7 +228,7 @@ where
 
         msgs.inbox_responses.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_inbox_message_response(&best_block_id, msg.dst_domain_id, id) {
+            match api.should_relay_inbox_message_response(best_hash, msg.dst_domain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
@@ -253,9 +252,8 @@ where
         gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let api = system_domain_client.runtime_api();
-        let confirmed_block_id = BlockId::Hash(confirmed_block_hash);
         let assigned_messages: RelayerMessagesWithStorageKey = api
-            .relayer_assigned_messages(&confirmed_block_id, relayer_id)
+            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
         let filtered_messages =
             Self::filter_assigned_messages(system_domain_client, assigned_messages)?;
@@ -316,14 +314,13 @@ where
         let core_domain_block_header = core_domain_client.expect_header(confirmed_block_hash)?;
         let system_domain_api = system_domain_client.runtime_api();
         let best_system_domain_block_hash = system_domain_client.info().best_hash;
-        let best_system_domain_block_id = BlockId::Hash(best_system_domain_block_hash);
         let best_system_domain_block_header =
             system_domain_client.expect_header(best_system_domain_block_hash)?;
-        let k_depth = system_domain_api.relay_confirmation_depth(&best_system_domain_block_id)?;
+        let k_depth = system_domain_api.relay_confirmation_depth(best_system_domain_block_hash)?;
 
         // verify if the core domain number is K-deep on System domain client
         if !system_domain_api
-            .domain_best_number(&best_system_domain_block_id, core_domain_id)?
+            .domain_best_number(best_system_domain_block_hash, core_domain_id)?
             .map(|best_number| match best_number.checked_sub(&k_depth) {
                 None => false,
                 Some(best_confirmed) => {
@@ -339,7 +336,7 @@ where
         let core_domain_number = *core_domain_block_header.number();
         if !system_domain_api
             .domain_state_root(
-                &best_system_domain_block_id,
+                best_system_domain_block_hash,
                 core_domain_id,
                 core_domain_number.into(),
                 confirmed_block_hash.into(),
@@ -359,7 +356,7 @@ where
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
         let assigned_messages: RelayerMessagesWithStorageKey = core_domain_api
-            .relayer_assigned_messages(&BlockId::Hash(confirmed_block_hash), relayer_id)
+            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
             .map_err(|_| Error::FetchAssignedMessages)?;
 
         let filtered_messages =
@@ -430,11 +427,11 @@ where
         msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_hash = client.info().best_hash;
         let dst_domain_id = msg.dst_domain_id;
         let ext = client
             .runtime_api()
-            .outbox_message_unsigned(&best_block_id, msg)?
+            .outbox_message_unsigned(best_hash, msg)?
             .ok_or(Error::FailedToConstructExtrinsic)?;
 
         sink.unbounded_send(GossipMessage {
@@ -452,11 +449,11 @@ where
         msg: CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>,
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
-        let best_block_id = BlockId::Hash(client.info().best_hash);
+        let best_hash = client.info().best_hash;
         let dst_domain_id = msg.dst_domain_id;
         let ext = client
             .runtime_api()
-            .inbox_response_message_unsigned(&best_block_id, msg)?
+            .inbox_response_message_unsigned(best_hash, msg)?
             .ok_or(Error::FailedToConstructExtrinsic)?;
 
         sink.unbounded_send(GossipMessage {

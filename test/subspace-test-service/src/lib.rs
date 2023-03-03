@@ -27,6 +27,7 @@ use sc_network::{multiaddr, NetworkStateInfo};
 use sc_network_common::config::TransportConfig;
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
+    WasmtimeInstantiationStrategy,
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, Role, RpcHandlers, TaskManager,
@@ -113,7 +114,9 @@ pub fn node_config(
         state_pruning: Default::default(),
         blocks_pruning: BlocksPruning::KeepAll,
         chain_spec: Box::new(spec),
-        wasm_method: WasmExecutionMethod::Interpreted,
+        wasm_method: WasmExecutionMethod::Compiled {
+            instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+        },
         wasm_runtime_overrides: Default::default(),
         // NOTE: we enforce the use of the native runtime to make the errors more debuggable
         execution_strategies: ExecutionStrategies {
