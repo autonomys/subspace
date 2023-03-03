@@ -14,7 +14,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -151,10 +151,23 @@ where
 
         let extrinsics = self.bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)?;
 
-        let primary_block_info = DigestItem::primary_block_info((primary_number, primary_hash));
-        let digests = Digest {
-            logs: vec![primary_block_info],
+        let logs = if primary_number == One::one() {
+            // Manually inject the genesis block info.
+            vec![
+                DigestItem::primary_block_info::<NumberFor<PBlock>, _>((
+                    Zero::zero(),
+                    self.primary_chain_client.info().genesis_hash,
+                )),
+                DigestItem::primary_block_info((primary_number, primary_hash)),
+            ]
+        } else {
+            vec![DigestItem::primary_block_info((
+                primary_number,
+                primary_hash,
+            ))]
         };
+
+        let digests = Digest { logs };
 
         let domain_block_result = self
             .domain_block_processor
