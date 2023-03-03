@@ -103,12 +103,13 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_domains::DomainId;
-    use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         CoreDomainStateRootStorage, CrossDomainMessage, ExtractedStateRootsFromProof,
         InitiateChannelParams, Message, MessageId, Payload, ProtocolMessageRequest,
         RequestResponse, VersionedPayload,
     };
+    use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
 
@@ -127,6 +128,10 @@ mod pallet {
         type MaximumRelayers: Get<u32>;
         /// Relayer deposit to become a relayer for this Domain.
         type RelayerDeposit: Get<BalanceOf<Self>>;
+        /// Domain info to verify domain state roots at a confirmation depth.
+        type DomainInfo: DomainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
+        /// Confirmation depth for XDM coming from core domains.
+        type ConfirmationDepth: Get<Self::BlockNumber>;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -881,6 +886,34 @@ mod pallet {
             ensure!(xdm.nonce >= next_nonce, InvalidTransaction::Call);
 
             let extracted_state_roots = Self::extract_state_roots_from_proof(xdm)?;
+
+            // on system domain, ensure the core domain info is at K-depth and state root matches
+            if T::SelfDomainId::get().is_system() {
+                if let Some((domain_id, block_info, state_root)) =
+                    extracted_state_roots.core_domain_info.clone()
+                {
+                    // ensure the block is at-least k-deep
+                    let confirmed = T::DomainInfo::domain_best_number(domain_id)
+                        .and_then(|best_number| {
+                            best_number
+                                .checked_sub(&T::ConfirmationDepth::get())
+                                .map(|confirmed_number| confirmed_number >= block_info.block_number)
+                        })
+                        .unwrap_or(false);
+                    ensure!(confirmed, InvalidTransaction::BadMandatory);
+
+                    // verify state root of the block
+                    let valid_state_root = T::DomainInfo::domain_state_root(
+                        domain_id,
+                        block_info.block_number,
+                        block_info.block_hash,
+                    )
+                    .map(|got_state_root| got_state_root == state_root)
+                    .unwrap_or(false);
+                    ensure!(valid_state_root, InvalidTransaction::BadMandatory)
+                }
+            }
+
             let state_root = extracted_state_roots
                 .core_domain_info
                 .map(|(_domain_id, _info, state_root)| state_root)
