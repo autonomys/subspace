@@ -59,6 +59,7 @@ impl NativeExecutionDispatch for ExecutorDispatch {
 
 /// This `purge-chain` command used to remove both consensus chain and system domain.
 #[derive(Debug, Clone, Parser)]
+#[group(skip)]
 pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]
