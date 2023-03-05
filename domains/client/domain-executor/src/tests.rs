@@ -4,7 +4,6 @@ use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
-use sc_consensus::ForkChoiceStrategy;
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::TransactionSource;
@@ -288,11 +287,7 @@ async fn set_new_code_should_work() {
     alice
         .executor
         .clone()
-        .process_bundles((
-            primary_hash,
-            primary_number,
-            ForkChoiceStrategy::LongestChain,
-        ))
+        .process_bundles((primary_hash, primary_number))
         .await;
 
     let best_hash = alice.client.info().best_hash;

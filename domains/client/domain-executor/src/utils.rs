@@ -3,7 +3,6 @@ use domain_runtime_primitives::AccountId;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use sc_consensus::ForkChoiceStrategy;
 use sp_consensus_slots::Slot;
 use sp_domains::{OpaqueBundles, SignedOpaqueBundles};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -50,8 +49,6 @@ where
     pub parent_hash: Block::Hash,
     /// block's number.
     pub number: NumberFor<Block>,
-    /// Fork choice of the block.
-    pub fork_choice: ForkChoiceStrategy,
 }
 
 // TODO: unify this with trait bounds set directly on block traits.

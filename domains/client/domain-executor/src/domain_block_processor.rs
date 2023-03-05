@@ -365,7 +365,6 @@ where
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
-        fork_choice: ForkChoiceStrategy,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number = to_number_primitive(primary_number);
@@ -377,6 +376,12 @@ where
                 domain block must match the number of corresponding primary block."
             ))));
         }
+
+        // Although the domain block intuitively ought to use the same fork choice
+        // from the corresponding primary block, it's fine to forcibly always use
+        // the longest chain for simplicity as we manually build all the domain
+        // branches by literally following the primary chain branches anyway.
+        let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(

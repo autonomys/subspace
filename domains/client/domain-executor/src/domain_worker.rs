@@ -3,7 +3,6 @@ use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents};
-use sc_consensus::ForkChoiceStrategy;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{ExecutorApi, SignedOpaqueBundle};
@@ -68,7 +67,7 @@ pub(crate) async fn handle_block_import_notifications<
     primary_chain_client: &PClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
-    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy)>,
+    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
     mut block_imports: BlockImports,
     block_import_throttling_buffer_size: u32,
 ) where
@@ -80,22 +79,22 @@ pub(crate) async fn handle_block_import_notifications<
         + BlockchainEvents<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+            (PBlock::Hash, NumberFor<PBlock>),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
-    BlockImports: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Unpin,
+    BlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
     let best_domain_number = to_number_primitive(best_domain_number);
 
     // Notify about active leaves on startup before starting the loop
-    for (hash, number, fork_choice) in std::mem::take(&mut leaves) {
+    for (hash, number) in std::mem::take(&mut leaves) {
         let _ = active_leaves.insert(hash, number);
         // Skip the blocks that have been processed by the execution chain.
         if number > best_domain_number.into() {
-            if let Err(error) = processor((hash, number, fork_choice)).await {
+            if let Err(error) = processor((hash, number)).await {
                 tracing::error!(?error, "Failed to process primary block on startup");
                 // Bring down the service as bundles processor is an essential task.
                 // TODO: more graceful shutdown.
@@ -125,18 +124,15 @@ pub(crate) async fn handle_block_import_notifications<
                     .header(notification.hash)
                     .expect("Header of imported block must exist; qed")
                     .expect("Header of imported block must exist; qed");
-                // TODO: remove fork_choice from BlockInfo
-                let fork_choice = sc_consensus::ForkChoiceStrategy::LongestChain;
                 let block_info = BlockInfo {
                     hash: header.hash(),
                     parent_hash: *header.parent_hash(),
                     number: *header.number(),
-                    fork_choice
                 };
                 let _ = multi_block_import_sender.feed(BlockImport::Client(block_info)).await;
             }
             maybe_subspace_block_import = block_imports.next() => {
-                let (_block_number, _fork_choice, mut block_import_acknowledgement_sender) =
+                let (_block_number, mut block_import_acknowledgement_sender) =
                     match maybe_subspace_block_import {
                         Some(block_import) => block_import,
                         None => {
@@ -224,7 +220,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+            (PBlock::Hash, NumberFor<PBlock>),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
@@ -241,7 +237,7 @@ where
         debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
     }
 
-    processor((block_info.hash, block_info.number, block_info.fork_choice)).await?;
+    processor((block_info.hash, block_info.number)).await?;
 
     Ok(())
 }
