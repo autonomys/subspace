@@ -1,5 +1,4 @@
 use futures::StreamExt;
-use std::cmp::Reverse;
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use subspace_core_primitives::{RootBlock, SegmentIndex};
@@ -10,9 +9,11 @@ use tracing::{debug, error, trace, warn};
 const LAST_BLOCK_GET_RETRIES: u8 = 5;
 const ROOT_BLOCK_NUMBER_PER_REQUEST: u64 = 1000;
 /// Minimum peers number to participate in root block election.
-const ROOT_BLOCK_CONSENSUS_MIN_SET: usize = 2; //TODO: change the value
+// TODO: change the value
+const ROOT_BLOCK_CONSENSUS_MIN_SET: usize = 2;
 /// Threshold for the root block election success (percentage).
-const ROOT_BLOCK_CONSENSUS_THRESHOLD: u64 = 51; //TODO: change the value
+// TODO: change the value
+const ROOT_BLOCK_CONSENSUS_THRESHOLD: (usize, usize) = (51, 100);
 
 /// Helps gathering root blocks from DSN
 pub struct RootBlockHandler {
@@ -131,49 +132,65 @@ impl RootBlockHandler {
                 .collect()
                 .await;
 
-            // TODO: Consider adding attempts to increase the initial peer set.
-            if peer_blocks.len() < ROOT_BLOCK_CONSENSUS_MIN_SET {
-                debug!(
-                    "Root block consensus failed: not enough peers ({}).",
-                    peer_blocks.len()
-                );
+            let peer_count = peer_blocks.len();
+
+            if peer_count < ROOT_BLOCK_CONSENSUS_MIN_SET {
+                debug!(%peer_count, "Root block consensus failed: not enough peers");
 
                 continue;
             }
 
             // Calculate votes
-            let mut root_block_score: HashMap<RootBlock, (u64, Vec<PeerId>)> = HashMap::new();
+            let mut root_block_peers: HashMap<RootBlock, Vec<PeerId>> = HashMap::new();
 
-            for (peer_id, root_blocks) in &peer_blocks {
+            for (peer_id, root_blocks) in peer_blocks {
                 for root_block in root_blocks {
-                    root_block_score
-                        .entry(*root_block)
-                        .and_modify(|(val, peers)| {
-                            *val += 1;
-                            peers.push(*peer_id);
+                    root_block_peers
+                        .entry(root_block)
+                        .and_modify(|peers| {
+                            peers.push(peer_id);
                         })
-                        .or_insert((1, vec![*peer_id]));
+                        .or_insert(vec![peer_id]);
                 }
             }
 
-            // Sort the collection to get highest blocks first.
-            let mut root_blocks = root_block_score.keys().collect::<Vec<_>>();
-            root_blocks.sort_by_key(|rb| Reverse(rb.segment_index()));
+            let mut root_block_peers_iter = root_block_peers.into_iter();
+            let (mut last_root_block, mut last_root_block_peers) =
+                root_block_peers_iter.next().expect(
+                    "Not empty due to not empty list of peers with non empty list of root blocks \
+                    each; qed",
+                );
+            let mut last_share =
+                last_root_block_peers.len() * ROOT_BLOCK_CONSENSUS_THRESHOLD.1 / peer_count;
 
-            for root_block in root_blocks {
-                let (score, peers) = root_block_score
-                    .get(root_block)
-                    .expect("Must be present because of the manual adding.");
+            for (root_block, peers) in root_block_peers_iter {
+                if root_block.segment_index() > last_root_block.segment_index()
+                    || last_share < ROOT_BLOCK_CONSENSUS_THRESHOLD.0
+                {
+                    let share = peers.len() * ROOT_BLOCK_CONSENSUS_THRESHOLD.1 / peer_count;
 
-                // peer_blocks.len() >= 1 because it's not less than ROOT_BLOCK_CONSENSUS_MIN_SET
-                let peer_count = peer_blocks.len() as u64;
-                let percentage = score * 100 / peer_count;
+                    trace!(
+                        %share,
+                        required_share=%ROOT_BLOCK_CONSENSUS_THRESHOLD.0,
+                        "Root blocks share"
+                    );
 
-                trace!(%percentage, limit=%ROOT_BLOCK_CONSENSUS_THRESHOLD, "Root blocks voting ended.");
-
-                if percentage >= ROOT_BLOCK_CONSENSUS_THRESHOLD {
-                    return Ok((*root_block, peers.clone()));
+                    if share >= ROOT_BLOCK_CONSENSUS_THRESHOLD.0 {
+                        (last_root_block, last_root_block_peers) = (root_block, peers);
+                        last_share = share;
+                    }
                 }
+            }
+
+            debug!(
+                %last_share,
+                required_share=%ROOT_BLOCK_CONSENSUS_THRESHOLD.0,
+                ?last_root_block,
+                "Best root block selected"
+            );
+
+            if last_share >= ROOT_BLOCK_CONSENSUS_THRESHOLD.0 {
+                return Ok((last_root_block, last_root_block_peers));
             }
 
             debug!(retry_attempt, "Failed attempt to get a root block.");
