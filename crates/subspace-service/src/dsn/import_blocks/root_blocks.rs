@@ -29,14 +29,14 @@ impl RootBlockHandler {
     pub async fn get_root_blocks(&self) -> Result<Vec<RootBlock>, Box<dyn Error>> {
         trace!("Getting root blocks...");
 
-        let mut result = Vec::new();
         let (mut last_root_block, peers) = self.get_last_root_block().await?;
         debug!(
             "Getting root blocks starting from segment_index={}",
             last_root_block.segment_index()
         );
 
-        result.push(last_root_block);
+        let mut all_root_blocks = Vec::with_capacity(last_root_block.segment_index() as usize + 1);
+        all_root_blocks.push(last_root_block);
 
         while last_root_block.segment_index() > 0 {
             let segment_indexes: Vec<_> = (0..last_root_block.segment_index())
@@ -51,8 +51,9 @@ impl RootBlockHandler {
                 if root_block.hash() != last_root_block.prev_root_block_hash() {
                     error!(
                         %peer_id,
-                        hash=?root_block.hash(),
-                        prev_hash=?last_root_block.prev_root_block_hash(),
+                        segment_index=%last_root_block.segment_index() - 1,
+                        actual_hash=?root_block.hash(),
+                        expected_hash=?last_root_block.prev_root_block_hash(),
                         "Root block hash doesn't match expected hash from the last block."
                     );
 
@@ -62,10 +63,10 @@ impl RootBlockHandler {
                 }
 
                 last_root_block = root_block;
-                result.push(root_block);
+                all_root_blocks.push(root_block);
             }
         }
-        Ok(result)
+        Ok(all_root_blocks)
     }
 
     /// Return last root block known to DSN and peers voted for it. We ask several peers for the
@@ -266,13 +267,13 @@ impl RootBlockHandler {
     ) -> Result<(PeerId, Vec<RootBlock>), Box<dyn Error>> {
         trace!(?segment_indexes, "Getting root block batch...");
 
-        for peer_id in peers {
+        for &peer_id in peers {
             trace!(%peer_id, "get_closest_peers returned an item");
 
             let request_result = self
                 .dsn_node
                 .send_generic_request(
-                    *peer_id,
+                    peer_id,
                     RootBlockRequest::SegmentIndexes {
                         segment_indexes: segment_indexes.clone(),
                     },
@@ -283,14 +284,14 @@ impl RootBlockHandler {
                 Ok(RootBlockResponse { root_blocks }) => {
                     trace!(%peer_id, ?segment_indexes, "Root block request succeeded.");
 
-                    if !self.is_root_blocks_response_valid(*peer_id, &segment_indexes, &root_blocks)
+                    if !self.is_root_blocks_response_valid(peer_id, &segment_indexes, &root_blocks)
                     {
                         warn!(%peer_id, "Received root blocks were invalid.");
 
-                        let _ = self.dsn_node.ban_peer(*peer_id).await;
+                        let _ = self.dsn_node.ban_peer(peer_id).await;
                     }
 
-                    return Ok((*peer_id, root_blocks));
+                    return Ok((peer_id, root_blocks));
                 }
                 Err(error) => {
                     debug!(%peer_id, ?segment_indexes, ?error, "Root block request failed.");
