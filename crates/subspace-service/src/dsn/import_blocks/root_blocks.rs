@@ -113,6 +113,13 @@ impl RootBlockHandler {
                                 "Last root block request succeeded."
                             );
 
+                            if !self.is_last_root_blocks_response_valid(peer_id, &root_blocks) {
+                                warn!(%peer_id, "Received last root blocks response was invalid.");
+
+                                let _ = self.dsn_node.ban_peer(peer_id).await;
+                                return None;
+                            }
+
                             Some((peer_id, root_blocks))
                         }
                         Err(error) => {
@@ -138,13 +145,6 @@ impl RootBlockHandler {
             let mut root_block_score: HashMap<RootBlock, (u64, Vec<PeerId>)> = HashMap::new();
 
             for (peer_id, root_blocks) in &peer_blocks {
-                if !self.validate_last_root_blocks(*peer_id, root_blocks) {
-                    warn!(%peer_id, "Received last root blocks were invalid.");
-
-                    let _ = self.dsn_node.ban_peer(*peer_id).await;
-                    continue;
-                }
-
                 for root_block in root_blocks {
                     root_block_score
                         .entry(*root_block)
@@ -184,11 +184,11 @@ impl RootBlockHandler {
 
     /// Validates root blocks and related segment indexes.
     /// We assume `segment_indexes` to be a sorted collection (we create it manually).
-    fn validate_root_blocks(
+    fn is_root_blocks_response_valid(
         &self,
         peer_id: PeerId,
-        segment_indexes: &Vec<SegmentIndex>,
-        root_blocks: &Vec<RootBlock>,
+        segment_indexes: &[SegmentIndex],
+        root_blocks: &[RootBlock],
     ) -> bool {
         if root_blocks.len() != segment_indexes.len() {
             warn!(%peer_id, "Root block and segment indexes collection differ.");
@@ -218,14 +218,18 @@ impl RootBlockHandler {
         true
     }
 
-    fn validate_last_root_blocks(&self, peer_id: PeerId, root_blocks: &Vec<RootBlock>) -> bool {
+    fn is_last_root_blocks_response_valid(
+        &self,
+        peer_id: PeerId,
+        root_blocks: &[RootBlock],
+    ) -> bool {
         let segment_indexes = match root_blocks.first() {
             None => {
-                // empty collection considered as valid
-                return true;
+                // Empty collection is invalid, everyone has at least one root block
+                return false;
             }
             Some(first_root_block) => {
-                // we expect the reverse order
+                // We expect the reverse order
                 let last_segment_index = first_root_block.segment_index();
 
                 (0..=last_segment_index)
@@ -235,7 +239,7 @@ impl RootBlockHandler {
             }
         };
 
-        self.validate_root_blocks(peer_id, &segment_indexes, root_blocks)
+        self.is_root_blocks_response_valid(peer_id, &segment_indexes, root_blocks)
     }
 
     async fn get_root_blocks_batch(
@@ -262,7 +266,8 @@ impl RootBlockHandler {
                 Ok(RootBlockResponse { root_blocks }) => {
                     trace!(%peer_id, ?segment_indexes, "Root block request succeeded.");
 
-                    if !self.validate_root_blocks(*peer_id, &segment_indexes, &root_blocks) {
+                    if !self.is_root_blocks_response_valid(*peer_id, &segment_indexes, &root_blocks)
+                    {
                         warn!(%peer_id, "Received root blocks were invalid.");
 
                         let _ = self.dsn_node.ban_peer(*peer_id).await;
