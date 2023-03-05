@@ -119,11 +119,17 @@ pub(crate) async fn handle_block_import_notifications<
                         break;
                     }
                 };
-                // TODO: `.expect()` on `Option` is fine here, but not for `Error`
-                let header = primary_chain_client
-                    .header(notification.hash)
-                    .expect("Header of imported block must exist; qed")
-                    .expect("Header of imported block must exist; qed");
+                let header = match primary_chain_client.header(notification.hash) {
+                    Ok(Some(header)) => header,
+                    res => {
+                        tracing::error!(
+                            result = ?res,
+                            header = ?notification.header,
+                            "Imported primary block header not found",
+                        );
+                        return;
+                    }
+                };
                 let block_info = BlockInfo {
                     hash: header.hash(),
                     parent_hash: *header.parent_hash(),
