@@ -31,7 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, RootBlock, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
@@ -95,10 +95,14 @@ where
         Some(RecordsRootPieceValidator::new(
             node.clone(),
             Kzg::new(test_public_parameters()),
+            // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
             root_block_handler
                 .get_root_blocks()
                 .await
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?,
+                .map_err(|error| sc_service::Error::Other(error.to_string()))?
+                .iter()
+                .map(RootBlock::records_root)
+                .collect(),
         )),
         false,
     );

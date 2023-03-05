@@ -1,9 +1,8 @@
 use async_trait::async_trait;
-use std::collections::BTreeMap;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordsRoot, RootBlock, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
+    Piece, PieceIndex, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
 };
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
@@ -13,16 +12,12 @@ use tracing::error;
 pub struct RecordsRootPieceValidator {
     dsn_node: Node,
     kzg: Kzg,
-    records_root_cache: BTreeMap<SegmentIndex, RecordsRoot>,
+    records_root_cache: Vec<RecordsRoot>,
 }
 
 impl RecordsRootPieceValidator {
-    pub fn new(dsn_node: Node, kzg: Kzg, root_blocks: Vec<RootBlock>) -> Self {
-        let records_root_cache = root_blocks
-            .iter()
-            .map(|rb| (rb.segment_index(), rb.records_root()))
-            .collect();
-
+    /// Root blocks must be in order from 0 to the last one that exists
+    pub fn new(dsn_node: Node, kzg: Kzg, records_root_cache: Vec<RecordsRoot>) -> Self {
         Self {
             dsn_node,
             kzg,
@@ -42,7 +37,7 @@ impl PieceValidator for RecordsRootPieceValidator {
         if source_peer_id != self.dsn_node.id() {
             let segment_index: SegmentIndex = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
 
-            let maybe_records_root = self.records_root_cache.get(&segment_index);
+            let maybe_records_root = self.records_root_cache.get(segment_index as usize);
             let records_root = match maybe_records_root {
                 Some(records_root) => *records_root,
                 None => {

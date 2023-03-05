@@ -34,6 +34,7 @@ pub(crate) async fn start_root_block_archiver<AS: AuxStore>(
 /// Cache of recently produced root blocks in aux storage
 pub struct RootBlockCache<AS> {
     aux_store: Arc<AS>,
+    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
     max_segment_index: Arc<AtomicU64>,
 }
 
