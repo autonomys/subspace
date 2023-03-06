@@ -17,8 +17,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(drain_filter)]
 
-extern crate core;
-
 pub mod archiver;
 pub mod piece_reconstructor;
 pub mod reconstructor;
