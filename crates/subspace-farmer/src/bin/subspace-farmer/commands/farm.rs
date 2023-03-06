@@ -117,7 +117,6 @@ pub(crate) async fn farm_multi_disk(
             kzg.clone(),
             records_roots_cache,
         )),
-        true,
     );
     let piece_getter = Arc::new(FarmerPieceGetter::new(
         NodePieceGetter::new(piece_provider),

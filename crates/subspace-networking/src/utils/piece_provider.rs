@@ -6,9 +6,10 @@ use backoff::ExponentialBackoff;
 use futures::StreamExt;
 use libp2p::PeerId;
 use std::error::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
@@ -28,6 +29,25 @@ pub trait PieceValidator: Sync + Send {
 /// Stub implementation for piece validation.
 pub struct NoPieceValidator;
 
+/// Defines retry policy on error during piece acquiring.
+#[derive(PartialEq, Eq, Clone, Debug, Copy)]
+pub enum RetryPolicy {
+    /// Exit on the first error
+    NoRetry,
+
+    /// Try N times
+    Limited(u16),
+
+    /// No restrictions on retries
+    Eternal,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self::NoRetry
+    }
+}
+
 #[async_trait]
 impl PieceValidator for NoPieceValidator {
     async fn validate_piece(&self, _: PeerId, _: PieceIndex, piece: Piece) -> Option<Piece> {
@@ -39,18 +59,16 @@ impl PieceValidator for NoPieceValidator {
 pub struct PieceProvider<PV> {
     node: Node,
     piece_validator: Option<PV>,
-    retry: bool,
 }
 
 impl<PV> PieceProvider<PV>
 where
     PV: PieceValidator,
 {
-    pub fn new(node: Node, piece_validator: Option<PV>, retry: bool) -> Self {
+    pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
         Self {
             node,
             piece_validator,
-            retry,
         }
     }
 
@@ -103,6 +121,7 @@ where
     pub async fn get_piece(
         &self,
         piece_index: PieceIndex,
+        retry_policy: RetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         trace!(%piece_index, "Piece request.");
 
@@ -114,17 +133,33 @@ where
             ..ExponentialBackoff::default()
         };
 
+        let retries = AtomicU64::default();
+
         retry(backoff, || async {
-            if let Some(piece) = self.get_piece_from_storage(piece_index).await {
-                trace!(%piece_index, "Got piece");
+            let current_attempt =retries.load(Ordering::Relaxed);
+
+                if let Some(piece) = self.get_piece_from_storage(piece_index).await {
+                trace!(%piece_index, current_attempt, "Got piece");
                 return Ok(Some(piece));
             }
 
-            if !self.retry {
-                return Ok(None);
-            }
+            match retry_policy {
+                RetryPolicy::NoRetry => {
+                    return Ok(None);
+                }
+                RetryPolicy::Limited(max_retries) => {
+                    if  current_attempt >= max_retries.into() {
+                        error!(%piece_index, current_attempt, max_retries, "Couldn't get a piece from DSN. No retries left.");
+                        return Ok(None);
+                    }
+                }
+                RetryPolicy::Eternal => {
+                    // no action
+                }
+            };
 
-            warn!(%piece_index, "Couldn't get a piece from DSN. Retrying...");
+            warn!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
+            retries.fetch_add(1, Ordering::Relaxed);
 
             Err(backoff::Error::transient(
                 "Couldn't get piece from DSN".into(),

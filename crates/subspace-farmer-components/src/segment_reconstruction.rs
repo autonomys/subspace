@@ -1,3 +1,4 @@
+use crate::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::iter;
@@ -8,7 +9,6 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Piece, PieceIndex, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
-use subspace_farmer_components::plotting::PieceGetter;
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
@@ -27,8 +27,8 @@ pub enum SegmentReconstructionError {
 }
 
 pub async fn recover_missing_piece<PG: PieceGetter>(
-    piece_getter: PG,
-    kzg: Kzg,
+    piece_getter: &PG,
+    kzg: &Kzg,
     missing_piece_index: PieceIndex,
 ) -> Result<Piece, SegmentReconstructionError> {
     info!(%missing_piece_index, "Recovering missing piece...");
@@ -65,7 +65,9 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
                 return (*piece_index, Ok(None));
             }
 
-            let piece = piece_getter.get_piece(*piece_index).await;
+            let piece = piece_getter
+                .get_piece(*piece_index, PieceGetterRetryPolicy::NoRetry)
+                .await;
 
             if let Ok(piece) = &piece {
                 if piece.is_some() {
@@ -101,8 +103,9 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
     }
 
-    let archiver = PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
-        .expect("Internal constructor call must succeed.");
+    let archiver =
+        PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone())
+            .expect("Internal constructor call must succeed.");
 
     let position = (missing_piece_index - starting_piece_index) as usize;
 

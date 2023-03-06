@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
-use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
+use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, RetryPolicy};
 use subspace_networking::Node;
 
 struct WaitLinkError<B: BlockT> {
@@ -81,7 +81,7 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None, false);
+    let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None);
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;
@@ -109,7 +109,7 @@ where
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
-                .get_piece(piece_index)
+                .get_piece(piece_index, RetryPolicy::NoRetry)
                 .await
                 .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 

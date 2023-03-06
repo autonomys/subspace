@@ -33,7 +33,7 @@ use subspace_core_primitives::{
     Solution, SolutionRange, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetter};
+use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{derive_audit_chunk, derive_randomness};
@@ -110,6 +110,7 @@ impl Farmer {
             &public_key,
             sector_index,
             &piece_getter,
+            PieceGetterRetryPolicy::default(),
             &farmer_protocol_info,
             &kzg,
             &sector_codec,
@@ -146,6 +147,7 @@ impl PieceGetter for TestPieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
+        _: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         Ok(self
             .archived_segment

@@ -13,7 +13,7 @@ use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
     Piece, PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE,
 };
-use subspace_farmer_components::plotting::plot_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::FarmerProtocolInfo;
 use utils::BenchPieceGetter;
 
@@ -60,6 +60,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&public_key),
                 black_box(sector_index),
                 black_box(&piece_getter),
+                black_box(PieceGetterRetryPolicy::default()),
                 black_box(&farmer_protocol_info),
                 black_box(&kzg),
                 black_box(&sector_codec),
@@ -83,6 +84,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         black_box(&public_key),
                         black_box(sector_index),
                         black_box(&piece_getter),
+                        black_box(PieceGetterRetryPolicy::default()),
                         black_box(&farmer_protocol_info),
                         black_box(&kzg),
                         black_box(&sector_codec),
