@@ -25,7 +25,7 @@ impl RootBlockHandler {
         Self { dsn_node }
     }
 
-    /// Returns root blocks known to DSN.
+    /// Returns root blocks known to DSN, ordered from 0 to the last known.
     pub async fn get_root_blocks(&self) -> Result<Vec<RootBlock>, Box<dyn Error>> {
         trace!("Getting root blocks...");
 
@@ -66,6 +66,9 @@ impl RootBlockHandler {
                 all_root_blocks.push(root_block);
             }
         }
+
+        all_root_blocks.reverse();
+
         Ok(all_root_blocks)
     }
 
