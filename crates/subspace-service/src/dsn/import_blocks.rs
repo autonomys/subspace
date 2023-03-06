@@ -31,7 +31,8 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::{
-    Piece, PieceIndex, RootBlock, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, RootBlock, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
 };
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
@@ -89,20 +90,21 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    let root_block_handler = RootBlockHandler::new(node.clone());
+    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
+    let record_roots = RootBlockHandler::new(node.clone())
+        .get_root_blocks()
+        .await
+        .map_err(|error| sc_service::Error::Other(error.to_string()))?
+        .iter()
+        .map(RootBlock::records_root)
+        .collect::<Vec<_>>();
+    let segments_found = record_roots.len() as SegmentIndex;
     let piece_provider = PieceProvider::<RecordsRootPieceValidator>::new(
         node.clone(),
         Some(RecordsRootPieceValidator::new(
             node.clone(),
             Kzg::new(test_public_parameters()),
-            // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
-            root_block_handler
-                .get_root_blocks()
-                .await
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?
-                .iter()
-                .map(RootBlock::records_root)
-                .collect(),
+            record_roots,
         )),
         false,
     );
@@ -119,9 +121,8 @@ where
 
     let pieces_in_segment = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
 
-    // TODO: Check latest known root block on chain and skip downloading of corresponding segments
     // Collection is intentional to make sure downloading starts right away and not lazily
-    for segment_index in 0.. {
+    for segment_index in 0..segments_found {
         let pieces_indexes = (0..pieces_in_segment / 2).map(|piece_position| {
             let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
 
@@ -153,11 +154,6 @@ where
                 trace!(%segment_index, "Received half of the segment.");
                 break;
             }
-        }
-
-        if pieces_received == 0 {
-            info!("Found no pieces for segment index {}", segment_index);
-            break;
         }
 
         let reconstructed_contents = reconstructor
