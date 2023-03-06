@@ -262,7 +262,7 @@ pub async fn new_full_core<
 where
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Hash>,
+    SBlock::Hash: Into<Hash> + From<Hash>,
     NumberFor<SBlock>: Into<BlockNumber>,
     <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,

@@ -16,9 +16,7 @@ use sp_messenger::messages::{
 };
 use sp_messenger::RelayerApi;
 use sp_runtime::scale_info::TypeInfo;
-use sp_runtime::traits::{
-    Block as BlockT, CheckedAdd, CheckedSub, Header as HeaderT, NumberFor, One, Zero,
-};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -55,8 +53,8 @@ pub enum Error {
     ApiError(sp_api::ApiError),
     /// Emits when the core domain block is not yet confirmed on the system domain.
     CoreDomainNonConfirmedOnSystemDomain,
-    /// Unable to fetch block number against a block hash.
-    UnableToFetchBlockNumber,
+    /// Emits when the core domain block state root is invalid.
+    CoreDomainStateRootInvalid,
     /// Failed to submit a cross domain message
     UnableToSubmitCrossDomainMessage(TrySendError<GossipMessage>),
 }
@@ -98,13 +96,10 @@ where
     pub(crate) fn relay_confirmation_depth(
         client: &Arc<Client>,
     ) -> Result<NumberFor<Block>, Error> {
-        let relay_confirmation_depth = client
-            .runtime_api()
-            .relay_confirmation_depth(client.info().best_hash)
-            .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)?;
-        relay_confirmation_depth
-            .checked_add(&NumberFor::<Block>::from(1u32))
-            .ok_or(Error::ArithmeticError(ArithmeticError::Overflow))
+        let best_block_id = client.info().best_hash;
+        let api = client.runtime_api();
+        api.relay_confirmation_depth(best_block_id)
+            .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)
     }
 
     /// Constructs the proof for the given key using the system domain backend.
@@ -250,34 +245,6 @@ where
         Ok(msgs)
     }
 
-    fn confirmed_system_domain_block_id<SDC, SBlock>(
-        system_domain_client: &Arc<SDC>,
-    ) -> Result<SBlock::Header, Error>
-    where
-        SBlock: BlockT,
-        SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-        SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
-    {
-        let best_hash = system_domain_client.info().best_hash;
-        let best_number = system_domain_client.info().best_number;
-        let api = system_domain_client.runtime_api();
-        let confirmation_depth = api
-            .relay_confirmation_depth(best_hash)
-            .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)?
-            .checked_add(&NumberFor::<SBlock>::from(1u32))
-            .ok_or(Error::ArithmeticError(ArithmeticError::Overflow))?;
-        let confirmed_block = best_number
-            .checked_sub(&confirmation_depth)
-            .ok_or(Error::ArithmeticError(ArithmeticError::Underflow))?;
-
-        Ok(system_domain_client
-            .hash(confirmed_block)?
-            .and_then(|block_hash| system_domain_client.header(block_hash).transpose())
-            .ok_or_else(|| {
-                sp_blockchain::Error::MissingHeader(format!("number: {confirmed_block:?}"))
-            })??)
-    }
-
     pub(crate) fn submit_messages_from_system_domain(
         relayer_id: RelayerId,
         system_domain_client: &Arc<Client>,
@@ -339,10 +306,53 @@ where
         Block::Hash: FullCodec,
         NumberFor<Block>: FullCodec + TypeInfo,
         NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-        SBlock::Hash: Into<Block::Hash>,
+        SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
         SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
     {
+        let core_domain_id = Self::domain_id(core_domain_client)?;
+        let core_domain_block_header = core_domain_client.expect_header(confirmed_block_hash)?;
+        let system_domain_api = system_domain_client.runtime_api();
+        let best_system_domain_block_hash = system_domain_client.info().best_hash;
+        let best_system_domain_block_header =
+            system_domain_client.expect_header(best_system_domain_block_hash)?;
+        let k_depth = system_domain_api.relay_confirmation_depth(best_system_domain_block_hash)?;
+
+        // verify if the core domain number is K-deep on System domain client
+        if !system_domain_api
+            .domain_best_number(best_system_domain_block_hash, core_domain_id)?
+            .map(|best_number| match best_number.checked_sub(&k_depth) {
+                None => false,
+                Some(best_confirmed) => {
+                    best_confirmed >= (*core_domain_block_header.number()).into()
+                }
+            })
+            .unwrap_or(false)
+        {
+            return Err(Error::CoreDomainNonConfirmedOnSystemDomain);
+        }
+
+        // verify if the state root is matching.
+        let core_domain_number = *core_domain_block_header.number();
+        if !system_domain_api
+            .domain_state_root(
+                best_system_domain_block_hash,
+                core_domain_id,
+                core_domain_number.into(),
+                confirmed_block_hash.into(),
+            )?
+            .map(|state_root| state_root == (*core_domain_block_header.state_root()).into())
+            .unwrap_or(false)
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                "Core domain state root mismatch at: Number{:?}, Hash{:?}",
+                core_domain_number,
+                confirmed_block_hash
+            );
+            return Err(Error::CoreDomainStateRootInvalid);
+        }
+
         // fetch messages to be relayed
         let core_domain_api = core_domain_client.runtime_api();
         let assigned_messages: RelayerMessagesWithStorageKey = core_domain_api
@@ -357,46 +367,23 @@ where
             return Ok(());
         }
 
-        // check if this block state root is confirmed on system domain
-        // and generate proof
-        let (system_domain_info, system_domain_state_root, core_domain_state_root_proof) = {
-            let confirmed_system_domain_block_header =
-                Self::confirmed_system_domain_block_id(system_domain_client)?;
-            let confirmed_system_domain_hash = confirmed_system_domain_block_header.hash();
-            let core_domain_id = Self::domain_id(core_domain_client)?;
-            let confirmed_block_header = core_domain_client
-                .header(confirmed_block_hash)?
-                .ok_or(Error::UnableToFetchBlockNumber)?;
-
-            let storage_key = CoreDomainStateRootStorage::<
-                NumberFor<Block>,
-                Block::Hash,
-                Block::Hash,
-            >::storage_key(
+        // generate core domain proof that points to the state root of the core domain block on System domain.
+        let storage_key =
+            CoreDomainStateRootStorage::<NumberFor<Block>, Block::Hash, Block::Hash>::storage_key(
                 core_domain_id,
-                *confirmed_block_header.number(),
-                confirmed_block_header.hash(),
+                *core_domain_block_header.number(),
+                core_domain_block_header.hash(),
             );
 
-            // construct storage proof for the core domain state root using system domain backend.
-            let proof = system_domain_client.read_proof(
-                confirmed_system_domain_hash,
-                &mut [storage_key.as_ref()].into_iter(),
-            )?;
+        // construct storage proof for the core domain state root using system domain backend.
+        let core_domain_state_root_proof = system_domain_client.read_proof(
+            best_system_domain_block_hash,
+            &mut [storage_key.as_ref()].into_iter(),
+        )?;
 
-            tracing::debug!(
-                target: LOG_TARGET,
-                "Confirmed system domain block number: {:?}",
-                confirmed_system_domain_block_header.number()
-            );
-            (
-                DomainBlockInfo {
-                    block_number: *confirmed_system_domain_block_header.number(),
-                    block_hash: confirmed_system_domain_block_header.hash(),
-                },
-                *confirmed_system_domain_block_header.state_root(),
-                proof,
-            )
+        let system_domain_block_info = DomainBlockInfo {
+            block_number: *best_system_domain_block_header.number(),
+            block_hash: best_system_domain_block_hash,
         };
 
         Self::construct_cross_domain_message_and_submit(
@@ -404,11 +391,11 @@ where
             filtered_messages.outbox,
             |block_hash, key| {
                 Self::construct_core_domain_storage_proof_for_key_at(
-                    system_domain_info.clone(),
+                    system_domain_block_info.clone(),
                     core_domain_client,
                     block_hash,
                     key,
-                    system_domain_state_root,
+                    *best_system_domain_block_header.state_root(),
                     core_domain_state_root_proof.clone(),
                 )
             },
@@ -420,11 +407,11 @@ where
             filtered_messages.inbox_responses,
             |block_id, key| {
                 Self::construct_core_domain_storage_proof_for_key_at(
-                    system_domain_info.clone(),
+                    system_domain_block_info.clone(),
                     core_domain_client,
                     block_id,
                     key,
-                    system_domain_state_root,
+                    *best_system_domain_block_header.state_root(),
                     core_domain_state_root_proof.clone(),
                 )
             },

@@ -297,6 +297,18 @@ parameter_types! {
     pub const RelayConfirmationDepth: BlockNumber = 7;
 }
 
+pub struct DomainInfo;
+
+impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
+    fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
+        Some(Receipts::head_receipt_number(domain_id))
+    }
+
+    fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
+        Receipts::domain_state_root_at(domain_id, number, hash)
+    }
+}
+
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
@@ -320,6 +332,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
+    type DomainInfo = DomainInfo;
+    type ConfirmationDepth = RelayConfirmationDepth;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -600,6 +614,14 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
+        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
+            Some(Receipts::head_receipt_number(domain_id))
+        }
+
+        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash>{
+            Receipts::domain_state_root_at(domain_id, number, hash)
+        }
+
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
             Messenger::relayer_assigned_messages(relayer_id)
         }
@@ -626,6 +648,10 @@ impl_runtime_apis! {
             extrinsic: &<Block as BlockT>::Extrinsic,
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
             extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
         }
     }
 

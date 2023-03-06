@@ -261,6 +261,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
+    type DomainInfo = ();
+    type ConfirmationDepth = RelayConfirmationDepth;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -453,6 +455,14 @@ impl_runtime_apis! {
 
         fn relay_confirmation_depth() -> BlockNumber {
             RelayConfirmationDepth::get()
+        }
+
+        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
+            None
+        }
+
+        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+            None
         }
 
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {

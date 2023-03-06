@@ -8,7 +8,7 @@ use sp_core::traits::SpawnNamed;
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, CheckedSub, Header, NumberFor};
 use sp_runtime::transaction_validity::TransactionSource;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
@@ -17,9 +17,8 @@ use subspace_transaction_pool::{BlockExtrinsicOf, ValidationFuture, VerifyExtrin
 use system_runtime_primitives::SystemDomainApi;
 
 /// Verifies if the xdm has the correct proof generated from known parent block.
-/// This is used by Core domain nodes and also System domain nodes
+/// This is used by Core domain nodes.
 /// Core domains nodes use this to verify an XDM coming from other domains.
-/// System domain node use this to verify the XDM while validating fraud proof.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
 pub(crate) fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
@@ -53,10 +52,19 @@ where
             return Ok(false);
         }
 
-        // verify core domain state root if there is one
+        // verify core domain state root and the if the number is K-deep.
         if let Some((domain_id, core_domain_info, core_domain_state_root)) =
             state_roots.core_domain_info
         {
+            let best_number = api.head_receipt_number(best_hash, domain_id)?;
+            if let Some(confirmed_number) =
+                best_number.checked_sub(&api.confirmation_depth(best_hash)?)
+            {
+                if confirmed_number < core_domain_info.block_number {
+                    return Ok(false);
+                }
+            }
+
             if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
                 best_hash,
                 domain_id,
@@ -86,8 +94,7 @@ where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>,
     SBlock: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<SBlock>>,
@@ -109,22 +116,6 @@ where
         )? {
             if system_domain_state_root != state_roots.system_domain_state_root.into() {
                 return Ok(false);
-            }
-        }
-
-        if let Some((domain_id, info, state_root)) = state_roots.core_domain_info {
-            // TODO: Can't above variable be reused here?
-            // verify core domain state root if there is one
-            let best_hash = system_domain_client.info().best_hash;
-            if let Some(core_domain_state_root) = system_domain_runtime.core_domain_state_root_at(
-                best_hash,
-                domain_id,
-                info.block_number,
-                info.block_hash,
-            )? {
-                if state_root != core_domain_state_root {
-                    return Ok(false);
-                }
             }
         }
     }

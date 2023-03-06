@@ -308,13 +308,13 @@ fn decrease_and_withdraw_stake_should_work() {
 
         System::set_block_number(11);
         assert_noop!(
-            ExecutorRegistry::withdraw_decreased_stake(RuntimeOrigin::signed(1), 0),
+            ExecutorRegistry::withdraw_stake(RuntimeOrigin::signed(1), 0),
             Error::<Test>::PrematureWithdrawal
         );
 
         System::set_block_number(12);
         let executor_config = Executors::<Test>::get(1).unwrap();
-        assert_ok!(ExecutorRegistry::withdraw_decreased_stake(
+        assert_ok!(ExecutorRegistry::withdraw_stake(
             RuntimeOrigin::signed(1),
             0
         ));

@@ -97,6 +97,8 @@ macro_rules! impl_runtime {
             type MaximumRelayers = MaximumRelayers;
             type Currency = Balances;
             type RelayerDeposit = RelayerDeposit;
+            type ConfirmationDepth = RelayerConfirmationDepth;
+            type DomainInfo = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,
