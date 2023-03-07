@@ -10025,6 +10025,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "derive_more",
  "domain-runtime-primitives",
  "either",

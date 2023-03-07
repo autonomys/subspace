@@ -8,6 +8,7 @@ mod tests;
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::hash::{Hash, Hasher};
 use dusk_bls12_381::{G1Affine, G2Affine, G2Prepared};
 pub use dusk_bytes;
 use dusk_bytes::{DeserializableSlice, Serializable};
@@ -80,6 +81,12 @@ impl Commitment {
     /// Try to deserialize commitment from raw bytes
     pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, dusk_bytes::Error> {
         Ok(Commitment(G1Affine::from_bytes(bytes)?))
+    }
+}
+
+impl Hash for Commitment {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.to_bytes().hash(state);
     }
 }
 

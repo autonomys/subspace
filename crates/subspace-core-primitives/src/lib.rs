@@ -542,7 +542,7 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum RootBlock {

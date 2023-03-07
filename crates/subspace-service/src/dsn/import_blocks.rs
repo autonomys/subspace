@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+mod piece_validator;
+mod root_blocks;
+
+use crate::dsn::import_blocks::piece_validator::RecordsRootPieceValidator;
+use crate::dsn::import_blocks::root_blocks::RootBlockHandler;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
@@ -24,8 +29,12 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::{Piece, PieceIndex, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE};
-use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::{
+    Piece, PieceIndex, RootBlock, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
+};
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 
 struct WaitLinkError<B: BlockT> {
@@ -81,7 +90,24 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    let piece_provider = PieceProvider::<NoPieceValidator>::new(node.clone(), None, false);
+    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
+    let record_roots = RootBlockHandler::new(node.clone())
+        .get_root_blocks()
+        .await
+        .map_err(|error| sc_service::Error::Other(error.to_string()))?
+        .iter()
+        .map(RootBlock::records_root)
+        .collect::<Vec<_>>();
+    let segments_found = record_roots.len() as SegmentIndex;
+    let piece_provider = PieceProvider::<RecordsRootPieceValidator>::new(
+        node.clone(),
+        Some(RecordsRootPieceValidator::new(
+            node.clone(),
+            Kzg::new(test_public_parameters()),
+            record_roots,
+        )),
+        false,
+    );
 
     debug!("Waiting for connected peers...");
     let _ = node.wait_for_connected_peers().await;
@@ -95,9 +121,8 @@ where
 
     let pieces_in_segment = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
 
-    // TODO: Check latest known root block on chain and skip downloading of corresponding segments
     // Collection is intentional to make sure downloading starts right away and not lazily
-    for segment_index in 0.. {
+    for segment_index in 0..segments_found {
         let pieces_indexes = (0..pieces_in_segment / 2).map(|piece_position| {
             let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
 
@@ -105,7 +130,7 @@ where
         });
 
         let mut pieces = vec![None::<Piece>; pieces_in_segment as usize];
-        let mut found_one_piece = false;
+        let mut pieces_received = 0;
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
@@ -120,17 +145,15 @@ where
             );
 
             if let Some(received_piece) = maybe_piece {
-                found_one_piece = true;
-
-                // TODO: We do not keep track of peers here and don't verify records, we probably
-                //  should though
                 piece.replace(received_piece);
-            }
-        }
 
-        if !found_one_piece {
-            info!("Found no pieces for segment index {}", segment_index);
-            break;
+                pieces_received += 1;
+            }
+
+            if pieces_received >= PIECES_IN_SEGMENT / 2 {
+                trace!(%segment_index, "Received half of the segment.");
+                break;
+            }
         }
 
         let reconstructed_contents = reconstructor
