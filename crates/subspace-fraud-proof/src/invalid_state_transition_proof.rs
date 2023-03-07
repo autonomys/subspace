@@ -4,7 +4,9 @@ use sc_client_api::backend;
 use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, VerificationError};
+use sp_domains::fraud_proof::{
+    ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
+};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::backend::AsTrieBackend;
@@ -173,7 +175,7 @@ impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<PBlock, C, B, Exec, Spawn, Hash> {
+pub struct InvalidStateTransitionProofVerifier<PBlock, C, B, Exec, Spawn, Hash> {
     client: Arc<C>,
     backend: Arc<B>,
     executor: Exec,
@@ -182,7 +184,7 @@ pub struct ProofVerifier<PBlock, C, B, Exec, Spawn, Hash> {
 }
 
 impl<PBlock, C, B, Exec: Clone, Spawn: Clone, Hash> Clone
-    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+    for InvalidStateTransitionProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 {
     fn clone(&self) -> Self {
         Self {
@@ -195,7 +197,8 @@ impl<PBlock, C, B, Exec: Clone, Spawn: Clone, Hash> Clone
     }
 }
 
-impl<PBlock, C, B, Exec, Spawn, Hash> ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+impl<PBlock, C, B, Exec, Spawn, Hash>
+    InvalidStateTransitionProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
     PBlock: BlockT,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
@@ -205,7 +208,7 @@ where
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
 {
-    /// Constructs a new instance of [`ProofVerifier`].
+    /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(client: Arc<C>, backend: Arc<B>, executor: Exec, spawn_handle: Spawn) -> Self {
         Self {
             client,
@@ -216,9 +219,12 @@ where
         }
     }
 
-    /// Verifies the fraud proof.
-    pub fn verify(&self, proof: &FraudProof) -> Result<(), VerificationError> {
-        let FraudProof {
+    /// Verifies the invalid state transition proof.
+    pub fn verify(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        let InvalidStateTransitionProof {
             domain_id,
             parent_hash,
             pre_state_root,
@@ -226,7 +232,7 @@ where
             proof,
             execution_phase,
             ..
-        } = proof;
+        } = invalid_state_transition_proof;
 
         let at = PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
             .expect("Block Hash must be H256; qed");
