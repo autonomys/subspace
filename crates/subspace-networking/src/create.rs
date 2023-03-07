@@ -67,7 +67,7 @@ const KADEMLIA_BASE_CONCURRENT_TASKS: NonZeroUsize = NonZeroUsize::new(25).expec
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
+pub(crate) const KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 5;
 /// Base limit for number of any concurrent tasks except Kademlia.
 ///
 /// We configure total number of streams per connection to 256. Here we assume half of them might be
@@ -80,7 +80,7 @@ const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
 /// Above base limit will be boosted by specified number for every peer connected starting with
 /// second peer, such that it scaled with network connectivity, but the exact coefficient might need
 /// to be tweaked in the future.
-pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 50;
+pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 10;
 
 const TEMPORARY_BANS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
 const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
