@@ -260,24 +260,27 @@ impl<B> TestClientBuilderExt<B>
 	fn build_with_longest_chain(
 		self,
 	) -> (Client<B>, sc_consensus::LongestChain<B, substrate_test_runtime::Block>) {
-		self.build_with_native_executor(None)
+		self.build_with_native_executor(Some(new_native_executor()))
 	}
 
 	fn build_with_backend(self) -> (Client<B>, Arc<B>) {
 		let backend = self.backend();
-		(self.build_with_native_executor(None).0, backend)
+		(self.build_with_native_executor(Some(new_native_executor())).0, backend)
 	}
 }
 
 /// Creates new client instance used for tests.
 pub fn new() -> Client<Backend> {
-	TestClientBuilder::new().build()
+	let (client, _) = TestClientBuilder::new().build_with_native_executor(Some(new_native_executor()));
+	client
 }
 
 /// Create a new native executor.
 pub fn new_native_executor() -> sc_executor::NativeElseWasmExecutor<LocalExecutorDispatch> {
 	sc_executor::NativeElseWasmExecutor::new(
-		sc_executor::WasmExecutionMethod::Interpreted,
+		sc_executor::WasmExecutionMethod::Compiled {
+			instantiation_strategy: sc_executor::WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
+		},
 		None,
 		8,
 		2,

@@ -331,7 +331,7 @@ where
             import_queue: params.import_queue,
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
-            warp_sync: None,
+            warp_sync_params: None,
         })?;
 
     let rpc_builder = {

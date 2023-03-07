@@ -15,8 +15,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::SyncCryptoStorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -158,10 +157,23 @@ where
             .bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)
             .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
 
-        let primary_block_info = DigestItem::primary_block_info((primary_number, primary_hash));
-        let digests = Digest {
-            logs: vec![primary_block_info],
+        let logs = if primary_number == One::one() {
+            // Manually inject the genesis block info.
+            vec![
+                DigestItem::primary_block_info::<NumberFor<PBlock>, _>((
+                    Zero::zero(),
+                    self.primary_chain_client.info().genesis_hash,
+                )),
+                DigestItem::primary_block_info((primary_number, primary_hash)),
+            ]
+        } else {
+            vec![DigestItem::primary_block_info((
+                primary_number,
+                primary_hash,
+            ))]
         };
+
+        let digests = Digest { logs };
 
         let domain_block_result = self
             .domain_block_processor
@@ -178,7 +190,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(&BlockId::Hash(primary_hash))?;
+            .head_receipt_number(primary_hash)?;
         let head_receipt_number =
             translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(head_receipt_number);
 
@@ -190,7 +202,7 @@ where
         let oldest_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .oldest_receipt_number(&BlockId::Hash(primary_hash))?;
+            .oldest_receipt_number(primary_hash)?;
         let oldest_receipt_number =
             translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(oldest_receipt_number);
 
@@ -208,7 +220,7 @@ where
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(
-                    &BlockId::Hash(self.primary_chain_client.info().best_hash),
+                    self.primary_chain_client.info().best_hash,
                     fraud_proof,
                 )?;
         }
@@ -237,7 +249,7 @@ where
         let extrinsics = self
             .client
             .runtime_api()
-            .construct_submit_core_bundle_extrinsics(&BlockId::Hash(parent_hash), core_bundles)?
+            .construct_submit_core_bundle_extrinsics(parent_hash, core_bundles)?
             .into_iter()
             .filter_map(
                 |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {

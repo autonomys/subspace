@@ -10,7 +10,6 @@ use sp_domains::bundle_election::{
 use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
 use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
@@ -65,8 +64,6 @@ where
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<PreliminaryBundleSolution<Block::Hash>>> {
-        let best_block_id = BlockId::Hash(best_hash);
-
         let BundleElectionSolverParams {
             authorities,
             total_stake_weight,
@@ -74,7 +71,7 @@ where
         } = self
             .system_domain_client
             .runtime_api()
-            .bundle_election_solver_params(&best_block_id, domain_id)?;
+            .bundle_election_solver_params(best_hash, domain_id)?;
 
         assert!(
             total_stake_weight
@@ -124,7 +121,7 @@ where
                             .system_domain_client
                             .runtime_api()
                             .core_bundle_election_storage_keys(
-                                &best_block_id,
+                                best_hash,
                                 domain_id,
                                 authority_id.clone(),
                             )?

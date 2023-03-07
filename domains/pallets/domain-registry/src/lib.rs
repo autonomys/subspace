@@ -65,6 +65,7 @@ mod pallet {
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize};
     use sp_runtime::{FixedPointOperand, Percent};
     use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_receipts::Config {
@@ -368,20 +369,22 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
-            let (primary_number, primary_hash) = <frame_system::Pallet<T>>::digest()
+            let primary_block_info = <frame_system::Pallet<T>>::digest()
                 .logs
                 .iter()
-                .find_map(|s| s.as_primary_block_info::<T::BlockNumber, T::Hash>())
-                .expect("Primary block info must exist otherwise the receipt verification can not work; qed");
+                .filter_map(|s| s.as_primary_block_info::<T::BlockNumber, T::Hash>())
+                .collect::<Vec<_>>();
 
             let mut consumed_weight = Weight::zero();
             for domain_id in Domains::<T>::iter_keys() {
-                pallet_receipts::PrimaryBlockHash::<T>::insert(
-                    domain_id,
-                    primary_number,
-                    primary_hash,
-                );
-                consumed_weight += T::DbWeight::get().reads_writes(1, 1);
+                for (primary_number, primary_hash) in &primary_block_info {
+                    pallet_receipts::PrimaryBlockHash::<T>::insert(
+                        domain_id,
+                        primary_number,
+                        primary_hash,
+                    );
+                    consumed_weight += T::DbWeight::get().reads_writes(1, 1);
+                }
             }
 
             consumed_weight
@@ -524,6 +527,9 @@ mod pallet {
 
         /// Can not find the block hash of given primary block number.
         UnavailablePrimaryBlockHash,
+
+        /// Bundle was created on an unknown primary block (probably a fork block).
+        BundleCreatedOnUnknownBlock,
 
         /// Receipt error.
         Receipt(ReceiptError),
@@ -762,12 +768,30 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
+        let bundle = &signed_opaque_bundle.bundle;
+
+        let bundle_created_on_valid_primary_block =
+            pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number)
+                .map(|block_hash| block_hash == bundle.header.primary_hash)
+                .unwrap_or(false);
+
+        if !bundle_created_on_valid_primary_block {
+            log::error!(
+                target: "runtime::domain-registry",
+                "Bundle of {domain_id:?} is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
+                bundle.header.primary_number,
+                pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number),
+                bundle.header.primary_hash,
+            );
+            return Err(Error::BundleCreatedOnUnknownBlock);
+        }
+
         let created_at = CreatedAt::<T>::get(domain_id).ok_or(Error::<T>::DomainNotCreated)?;
         let head_receipt_number = Self::head_receipt_number(domain_id);
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
         let mut new_best_number = head_receipt_number;
-        let receipts = &signed_opaque_bundle.bundle.receipts;
+        let receipts = &bundle.receipts;
         for receipt in receipts {
             // Non-best receipt
             if receipt.primary_number <= new_best_number {
@@ -845,22 +869,17 @@ impl<T: Config> Pallet<T> {
         let state_root_verifiable = core_block_number <= new_best_number;
 
         if !core_block_number.is_zero() && state_root_verifiable {
-            let maybe_state_root =
-                signed_opaque_bundle
-                    .bundle
-                    .receipts
-                    .iter()
-                    .find_map(|receipt| {
-                        receipt.trace.last().and_then(|state_root| {
-                            if (receipt.primary_number, receipt.domain_hash)
-                                == (core_block_number, *core_block_hash)
-                            {
-                                Some(*state_root)
-                            } else {
-                                None
-                            }
-                        })
-                    });
+            let maybe_state_root = bundle.receipts.iter().find_map(|receipt| {
+                receipt.trace.last().and_then(|state_root| {
+                    if (receipt.primary_number, receipt.domain_hash)
+                        == (core_block_number, *core_block_hash)
+                    {
+                        Some(*state_root)
+                    } else {
+                        None
+                    }
+                })
+            });
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,

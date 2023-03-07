@@ -64,3 +64,24 @@ pub trait EndpointHandler<MessageId> {
         resp: EndpointResponse,
     ) -> DispatchResult;
 }
+
+/// Trait that can provide info for a given domain.
+/// This trait is implemented by pallet-receipts since it tracks the necessary info
+/// on Core domains in System domain runtime.
+/// For other runtimes, this is simply a no-op.
+pub trait DomainInfo<Number, Hash, StateRoot> {
+    /// Returns the best known number of a given domain.
+    fn domain_best_number(domain_id: DomainId) -> Option<Number>;
+    /// Returns the known state root of a specific block.
+    fn domain_state_root(domain_id: DomainId, number: Number, hash: Hash) -> Option<StateRoot>;
+}
+
+impl<Number, Hash, StateRoot> DomainInfo<Number, Hash, StateRoot> for () {
+    fn domain_best_number(_domain_id: DomainId) -> Option<Number> {
+        None
+    }
+
+    fn domain_state_root(_domain_id: DomainId, _number: Number, _hash: Hash) -> Option<StateRoot> {
+        None
+    }
+}

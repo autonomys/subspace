@@ -29,6 +29,7 @@ use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
+use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
@@ -59,6 +60,7 @@ impl NativeExecutionDispatch for ExecutorDispatch {
 
 /// This `purge-chain` command used to remove both consensus chain and system domain.
 #[derive(Debug, Clone, Parser)]
+#[group(skip)]
 pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]
@@ -221,6 +223,10 @@ pub struct Cli {
     /// subspace-node [primarychain-args] -- [system-domain-args] -- [core-domain-args]
     #[arg(raw = true)]
     pub domain_args: Vec<String>,
+
+    /// Parameters used to create the storage monitor.
+    #[clap(flatten)]
+    pub storage_monitor: StorageMonitorParams,
 }
 
 impl SubstrateCli for Cli {

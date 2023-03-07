@@ -32,7 +32,7 @@ use sc_client_api::{
 	blockchain::{Backend as BlockChainBackendT, HeaderBackend},
 };
 use sp_consensus::BlockOrigin;
-use sp_runtime::{generic::BlockId, traits::Block as BlockT};
+use sp_runtime::traits::Block as BlockT;
 use substrate_test_runtime::{self, Transfer};
 
 /// helper to test the `leaves` implementation for various backends
@@ -60,7 +60,7 @@ where
 
 	// A1 -> A2
 	let a2 = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -71,7 +71,7 @@ where
 
 	// A2 -> A3
 	let a3 = client
-		.new_block_at(&BlockId::Hash(a2.hash()), Default::default(), false)
+		.new_block_at(a2.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -82,7 +82,7 @@ where
 
 	// A3 -> A4
 	let a4 = client
-		.new_block_at(&BlockId::Hash(a3.hash()), Default::default(), false)
+		.new_block_at(a3.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -92,7 +92,7 @@ where
 
 	// A4 -> A5
 	let a5 = client
-		.new_block_at(&BlockId::Hash(a4.hash()), Default::default(), false)
+		.new_block_at(a4.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -103,7 +103,7 @@ where
 
 	// A1 -> B2
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap();
 
 	// this push is required as otherwise B2 has the same hash as A2 and won't get imported
@@ -121,7 +121,7 @@ where
 
 	// B2 -> B3
 	let b3 = client
-		.new_block_at(&BlockId::Hash(b2.hash()), Default::default(), false)
+		.new_block_at(b2.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -132,7 +132,7 @@ where
 
 	// B3 -> B4
 	let b4 = client
-		.new_block_at(&BlockId::Hash(b3.hash()), Default::default(), false)
+		.new_block_at(b3.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -142,7 +142,7 @@ where
 
 	// // B2 -> C3
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(b2.hash()), Default::default(), false)
+		.new_block_at(b2.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise C3 has the same hash as B3 and won't get imported
 	builder
@@ -159,7 +159,7 @@ where
 
 	// A1 -> D2
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise D2 has the same hash as B2 and won't get imported
 	builder
@@ -195,7 +195,7 @@ where
 
 	// A1 -> A2
 	let a2 = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -204,7 +204,7 @@ where
 
 	// A2 -> A3
 	let a3 = client
-		.new_block_at(&BlockId::Hash(a2.hash()), Default::default(), false)
+		.new_block_at(a2.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -213,7 +213,7 @@ where
 
 	// A3 -> A4
 	let a4 = client
-		.new_block_at(&BlockId::Hash(a3.hash()), Default::default(), false)
+		.new_block_at(a3.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -222,7 +222,7 @@ where
 
 	// A4 -> A5
 	let a5 = client
-		.new_block_at(&BlockId::Hash(a4.hash()), Default::default(), false)
+		.new_block_at(a4.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -231,7 +231,7 @@ where
 
 	// A1 -> B2
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise B2 has the same hash as A2 and won't get imported
 	builder
@@ -247,7 +247,7 @@ where
 
 	// B2 -> B3
 	let b3 = client
-		.new_block_at(&BlockId::Hash(b2.hash()), Default::default(), false)
+		.new_block_at(b2.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -256,7 +256,7 @@ where
 
 	// B3 -> B4
 	let b4 = client
-		.new_block_at(&BlockId::Hash(b3.hash()), Default::default(), false)
+		.new_block_at(b3.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -265,7 +265,7 @@ where
 
 	// // B2 -> C3
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(b2.hash()), Default::default(), false)
+		.new_block_at(b2.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise C3 has the same hash as B3 and won't get imported
 	builder
@@ -281,7 +281,7 @@ where
 
 	// A1 -> D2
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise D2 has the same hash as B2 and won't get imported
 	builder
@@ -328,7 +328,7 @@ where
 
 	// A1 -> A2
 	let a2 = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -337,7 +337,7 @@ where
 
 	// A2 -> A3
 	let a3 = client
-		.new_block_at(&BlockId::Hash(a2.hash()), Default::default(), false)
+		.new_block_at(a2.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -346,7 +346,7 @@ where
 
 	// A3 -> A4
 	let a4 = client
-		.new_block_at(&BlockId::Hash(a3.hash()), Default::default(), false)
+		.new_block_at(a3.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -355,7 +355,7 @@ where
 
 	// A4 -> A5
 	let a5 = client
-		.new_block_at(&BlockId::Hash(a4.hash()), Default::default(), false)
+		.new_block_at(a4.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -364,7 +364,7 @@ where
 
 	// A1 -> B2
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise B2 has the same hash as A2 and won't get imported
 	builder
@@ -380,7 +380,7 @@ where
 
 	// B2 -> B3
 	let b3 = client
-		.new_block_at(&BlockId::Hash(b2.hash()), Default::default(), false)
+		.new_block_at(b2.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -389,7 +389,7 @@ where
 
 	// B3 -> B4
 	let b4 = client
-		.new_block_at(&BlockId::Hash(b3.hash()), Default::default(), false)
+		.new_block_at(b3.hash(), Default::default(), false)
 		.unwrap()
 		.build()
 		.unwrap()
@@ -398,7 +398,7 @@ where
 
 	// // B2 -> C3
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(b2.hash()), Default::default(), false)
+		.new_block_at(b2.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise C3 has the same hash as B3 and won't get imported
 	builder
@@ -414,7 +414,7 @@ where
 
 	// A1 -> D2
 	let mut builder = client
-		.new_block_at(&BlockId::Hash(a1.hash()), Default::default(), false)
+		.new_block_at(a1.hash(), Default::default(), false)
 		.unwrap();
 	// this push is required as otherwise D2 has the same hash as B2 and won't get imported
 	builder

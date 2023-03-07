@@ -28,7 +28,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
-use sp_runtime::generic::{BlockId, SignedBlock};
+use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
@@ -57,7 +57,7 @@ where
         for extrinsic in block.block.extrinsics() {
             match client
                 .runtime_api()
-                .extract_root_blocks(&BlockId::Hash(block_to_check), extrinsic)
+                .extract_root_blocks(block_to_check, extrinsic)
             {
                 Ok(Some(root_blocks)) => {
                     break 'outer root_blocks.into_iter().last()?;
@@ -104,10 +104,10 @@ where
 
     let block_object_mappings = client
         .runtime_api()
-        .validated_object_call_hashes(&BlockId::Hash(last_archived_block_hash))
+        .validated_object_call_hashes(last_archived_block_hash)
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
-                &BlockId::Hash(*last_archived_block.block.header().parent_hash()),
+                *last_archived_block.block.header().parent_hash(),
                 last_archived_block.block.clone(),
                 calls,
             )
@@ -283,10 +283,10 @@ where
 
                 let block_object_mappings = client
                     .runtime_api()
-                    .validated_object_call_hashes(&BlockId::Hash(block_hash_to_archive))
+                    .validated_object_call_hashes(block_hash_to_archive)
                     .and_then(|calls| {
                         client.runtime_api().extract_block_object_mapping(
-                            &BlockId::Hash(*block.block.header().parent_hash()),
+                            *block.block.header().parent_hash(),
                             block.block.clone(),
                             calls,
                         )
@@ -488,10 +488,10 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
 
                     let block_object_mappings = client
                         .runtime_api()
-                        .validated_object_call_hashes(&BlockId::Hash(block_hash_to_archive))
+                        .validated_object_call_hashes(block_hash_to_archive)
                         .and_then(|calls| {
                             client.runtime_api().extract_block_object_mapping(
-                                &BlockId::Hash(parent_block_hash),
+                                parent_block_hash,
                                 block.block.clone(),
                                 calls,
                             )

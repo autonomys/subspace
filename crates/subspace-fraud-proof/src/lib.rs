@@ -18,7 +18,6 @@ use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, VerificationError};
 use sp_domains::{DomainId, ExecutorApi};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
@@ -246,7 +245,7 @@ where
         let system_wasm_bundle = self
             .client
             .runtime_api()
-            .system_domain_wasm_bundle(&BlockId::Hash(at))
+            .system_domain_wasm_bundle(at)
             .map_err(VerificationError::RuntimeApi)?;
 
         let wasm_bundle = match *domain_id {

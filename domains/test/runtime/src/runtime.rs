@@ -337,6 +337,8 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
+    type DomainInfo = ();
+    type ConfirmationDepth = RelayConfirmationDepth;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -463,6 +465,12 @@ impl_runtime_apis! {
         ) -> pallet_transaction_payment::FeeDetails<Balance> {
             TransactionPayment::query_fee_details(uxt, len)
         }
+        fn query_weight_to_fee(weight: Weight) -> Balance {
+            TransactionPayment::weight_to_fee(weight)
+        }
+        fn query_length_to_fee(length: u32) -> Balance {
+            TransactionPayment::length_to_fee(length)
+        }
     }
 
     impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
@@ -583,6 +591,14 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
+        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
+            None
+        }
+
+        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+            None
+        }
+
         fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
             Messenger::relayer_assigned_messages(relayer_id)
         }
@@ -609,6 +625,10 @@ impl_runtime_apis! {
             extrinsic: &<Block as BlockT>::Extrinsic,
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
             extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
         }
     }
 

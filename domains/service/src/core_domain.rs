@@ -262,7 +262,7 @@ pub async fn new_full_core<
 where
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Hash>,
+    SBlock::Hash: Into<Hash> + From<Hash>,
     NumberFor<SBlock>: Into<BlockNumber>,
     <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
@@ -341,7 +341,7 @@ where
             import_queue: params.import_queue,
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
-            warp_sync: None,
+            warp_sync_params: None,
         })?;
 
     let rpc_builder = {

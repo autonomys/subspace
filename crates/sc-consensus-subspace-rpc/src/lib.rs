@@ -38,7 +38,6 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use std::error::Error;
 use std::num::NonZeroU32;
@@ -193,7 +192,7 @@ where
     RBP: RootBlockProvider + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
-        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        let best_hash = self.client.info().best_hash;
         let runtime_api = self.client.runtime_api();
 
         let genesis_hash = self
@@ -214,7 +213,7 @@ where
                     ApiError::Application("Incorrect record_size set".to_string().into())
                 })?,
                 recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
-                total_pieces: runtime_api.total_pieces(&best_block_id)?,
+                total_pieces: runtime_api.total_pieces(best_hash)?,
                 // TODO: Fetch this from the runtime
                 sector_expiration: 100,
             };
@@ -476,14 +475,14 @@ where
         };
 
         let runtime_api = self.client.runtime_api();
-        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        let best_hash = self.client.info().best_hash;
         let best_block_number = self.client.info().best_number;
 
         let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
             .map(|segment_index| {
                 let api_result = runtime_api
-                    .records_root(&best_block_id, segment_index)
+                    .records_root(best_hash, segment_index)
                     .map_err(|_| {
                         JsonRpseeError::Custom(
                             "Internal error during `records_root` call".to_string(),
