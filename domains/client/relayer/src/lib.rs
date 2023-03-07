@@ -342,11 +342,14 @@ where
                 confirmed_block_hash.into(),
             )?
             .map(|state_root| state_root == (*core_domain_block_header.state_root()).into())
-            .unwrap_or(false)
+            .unwrap_or_else(|| {
+                // if this is genesis block, ignore as state root of genesis for core domain is not tracked on runtime
+                core_domain_number.is_zero()
+            })
         {
             tracing::error!(
                 target: LOG_TARGET,
-                "Core domain state root mismatch at: Number{:?}, Hash{:?}",
+                "Core domain state root mismatch at: Number: {:?}, Hash: {:?}",
                 core_domain_number,
                 confirmed_block_hash
             );
