@@ -112,6 +112,7 @@ pub(super) fn configure_dsn(
         piece_cache.clone(),
     );
 
+    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
     let last_archived_segment_index = Arc::new(AtomicU64::default());
     tokio::spawn({
         let last_archived_segment_index = last_archived_segment_index.clone();
@@ -234,23 +235,18 @@ pub(super) fn configure_dsn(
 
                     match internal_result {
                         Ok(root_blocks) => {
-                            let mut result = Vec::new();
-                            for root_block in root_blocks {
-                                match root_block {
-                                    None => {
+                            root_blocks
+                                .into_iter()
+                                .map(|maybe_root_block| {
+                                    if maybe_root_block.is_none() {
                                         error!("Received empty optional root block!");
-
-                                        return None;
                                     }
-                                    Some(root_block) => {
-                                        result.push(root_block);
-                                    }
-                                }
-                            }
-
-                            Some(RootBlockResponse {
-                                root_blocks: result,
-                            })
+                                    maybe_root_block
+                                })
+                                .collect::<Option<Vec<_>>>()
+                                .map(|root_blocks| RootBlockResponse {
+                                    root_blocks,
+                                })
                         }
                         Err(error) => {
                             error!(%error, "Failed to get root blocks from cache");

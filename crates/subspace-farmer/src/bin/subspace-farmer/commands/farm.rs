@@ -108,6 +108,7 @@ pub(crate) async fn farm_multi_disk(
     )?;
 
     let kzg = Kzg::new(test_public_parameters());
+    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
     let records_roots_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
     let piece_provider = PieceProvider::new(
         node.clone(),
