@@ -32,19 +32,15 @@ pub struct NoPieceValidator;
 /// Defines retry policy on error during piece acquiring.
 #[derive(PartialEq, Eq, Clone, Debug, Copy)]
 pub enum RetryPolicy {
-    /// Exit on the first error
-    NoRetry,
-
-    /// Try N times
+    /// Retry N times (including zero)
     Limited(u16),
-
     /// No restrictions on retries
     Eternal,
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self::NoRetry
+        Self::Limited(0)
     }
 }
 
@@ -136,20 +132,24 @@ where
         let retries = AtomicU64::default();
 
         retry(backoff, || async {
-            let current_attempt =retries.load(Ordering::Relaxed);
+            let current_attempt = retries.load(Ordering::Relaxed);
 
-                if let Some(piece) = self.get_piece_from_storage(piece_index).await {
+            if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, current_attempt, "Got piece");
                 return Ok(Some(piece));
             }
 
             match retry_policy {
-                RetryPolicy::NoRetry => {
-                    return Ok(None);
-                }
                 RetryPolicy::Limited(max_retries) => {
-                    if  current_attempt >= max_retries.into() {
-                        error!(%piece_index, current_attempt, max_retries, "Couldn't get a piece from DSN. No retries left.");
+                    if current_attempt >= max_retries.into() {
+                        if max_retries > 0 {
+                            error!(
+                                %piece_index,
+                                current_attempt,
+                                max_retries,
+                                "Couldn't get a piece from DSN. No retries left."
+                            );
+                        }
                         return Ok(None);
                     }
                 }

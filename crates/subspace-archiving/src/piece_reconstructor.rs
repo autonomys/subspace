@@ -1,13 +1,12 @@
 extern crate alloc;
 
 use crate::utils;
+use alloc::vec;
 use alloc::vec::Vec;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::{Kzg, Polynomial};
-use subspace_core_primitives::{
-    FlatPieces, Piece, BLAKE2B_256_HASH_SIZE, PIECES_IN_SEGMENT, PIECE_SIZE,
-};
+use subspace_core_primitives::{FlatPieces, Piece, BLAKE2B_256_HASH_SIZE, PIECES_IN_SEGMENT};
 
 /// Reconstructor-related instantiation error.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -95,10 +94,12 @@ impl PiecesReconstructor {
         })
     }
 
+    /// Returns incomplete pieces (witness missing) and polynomial that can be used to generate
+    /// necessary witnesses later.
     fn reconstruct_shards(
         &self,
         segment_pieces: &[Option<Piece>],
-    ) -> Result<(Vec<Vec<u8>>, Polynomial), ReconstructorError> {
+    ) -> Result<(FlatPieces, Polynomial), ReconstructorError> {
         // If not all data pieces are available, need to reconstruct data shards using erasure
         // coding.
         let mut shards = segment_pieces
@@ -114,51 +115,27 @@ impl PiecesReconstructor {
             .reconstruct(&mut shards)
             .map_err(ReconstructorError::DataShardsReconstruction)?;
 
-        let reconstructed_record_shards = shards
-            .iter()
-            .map(|maybe_shard| {
-                maybe_shard
-                    .as_ref()
-                    .map(|shard| {
-                        let mut bytes = shard.iter().fold(
-                            Vec::with_capacity(self.record_size as usize),
-                            |mut acc, shard_part| {
-                                acc.extend_from_slice(shard_part);
-
-                                acc
-                            },
-                        );
-
-                        bytes.truncate(self.record_size as usize);
-
-                        bytes
-                    })
-                    .expect("Record must be reconstructed here.")
-            })
-            .collect::<Vec<_>>();
-
+        let mut reconstructed_record_shards = FlatPieces::new(shards.len());
+        let mut polynomial_data =
+            vec![0u8; (self.data_shards() + self.parity_shards()) as usize * BLAKE2B_256_HASH_SIZE];
         //TODO: Parity hashes will be erasure coded instead in the future
         //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
         // we already have
-        let record_shards_hashes = reconstructed_record_shards
-            .iter()
-            .map(|item| blake2b_256_254_hash(item))
-            .collect::<Vec<_>>();
+        reconstructed_record_shards
+            .as_pieces_mut()
+            .zip(polynomial_data.chunks_exact_mut(BLAKE2B_256_HASH_SIZE))
+            .zip(shards)
+            .for_each(|((piece, polynomial_data), record)| {
+                let record =
+                    record.expect("Reconstruction just happened and all records are present; qed");
+                let record = record.flatten();
+                piece[..self.record_size as usize].copy_from_slice(record);
+                polynomial_data.copy_from_slice(&blake2b_256_254_hash(record));
+            });
 
-        let data = {
-            let mut data = Vec::with_capacity(
-                (self.data_shards() + self.parity_shards()) as usize * BLAKE2B_256_HASH_SIZE,
-            );
-
-            for shard in &record_shards_hashes {
-                data.extend_from_slice(shard);
-            }
-
-            data
-        };
         let polynomial = self
             .kzg
-            .poly(&data)
+            .poly(&polynomial_data)
             .expect("Internally produced values must never fail; qed");
 
         Ok((reconstructed_record_shards, polynomial))
@@ -171,21 +148,18 @@ impl PiecesReconstructor {
         &self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<FlatPieces, ReconstructorError> {
-        let (reconstructed_record_shards, polynomial) = self.reconstruct_shards(segment_pieces)?;
+        let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
-        let mut pieces = FlatPieces::new(reconstructed_record_shards.len());
         pieces
             .as_pieces_mut()
             .enumerate()
-            .zip(reconstructed_record_shards.iter())
-            .for_each(|((position, piece), shard_chunk)| {
-                let (record_part, witness_part) = piece.split_at_mut(self.record_size as usize);
-
-                record_part.copy_from_slice(shard_chunk);
-                witness_part.copy_from_slice(
+            .for_each(|(position, piece)| {
+                piece[self.record_size as usize..].copy_from_slice(
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
+                        // TODO: Update this proof here and in other places, we don't use Merkle
+                        //  trees anymore
                         .expect("We use the same indexes as during Merkle tree creation; qed")
                         .to_bytes(),
                 );
@@ -207,16 +181,17 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let record_bytes = reconstructed_records
-            .get(piece_position)
-            .expect("We must have a reconstructed collection with the valid length here.");
+        let mut piece = Piece::try_from(
+            reconstructed_records
+                .as_pieces()
+                .nth(piece_position)
+                .expect(
+                "Piece exists at the position within segment after successful reconstruction; qed",
+            ),
+        )
+        .expect("Piece in `FlatPieces` always has correct length; qed");
 
-        let mut piece = [0; PIECE_SIZE].to_vec();
-
-        let (record_part, witness_part) = piece.split_at_mut(self.record_size as usize);
-
-        record_part.copy_from_slice(record_bytes);
-        witness_part.copy_from_slice(
+        piece[self.record_size as usize..].copy_from_slice(
             &self
                 .kzg
                 .create_witness(&polynomial, piece_position as u32)
@@ -224,6 +199,6 @@ impl PiecesReconstructor {
                 .to_bytes(),
         );
 
-        Ok(Piece::try_from(piece).expect("Piece size is set manually."))
+        Ok(piece)
     }
 }

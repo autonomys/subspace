@@ -21,19 +21,15 @@ use tracing::info;
 /// Defines retry policy on error during piece acquiring.
 #[derive(PartialEq, Eq, Clone, Debug, Copy)]
 pub enum PieceGetterRetryPolicy {
-    /// Exit on the first error
-    NoRetry,
-
-    /// Try N times
+    /// Retry N times (including zero)
     Limited(u16),
-
     /// No restrictions on retries
-    Eternal,
+    Unlimited,
 }
 
 impl Default for PieceGetterRetryPolicy {
     fn default() -> Self {
-        Self::NoRetry
+        Self::Limited(0)
     }
 }
 
@@ -242,7 +238,8 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
 
             // all retries failed
             if failed {
-                let recovered_piece = recover_missing_piece(piece_getter, kzg, *piece_index).await;
+                let recovered_piece =
+                    recover_missing_piece(piece_getter, kzg.clone(), *piece_index).await;
 
                 return (*piece_index, recovered_piece.map(Some).map_err(Into::into));
             }

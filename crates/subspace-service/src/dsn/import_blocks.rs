@@ -133,7 +133,7 @@ where
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
-                .get_piece(piece_index, RetryPolicy::NoRetry)
+                .get_piece(piece_index, RetryPolicy::Limited(0))
                 .await
                 .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 

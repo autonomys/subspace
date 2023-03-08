@@ -16,9 +16,8 @@ impl<RV> NodePieceGetter<RV> {
 
 fn convert_retry_policies(retry_policy: PieceGetterRetryPolicy) -> RetryPolicy {
     match retry_policy {
-        PieceGetterRetryPolicy::NoRetry => RetryPolicy::NoRetry,
         PieceGetterRetryPolicy::Limited(retries) => RetryPolicy::Limited(retries),
-        PieceGetterRetryPolicy::Eternal => RetryPolicy::Eternal,
+        PieceGetterRetryPolicy::Unlimited => RetryPolicy::Eternal,
     }
 }
 
