@@ -128,8 +128,7 @@ pub enum VerificationError {
     RuntimeCode(String),
 }
 
-// TODO: refactor FraudProof
-/// Fraud proof for the state computation.
+/// Fraud proof.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProof<Number, Hash> {
     InvalidStateTransition(InvalidStateTransitionProof),
@@ -149,7 +148,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
     }
 }
 
-/// Fraud proof for the state computation.
+/// Proves an invalid state transition by challenging the trace at specific index in a bad receipt.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InvalidStateTransitionProof {
     /// The id of the domain this fraud proof targeted

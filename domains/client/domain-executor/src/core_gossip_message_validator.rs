@@ -184,7 +184,6 @@ where
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {
             let fraud_proof = FraudProof::BundleEquivocation(equivocation_proof);
-            // TODO: report to the system domain instead of primary chain.
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
             return Err(GossipMessageError::BundleEquivocation);
         }
