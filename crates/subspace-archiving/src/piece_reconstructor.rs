@@ -103,7 +103,11 @@ impl PiecesReconstructor {
         // coding.
         let mut shards = segment_pieces
             .iter()
-            .map(|maybe_piece| maybe_piece.as_ref().map(utils::slice_to_arrays))
+            .map(|maybe_piece| {
+                maybe_piece
+                    .as_ref()
+                    .map(|piece| utils::slice_to_arrays(&piece[..self.record_size as usize]))
+            })
             .collect::<Vec<_>>();
 
         self.reed_solomon
