@@ -300,6 +300,7 @@ where
         system_domain_client: &Arc<SDC>,
         confirmed_block_hash: Block::Hash,
         gossip_message_sink: &GossipMessageSink,
+        relay_confirmation_depth: NumberFor<SBlock>,
     ) -> Result<(), Error>
     where
         SBlock: BlockT,
@@ -316,17 +317,18 @@ where
         let best_system_domain_block_hash = system_domain_client.info().best_hash;
         let best_system_domain_block_header =
             system_domain_client.expect_header(best_system_domain_block_hash)?;
-        let k_depth = system_domain_api.relay_confirmation_depth(best_system_domain_block_hash)?;
 
         // verify if the core domain number is K-deep on System domain client
         if !system_domain_api
             .domain_best_number(best_system_domain_block_hash, core_domain_id)?
-            .map(|best_number| match best_number.checked_sub(&k_depth) {
-                None => false,
-                Some(best_confirmed) => {
-                    best_confirmed >= (*core_domain_block_header.number()).into()
-                }
-            })
+            .map(
+                |best_number| match best_number.checked_sub(&relay_confirmation_depth) {
+                    None => false,
+                    Some(best_confirmed) => {
+                        best_confirmed >= (*core_domain_block_header.number()).into()
+                    }
+                },
+            )
             .unwrap_or(false)
         {
             return Err(Error::CoreDomainNonConfirmedOnSystemDomain);
@@ -342,11 +344,14 @@ where
                 confirmed_block_hash.into(),
             )?
             .map(|state_root| state_root == (*core_domain_block_header.state_root()).into())
-            .unwrap_or(false)
+            .unwrap_or_else(|| {
+                // if this is genesis block, ignore as state root of genesis for core domain is not tracked on runtime
+                core_domain_number.is_zero()
+            })
         {
             tracing::error!(
                 target: LOG_TARGET,
-                "Core domain state root mismatch at: Number{:?}, Hash{:?}",
+                "Core domain state root mismatch at: Number: {:?}, Hash: {:?}",
                 core_domain_number,
                 confirmed_block_hash
             );
