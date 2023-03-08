@@ -346,7 +346,7 @@ where
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Validator:
         ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
+    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,

@@ -10,7 +10,7 @@ use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi, ExecutorPublicKey};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 
@@ -149,13 +149,16 @@ where
         }
     }
 
-    pub(crate) fn validate_execution_receipt(
+    pub(crate) fn validate_execution_receipt<PCB>(
         &self,
         signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
         domain_id: DomainId,
-    ) -> Result<Option<FraudProof>, GossipMessageError> {
+    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, GossipMessageError>
+    where
+        PCB: BlockT,
+    {
         let primary_number = to_number_primitive(execution_receipt.primary_number);
 
         // Just ignore it if the receipt is too old and has been pruned.
@@ -197,7 +200,7 @@ where
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof(
+            let fraud_proof = self.fraud_proof_generator.generate_proof::<PCB>(
                 domain_id,
                 trace_mismatch_index,
                 &local_receipt,

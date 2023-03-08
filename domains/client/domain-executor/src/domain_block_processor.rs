@@ -519,13 +519,16 @@ where
 
     // TODO: remove once fraud-proof is enabled again.
     #[allow(unreachable_code, unused_variables)]
-    pub(crate) fn on_domain_block_processed(
+    pub(crate) fn on_domain_block_processed<PCB>(
         &self,
         primary_hash: PBlock::Hash,
         domain_block_result: DomainBlockResult<Block, PBlock>,
         head_receipt_number: NumberFor<Block>,
         oldest_receipt_number: NumberFor<Block>,
-    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
+    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, sp_blockchain::Error>
+    where
+        PCB: BlockT,
+    {
         let DomainBlockResult {
             header_hash,
             header_number,
@@ -557,7 +560,7 @@ where
         // Submit fraud proof for the first unconfirmed incorrent ER.
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        self.create_fraud_proof_for_first_unconfirmed_bad_receipt()
+        self.create_fraud_proof_for_first_unconfirmed_bad_receipt::<PCB>()
     }
 
     fn check_receipts_in_primary_block(
@@ -651,6 +654,7 @@ where
                             Some((bad_receipt_number, bad_bundle_hash))
                         }
                     }
+                    _ => None,
                 }
             })
             .collect::<Vec<_>>();
@@ -682,9 +686,12 @@ where
         Ok(())
     }
 
-    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
+    fn create_fraud_proof_for_first_unconfirmed_bad_receipt<PCB>(
         &self,
-    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
+    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, sp_blockchain::Error>
+    where
+        PCB: BlockT,
+    {
         if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
                 &*self.client,
@@ -700,7 +707,7 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof(
+                .generate_proof::<PCB>(
                     self.domain_id,
                     trace_mismatch_index,
                     &local_receipt,

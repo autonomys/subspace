@@ -131,14 +131,20 @@ pub enum VerificationError {
 // TODO: refactor FraudProof
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProof {
+pub enum FraudProof<Number, Hash> {
     InvalidStateTransition(InvalidStateTransitionProof),
+    InvalidTransaction(InvalidTransactionProof),
+    BundleEquivocation(BundleEquivocationProof<Number, Hash>),
+    ImproperTransactionSortition(ImproperTransactionSortitionProof),
 }
 
-impl FraudProof {
+impl<Number, Hash> FraudProof<Number, Hash> {
     pub fn domain_id(&self) -> DomainId {
         match self {
             Self::InvalidStateTransition(proof) => proof.domain_id,
+            Self::InvalidTransaction(proof) => proof.domain_id,
+            Self::BundleEquivocation(proof) => proof.domain_id,
+            Self::ImproperTransactionSortition(proof) => proof.domain_id,
         }
     }
 }
@@ -170,8 +176,10 @@ pub struct InvalidStateTransitionProof {
 /// produces more than one bundle on the same slot. The proof of equivocation
 /// are the given distinct bundle headers that were signed by the validator and which
 /// include the slot number.
-#[derive(Clone, Debug, Decode, Encode, PartialEq, TypeInfo)]
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleEquivocationProof<Number, Hash> {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
     /// The authority id of the equivocator.
     pub offender: AccountId,
     /// The slot at which the equivocation happened.
@@ -200,6 +208,7 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
             extrinsics_root: H256::default(),
         };
         Self {
+            domain_id: DomainId::SYSTEM,
             offender: AccountId::decode(&mut sp_runtime::traits::TrailingZeroInput::zeroes())
                 .expect("Failed to create zero account"),
             slot: Slot::default(),
@@ -211,4 +220,14 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 
 /// Represents an invalid transaction proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidTransactionProof;
+pub struct InvalidTransactionProof {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+}
+
+/// Represents an invalid transaction proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct ImproperTransactionSortitionProof {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+}

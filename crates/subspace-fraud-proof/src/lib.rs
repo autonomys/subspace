@@ -19,13 +19,16 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domains::fraud_proof::{FraudProof, VerificationError};
 use sp_domains::ExecutorApi;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 
 /// Verify fraud proof.
-pub trait VerifyFraudProof {
+pub trait VerifyFraudProof<Block: BlockT> {
     /// Verifies fraud proof.
-    fn verify_fraud_proof(&self, proof: &FraudProof) -> Result<(), VerificationError>;
+    fn verify_fraud_proof(
+        &self,
+        proof: &FraudProof<NumberFor<Block>, Block::Hash>,
+    ) -> Result<(), VerificationError>;
 }
 
 /// Fraud proof verifier.
@@ -66,16 +69,20 @@ where
     }
 
     /// Verifies the fraud proof.
-    pub fn verify(&self, fraud_proof: &FraudProof) -> Result<(), VerificationError> {
+    pub fn verify(
+        &self,
+        fraud_proof: &FraudProof<NumberFor<PBlock>, PBlock::Hash>,
+    ) -> Result<(), VerificationError> {
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => {
                 self.invalid_state_transition_proof_verifier.verify(proof)
             }
+            proof => unimplemented!("Can not verify {proof:?}"),
         }
     }
 }
 
-impl<PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof
+impl<PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof<PBlock>
     for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
 where
     PBlock: BlockT,
@@ -86,7 +93,10 @@ where
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode + Send + Sync,
 {
-    fn verify_fraud_proof(&self, proof: &FraudProof) -> Result<(), VerificationError> {
+    fn verify_fraud_proof(
+        &self,
+        proof: &FraudProof<NumberFor<PBlock>, PBlock::Hash>,
+    ) -> Result<(), VerificationError> {
         self.verify(proof)
     }
 }

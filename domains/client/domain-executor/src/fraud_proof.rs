@@ -78,13 +78,16 @@ where
         }
     }
 
-    pub(crate) fn generate_proof(
+    pub(crate) fn generate_proof<PCB>(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         bad_signed_bundle_hash: H256,
-    ) -> Result<FraudProof, FraudProofError> {
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+    {
         let block_hash = local_receipt.domain_hash;
         let block_number = to_number_primitive(local_receipt.primary_number);
 

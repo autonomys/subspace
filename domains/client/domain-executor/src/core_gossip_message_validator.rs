@@ -134,12 +134,15 @@ where
             .head_receipt_number(self.primary_chain_client.info().best_hash)?;
         let head_receipt_number = to_number_primitive(head_receipt_number);
 
-        if let Some(fraud_proof) = self.gossip_message_validator.validate_execution_receipt(
-            signed_bundle_hash,
-            execution_receipt,
-            head_receipt_number,
-            domain_id,
-        )? {
+        if let Some(fraud_proof) = self
+            .gossip_message_validator
+            .validate_execution_receipt::<SBlock>(
+                signed_bundle_hash,
+                execution_receipt,
+                head_receipt_number,
+                domain_id,
+            )?
+        {
             self.primary_chain_client
                 .runtime_api()
                 .submit_fraud_proof_unsigned(
@@ -256,7 +259,7 @@ where
                     // TODO: check the legality
                     //
                     // if illegal => illegal tx proof
-                    let invalid_transaction_proof = InvalidTransactionProof;
+                    let invalid_transaction_proof = InvalidTransactionProof { domain_id };
 
                     self.primary_chain_client
                         .runtime_api()

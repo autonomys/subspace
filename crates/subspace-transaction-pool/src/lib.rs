@@ -183,7 +183,7 @@ where
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     BundleValidator:
         ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
+    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
 {
     fn verify_extrinsic(
         &self,
@@ -560,7 +560,7 @@ where
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     BundleValidator:
         ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
+    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(

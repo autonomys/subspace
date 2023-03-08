@@ -408,7 +408,7 @@ sp_api::decl_runtime_apis! {
         fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
         /// Submits the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof);
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
 
         /// Submits the bundle equivocation proof via an unsigned extrinsic.
         fn submit_bundle_equivocation_proof_unsigned(
@@ -441,7 +441,10 @@ sp_api::decl_runtime_apis! {
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof>;
+        fn extract_fraud_proofs(
+            extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;

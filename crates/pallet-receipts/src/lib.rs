@@ -182,6 +182,8 @@ mod pallet {
         WrongHashType,
         /// The execution receipt points to a block unknown to the history.
         UnknownBlock,
+        /// This kind of fraud proof is still unimplemented.
+        Unimplemented,
     }
 }
 
@@ -288,11 +290,14 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Process a verified fraud proof.
-    pub fn process_fraud_proof(fraud_proof: FraudProof) -> Result<(), Error> {
+    pub fn process_fraud_proof(
+        fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
+    ) -> Result<(), Error> {
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => {
                 Self::process_invalid_state_transition_proof(proof)
             }
+            _ => Err(FraudProofError::Unimplemented.into()),
         }
     }
 
@@ -328,11 +333,14 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error> {
+    pub fn validate_fraud_proof(
+        fraud_proof: &FraudProof<T::BlockNumber, T::Hash>,
+    ) -> Result<(), Error> {
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => {
                 Self::validate_invalid_state_transition_proof(proof)
             }
+            _ => Err(FraudProofError::Unimplemented.into()),
         }
     }
 

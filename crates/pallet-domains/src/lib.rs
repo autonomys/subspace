@@ -180,7 +180,10 @@ mod pallet {
         // TODO: proper weight
         #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
+        pub fn submit_fraud_proof(
+            origin: OriginFor<T>,
+            fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
+        ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
@@ -739,7 +742,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::BlockNumber, T::Hash>) {
         let call = Call::submit_fraud_proof { fraud_proof };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
