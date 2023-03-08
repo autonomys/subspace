@@ -9727,6 +9727,15 @@ dependencies = [
 [[package]]
 name = "subspace-block-relay"
 version = "0.1.0"
+dependencies = [
+ "futures 0.3.26",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-network",
+ "sc-network-gossip",
+ "sp-runtime",
+ "tracing",
+]
 
 [[package]]
 name = "subspace-core-primitives"

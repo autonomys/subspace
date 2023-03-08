@@ -9,3 +9,11 @@ repository = "https://github.com/subspace/subspace"
 description = "Subspace block relay implementation"
 
 [dependencies]
+futures = "0.3.26"
+parity-scale-codec = { version = "3.4.0", features = ["derive"] }
+parking_lot = "0.12.1"
+sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sc-network-gossip = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+tracing = "0.1.37"
+
