@@ -1,10 +1,12 @@
 use crate::DsnArgs;
+use anyhow::Context;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::{fs, io, thread};
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
@@ -19,7 +21,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, Instrument, Span};
@@ -30,6 +32,7 @@ const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
+const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
 #[allow(clippy::type_complexity)]
 pub(super) fn configure_dsn(
@@ -109,6 +112,33 @@ pub(super) fn configure_dsn(
         piece_cache.clone(),
     );
 
+    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
+    let last_archived_segment_index = Arc::new(AtomicU64::default());
+    tokio::spawn({
+        let last_archived_segment_index = last_archived_segment_index.clone();
+        let node_client = node_client.clone();
+
+        async move {
+            let archived_segments_notifications = node_client
+                .subscribe_archived_segments()
+                .await
+                .map_err(|err| anyhow::anyhow!(err.to_string()))
+                .context("Failed to subscribe to archived segments");
+
+            match archived_segments_notifications {
+                Ok(mut archived_segments_notifications) => {
+                    while let Some(segment) = archived_segments_notifications.next().await {
+                        last_archived_segment_index
+                            .store(segment.root_block.segment_index(), Ordering::Relaxed);
+                    }
+                }
+                Err(err) => {
+                    error!(?err, "Failed to get archived segments notifications.")
+                }
+            }
+        }
+    });
+
     let config = Config {
         reserved_peers,
         keypair,
@@ -173,15 +203,51 @@ pub(super) fn configure_dsn(
                 .instrument(Span::current())
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
-                let segment_indexes = req.segment_indexes.clone();
-
-                debug!(segment_indexes_count = ?segment_indexes.len(), "Root blocks request received.");
+                debug!(?req, "Root blocks request received.");
 
                 let node_client = node_client.clone();
+                let last_archived_segment_index = last_archived_segment_index.clone();
+                let req = req.clone();
 
                 async move {
-                    match node_client.root_blocks(segment_indexes).await {
-                        Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                    let segment_indexes = match req {
+                        RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
+                        RootBlockRequest::LastRootBlocks { root_block_number } => {
+                            if root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
+                                debug!(%root_block_number, "Root block number exceeded the limit.");
+                                return None;
+                            }
+
+                            let last_segment_index =
+                                last_archived_segment_index.load(Ordering::Relaxed);
+
+                            // several last segment indexes available on the node
+                            (0..=last_segment_index)
+                                .rev()
+                                .take(root_block_number as usize)
+                                .collect::<Vec<_>>()
+                        }
+                    };
+
+                    debug!(segment_indexes_count = ?segment_indexes.len(), "Root blocks request received.");
+
+                    let internal_result = node_client.root_blocks(segment_indexes).await;
+
+                    match internal_result {
+                        Ok(root_blocks) => {
+                            root_blocks
+                                .into_iter()
+                                .map(|maybe_root_block| {
+                                    if maybe_root_block.is_none() {
+                                        error!("Received empty optional root block!");
+                                    }
+                                    maybe_root_block
+                                })
+                                .collect::<Option<Vec<_>>>()
+                                .map(|root_blocks| RootBlockResponse {
+                                    root_blocks,
+                                })
+                        }
                         Err(error) => {
                             error!(%error, "Failed to get root blocks from cache");
 
