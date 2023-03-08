@@ -45,11 +45,13 @@ pub enum ReconstructorError {
 /// Reconstructor helps to retrieve blocks from archived pieces.
 #[derive(Debug, Clone)]
 pub struct PiecesReconstructor {
+    /// Number of data shards
+    data_shards: u32,
+    /// Number of parity shards
+    parity_shards: u32,
     /// Configuration parameter defining the size of one record (data in one piece excluding witness
     /// size)
     record_size: u32,
-    /// Configuration parameter defining the size of one recorded history segment
-    segment_size: u32,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
     /// KZG instance
@@ -57,18 +59,6 @@ pub struct PiecesReconstructor {
 }
 
 impl PiecesReconstructor {
-    fn shards_count(segment_size: u32, record_size: u32) -> u32 {
-        segment_size / record_size
-    }
-
-    fn data_shards(&self) -> u32 {
-        Self::shards_count(self.segment_size, self.record_size)
-    }
-
-    fn parity_shards(&self) -> u32 {
-        self.data_shards()
-    }
-
     pub fn new(
         record_size: u32,
         segment_size: u32,
@@ -81,14 +71,15 @@ impl PiecesReconstructor {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = Self::shards_count(segment_size, record_size);
+        let data_shards = segment_size / record_size;
         let parity_shards = data_shards;
         let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
+            data_shards,
+            parity_shards,
             record_size,
-            segment_size,
             reed_solomon,
             kzg,
         })
@@ -117,7 +108,7 @@ impl PiecesReconstructor {
 
         let mut reconstructed_record_shards = FlatPieces::new(shards.len());
         let mut polynomial_data =
-            vec![0u8; (self.data_shards() + self.parity_shards()) as usize * BLAKE2B_256_HASH_SIZE];
+            vec![0u8; (self.data_shards + self.parity_shards) as usize * BLAKE2B_256_HASH_SIZE];
         //TODO: Parity hashes will be erasure coded instead in the future
         //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
         // we already have
