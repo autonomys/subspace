@@ -647,7 +647,10 @@ impl_runtime_apis! {
         fn extract_xdm_proof_state_roots(
             extrinsic: &<Block as BlockT>::Extrinsic,
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            extract_xdm_proof_state_roots(extrinsic)
+            match &extrinsic.function {
+                RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
+                _ => None,
+            }
         }
 
         fn confirmation_depth() -> BlockNumber {
@@ -708,14 +711,5 @@ impl_runtime_apis! {
 
             Ok(batches)
         }
-    }
-}
-
-fn extract_xdm_proof_state_roots(
-    ext: &UncheckedExtrinsic,
-) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
-    match &ext.function {
-        RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
-        _ => None,
     }
 }
