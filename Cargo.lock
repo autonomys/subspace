@@ -9725,6 +9725,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-block-relay"
+version = "0.1.0"
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
