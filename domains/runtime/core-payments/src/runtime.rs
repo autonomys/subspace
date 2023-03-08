@@ -308,6 +308,7 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment = 3,
 
         // messenger stuff
+        // Note: Indexes should match the indexes of the System domain runtime
         Messenger: pallet_messenger = 6,
         Transporter: pallet_transporter = 7,
 

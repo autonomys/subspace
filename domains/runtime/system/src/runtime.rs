@@ -385,6 +385,7 @@ construct_runtime!(
         ExecutorRegistry: pallet_executor_registry = 4,
         Receipts: pallet_receipts = 9,
         DomainRegistry: pallet_domain_registry = 5,
+        // Note: Indexes should be used by all other core domain for proper xdm decode.
         Messenger: pallet_messenger = 6,
         Transporter: pallet_transporter = 7,
 
