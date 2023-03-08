@@ -35,7 +35,7 @@ pub enum RetryPolicy {
     /// Retry N times (including zero)
     Limited(u16),
     /// No restrictions on retries
-    Eternal,
+    Unlimited,
 }
 
 impl Default for RetryPolicy {
@@ -153,7 +153,7 @@ where
                         return Ok(None);
                     }
                 }
-                RetryPolicy::Eternal => {
+                RetryPolicy::Unlimited => {
                     // no action
                 }
             };
