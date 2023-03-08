@@ -1,4 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
 use futures::FutureExt;
@@ -142,8 +143,34 @@ where
         }
     }
 
+    pub(crate) fn validate_gossiped_execution_receipt<PCB, ParentChain>(
+        &self,
+        parent_chain: &ParentChain,
+        signed_bundle_hash: H256,
+        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
+        domain_id: DomainId,
+    ) -> Result<(), GossipMessageError>
+    where
+        PCB: BlockT,
+        ParentChain: ParentChainInterface<PCB>,
+    {
+        let head_receipt_number = parent_chain.head_receipt_number(parent_chain.best_hash())?;
+        let head_receipt_number = to_number_primitive(head_receipt_number);
+
+        if let Some(fraud_proof) = self.validate_execution_receipt::<PCB>(
+            signed_bundle_hash,
+            execution_receipt,
+            head_receipt_number,
+            domain_id,
+        )? {
+            parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+        }
+
+        Ok(())
+    }
+
     #[allow(clippy::type_complexity)]
-    pub(crate) fn validate_execution_receipt<PCB>(
+    fn validate_execution_receipt<PCB>(
         &self,
         signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,

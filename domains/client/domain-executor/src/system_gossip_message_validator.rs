@@ -1,16 +1,14 @@
 use crate::fraud_proof::FraudProofGenerator;
 use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator};
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::to_number_primitive;
-use crate::{ExecutionReceiptFor, TransactionFor};
+use crate::TransactionFor;
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_core::H256;
 use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-use sp_domains::{Bundle, DomainId, SignedBundle};
+use sp_domains::{Bundle, SignedBundle};
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use std::sync::Arc;
@@ -90,32 +88,6 @@ where
             transaction_pool,
             gossip_message_validator,
         }
-    }
-
-    fn validate_gossiped_execution_receipt(
-        &self,
-        signed_bundle_hash: H256,
-        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
-        domain_id: DomainId,
-    ) -> Result<(), GossipMessageError> {
-        let head_receipt_number = self
-            .parent_chain
-            .head_receipt_number(self.parent_chain.best_hash())?;
-        let head_receipt_number = to_number_primitive(head_receipt_number);
-
-        if let Some(fraud_proof) = self
-            .gossip_message_validator
-            .validate_execution_receipt::<PBlock>(
-                signed_bundle_hash,
-                execution_receipt,
-                head_receipt_number,
-                domain_id,
-            )?
-        {
-            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-        }
-
-        Ok(())
     }
 }
 
@@ -201,7 +173,13 @@ where
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
             let domain_id = bundle_solution.proof_of_election().domain_id;
             for receipt in &bundle.receipts {
-                self.validate_gossiped_execution_receipt(signed_bundle_hash, receipt, domain_id)?;
+                self.gossip_message_validator
+                    .validate_gossiped_execution_receipt::<PBlock, _>(
+                        &self.parent_chain,
+                        signed_bundle_hash,
+                        receipt,
+                        domain_id,
+                    )?;
             }
 
             for extrinsic in bundle.extrinsics.iter() {
