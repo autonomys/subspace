@@ -25,7 +25,7 @@ use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::Get;
 pub use pallet::*;
-use sp_domains::fraud_proof::FraudProof;
+use sp_domains::fraud_proof::{FraudProof, InvalidStateTransitionProof};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use sp_std::vec::Vec;
@@ -289,6 +289,16 @@ impl<T: Config> Pallet<T> {
 
     /// Process a verified fraud proof.
     pub fn process_fraud_proof(fraud_proof: FraudProof) -> Result<(), Error> {
+        match fraud_proof {
+            FraudProof::InvalidStateTransition(proof) => {
+                Self::process_invalid_state_transition_proof(proof)
+            }
+        }
+    }
+
+    fn process_invalid_state_transition_proof(
+        fraud_proof: InvalidStateTransitionProof,
+    ) -> Result<(), Error> {
         // Revert the execution chain.
         let domain_id = fraud_proof.domain_id;
         let mut to_remove = <HeadReceiptNumber<T>>::get(domain_id);
@@ -319,6 +329,16 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn validate_fraud_proof(fraud_proof: &FraudProof) -> Result<(), Error> {
+        match fraud_proof {
+            FraudProof::InvalidStateTransition(proof) => {
+                Self::validate_invalid_state_transition_proof(proof)
+            }
+        }
+    }
+
+    fn validate_invalid_state_transition_proof(
+        fraud_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), Error> {
         let best_number = Self::head_receipt_number(fraud_proof.domain_id);
         let to_prove: T::BlockNumber = (fraud_proof.parent_number + 1u32).into();
         ensure!(

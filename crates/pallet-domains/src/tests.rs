@@ -4,7 +4,7 @@ use frame_support::{assert_noop, assert_ok, parameter_types};
 use pallet_receipts::{PrimaryBlockHash, ReceiptVotes};
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
     Bundle, BundleHeader, BundleSolution, DomainId, ExecutionReceipt, ExecutorPair,
@@ -465,15 +465,17 @@ fn submit_fraud_proof_should_work() {
         })
         .unzip();
 
-    let dummy_proof = |domain_id| FraudProof {
-        domain_id,
-        bad_signed_bundle_hash: Hash::random(),
-        parent_number: 99,
-        parent_hash: block_hashes[98],
-        pre_state_root: H256::random(),
-        post_state_root: H256::random(),
-        proof: StorageProof::empty(),
-        execution_phase: ExecutionPhase::FinalizeBlock,
+    let dummy_proof = |domain_id| {
+        FraudProof::InvalidStateTransition(InvalidStateTransitionProof {
+            domain_id,
+            bad_signed_bundle_hash: Hash::random(),
+            parent_number: 99,
+            parent_hash: block_hashes[98],
+            pre_state_root: H256::random(),
+            post_state_root: H256::random(),
+            proof: StorageProof::empty(),
+            execution_phase: ExecutionPhase::FinalizeBlock,
+        })
     };
 
     new_test_ext().execute_with(|| {

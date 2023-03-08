@@ -65,8 +65,13 @@ where
         }
     }
 
+    /// Verifies the fraud proof.
     pub fn verify(&self, fraud_proof: &FraudProof) -> Result<(), VerificationError> {
-        todo!("Refactor FraudProof first")
+        match fraud_proof {
+            FraudProof::InvalidStateTransition(proof) => {
+                self.invalid_state_transition_proof_verifier.verify(proof)
+            }
+        }
     }
 }
 

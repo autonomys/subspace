@@ -131,25 +131,16 @@ pub enum VerificationError {
 // TODO: refactor FraudProof
 /// Fraud proof for the state computation.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct FraudProof {
-    /// The id of the domain this fraud proof targeted
-    pub domain_id: DomainId,
-    /// Hash of the signed bundle in which an invalid state transition occurred.
-    pub bad_signed_bundle_hash: H256,
-    /// Parent number.
-    pub parent_number: BlockNumber,
-    /// Parent hash of the block at which the invalid execution occurred.
-    ///
-    /// Runtime code for this block's execution is retrieved on top of the parent block.
-    pub parent_hash: H256,
-    /// State root before the fraudulent transaction.
-    pub pre_state_root: H256,
-    /// State root after the fraudulent transaction.
-    pub post_state_root: H256,
-    /// Proof recorded during the computation.
-    pub proof: StorageProof,
-    /// Execution phase.
-    pub execution_phase: ExecutionPhase,
+pub enum FraudProof {
+    InvalidStateTransition(InvalidStateTransitionProof),
+}
+
+impl FraudProof {
+    pub fn domain_id(&self) -> DomainId {
+        match self {
+            Self::InvalidStateTransition(proof) => proof.domain_id,
+        }
+    }
 }
 
 /// Fraud proof for the state computation.

@@ -323,7 +323,7 @@ mod pallet {
 
             log::trace!(target: "runtime::domain-registry", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id.is_core() {
+            if fraud_proof.domain_id().is_core() {
                 pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
                     .map_err(Error::<T>::from)?;
             }

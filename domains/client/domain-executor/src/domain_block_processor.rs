@@ -633,20 +633,24 @@ where
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()
             .filter_map(|fraud_proof| {
-                let bad_receipt_number = fraud_proof.parent_number + 1;
-                let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
+                match fraud_proof {
+                    FraudProof::InvalidStateTransition(fraud_proof) => {
+                        let bad_receipt_number = fraud_proof.parent_number + 1;
+                        let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
 
-                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                // in case the bad receipt and corresponding farud proof are included in the same block.
-                if let Some(index) = bad_receipts_to_write
-                    .iter()
-                    .map(|(_, hash, _)| hash)
-                    .position(|v| *v == bad_bundle_hash)
-                {
-                    bad_receipts_to_write.swap_remove(index);
-                    None
-                } else {
-                    Some((bad_receipt_number, bad_bundle_hash))
+                        // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
+                        // in case the bad receipt and corresponding farud proof are included in the same block.
+                        if let Some(index) = bad_receipts_to_write
+                            .iter()
+                            .map(|(_, hash, _)| hash)
+                            .position(|v| *v == bad_bundle_hash)
+                        {
+                            bad_receipts_to_write.swap_remove(index);
+                            None
+                        } else {
+                            Some((bad_receipt_number, bad_bundle_hash))
+                        }
+                    }
                 }
             })
             .collect::<Vec<_>>();
