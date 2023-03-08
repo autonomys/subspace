@@ -20,37 +20,42 @@ use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domains::fraud_proof::{FraudProof, VerificationError};
 use sp_domains::ExecutorApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Verify fraud proof.
-pub trait VerifyFraudProof<Block: BlockT> {
+pub trait VerifyFraudProof<FPBlock: BlockT> {
     /// Verifies fraud proof.
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<Block>, Block::Hash>,
+        proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
     ) -> Result<(), VerificationError>;
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<PBlock, C, B, Exec, Spawn, Hash> {
+pub struct ProofVerifier<FPBlock, PBlock, C, B, Exec, Spawn, Hash> {
     invalid_state_transition_proof_verifier:
         InvalidStateTransitionProofVerifier<PBlock, C, B, Exec, Spawn, Hash>,
+    _phantom: PhantomData<FPBlock>,
 }
 
-impl<PBlock, C, B, Exec: Clone, Spawn: Clone, Hash> Clone
-    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+impl<FPBlock, PBlock, C, B, Exec: Clone, Spawn: Clone, Hash> Clone
+    for ProofVerifier<FPBlock, PBlock, C, B, Exec, Spawn, Hash>
 {
     fn clone(&self) -> Self {
         Self {
             invalid_state_transition_proof_verifier: self
                 .invalid_state_transition_proof_verifier
                 .clone(),
+            _phantom: self._phantom,
         }
     }
 }
 
-impl<PBlock, C, B, Exec, Spawn, Hash> ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+impl<FPBlock, PBlock, C, B, Exec, Spawn, Hash>
+    ProofVerifier<FPBlock, PBlock, C, B, Exec, Spawn, Hash>
 where
+    FPBlock: BlockT,
     PBlock: BlockT,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
@@ -65,13 +70,14 @@ where
             InvalidStateTransitionProofVerifier::new(client, backend, executor, spawn_handle);
         Self {
             invalid_state_transition_proof_verifier,
+            _phantom: Default::default(),
         }
     }
 
     /// Verifies the fraud proof.
     pub fn verify(
         &self,
-        fraud_proof: &FraudProof<NumberFor<PBlock>, PBlock::Hash>,
+        fraud_proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
     ) -> Result<(), VerificationError> {
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => {
@@ -82,9 +88,10 @@ where
     }
 }
 
-impl<PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof<PBlock>
-    for ProofVerifier<PBlock, C, B, Exec, Spawn, Hash>
+impl<FPBlock, PBlock, C, B, Exec, Spawn, Hash> VerifyFraudProof<FPBlock>
+    for ProofVerifier<FPBlock, PBlock, C, B, Exec, Spawn, Hash>
 where
+    FPBlock: BlockT,
     PBlock: BlockT,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
@@ -95,7 +102,7 @@ where
 {
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<PBlock>, PBlock::Hash>,
+        proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
     ) -> Result<(), VerificationError> {
         self.verify(proof)
     }

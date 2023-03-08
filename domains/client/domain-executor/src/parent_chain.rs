@@ -14,7 +14,7 @@ use system_runtime_primitives::SystemDomainApi;
 ///
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
-pub(crate) trait ParentChainInterface<Block: BlockT> {
+pub trait ParentChainInterface<Block: BlockT> {
     fn best_hash(&self) -> Block::Hash;
     fn head_receipt_number(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;

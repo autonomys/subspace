@@ -525,7 +525,7 @@ where
         domain_block_result: DomainBlockResult<Block, PBlock>,
         head_receipt_number: NumberFor<Block>,
         oldest_receipt_number: NumberFor<Block>,
-    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, sp_blockchain::Error>
+    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
     where
         PCB: BlockT,
     {
@@ -688,7 +688,7 @@ where
 
     fn create_fraud_proof_for_first_unconfirmed_bad_receipt<PCB>(
         &self,
-    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, sp_blockchain::Error>
+    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
     where
         PCB: BlockT,
     {

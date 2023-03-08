@@ -14,6 +14,7 @@ use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransition
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use subspace_runtime_primitives::opaque::Block;
 use tempfile::TempDir;
 
 // Use the system domain id for testing
@@ -191,7 +192,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
         ferdie.backend.clone(),
         ferdie.executor.clone(),
@@ -472,7 +473,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
         ferdie.backend.clone(),
         ferdie.executor.clone(),

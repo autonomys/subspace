@@ -88,7 +88,7 @@ pub(crate) fn extract_receipts(
 pub(crate) fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof> {
+) -> Vec<FraudProof<BlockNumber, Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {

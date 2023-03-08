@@ -123,6 +123,7 @@ pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
+    Block,
     FullClient<RuntimeApi, ExecutorDispatch>,
     FullBackend,
     NativeElseWasmExecutor<ExecutorDispatch>,

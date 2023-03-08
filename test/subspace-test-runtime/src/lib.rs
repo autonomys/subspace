@@ -908,7 +908,7 @@ fn extract_receipts(
 fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof> {
+) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
@@ -1143,7 +1143,7 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
@@ -1186,7 +1186,10 @@ impl_runtime_apis! {
             extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof> {
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
             extract_fraud_proofs(extrinsics, domain_id)
         }
 

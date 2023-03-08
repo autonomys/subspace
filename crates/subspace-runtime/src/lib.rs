@@ -708,7 +708,7 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
@@ -751,7 +751,10 @@ impl_runtime_apis! {
             crate::domains::extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof> {
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
             crate::domains::extract_fraud_proofs(extrinsics, domain_id)
         }
 
