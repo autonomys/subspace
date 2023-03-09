@@ -1,5 +1,4 @@
 use rand::Rng;
-use std::iter;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::piece_reconstructor::{
     PiecesReconstructor, ReconstructorError, ReconstructorInstantiationError,
@@ -24,12 +23,9 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 
 // Block that fits into the segment fully
 fn get_random_block() -> Vec<u8> {
-    let mut rng = rand::thread_rng();
-
-    iter::repeat(())
-        .take(RECORDED_HISTORY_SEGMENT_SIZE as usize)
-        .map(|_| rng.gen())
-        .collect::<Vec<_>>()
+    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+    rand::thread_rng().fill(block.as_mut_slice());
+    block
 }
 
 #[test]
