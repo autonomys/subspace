@@ -59,7 +59,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
@@ -710,18 +710,6 @@ impl_runtime_apis! {
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
-        fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, <Block as BlockT>::Hash>,
-        ) {
-            Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
-        }
-
-        fn submit_invalid_transaction_proof_unsigned(
-            invalid_transaction_proof: InvalidTransactionProof,
-        ) {
-            Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
         fn extract_system_bundles(

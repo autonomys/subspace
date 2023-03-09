@@ -754,40 +754,4 @@ where
             }
         }
     }
-
-    /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
-    pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
-    ) {
-        let call = Call::submit_bundle_equivocation_proof {
-            bundle_equivocation_proof,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted bundle equivocation proof");
-            }
-            Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting bundle equivocation proof");
-            }
-        }
-    }
-
-    /// Submits an unsigned extrinsic [`Call::submit_invalid_transaction_proof`].
-    pub fn submit_invalid_transaction_proof_unsigned(
-        invalid_transaction_proof: InvalidTransactionProof,
-    ) {
-        let call = Call::submit_invalid_transaction_proof {
-            invalid_transaction_proof,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted invalid transaction proof")
-            }
-            Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting invalid transaction proof");
-            }
-        }
-    }
 }

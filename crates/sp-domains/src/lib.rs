@@ -22,7 +22,7 @@ pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
 
-use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use crate::fraud_proof::FraudProof;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -409,16 +409,6 @@ sp_api::decl_runtime_apis! {
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
-
-        /// Submits the bundle equivocation proof via an unsigned extrinsic.
-        fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, Block::Hash>,
-        );
-
-        /// Submits the invalid transaction proof via an unsigned extrinsic.
-        fn submit_invalid_transaction_proof_unsigned(
-            invalid_transaction_proof: InvalidTransactionProof,
-        );
 
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
