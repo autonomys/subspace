@@ -8,6 +8,7 @@ pub mod farming;
 pub mod file_ext;
 pub mod piece_caching;
 pub mod plotting;
+pub mod segment_reconstruction;
 
 use parity_scale_codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};

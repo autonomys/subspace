@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::error::Error;
 use subspace_core_primitives::{Piece, PieceIndex};
-use subspace_farmer_components::plotting::PieceGetter;
+use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 
 pub struct BenchPieceGetter {
     piece: Piece,
@@ -12,6 +12,7 @@ impl PieceGetter for BenchPieceGetter {
     async fn get_piece(
         &self,
         _piece_index: PieceIndex,
+        _: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         Ok(Some(self.piece.clone()))
     }
