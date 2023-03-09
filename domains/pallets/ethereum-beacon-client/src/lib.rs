@@ -31,6 +31,9 @@ use weights::WeightInfo;
 
 pub use pallet::*;
 
+const MAJORITY_SYNC_COMMITTEE_FRACTION_NUMERATOR: u64 = 3;
+const MAJORITY_SYNC_COMMITTEE_FRACTION_DENOMINATOR: u64 = 2;
+
 pub type BlockUpdateOf = BlockUpdate<
     config::FeeRecipientSize,
     config::BytesPerLogsBloom,
@@ -106,6 +109,7 @@ pub mod pallet {
 
         /// A period in which a the light client update must be submitted to this light client.
         /// In case we did not receive it, the light client will be blocked.
+        #[pallet::constant]
         type WeakSubjectivityPeriodSeconds: Get<u32>;
 
         type WeightInfo: WeightInfo;
@@ -173,9 +177,6 @@ pub mod pallet {
         NonSequentialSyncCommitteeUpdate,
     }
 
-    #[pallet::hooks]
-    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
-
     /// Historical execution headers
     #[pallet::storage]
     pub(super) type ExecutionHeaders<T: Config> =
@@ -224,7 +225,7 @@ pub mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Sync committee size is: {}",
                 config::SyncCommitteeSize::get()
             );
@@ -237,7 +238,7 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Updates the light client state
+        /// Updates the light client state (specifically sync committee and finalized header)
         #[pallet::weight(T::WeightInfo::sync_committee_period_update())]
         #[pallet::call_index(0)]
         pub fn light_client_update(
@@ -250,14 +251,14 @@ pub mod pallet {
 
             let sync_committee_period = light_client_update.sync_committee_period;
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Received light client update for sync committee period {}. Applying update",
                 sync_committee_period
             );
 
             Self::process_light_client_update(light_client_update).map_err(|err| {
                 log::error!(
-                    target: "ethereum-beacon-client",
+                    target: "runtime::ethereum-beacon-client",
                     "💫 Light client update failed with error {:?}",
                     err
                 );
@@ -265,7 +266,7 @@ pub mod pallet {
             })?;
 
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Light client update for sync committee period {} succeeded.",
                 sync_committee_period
             );
@@ -288,14 +289,14 @@ pub mod pallet {
             let block_hash = update.block.body.execution_payload.block_hash;
 
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Received header update for slot {}.",
                 slot
             );
 
             Self::process_header(update).map_err(|err| {
                 log::error!(
-                    target: "ethereum-beacon-client",
+                    target: "runtime::ethereum-beacon-client",
                     "💫 Header update failed with error {:?}",
                     err
                 );
@@ -303,7 +304,7 @@ pub mod pallet {
             })?;
 
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Stored execution header {} at beacon slot {}.",
                 block_hash,
                 slot
@@ -320,7 +321,7 @@ pub mod pallet {
 
             <Blocked<T>>::set(false);
 
-            log::info!(target: "ethereum-beacon-client","💫 syncing bridge from governance provided checkpoint.");
+            log::info!(target: "runtime::ethereum-beacon-client","💫 syncing bridge from governance provided checkpoint.");
 
             // TODO: Import governance provided checkpoint
 
@@ -329,6 +330,7 @@ pub mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        #[cfg(feature = "std")]
         fn process_initial_sync(initial_sync: InitialSyncOf) -> DispatchResult {
             let sync_committee_root =
                 merkleization::hash_tree_root_sync_committee(&initial_sync.current_sync_committee)
@@ -428,14 +430,14 @@ pub mod pallet {
 
             if !Self::is_finality_update(update) {
                 ensure!(
-                    update.finalized_header == Default::default(),
+                    update.finalized_header.is_empty(),
                     Error::<T>::NonEmptyFinalizedHeader
                 );
             } else {
                 let mut finalized_block_root: H256 = Default::default();
                 if update_finalized_slot == config::GenesisSlot::get() {
                     ensure!(
-                        update.finalized_header == Default::default(),
+                        update.finalized_header.is_empty(),
                         Error::<T>::NonEmptyFinalizedHeader
                     );
                 } else {
@@ -457,7 +459,7 @@ pub mod pallet {
 
             if !Self::is_sync_committee_update(update) {
                 ensure!(
-                    update.next_sync_committee == Default::default(),
+                    update.next_sync_committee.is_empty(),
                     Error::<T>::NonEmptySyncCommittee
                 );
             } else {
@@ -559,14 +561,14 @@ pub mod pallet {
             let time: u64 = T::TimeProvider::now().as_secs();
 
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Checking weak subjectivity period. Current time is :{:?} Weak subjectivity period check: {:?}.",
                 time,
                 max_weak_subjectivity_period
             );
 
             if time > max_weak_subjectivity_period {
-                log::info!(target: "ethereum-beacon-client","💫 Weak subjectivity period exceeded, blocking bridge.",);
+                log::info!(target: "runtime::ethereum-beacon-client","💫 Weak subjectivity period exceeded, blocking bridge.",);
                 <Blocked<T>>::set(true);
                 return Err(Error::<T>::BridgeBlocked.into());
             }
@@ -654,7 +656,7 @@ pub mod pallet {
                 fee_recipient[0..20].copy_from_slice(fee_slice);
             } else {
                 log::trace!(
-                    target: "ethereum-beacon-client",
+                    target: "runtime::ethereum-beacon-client",
                     "fee recipient not 20 characters, len is: {}.",
                     fee_slice.len()
                 );
@@ -758,7 +760,7 @@ pub mod pallet {
 
             let agg_pub_key = AggregatePublicKey::into_aggregate(&public_keys)
                 .map_err(|err| {
-                    log::error!(target: "ethereum-beacon-client", "💫 invalid public keys with an error: {:?}.", err);
+                    log::error!(target: "runtime::ethereum-beacon-client", "💫 invalid public keys with an error: {:?}.", err);
                     Error::<T>::InvalidAggregatePublicKeys
                 })?;
 
@@ -841,7 +843,7 @@ pub mod pallet {
             <LatestSyncCommitteePeriod<T>>::set(period);
 
             log::trace!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Saved sync committee for period {}.",
                 period
             );
@@ -854,7 +856,7 @@ pub mod pallet {
             let slot = header.slot;
 
             log::trace!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Saved finalized block root {} at slot {}.",
                 block_root,
                 slot
@@ -865,7 +867,7 @@ pub mod pallet {
 
             if slot > latest_finalized_header_slot {
                 log::trace!(
-                    target: "ethereum-beacon-client",
+                    target: "runtime::ethereum-beacon-client",
                     "💫 Updated latest finalized slot to {}.",
                     slot
                 );
@@ -920,7 +922,7 @@ pub mod pallet {
 
             if block_number > latest_execution_block_number {
                 log::trace!(
-                    target: "ethereum-beacon-client",
+                    target: "runtime::ethereum-beacon-client",
                     "💫 Updated latest execution block number to {}.",
                     block_number
                 );
@@ -939,6 +941,7 @@ pub mod pallet {
             });
         }
 
+        #[cfg(feature = "std")]
         fn store_validators_root(validators_root: H256) {
             <GenesisValidatorsRoot<T>>::set(validators_root);
         }
@@ -996,19 +999,19 @@ pub mod pallet {
             root: Root,
         ) -> bool {
             if branch.len() != depth as usize {
-                log::error!(target: "ethereum-beacon-client", "Merkle proof branch length doesn't match depth.");
+                log::error!(target: "runtime::ethereum-beacon-client", "Merkle proof branch length doesn't match depth.");
 
                 return false;
             }
             let mut value = leaf;
             if leaf.as_bytes().len() < 32_usize {
-                log::error!(target: "ethereum-beacon-client", "Merkle proof leaf not 32 bytes.");
+                log::error!(target: "runtime::ethereum-beacon-client", "Merkle proof leaf not 32 bytes.");
 
                 return false;
             }
             for i in 0..depth {
                 if branch[i as usize].as_bytes().len() < 32_usize {
-                    log::error!(target: "ethereum-beacon-client", "Merkle proof branch not 32 bytes.");
+                    log::error!(target: "runtime::ethereum-beacon-client", "Merkle proof branch not 32 bytes.");
 
                     return false;
                 }
@@ -1034,7 +1037,9 @@ pub mod pallet {
         ) -> DispatchResult {
             let sync_committee_sum = Self::get_sync_committee_sum(sync_committee_bits.clone());
             ensure!(
-                (sync_committee_sum * 3 >= sync_committee_bits.len() as u64 * 2),
+                (sync_committee_sum * MAJORITY_SYNC_COMMITTEE_FRACTION_NUMERATOR
+                    >= sync_committee_bits.len() as u64
+                        * MAJORITY_SYNC_COMMITTEE_FRACTION_DENOMINATOR),
                 Error::<T>::SyncCommitteeParticipantsNotSupermajority
             );
 
@@ -1047,7 +1052,7 @@ pub mod pallet {
             let sync_committee = <SyncCommittees<T>>::get(period);
 
             if sync_committee.pubkeys.len() == 0 {
-                log::error!(target: "ethereum-beacon-client", "💫 Sync committee for period {} missing", period);
+                log::error!(target: "runtime::ethereum-beacon-client", "💫 Sync committee for period {} missing", period);
                 return Err(Error::<T>::SyncCommitteeMissing.into());
             }
 
@@ -1067,15 +1072,16 @@ pub mod pallet {
             fork_versions.genesis.version
         }
 
+        #[cfg(feature = "std")]
         pub(super) fn initial_sync(initial_sync: InitialSyncOf) -> Result<(), &'static str> {
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Received initial sync, starting processing.",
             );
 
             Self::process_initial_sync(initial_sync).map_err(|err| {
                 log::error!(
-                    target: "ethereum-beacon-client",
+                    target: "runtime::ethereum-beacon-client",
                     "Initial sync failed with error {:?}",
                     err
                 );
@@ -1083,7 +1089,7 @@ pub mod pallet {
             })?;
 
             log::info!(
-                target: "ethereum-beacon-client",
+                target: "runtime::ethereum-beacon-client",
                 "💫 Initial sync processing succeeded.",
             );
 

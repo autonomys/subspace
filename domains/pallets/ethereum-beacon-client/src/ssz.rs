@@ -5,6 +5,10 @@ use ssz_rs::prelude::{List, Vector};
 use ssz_rs::{Bitlist, Bitvector, Deserialize, Sized, U256};
 use ssz_rs_derive::SimpleSerialize;
 
+/// This file contains copy of original generic data structures created in primitives
+/// modified to work with current ssz library.
+/// For information about individual structure, please see primitives
+
 #[derive(Default, Debug, SimpleSerialize, Clone)]
 pub struct SSZVoluntaryExit {
     pub epoch: u64,

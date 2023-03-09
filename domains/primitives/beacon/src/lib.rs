@@ -20,6 +20,7 @@ pub type Domain = H256;
 pub type ValidatorIndex = u64;
 pub type ForkVersion = [u8; 4];
 
+/// Represents forks of the network
 #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 pub struct ForkVersions {
     pub genesis: Fork,
@@ -27,6 +28,7 @@ pub struct ForkVersions {
     pub bellatrix: Fork,
 }
 
+/// Represent individual fork (its version magic bytes and epoch in which network was forked)
 #[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 pub struct Fork {
     pub version: [u8; 4],
@@ -342,6 +344,12 @@ pub struct SyncCommittee<SyncCommitteeSize: Get<u32>> {
     pub aggregate_pubkey: PublicKey,
 }
 
+impl<SyncCommitteeSize: Get<u32>> SyncCommittee<SyncCommitteeSize> {
+    pub fn is_empty(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
 /// Beacon block header as it is stored in the runtime storage. The block root is the
 /// Merklization of a BeaconHeader.
 #[derive(Clone, Default, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -358,6 +366,12 @@ pub struct BeaconHeader {
     pub state_root: Root,
     // The hash root of the beacon block body
     pub body_root: Root,
+}
+
+impl BeaconHeader {
+    pub fn is_empty(&self) -> bool {
+        self == &Self::default()
+    }
 }
 
 #[derive(
@@ -386,6 +400,7 @@ pub struct DepositData<PublicKeySize: Get<u32>, SignatureSize: Get<u32>> {
     pub signature: BoundedVec<u8, SignatureSize>,
 }
 
+/// Represents record of validator staking deposit
 #[derive(
     Default,
     Encode,
@@ -424,6 +439,7 @@ pub struct Checkpoint {
     pub root: H256,
 }
 
+/// Represents validator attestation
 #[derive(Clone, Default, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct AttestationData {
@@ -434,6 +450,7 @@ pub struct AttestationData {
     pub target: Checkpoint,
 }
 
+/// Represents indexed validator attestation
 #[derive(
     Default,
     Encode,
@@ -525,6 +542,7 @@ pub struct AttesterSlashing<AttestingIndicesSize: Get<u32>, SignatureSize: Get<u
     pub attestation_2: IndexedAttestation<AttestingIndicesSize, SignatureSize>,
 }
 
+/// Represents attestation from multiple validators aggregated by `AttestationData`
 #[derive(
     Default,
     Encode,
@@ -550,6 +568,7 @@ pub struct Attestation<ValidatorCommitteeSize: Get<u32>, SignatureSize: Get<u32>
     pub signature: BoundedVec<u8, SignatureSize>,
 }
 
+/// Represents voluntary exit of a validator
 #[derive(Clone, Default, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct VoluntaryExit {
@@ -557,6 +576,7 @@ pub struct VoluntaryExit {
     pub validator_index: u64,
 }
 
+/// Represents deposit made in eth1
 #[derive(Clone, Default, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct Eth1Data {
@@ -565,6 +585,7 @@ pub struct Eth1Data {
     pub block_hash: H256,
 }
 
+/// Represent aggregation of sync committee signatures
 #[derive(
     Default,
     Encode,
@@ -589,6 +610,8 @@ pub struct SyncAggregate<SyncCommitteeSize: Get<u32>, SignatureSize: Get<u32>> {
     pub sync_committee_signature: BoundedVec<u8, SignatureSize>,
 }
 
+/// Execution block header referenced as part of beacon block body
+/// It will become part of Light client data in Capella fork
 #[derive(
     Default,
     Encode,
@@ -631,6 +654,7 @@ pub struct ExecutionPayload<
     pub transactions_root: H256,
 }
 
+/// Represents beacon chain block body
 #[derive(
     Default,
     Encode,
@@ -693,6 +717,7 @@ pub struct Body<
     pub execution_payload: ExecutionPayload<FeeRecipientSize, LogsBloomSize, ExtraDataSize>,
 }
 
+/// Represents beacon chain block
 #[derive(
     Default,
     Encode,
