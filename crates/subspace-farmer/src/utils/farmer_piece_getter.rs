@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
-use subspace_farmer_components::plotting::PieceGetter;
+use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::Node;
@@ -38,6 +38,7 @@ where
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
+        retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
         let key = piece_index_hash.to_multihash().into();
@@ -51,7 +52,10 @@ where
             piece_cache.should_cache(&key)
         };
 
-        let maybe_piece = self.base_piece_getter.get_piece(piece_index).await?;
+        let maybe_piece = self
+            .base_piece_getter
+            .get_piece(piece_index, retry_policy)
+            .await?;
 
         if let Some(piece) = &maybe_piece {
             if maybe_should_store {
