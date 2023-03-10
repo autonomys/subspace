@@ -59,6 +59,7 @@ sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/subst
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-block-relay = { version = "0.1.0", path = "../subspace-block-relay" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }

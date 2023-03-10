@@ -67,6 +67,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use subspace_block_relay::{setup_block_relay_rr_handlers, BlockRelayGossipWorker};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -385,7 +386,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 /// Builds a new service for a full client.
 #[allow(clippy::type_complexity)]
 pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
-    config: SubspaceConfiguration,
+    mut config: SubspaceConfiguration,
     partial_components: PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
         FullBackend,
@@ -602,6 +603,7 @@ where
             })?;
     }
 
+    let block_relay_receiver = setup_block_relay_rr_handlers(&mut config);
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -752,6 +754,16 @@ where
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
     })?;
+
+    let block_relay_worker = BlockRelayGossipWorker::<Block>::new(network.clone());
+    task_manager.spawn_handle().spawn(
+        "block-relay-worker",
+        None,
+        block_relay_worker.run(
+            block_relay_receiver,
+            imported_block_notification_stream.subscribe(),
+        ),
+    );
 
     Ok(NewFull {
         task_manager,
