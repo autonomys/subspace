@@ -9733,6 +9733,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "sc-consensus-subspace",
  "sc-network",
+ "sc-network-common",
  "sc-network-gossip",
  "sc-service",
  "sc-utils",

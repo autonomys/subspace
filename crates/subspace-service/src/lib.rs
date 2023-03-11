@@ -67,7 +67,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use subspace_block_relay::{setup_block_relay_rr_handlers, BlockRelayGossipWorker};
+use subspace_block_relay::{init_block_relay_config, BlockRelayGossipWorker};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -604,7 +604,7 @@ where
     }
 
     assert!(config.network.request_response_protocols.len() == 0);
-    let block_relay_receiver = setup_block_relay_rr_handlers(&mut config);
+    let block_relay_receiver = init_block_relay_config(&mut config);
     assert!(config.network.request_response_protocols.len() == 1);
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
