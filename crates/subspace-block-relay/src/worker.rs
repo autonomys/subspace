@@ -5,17 +5,16 @@ use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_consensus_subspace::ImportedBlockNotification;
-use sc_network::PeerId;
+use sc_network::{IfDisconnected, NetworkRequest, PeerId};
 use sc_network_common::config::NonDefaultSetConfig;
 use sc_network_gossip::{
     GossipEngine, MessageIntent, TopicNotification, ValidationResult, Validator, ValidatorContext,
 };
-use sc_service::config::{IncomingRequest, RequestResponseConfig};
+use sc_service::config::{IncomingRequest, OutgoingResponse, RequestResponseConfig};
 use sc_service::Configuration;
 use sc_utils::mpsc::TracingUnboundedReceiver;
-//use sp_api::NumberFor;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, trace, warn};
@@ -30,37 +29,52 @@ const INBOUND_QUEUE_SIZE: usize = 1024;
 #[derive(Debug, Encode, Decode)]
 pub struct BlockAnnouncement<Block: BlockT>(NumberFor<Block>);
 
+type GossipNetworkService<Block> = sc_network::NetworkService<Block, <Block as BlockT>::Hash>;
+
 /// Thw gossip worker processes these events:
 /// 1. Block imported: announce to peers
 /// 2. Incoming Block announcement from peers: process, start the download handshake if needed
 /// 3. Incoming handshake requests from peers: process, send response if needed
 /// 4. Manage the outstanding handshake requests
 pub struct BlockRelayWorker<Block: BlockT> {
+    /// Network handle.
+    network: Arc<GossipNetworkService<Block>>,
+
+    /// Gossip engine handle.
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
+
+    /// Send/receive validator.
     _validator: Arc<BlockRelayValidator>,
+
+    /// Announcements in the process of being sent.
     pending_announcements: Arc<Mutex<HashSet<Vec<u8>>>>,
+
+    /// Block downloads in progress.
+    pending_downloads: Mutex<HashMap<NumberFor<Block>, BlockDownloadState>>,
 }
 
+#[derive(Debug)]
+pub struct BlockDownloadState;
+
 impl<Block: BlockT> BlockRelayWorker<Block> {
-    pub fn new<Network>(network: Network) -> Self
-    where
-        Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
-    {
+    pub fn new(network: Arc<GossipNetworkService<Block>>) -> Self {
         let pending_announcements = Arc::new(Mutex::new(HashSet::new()));
         let validator = Arc::new(BlockRelayValidator {
             pending_announcements: pending_announcements.clone(),
         });
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
-            network,
+            network.clone(),
             PROTOCOL_NAME,
             validator.clone(),
             None,
         )));
 
         Self {
+            network,
             gossip_engine,
             _validator: validator,
             pending_announcements,
+            pending_downloads: Mutex::new(HashMap::new()),
         }
     }
 
@@ -81,16 +95,18 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
             futures::select! {
                 import_notification = import_stream.next().fuse() => {
                     if let Some(import_notification) = import_notification {
-                        self.on_block_import(import_notification);
+                        self.on_block_import(import_notification).await;
                     }
                 }
                 gossip_message = gossip_messages.next().fuse() => {
                     if let Some(msg) = gossip_message {
-                        self.on_block_announcement(msg);
+                        self.on_block_announcement(msg).await;
                     }
                 },
-                rr_req = req_receiver.next().fuse() => {
-                    info!(target: LOG_TARGET, "BlockRelayWorker(): RR_request: {:?}", rr_req);
+                request = req_receiver.next().fuse() => {
+                    if let Some(request) = request {
+                        self.on_request(request).await;
+                    }
                 }
 
                 _ = gossip_engine.fuse() => {
@@ -102,7 +118,7 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
     }
 
     /// Handles the block import notifications.
-    fn on_block_import(&self, notification: ImportedBlockNotification<Block>) {
+    async fn on_block_import(&self, notification: ImportedBlockNotification<Block>) {
         // Announce the block.
         let announcement = BlockAnnouncement::<Block>(notification.block_number);
         let encoded = announcement.encode();
@@ -116,24 +132,25 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
         );
     }
 
-    /// Handles the incoming announcements.
-    fn on_block_announcement(&self, message: TopicNotification) {
+    /// Handles the incoming block announcements from peers.
+    async fn on_block_announcement(&self, message: TopicNotification) {
         let sender = match message.sender {
             Some(sender) => sender,
             None => return,
         };
 
-        let announcement =
-            match BlockAnnouncement::<Block>::decode(&mut &message.message[..]) {
-                Ok(announcement) => announcement,
-                Err(err) => {
-                    warn!(
+        let announcement = match BlockAnnouncement::<Block>::decode(&mut &message.message[..]) {
+            Ok(announcement) => announcement,
+            Err(err) => {
+                warn!(
                     target: LOG_TARGET,
                     "BlockRelayWorker::on_block_announcement(): failed to decode {:?}, err = {:?}",
-                    message, err);
-                    return;
-                }
-            };
+                    message,
+                    err
+                );
+                return;
+            }
+        };
 
         info!(
             target: LOG_TARGET,
@@ -141,6 +158,79 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
             sender,
             announcement,
         );
+
+        self.send_download_request(sender, announcement).await;
+    }
+
+    /// Handles the incoming requests from peers
+    async fn on_request(&self, request: IncomingRequest) {
+        info!(
+            target: LOG_TARGET,
+            "BlockRelayWorker(): on_request: {:?}", request
+        );
+
+        let announcement = match BlockAnnouncement::<Block>::decode(&mut &request.payload[..]) {
+            Ok(announcement) => announcement,
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "BlockRelayWorker::on_request(): failed to decode {:?}, err = {:?}",
+                    request,
+                    err
+                );
+                return;
+            }
+        };
+
+        let response = OutgoingResponse {
+            result: Ok(announcement.encode()),
+            reputation_changes: vec![],
+            sent_feedback: None,
+        };
+        if let Err(err) = request.pending_response.send(response) {
+            warn!(
+                target: LOG_TARGET,
+                "BlockRelayWorker::on_request(): failed to send response: err = {:?}", err
+            );
+        }
+    }
+
+    /// Sends the block download request for the announcement.
+    async fn send_download_request(&self, sender: PeerId, announcement: BlockAnnouncement<Block>) {
+        {
+            let mut pending_downloads = self.pending_downloads.lock();
+            if pending_downloads.contains_key(&announcement.0) {
+                return;
+            }
+            pending_downloads.insert(announcement.0, BlockDownloadState);
+        }
+
+        match self
+            .network
+            .request(
+                sender,
+                PROTOCOL_NAME.into(),
+                announcement.encode(),
+                IfDisconnected::TryConnect,
+            )
+            .await
+        {
+            Ok(bytes) => {
+                info!(
+                    target: LOG_TARGET,
+                    "BlockRelayWorker::send_download_request(): announcement = {:?}, received {} bytes",
+                    announcement, bytes.len()
+                );
+            }
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "BlockRelayWorker::send_download_request(): announcement = {:?}, request failed: {:?}",
+                    announcement, err
+                );
+            }
+        }
+        self.pending_downloads.lock().remove(&announcement.0);
     }
 }
 
