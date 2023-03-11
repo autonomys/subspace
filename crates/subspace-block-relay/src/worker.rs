@@ -18,7 +18,7 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, Numb
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 const LOG_TARGET: &str = "block_relay_worker";
 const PROTOCOL_NAME: &str = "/subspace/block-relay";
@@ -35,19 +35,19 @@ pub struct BlockAnnouncement<Block: BlockT>(NumberFor<Block>);
 /// 2. Incoming Block announcement from peers: process, start the download handshake if needed
 /// 3. Incoming handshake requests from peers: process, send response if needed
 /// 4. Manage the outstanding handshake requests
-pub struct BlockRelayGossipWorker<Block: BlockT> {
+pub struct BlockRelayWorker<Block: BlockT> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    _validator: Arc<BlockRelayGossipValidator>,
+    _validator: Arc<BlockRelayValidator>,
     pending_announcements: Arc<Mutex<HashSet<Vec<u8>>>>,
 }
 
-impl<Block: BlockT> BlockRelayGossipWorker<Block> {
+impl<Block: BlockT> BlockRelayWorker<Block> {
     pub fn new<Network>(network: Network) -> Self
     where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
     {
         let pending_announcements = Arc::new(Mutex::new(HashSet::new()));
-        let validator = Arc::new(BlockRelayGossipValidator {
+        let validator = Arc::new(BlockRelayValidator {
             pending_announcements: pending_announcements.clone(),
         });
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
@@ -70,7 +70,7 @@ impl<Block: BlockT> BlockRelayGossipWorker<Block> {
         mut import_stream: TracingUnboundedReceiver<ImportedBlockNotification<Block>>,
         mut req_receiver: Receiver<IncomingRequest>,
     ) {
-        info!(target: LOG_TARGET, "BlockRelayGossipWorker: started");
+        info!(target: LOG_TARGET, "BlockRelayWorker: started");
         let mut gossip_messages = Box::pin(
             self.gossip_engine
                 .lock()
@@ -81,8 +81,7 @@ impl<Block: BlockT> BlockRelayGossipWorker<Block> {
                         Err(err) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "BlockRelayGossipWorker::gossip_message(): failed to decode {:?}",
-                                err
+                                "BlockRelayWorker::gossip_message(): failed to decode {:?}", err
                             );
                             None
                         }
@@ -102,15 +101,15 @@ impl<Block: BlockT> BlockRelayGossipWorker<Block> {
                 }
                 gossip_message = gossip_messages.next().fuse() => {
                     if let Some(msg) = gossip_message {
-                        self.handle_gossip_message(msg);
+                        self.handle_announcement(msg);
                     }
                 },
                 rr_req = req_receiver.next().fuse() => {
-                    info!(target: LOG_TARGET, "BlockRelayGossipWorker(): RR_request: {:?}", rr_req);
+                    info!(target: LOG_TARGET, "BlockRelayWorker(): RR_request: {:?}", rr_req);
                 }
 
                 _ = gossip_engine.fuse() => {
-                    error!(target: LOG_TARGET, "BlockRelayGossipWorker(): gossip engine has terminated.");
+                    error!(target: LOG_TARGET, "BlockRelayWorker(): gossip engine has terminated.");
                     return;
                 }
             }
@@ -119,11 +118,6 @@ impl<Block: BlockT> BlockRelayGossipWorker<Block> {
 
     /// Handles the block import notification
     fn handle_import_notification(&self, notification: ImportedBlockNotification<Block>) {
-        info!(
-            target: LOG_TARGET,
-            "BlockRelayGossipWorker::handle_import_notification(): {:?}", notification
-        );
-
         // Announce the block.
         let announcement = BlockAnnouncement::<Block>(notification.block_number);
         let encoded = announcement.encode();
@@ -131,22 +125,27 @@ impl<Block: BlockT> BlockRelayGossipWorker<Block> {
         self.gossip_engine
             .lock()
             .gossip_message(topic::<Block>(), encoded, false);
-    }
-
-    /// Handles the incoming gossip messages
-    fn handle_gossip_message(&self, announcement: BlockAnnouncement<Block>) {
         info!(
             target: LOG_TARGET,
-            "BlockRelayGossipWorker::handle_gossip_message(): {:?}", announcement
+            "BlockRelayWorker::handle_import_notification(): sent announcement for {:?}",
+            notification
+        );
+    }
+
+    /// Handles the incoming announcements.
+    fn handle_announcement(&self, announcement: BlockAnnouncement<Block>) {
+        info!(
+            target: LOG_TARGET,
+            "BlockRelayWorker::handle_announcement(): received announcement {:?}", announcement
         );
     }
 }
 
-struct BlockRelayGossipValidator {
+struct BlockRelayValidator {
     pending_announcements: Arc<Mutex<HashSet<Vec<u8>>>>,
 }
 
-impl<Block: BlockT> Validator<Block> for BlockRelayGossipValidator {
+impl<Block: BlockT> Validator<Block> for BlockRelayValidator {
     fn validate(
         &self,
         _context: &mut dyn ValidatorContext<Block>,
@@ -155,9 +154,9 @@ impl<Block: BlockT> Validator<Block> for BlockRelayGossipValidator {
     ) -> ValidationResult<Block::Hash> {
         match BlockAnnouncement::<Block>::decode(&mut data) {
             Ok(decoded) => {
-                info!(
+                trace!(
                     target: LOG_TARGET,
-                    "BlockRelayGossipWorker::validate(): peer = {:?}, decoded = {:?}",
+                    "BlockRelayValidator::validate(): peer = {:?}, decoded = {:?}",
                     sender,
                     decoded
                 );
@@ -166,7 +165,7 @@ impl<Block: BlockT> Validator<Block> for BlockRelayGossipValidator {
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "BlockRelayGossipWorker::validate(): peer = {:?}, decode failed: {:?}",
+                    "BlockRelayValidator::validate(): peer = {:?}, decode failed: {:?}",
                     sender,
                     err
                 );
@@ -177,9 +176,11 @@ impl<Block: BlockT> Validator<Block> for BlockRelayGossipValidator {
 
     fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
         Box::new(move |topic, data| {
-            info!(
+            trace!(
                 target: LOG_TARGET,
-                "BlockRelayGossipWorker::message_expired(): topic = {:?}, data = {:?}", topic, data
+                "BlockRelayGossipWorker::message_expired(): topic = {:?}, data = {:?}",
+                topic,
+                data
             );
             !self.pending_announcements.lock().contains(data)
         })
@@ -194,7 +195,7 @@ impl<Block: BlockT> Validator<Block> for BlockRelayGossipValidator {
                 MessageIntent::ForcedBroadcast => "ForcedBroadcast",
                 MessageIntent::PeriodicRebroadcast => "PeriodicRebroadcast",
             };
-            info!(
+            trace!(
                 target: LOG_TARGET,
                 "BlockRelayGossipWorker::message_allowed(): topic = {:?}, data = {:?}, \
                 peer = {:?}, intent = {:?}",
