@@ -8,7 +8,7 @@ use sc_consensus_subspace::ImportedBlockNotification;
 use sc_network::PeerId;
 use sc_network_common::config::NonDefaultSetConfig;
 use sc_network_gossip::{
-    GossipEngine, MessageIntent, ValidationResult, Validator, ValidatorContext,
+    GossipEngine, MessageIntent, TopicNotification, ValidationResult, Validator, ValidatorContext,
 };
 use sc_service::config::{IncomingRequest, RequestResponseConfig};
 use sc_service::Configuration;
@@ -71,23 +71,8 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
         mut req_receiver: Receiver<IncomingRequest>,
     ) {
         info!(target: LOG_TARGET, "BlockRelayWorker: started");
-        let mut gossip_messages = Box::pin(
-            self.gossip_engine
-                .lock()
-                .messages_for(topic::<Block>())
-                .filter_map(|notification| async move {
-                    match BlockAnnouncement::<Block>::decode(&mut &notification.message[..]) {
-                        Ok(decoded) => Some(decoded),
-                        Err(err) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "BlockRelayWorker::gossip_message(): failed to decode {:?}", err
-                            );
-                            None
-                        }
-                    }
-                }),
-        );
+        let mut gossip_messages =
+            Box::pin(self.gossip_engine.lock().messages_for(topic::<Block>()));
 
         loop {
             let engine = self.gossip_engine.clone();
@@ -96,12 +81,12 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
             futures::select! {
                 import_notification = import_stream.next().fuse() => {
                     if let Some(import_notification) = import_notification {
-                        self.handle_import_notification(import_notification);
+                        self.on_block_import(import_notification);
                     }
                 }
                 gossip_message = gossip_messages.next().fuse() => {
                     if let Some(msg) = gossip_message {
-                        self.handle_announcement(msg);
+                        self.on_block_announcement(msg);
                     }
                 },
                 rr_req = req_receiver.next().fuse() => {
@@ -116,8 +101,8 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
         }
     }
 
-    /// Handles the block import notification
-    fn handle_import_notification(&self, notification: ImportedBlockNotification<Block>) {
+    /// Handles the block import notifications.
+    fn on_block_import(&self, notification: ImportedBlockNotification<Block>) {
         // Announce the block.
         let announcement = BlockAnnouncement::<Block>(notification.block_number);
         let encoded = announcement.encode();
@@ -127,16 +112,34 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
             .gossip_message(topic::<Block>(), encoded, false);
         info!(
             target: LOG_TARGET,
-            "BlockRelayWorker::handle_import_notification(): sent announcement for {:?}",
-            notification
+            "BlockRelayWorker::on_block_import(): sent announcement for {:?}", notification
         );
     }
 
     /// Handles the incoming announcements.
-    fn handle_announcement(&self, announcement: BlockAnnouncement<Block>) {
+    fn on_block_announcement(&self, message: TopicNotification) {
+        let sender = match message.sender {
+            Some(sender) => sender,
+            None => return,
+        };
+
+        let announcement =
+            match BlockAnnouncement::<Block>::decode(&mut &message.message[..]) {
+                Ok(announcement) => announcement,
+                Err(err) => {
+                    warn!(
+                    target: LOG_TARGET,
+                    "BlockRelayWorker::on_block_announcement(): failed to decode {:?}, err = {:?}",
+                    message, err);
+                    return;
+                }
+            };
+
         info!(
             target: LOG_TARGET,
-            "BlockRelayWorker::handle_announcement(): received announcement {:?}", announcement
+            "BlockRelayWorker::on_block_announcement(): sender = {:?}, announcement = {:?}",
+            sender,
+            announcement,
         );
     }
 }
@@ -152,25 +155,16 @@ impl<Block: BlockT> Validator<Block> for BlockRelayValidator {
         sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
-        match BlockAnnouncement::<Block>::decode(&mut data) {
-            Ok(decoded) => {
-                trace!(
-                    target: LOG_TARGET,
-                    "BlockRelayValidator::validate(): peer = {:?}, decoded = {:?}",
-                    sender,
-                    decoded
-                );
-                ValidationResult::ProcessAndKeep(topic::<Block>())
-            }
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "BlockRelayValidator::validate(): peer = {:?}, decode failed: {:?}",
-                    sender,
-                    err
-                );
-                ValidationResult::Discard
-            }
+        // TODO: substrate requires decoding twice, once during validate and again
+        // during the processing.
+        if let Err(err) = BlockAnnouncement::<Block>::decode(&mut data) {
+            warn!(
+                target: LOG_TARGET,
+                "BlockRelayValidator::validate(): peer = {:?}, decode failed: {:?}", sender, err
+            );
+            ValidationResult::Discard
+        } else {
+            ValidationResult::ProcessAndKeep(topic::<Block>())
         }
     }
 
