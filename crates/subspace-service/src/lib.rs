@@ -603,7 +603,9 @@ where
             })?;
     }
 
+    assert!(config.network.request_response_protocols.len() == 0);
     let block_relay_receiver = setup_block_relay_rr_handlers(&mut config);
+    assert!(config.network.request_response_protocols.len() == 1);
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -760,8 +762,8 @@ where
         "block-relay-worker",
         None,
         block_relay_worker.run(
-            block_relay_receiver,
             imported_block_notification_stream.subscribe(),
+            block_relay_receiver,
         ),
     );
 
