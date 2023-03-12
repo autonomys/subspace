@@ -639,19 +639,19 @@ where
                 match fraud_proof {
                     FraudProof::InvalidStateTransition(fraud_proof) => {
                         let bad_receipt_number = fraud_proof.parent_number + 1;
-                        let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
+                        let bad_receipt_hash = fraud_proof.bad_receipt_hash;
 
                         // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
                         // in case the bad receipt and corresponding farud proof are included in the same block.
                         if let Some(index) = bad_receipts_to_write
                             .iter()
-                            .map(|(_, hash, _)| hash)
-                            .position(|v| *v == bad_bundle_hash)
+                            .map(|(_, receipt_hash, _)| receipt_hash)
+                            .position(|v| *v == bad_receipt_hash)
                         {
                             bad_receipts_to_write.swap_remove(index);
                             None
                         } else {
-                            Some((bad_receipt_number, bad_bundle_hash))
+                            Some((bad_receipt_number, bad_receipt_hash))
                         }
                     }
                     _ => None,
@@ -659,25 +659,25 @@ where
             })
             .collect::<Vec<_>>();
 
-        for (bad_receipt_number, bad_signed_bundle_hash, mismatch_info) in bad_receipts_to_write {
+        for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
             crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
                 &*self.client,
                 bad_receipt_number,
-                bad_signed_bundle_hash,
+                bad_receipt_hash,
                 mismatch_info,
             )?;
         }
 
-        for (bad_receipt_number, bad_signed_bundle_hash) in bad_receipts_to_delete {
+        for (bad_receipt_number, bad_receipt_hash) in bad_receipts_to_delete {
             if let Err(e) = crate::aux_schema::delete_bad_receipt(
                 &*self.client,
                 bad_receipt_number,
-                bad_signed_bundle_hash,
+                bad_receipt_hash,
             ) {
                 tracing::error!(
                     error = ?e,
                     ?bad_receipt_number,
-                    ?bad_signed_bundle_hash,
+                    ?bad_receipt_hash,
                     "Failed to delete bad receipt"
                 );
             }
@@ -692,7 +692,7 @@ where
     where
         PCB: BlockT,
     {
-        if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
+        if let Some((bad_receipt_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
                 &*self.client,
             )?
@@ -711,7 +711,7 @@ where
                     self.domain_id,
                     trace_mismatch_index,
                     &local_receipt,
-                    bad_signed_bundle_hash,
+                    bad_receipt_hash,
                 )
                 .map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(

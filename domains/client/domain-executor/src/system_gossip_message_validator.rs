@@ -131,8 +131,6 @@ where
             Block::Hash,
         >,
     ) -> Result<Action, Self::Error> {
-        let signed_bundle_hash = signed_bundle.hash();
-
         let SignedBundle {
             bundle,
             bundle_solution,
@@ -176,7 +174,6 @@ where
                 self.gossip_message_validator
                     .validate_gossiped_execution_receipt::<PBlock, _>(
                         &self.parent_chain,
-                        signed_bundle_hash,
                         receipt,
                         domain_id,
                     )?;

@@ -175,7 +175,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let good_invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: DomainId::SYSTEM,
-        bad_signed_bundle_hash: Hash::random(),
+        bad_receipt_hash: Hash::random(),
         parent_number: parent_number_ferdie,
         parent_hash: parent_hash_ferdie,
         pre_state_root: *parent_header.state_root(),
