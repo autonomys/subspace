@@ -2302,6 +2302,7 @@ dependencies = [
  "sp-keystore",
  "sp-messenger",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-transaction-pool",
@@ -2345,6 +2346,7 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",
@@ -9323,6 +9325,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-receipts"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
+ "sp-std",
+]
+
+[[package]]
 name = "sp-rpc"
 version = "6.0.0"
 source = "git+https://github.com/subspace/substrate?rev=456cfad45a178617f6886ec400c312f2fea59232#456cfad45a178617f6886ec400c312f2fea59232"
@@ -9849,6 +9862,7 @@ dependencies = [
  "sp-domain-digests",
  "sp-domains",
  "sp-keyring",
+ "sp-receipts",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
@@ -9998,6 +10012,7 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",
@@ -10067,6 +10082,7 @@ dependencies = [
  "sp-domains",
  "sp-objects",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-timestamp",
@@ -10159,6 +10175,7 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",
@@ -10536,6 +10553,7 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",

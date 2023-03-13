@@ -51,6 +51,7 @@ sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domain
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232", default-features = false, version = "4.0.0-dev"}
 sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-receipts = { version = "0.1.0", default-features = false, path = "../sp-receipts" }
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
@@ -106,6 +107,7 @@ std = [
 	"sp-inherents/std",
 	"sp-objects/std",
 	"sp-offchain/std",
+	"sp-receipts/std",
 	"sp-runtime/std",
 	"sp-session/std",
 	"sp-std/std",

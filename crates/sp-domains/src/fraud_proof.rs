@@ -81,6 +81,9 @@ impl ExecutionPhase {
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
+    /// `pre_state_root` in the invalid state transition proof is invalid.
+    #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
+    InvalidPreStateRoot,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",
