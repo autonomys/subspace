@@ -34,7 +34,7 @@ use subspace_core_primitives::{
     Piece, PieceIndex, RootBlock, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
     RECORD_SIZE,
 };
-use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
 
 struct WaitLinkError<B: BlockT> {
@@ -106,7 +106,6 @@ where
             Kzg::new(test_public_parameters()),
             record_roots,
         )),
-        false,
     );
 
     debug!("Waiting for connected peers...");
@@ -134,7 +133,7 @@ where
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
-                .get_piece(piece_index)
+                .get_piece(piece_index, RetryPolicy::Limited(0))
                 .await
                 .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
