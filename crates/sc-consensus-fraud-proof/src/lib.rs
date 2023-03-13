@@ -66,7 +66,7 @@ where
     Client::Api: ExecutorApi<Block, DomainHash>,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
         + Send,
-    Verifier: VerifyFraudProof + Send,
+    Verifier: VerifyFraudProof<Block> + Send,
     DomainHash: Encode + Decode + Send,
 {
     type Error = ConsensusError;

@@ -7,7 +7,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_trie::StorageProof;
@@ -78,13 +78,16 @@ where
         }
     }
 
-    pub(crate) fn generate_proof(
+    pub(crate) fn generate_proof<PCB>(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         bad_signed_bundle_hash: H256,
-    ) -> Result<FraudProof, FraudProofError> {
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+    {
         let block_hash = local_receipt.domain_hash;
         let block_number = to_number_primitive(local_receipt.primary_number);
 
@@ -113,7 +116,7 @@ where
         )?;
 
         // TODO: abstract the execution proof impl to be reusable in the test.
-        let fraud_proof = if local_trace_index == 0 {
+        let invalid_state_transition_proof = if local_trace_index == 0 {
             // `initialize_block` execution proof.
             let pre_state_root = as_h256(parent_header.state_root())?;
             let post_state_root = as_h256(local_root)?;
@@ -135,7 +138,7 @@ where
                 None,
             )?;
 
-            FraudProof {
+            InvalidStateTransitionProof {
                 domain_id,
                 bad_signed_bundle_hash,
                 parent_number,
@@ -171,7 +174,7 @@ where
                 Some((delta, post_delta_root)),
             )?;
 
-            FraudProof {
+            InvalidStateTransitionProof {
                 domain_id,
                 bad_signed_bundle_hash,
                 parent_number,
@@ -194,7 +197,7 @@ where
             )?;
 
             // TODO: proof should be a CompactProof.
-            FraudProof {
+            InvalidStateTransitionProof {
                 domain_id,
                 bad_signed_bundle_hash,
                 parent_number,
@@ -206,7 +209,9 @@ where
             }
         };
 
-        Ok(fraud_proof)
+        Ok(FraudProof::InvalidStateTransition(
+            invalid_state_transition_proof,
+        ))
     }
 
     fn header(&self, hash: Block::Hash) -> Result<Block::Header, sp_blockchain::Error> {

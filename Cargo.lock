@@ -9852,6 +9852,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
+ "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-test-utils",
  "tempfile",

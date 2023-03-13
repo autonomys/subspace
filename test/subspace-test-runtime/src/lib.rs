@@ -50,7 +50,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata, H256};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
 use sp_runtime::traits::{
@@ -908,12 +908,12 @@ fn extract_receipts(
 fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof> {
+) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id == domain_id =>
+                if fraud_proof.domain_id() == domain_id =>
             {
                 Some(fraud_proof)
             }
@@ -1143,20 +1143,8 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
             Domains::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
-        fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, <Block as BlockT>::Hash>,
-        ) {
-            Domains::submit_bundle_equivocation_proof_unsigned(bundle_equivocation_proof)
-        }
-
-        fn submit_invalid_transaction_proof_unsigned(
-            invalid_transaction_proof: InvalidTransactionProof,
-        ) {
-            Domains::submit_invalid_transaction_proof_unsigned(invalid_transaction_proof)
         }
 
         fn extract_system_bundles(
@@ -1186,7 +1174,10 @@ impl_runtime_apis! {
             extract_receipts(extrinsics, domain_id)
         }
 
-        fn extract_fraud_proofs(extrinsics: Vec<<Block as BlockT>::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof> {
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
             extract_fraud_proofs(extrinsics, domain_id)
         }
 

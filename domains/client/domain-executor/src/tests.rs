@@ -12,7 +12,7 @@ use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
     Bundle, BundleHeader, BundleSolution, DomainId, ExecutorApi, ExecutorPair, ProofOfElection,
@@ -173,7 +173,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let parent_hash_ferdie = header_ferdie.hash();
     let parent_number_ferdie = *header_ferdie.number();
 
-    let valid_fraud_proof = FraudProof {
+    let good_invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: DomainId::SYSTEM,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_ferdie,
@@ -183,6 +183,8 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         proof: storage_proof,
         execution_phase: execution_phase.clone(),
     };
+    let valid_fraud_proof =
+        FraudProof::InvalidStateTransition(good_invalid_state_transition_proof.clone());
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_fraud_proof {
@@ -204,10 +206,12 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .expect("Error at submitting a valid fraud proof");
     assert_eq!(tx_hash, expected_tx_hash);
 
-    let invalid_fraud_proof = FraudProof {
+    let bad_invalid_state_transition_proof = InvalidStateTransitionProof {
         post_state_root: Hash::random(),
-        ..valid_fraud_proof
+        ..good_invalid_state_transition_proof
     };
+    let invalid_fraud_proof =
+        FraudProof::InvalidStateTransition(bad_invalid_state_transition_proof);
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_fraud_proof {

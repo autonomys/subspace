@@ -180,12 +180,15 @@ mod pallet {
         // TODO: proper weight
         #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
+        pub fn submit_fraud_proof(
+            origin: OriginFor<T>,
+            fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
+        ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id.is_system() {
+            if fraud_proof.domain_id().is_system() {
                 pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
                     .map_err(Error::<T>::from)?;
             }
@@ -739,7 +742,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::BlockNumber, T::Hash>) {
         let call = Call::submit_fraud_proof { fraud_proof };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
@@ -748,42 +751,6 @@ where
             }
             Err(()) => {
                 log::error!(target: "runtime::domains", "Error submitting fraud proof");
-            }
-        }
-    }
-
-    /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
-    pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
-    ) {
-        let call = Call::submit_bundle_equivocation_proof {
-            bundle_equivocation_proof,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted bundle equivocation proof");
-            }
-            Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting bundle equivocation proof");
-            }
-        }
-    }
-
-    /// Submits an unsigned extrinsic [`Call::submit_invalid_transaction_proof`].
-    pub fn submit_invalid_transaction_proof_unsigned(
-        invalid_transaction_proof: InvalidTransactionProof,
-    ) {
-        let call = Call::submit_invalid_transaction_proof {
-            invalid_transaction_proof,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted invalid transaction proof")
-            }
-            Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting invalid transaction proof");
             }
         }
     }

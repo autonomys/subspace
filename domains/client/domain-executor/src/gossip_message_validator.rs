@@ -1,4 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerator};
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
 use futures::FutureExt;
@@ -8,9 +9,9 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorApi, ExecutorPublicKey};
+use sp_domains::{DomainId, ExecutorPublicKey};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 
@@ -45,19 +46,17 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 }
 
 /// Base domain gossip message validator.
-pub struct GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E> {
-    primary_chain_client: Arc<PClient>,
+pub struct GossipMessageValidator<Block, PBlock, Client, Backend, E> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, Client, Backend, E> Clone
+    for GossipMessageValidator<Block, PBlock, Client, Backend, E>
 {
     fn clone(&self) -> Self {
         Self {
-            primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
             spawner: self.spawner.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
@@ -65,8 +64,7 @@ impl<Block, PBlock, Client, PClient, Backend, E> Clone
     }
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E>
-    GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, Client, Backend, E> GossipMessageValidator<Block, PBlock, Client, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -78,20 +76,16 @@ where
         + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     pub(crate) fn new(
-        primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
         Self {
-            primary_chain_client,
             client,
             spawner,
             fraud_proof_generator,
@@ -149,13 +143,43 @@ where
         }
     }
 
-    pub(crate) fn validate_execution_receipt(
+    pub(crate) fn validate_gossiped_execution_receipt<PCB, ParentChain>(
+        &self,
+        parent_chain: &ParentChain,
+        signed_bundle_hash: H256,
+        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
+        domain_id: DomainId,
+    ) -> Result<(), GossipMessageError>
+    where
+        PCB: BlockT,
+        ParentChain: ParentChainInterface<PCB>,
+    {
+        let head_receipt_number = parent_chain.head_receipt_number(parent_chain.best_hash())?;
+        let head_receipt_number = to_number_primitive(head_receipt_number);
+
+        if let Some(fraud_proof) = self.validate_execution_receipt::<PCB>(
+            signed_bundle_hash,
+            execution_receipt,
+            head_receipt_number,
+            domain_id,
+        )? {
+            parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn validate_execution_receipt<PCB>(
         &self,
         signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
         domain_id: DomainId,
-    ) -> Result<Option<FraudProof>, GossipMessageError> {
+    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, GossipMessageError>
+    where
+        PCB: BlockT,
+    {
         let primary_number = to_number_primitive(execution_receipt.primary_number);
 
         // Just ignore it if the receipt is too old and has been pruned.
@@ -197,7 +221,7 @@ where
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof(
+            let fraud_proof = self.fraud_proof_generator.generate_proof::<PCB>(
                 domain_id,
                 trace_mismatch_index,
                 &local_receipt,

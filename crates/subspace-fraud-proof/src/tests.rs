@@ -10,10 +10,11 @@ use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof};
+use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use subspace_runtime_primitives::opaque::Block;
 use tempfile::TempDir;
 
 // Use the system domain id for testing
@@ -191,7 +192,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
         ferdie.backend.clone(),
         ferdie.executor.clone(),
@@ -202,7 +203,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let parent_hash_alice = ferdie.client.info().best_hash;
     let parent_number_alice = ferdie.client.info().best_number;
 
-    let fraud_proof = FraudProof {
+    let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
@@ -212,6 +213,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         proof: storage_proof,
         execution_phase,
     };
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
     // Test extrinsic execution.
@@ -257,7 +259,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             intermediate_roots[target_extrinsic_index + 1].into()
         );
 
-        let fraud_proof = FraudProof {
+        let invalid_state_transition_proof = InvalidStateTransitionProof {
             domain_id: TEST_DOMAIN_ID,
             bad_signed_bundle_hash: Hash::random(),
             parent_number: parent_number_alice,
@@ -267,6 +269,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             proof: storage_proof,
             execution_phase,
         };
+        let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
         assert!(proof_verifier.verify(&fraud_proof).is_ok());
     }
 
@@ -304,7 +307,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, *header.state_root());
 
-    let fraud_proof = FraudProof {
+    let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
@@ -314,6 +317,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         proof: storage_proof,
         execution_phase,
     };
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
@@ -469,7 +473,7 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
         ferdie.backend.clone(),
         ferdie.executor.clone(),
@@ -480,7 +484,7 @@ async fn invalid_execution_proof_should_not_work() {
     let parent_hash_alice = ferdie.client.info().best_hash;
     let parent_number_alice = ferdie.client.info().best_number;
 
-    let fraud_proof = FraudProof {
+    let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
@@ -490,9 +494,10 @@ async fn invalid_execution_proof_should_not_work() {
         proof: proof1,
         execution_phase: execution_phase0.clone(),
     };
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
-    let fraud_proof = FraudProof {
+    let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
@@ -502,9 +507,10 @@ async fn invalid_execution_proof_should_not_work() {
         proof: proof0.clone(),
         execution_phase: execution_phase1,
     };
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
     assert!(proof_verifier.verify(&fraud_proof).is_err());
 
-    let fraud_proof = FraudProof {
+    let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_signed_bundle_hash: Hash::random(),
         parent_number: parent_number_alice,
@@ -514,5 +520,6 @@ async fn invalid_execution_proof_should_not_work() {
         proof: proof0,
         execution_phase: execution_phase0,
     };
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
