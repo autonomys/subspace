@@ -143,8 +143,6 @@ where
 {
     /// Block number
     pub block_number: NumberFor<Block>,
-    /// Fork choice
-    pub fork_choice: ForkChoiceStrategy,
     /// Sender for pausing the block import when executor is not fast enough to process
     /// the primary block.
     pub block_import_acknowledgement_sender: mpsc::Sender<()>,
@@ -1168,7 +1166,6 @@ where
         self.imported_block_notification_sender
             .notify(move || ImportedBlockNotification {
                 block_number,
-                fork_choice,
                 block_import_acknowledgement_sender,
             });
 

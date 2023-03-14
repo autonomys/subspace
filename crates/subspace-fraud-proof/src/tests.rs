@@ -6,7 +6,6 @@ use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
-use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
@@ -118,7 +117,6 @@ async fn execution_proof_creation_and_verification_should_work() {
     let primary_info = (
         ferdie.client.info().best_hash,
         ferdie.client.info().best_number,
-        ForkChoiceStrategy::LongestChain,
     );
     alice.executor.clone().process_bundles(primary_info).await;
 

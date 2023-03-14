@@ -7,8 +7,7 @@ use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
-use sc_consensus::ForkChoiceStrategy;
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
@@ -80,6 +79,7 @@ where
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + BlockchainEvents<PBlock>
         + Send
         + Sync
         + 'static,
@@ -108,9 +108,7 @@ where
     where
         SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
-        IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)>
-            + Send
-            + 'static,
+        IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     {
         let active_leaves =
@@ -188,10 +186,7 @@ where
     // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
     // `set_new_code_should_work` test to do an actual runtime upgrade
     #[doc(hidden)]
-    pub async fn process_bundles(
-        self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
-    ) {
+    pub async fn process_bundles(self, primary_info: (PBlock::Hash, NumberFor<PBlock>)) {
         if let Err(err) = self.bundle_processor.process_bundles(primary_info).await {
             tracing::error!(?primary_info, ?err, "Error at processing bundles.");
         }

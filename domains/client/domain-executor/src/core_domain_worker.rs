@@ -23,8 +23,8 @@ use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
-use sc_consensus::{BlockImport, ForkChoiceStrategy};
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
+use sc_consensus::BlockImport;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -107,11 +107,12 @@ pub(super) async fn start_worker<
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + BlockchainEvents<PBlock>
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -140,8 +141,7 @@ pub(super) async fn start_worker<
                          hash,
                          parent_hash: _,
                          number,
-                         fork_choice,
-                     }| (hash, number, fork_choice),
+                     }| (hash, number),
                 )
                 .collect(),
             Box::pin(imported_block_notification_stream),

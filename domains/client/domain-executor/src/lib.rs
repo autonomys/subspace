@@ -110,7 +110,6 @@ pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
-use sc_consensus::ForkChoiceStrategy;
 use sc_network::NetworkService;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
@@ -156,7 +155,7 @@ pub struct EssentialExecutorParams<
 > where
     Block: BlockT,
     PBlock: BlockT,
-    IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
 {
     pub primary_chain_client: Arc<PClient>,
@@ -214,7 +213,6 @@ where
                 hash,
                 parent_hash,
                 number,
-                fork_choice: ForkChoiceStrategy::LongestChain,
             })
         })
         .collect::<Vec<_>>();
@@ -226,7 +224,6 @@ where
         hash: best_block.hash(),
         parent_hash: *best_block.parent_hash(),
         number: *best_block.number(),
-        fork_choice: ForkChoiceStrategy::LongestChain,
     });
 
     /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
