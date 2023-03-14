@@ -128,13 +128,13 @@ where
                 parent_header.hash(),
                 Default::default(),
             );
-            let execution_phase = ExecutionPhase::InitializeBlock {
-                call_data: new_header.encode(),
-            };
+            let execution_phase = ExecutionPhase::InitializeBlock;
+            let initialize_block_call_data = new_header.encode();
 
             let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
                 parent_header.hash(),
                 &execution_phase,
+                &initialize_block_call_data,
                 None,
             )?;
 
@@ -153,6 +153,7 @@ where
             let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
             let execution_phase = ExecutionPhase::FinalizeBlock;
+            let finalize_block_call_data = Vec::new();
 
             let block_builder = BlockBuilder::new(
                 &*self.client,
@@ -171,6 +172,7 @@ where
             let proof = prover.prove_execution(
                 parent_header.hash(),
                 &execution_phase,
+                &finalize_block_call_data,
                 Some((delta, post_delta_root)),
             )?;
 
@@ -243,9 +245,12 @@ where
             })?
             .encode();
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic {
-            call_data: encoded_extrinsic,
-        };
+        let execution_phase = ExecutionPhase::ApplyExtrinsic(
+            extrinsic_index
+                .try_into()
+                .expect("extrinsic_index must fit into u32"),
+        );
+        let apply_extrinsic_call_data = encoded_extrinsic;
 
         let block_builder = BlockBuilder::new(
             &*self.client,
@@ -263,6 +268,7 @@ where
         let execution_proof = prover.prove_execution(
             parent_header.hash(),
             &execution_phase,
+            &apply_extrinsic_call_data,
             Some((delta, post_delta_root)),
         )?;
 

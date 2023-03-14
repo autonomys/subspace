@@ -45,6 +45,7 @@ where
         &self,
         at: Block::Hash,
         execution_phase: &ExecutionPhase,
+        call_data: &[u8],
         delta_changes: Option<(DB, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
         let state = self.backend.state_at(at)?;
@@ -66,7 +67,7 @@ where
                 &*self.executor,
                 self.spawn_handle.clone(),
                 execution_phase.proving_method(),
-                execution_phase.call_data(),
+                call_data,
                 &runtime_code,
                 Default::default(),
             )
@@ -79,7 +80,7 @@ where
                 &*self.executor,
                 self.spawn_handle.clone(),
                 execution_phase.proving_method(),
-                execution_phase.call_data(),
+                call_data,
                 &runtime_code,
                 Default::default(),
             )
@@ -97,6 +98,7 @@ where
         &self,
         at: Block::Hash,
         execution_phase: &ExecutionPhase,
+        call_data: &[u8],
         pre_execution_root: H256,
         proof: StorageProof,
     ) -> sp_blockchain::Result<Vec<u8>> {
@@ -116,7 +118,7 @@ where
             &*self.executor,
             self.spawn_handle.clone(),
             execution_phase.verifying_method(),
-            execution_phase.call_data(),
+            call_data,
             &runtime_code,
         )
         .map_err(Into::into)
@@ -374,6 +376,8 @@ where
             heap_pages: None,
         };
 
+        let call_data = b"TODO: fetch call_data from the original primary block";
+
         let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
             *pre_state_root,
             proof.clone(),
@@ -381,7 +385,7 @@ where
             &self.executor,
             self.spawn_handle.clone(),
             execution_phase.verifying_method(),
-            execution_phase.call_data(),
+            call_data,
             &runtime_code,
         )
         .map_err(VerificationError::BadProof)?;

@@ -9,16 +9,13 @@ use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::AccountId;
 
-/// Execution phase along with an optional encoded call data.
-///
-/// Each execution phase has a different method for the runtime call.
+/// A phase of a block's execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
-    InitializeBlock { call_data: Vec<u8> },
+    InitializeBlock,
     /// Executes some extrinsic.
-    /// TODO: maybe optimized to not include the whole extrinsic blob in the future.
-    ApplyExtrinsic { call_data: Vec<u8> },
+    ApplyExtrinsic(u32),
     /// Executes the `finalize_block` hook.
     FinalizeBlock,
 }
@@ -29,8 +26,8 @@ impl ExecutionPhase {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
@@ -42,17 +39,9 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
-        }
-    }
-
-    /// Returns the call data used to generate and verify the proof.
-    pub fn call_data(&self) -> &[u8] {
-        match self {
-            Self::InitializeBlock { call_data } | Self::ApplyExtrinsic { call_data } => call_data,
-            Self::FinalizeBlock => Default::default(),
         }
     }
 
@@ -62,13 +51,13 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            ExecutionPhase::InitializeBlock { .. } | ExecutionPhase::ApplyExtrinsic { .. } => {
+            Self::InitializeBlock | Self::ApplyExtrinsic(_) => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
                     .map_err(VerificationError::StorageRootDecode)
             }
-            ExecutionPhase::FinalizeBlock => {
+            Self::FinalizeBlock => {
                 let new_header = Header::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::HeaderDecode)?;
                 Ok(*new_header.state_root())

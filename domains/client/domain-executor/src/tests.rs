@@ -152,14 +152,14 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         parent_header.hash(),
         digest,
     );
-    let execution_phase = ExecutionPhase::InitializeBlock {
-        call_data: new_header.encode(),
-    };
+    let execution_phase = ExecutionPhase::InitializeBlock;
+    let initialize_block_call_data = new_header.encode();
 
     let storage_proof = prover
         .prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
             parent_header.hash(),
             &execution_phase,
+            &initialize_block_call_data,
             None,
         )
         .expect("Create `initialize_block` proof");
@@ -180,7 +180,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
-        execution_phase: execution_phase.clone(),
+        execution_phase,
     };
     let valid_fraud_proof =
         FraudProof::InvalidStateTransition(good_invalid_state_transition_proof.clone());
