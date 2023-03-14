@@ -248,7 +248,7 @@ where
         domain_id: DomainId,
         receipt_hash: H256,
         pre_state_root: H256,
-        _execution_phase: &ExecutionPhase,
+        execution_phase: &ExecutionPhase,
     ) -> bool {
         let trace = self
             .client
@@ -256,19 +256,22 @@ where
             .execution_trace(self.client.info().best_hash, domain_id, receipt_hash)
             .unwrap_or_default();
 
-        // TODO: Get trace index from execution phase
-        let trace_index_of_pre_state_root = 0usize;
-
-        match trace.get(trace_index_of_pre_state_root) {
-            Some(expected_pre_state_root) if *expected_pre_state_root == pre_state_root => true,
-            res => {
-                tracing::debug!(
-                    "Invalid `pre_state_root` in InvalidStateTransitionProof for {domain_id:?}, \
-                    trace at index {trace_index_of_pre_state_root} on chain is {res:?}, \
-                    got: {pre_state_root:?}",
-                );
-                false
-            }
+        match execution_phase {
+            ExecutionPhase::InitializeBlock => todo!("Get state_root of parent domain block"),
+            ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
+            | ExecutionPhase::FinalizeBlock {
+                total_extrinsics: trace_index_of_pre_state_root,
+            } => match trace.get(*trace_index_of_pre_state_root as usize) {
+                Some(expected_pre_state_root) if *expected_pre_state_root == pre_state_root => true,
+                res => {
+                    tracing::debug!(
+                        "Invalid `pre_state_root` in InvalidStateTransitionProof for {domain_id:?}, \
+                        trace at index {trace_index_of_pre_state_root} on chain is {res:?}, \
+                        got: {pre_state_root:?}",
+                    );
+                    false
+                }
+            },
         }
     }
 }

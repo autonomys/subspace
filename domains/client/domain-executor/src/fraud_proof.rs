@@ -152,7 +152,13 @@ where
             // `finalize_block` execution proof.
             let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
-            let execution_phase = ExecutionPhase::FinalizeBlock;
+            let extrinsics = self.block_body(block_hash)?;
+            let execution_phase = ExecutionPhase::FinalizeBlock {
+                total_extrinsics: extrinsics
+                    .len()
+                    .try_into()
+                    .expect("extrinsic_index must fit into u32"),
+            };
             let finalize_block_call_data = Vec::new();
 
             let block_builder = BlockBuilder::new(
@@ -162,7 +168,7 @@ where
                 RecordProof::No,
                 Default::default(),
                 &*self.backend,
-                self.block_body(block_hash)?,
+                extrinsics,
             )?;
             let storage_changes = block_builder.prepare_storage_changes_before_finalize_block()?;
 

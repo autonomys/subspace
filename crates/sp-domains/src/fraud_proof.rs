@@ -17,7 +17,7 @@ pub enum ExecutionPhase {
     /// Executes some extrinsic.
     ApplyExtrinsic(u32),
     /// Executes the `finalize_block` hook.
-    FinalizeBlock,
+    FinalizeBlock { total_extrinsics: u32 },
 }
 
 impl ExecutionPhase {
@@ -28,7 +28,7 @@ impl ExecutionPhase {
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
             Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
-            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
 
@@ -41,7 +41,7 @@ impl ExecutionPhase {
         match self {
             Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
-            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
 
@@ -57,7 +57,7 @@ impl ExecutionPhase {
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
                     .map_err(VerificationError::StorageRootDecode)
             }
-            Self::FinalizeBlock => {
+            Self::FinalizeBlock { .. } => {
                 let new_header = Header::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::HeaderDecode)?;
                 Ok(*new_header.state_root())

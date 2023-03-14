@@ -287,7 +287,9 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
 
-    let execution_phase = ExecutionPhase::FinalizeBlock;
+    let execution_phase = ExecutionPhase::FinalizeBlock {
+        total_extrinsics: test_txs.len() as u32,
+    };
     let finalize_block_call_data = Vec::new();
 
     let storage_proof = prover
