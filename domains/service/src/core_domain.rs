@@ -1,7 +1,9 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::xdm_verifier::CoreDomainXDMVerifier;
-use domain_client_executor::{CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams};
+use domain_client_executor::{
+    CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
+};
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
@@ -406,8 +408,11 @@ where
     .await?;
 
     let gossip_message_validator =
-        CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, PClient, _, _, _>::new(
-            primary_chain_client,
+        CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, _, _, _, _>::new(
+            CoreDomainParentChain::<_, SBlock, PBlock>::new(
+                system_domain_client.clone(),
+                domain_id,
+            ),
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             transaction_pool.clone(),

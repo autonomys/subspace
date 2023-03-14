@@ -573,7 +573,7 @@ impl_runtime_apis! {
             MaximumReceiptDrift::get()
         }
 
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
 

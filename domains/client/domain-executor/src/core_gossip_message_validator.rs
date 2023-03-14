@@ -1,15 +1,14 @@
 use crate::fraud_proof::FraudProofGenerator;
 use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator};
-use crate::utils::to_number_primitive;
-use crate::{ExecutionReceiptFor, TransactionFor};
+use crate::parent_chain::ParentChainInterface;
+use crate::TransactionFor;
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_core::H256;
-use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
-use sp_domains::{Bundle, DomainId, ExecutorApi, SignedBundle};
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::{Bundle, SignedBundle};
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
@@ -23,42 +22,43 @@ pub struct CoreGossipMessageValidator<
     PBlock,
     Client,
     SClient,
-    PClient,
     TransactionPool,
     Backend,
     E,
+    ParentChain,
 > where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
 {
-    primary_chain_client: Arc<PClient>,
+    parent_chain: ParentChain,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>,
+    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, Backend, E>,
     _phantom_data: PhantomData<(SBlock, SClient)>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> Clone
+impl<Block, SBlock, PBlock, Client, SClient, TransactionPool, Backend, E, ParentChain> Clone
     for CoreGossipMessageValidator<
         Block,
         SBlock,
         PBlock,
         Client,
         SClient,
-        PClient,
         TransactionPool,
         Backend,
         E,
+        ParentChain,
     >
 where
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
+    ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
-            primary_chain_client: self.primary_chain_client.clone(),
+            parent_chain: self.parent_chain.clone(),
             client: self.client.clone(),
             transaction_pool: self.transaction_pool.clone(),
             gossip_message_validator: self.gossip_message_validator.clone(),
@@ -67,17 +67,17 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, TransactionPool, Backend, E, ParentChain>
     CoreGossipMessageValidator<
         Block,
         SBlock,
         PBlock,
         Client,
         SClient,
-        PClient,
         TransactionPool,
         Backend,
         E,
+        ParentChain,
     >
 where
     Block: BlockT,
@@ -93,66 +93,32 @@ where
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
+    ParentChain: ParentChainInterface<SBlock>,
 {
     pub fn new(
-        primary_chain_client: Arc<PClient>,
+        parent_chain: ParentChain,
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         transaction_pool: Arc<TransactionPool>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
-        let gossip_message_validator = GossipMessageValidator::new(
-            primary_chain_client.clone(),
-            client.clone(),
-            spawner,
-            fraud_proof_generator,
-        );
+        let gossip_message_validator =
+            GossipMessageValidator::new(client.clone(), spawner, fraud_proof_generator);
         Self {
-            primary_chain_client,
+            parent_chain,
             client,
             transaction_pool,
             gossip_message_validator,
             _phantom_data: PhantomData::default(),
         }
     }
-
-    fn validate_gossiped_execution_receipt(
-        &self,
-        signed_bundle_hash: H256,
-        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
-        domain_id: DomainId,
-    ) -> Result<(), GossipMessageError> {
-        let head_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .head_receipt_number(self.primary_chain_client.info().best_hash)?;
-        let head_receipt_number = to_number_primitive(head_receipt_number);
-
-        if let Some(fraud_proof) = self.gossip_message_validator.validate_execution_receipt(
-            signed_bundle_hash,
-            execution_receipt,
-            head_receipt_number,
-            domain_id,
-        )? {
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    self.primary_chain_client.info().best_hash,
-                    fraud_proof,
-                )?;
-        }
-
-        Ok(())
-    }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, TransactionPool, Backend, E, ParentChain>
     GossipMessageHandler<PBlock, Block>
     for CoreGossipMessageValidator<
         Block,
@@ -160,10 +126,10 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
         PBlock,
         Client,
         SClient,
-        PClient,
         TransactionPool,
         Backend,
         E,
+        ParentChain,
     >
 where
     Block: BlockT,
@@ -179,12 +145,11 @@ where
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
+    ParentChain: ParentChainInterface<SBlock>,
 {
     type Error = GossipMessageError;
 
@@ -218,13 +183,8 @@ where
 
         // A bundle equivocation occurs.
         if let Some(equivocation_proof) = check_equivocation(bundle) {
-            // TODO: report to the system domain instead of primary chain.
-            self.primary_chain_client
-                .runtime_api()
-                .submit_bundle_equivocation_proof_unsigned(
-                    self.primary_chain_client.info().best_hash,
-                    equivocation_proof,
-                )?;
+            let fraud_proof = FraudProof::BundleEquivocation(equivocation_proof);
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
             return Err(GossipMessageError::BundleEquivocation);
         }
 
@@ -244,7 +204,13 @@ where
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
             let domain_id = bundle_solution.proof_of_election().domain_id;
             for receipt in &bundle.receipts {
-                self.validate_gossiped_execution_receipt(signed_bundle_hash, receipt, domain_id)?;
+                self.gossip_message_validator
+                    .validate_gossiped_execution_receipt::<SBlock, _>(
+                        &self.parent_chain,
+                        signed_bundle_hash,
+                        receipt,
+                        domain_id,
+                    )?;
             }
 
             for extrinsic in bundle.extrinsics.iter() {
@@ -256,14 +222,10 @@ where
                     // TODO: check the legality
                     //
                     // if illegal => illegal tx proof
-                    let invalid_transaction_proof = InvalidTransactionProof;
+                    let invalid_transaction_proof = InvalidTransactionProof { domain_id };
+                    let fraud_proof = FraudProof::InvalidTransaction(invalid_transaction_proof);
 
-                    self.primary_chain_client
-                        .runtime_api()
-                        .submit_invalid_transaction_proof_unsigned(
-                            self.primary_chain_client.info().best_hash,
-                            invalid_transaction_proof,
-                        )?;
+                    self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
                 }
             }
 

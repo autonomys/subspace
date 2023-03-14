@@ -2,7 +2,7 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
-    EssentialExecutorParams, SystemExecutor, SystemGossipMessageValidator,
+    EssentialExecutorParams, SystemDomainParentChain, SystemExecutor, SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -119,6 +119,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
     >;
 
 type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::ProofVerifier<
+    Block,
     PBlock,
     PClient,
     TFullBackend<PBlock>,
@@ -394,7 +395,7 @@ where
     .await?;
 
     let gossip_message_validator = SystemGossipMessageValidator::new(
-        primary_chain_client,
+        SystemDomainParentChain::<_, Block, PBlock>::new(primary_chain_client),
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         transaction_pool.clone(),

@@ -81,6 +81,8 @@ mod pallet {
         Receipt(ExecutionReceiptError),
         /// The Bundle is created too long ago.
         StaleBundle,
+        /// Bundle was created on an unknown primary block (probably a fork block).
+        UnknownBlock,
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -178,12 +180,15 @@ mod pallet {
         // TODO: proper weight
         #[pallet::call_index(1)]
         #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_fraud_proof(origin: OriginFor<T>, fraud_proof: FraudProof) -> DispatchResult {
+        pub fn submit_fraud_proof(
+            origin: OriginFor<T>,
+            fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
+        ) -> DispatchResult {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id.is_system() {
+            if fraud_proof.domain_id().is_system() {
                 pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
                     .map_err(Error::<T>::from)?;
             }
@@ -419,7 +424,7 @@ impl<T: Config> Pallet<T> {
                             InvalidTransactionCode::ExecutionReceipt.into(),
                         ));
                     }
-                    // New nest receipt.
+                    // New best receipt.
                 } else if primary_number == best_number + One::one() {
                     if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
@@ -612,6 +617,34 @@ impl<T: Config> Pallet<T> {
                 unreachable!("Must be system domain bundle solution as we just checked; qed ")
             };
 
+            // TODO: currently, only the system bundles created on the primary fork can be
+            // prevented beforehand, the core bundles will be rejected by the system domain but
+            // they are still included on the primary chain as it's not feasible to check core bundles
+            // within this pallet, which may be solved if the `submit_bundle` extrinsic is no longer
+            // free in the future.
+            let bundle_created_on_valid_primary_block =
+                match pallet_receipts::PrimaryBlockHash::<T>::get(
+                    DomainId::SYSTEM,
+                    bundle.header.primary_number,
+                ) {
+                    Some(block_hash) => block_hash == bundle.header.primary_hash,
+                    // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
+                    // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
+                    // is unavailable in pallet-receipts at this point.
+                    None => frame_system::Pallet::<T>::parent_hash() == bundle.header.primary_hash,
+                };
+
+            if !bundle_created_on_valid_primary_block {
+                log::error!(
+                    target: "runtime::domains",
+                    "Bundle is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
+                    bundle.header.primary_number,
+                    pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, bundle.header.primary_number),
+                    bundle.header.primary_hash,
+                );
+                return Err(BundleError::UnknownBlock);
+            }
+
             Self::validate_system_bundle_solution(
                 &bundle.receipts,
                 *authority_stake_weight,
@@ -709,7 +742,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::BlockNumber, T::Hash>) {
         let call = Call::submit_fraud_proof { fraud_proof };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
@@ -718,42 +751,6 @@ where
             }
             Err(()) => {
                 log::error!(target: "runtime::domains", "Error submitting fraud proof");
-            }
-        }
-    }
-
-    /// Submits an unsigned extrinsic [`Call::submit_bundle_equivocation_proof`].
-    pub fn submit_bundle_equivocation_proof_unsigned(
-        bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
-    ) {
-        let call = Call::submit_bundle_equivocation_proof {
-            bundle_equivocation_proof,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted bundle equivocation proof");
-            }
-            Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting bundle equivocation proof");
-            }
-        }
-    }
-
-    /// Submits an unsigned extrinsic [`Call::submit_invalid_transaction_proof`].
-    pub fn submit_invalid_transaction_proof_unsigned(
-        invalid_transaction_proof: InvalidTransactionProof,
-    ) {
-        let call = Call::submit_invalid_transaction_proof {
-            invalid_transaction_proof,
-        };
-
-        match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
-            Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted invalid transaction proof")
-            }
-            Err(()) => {
-                log::error!(target: "runtime::domains", "Error submitting invalid transaction proof");
             }
         }
     }

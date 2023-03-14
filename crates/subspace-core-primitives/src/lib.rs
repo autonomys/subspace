@@ -402,6 +402,8 @@ impl AsMut<[u8]> for Piece {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FlatPieces(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
+// TODO: Introduce `PieceRef` and `PieceRefMut` that can be converted into `Piece` without
+//  `.expect()` and maybe add convenience methods for accessing record and witness parts of it
 impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
     pub fn new(piece_count: usize) -> Self {
@@ -542,7 +544,7 @@ impl LastArchivedBlock {
 /// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub enum RootBlock {

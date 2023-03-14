@@ -385,6 +385,7 @@ construct_runtime!(
         ExecutorRegistry: pallet_executor_registry = 4,
         Receipts: pallet_receipts = 9,
         DomainRegistry: pallet_domain_registry = 5,
+        // Note: Indexes should be used by all other core domain for proper xdm decode.
         Messenger: pallet_messenger = 6,
         Transporter: pallet_transporter = 7,
 
@@ -596,7 +597,7 @@ impl_runtime_apis! {
             MaximumReceiptDrift::get()
         }
 
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof) {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
 
@@ -647,7 +648,10 @@ impl_runtime_apis! {
         fn extract_xdm_proof_state_roots(
             extrinsic: &<Block as BlockT>::Extrinsic,
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            extract_xdm_proof_state_roots(extrinsic)
+            match &extrinsic.function {
+                RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
+                _ => None,
+            }
         }
 
         fn confirmation_depth() -> BlockNumber {
@@ -708,14 +712,5 @@ impl_runtime_apis! {
 
             Ok(batches)
         }
-    }
-}
-
-fn extract_xdm_proof_state_roots(
-    ext: &UncheckedExtrinsic,
-) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
-    match &ext.function {
-        RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
-        _ => None,
     }
 }

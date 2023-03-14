@@ -1,4 +1,5 @@
 use crate::piece_caching::PieceMemoryCache;
+use crate::segment_reconstruction::recover_missing_piece;
 use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
 use futures::stream::FuturesOrdered;
@@ -17,6 +18,21 @@ use subspace_core_primitives::{
 use thiserror::Error;
 use tracing::info;
 
+/// Defines retry policy on error during piece acquiring.
+#[derive(PartialEq, Eq, Clone, Debug, Copy)]
+pub enum PieceGetterRetryPolicy {
+    /// Retry N times (including zero)
+    Limited(u16),
+    /// No restrictions on retries
+    Unlimited,
+}
+
+impl Default for PieceGetterRetryPolicy {
+    fn default() -> Self {
+        Self::Limited(0)
+    }
+}
+
 /// Duplicate trait for the subspace_networking::PieceReceiver. The goal of this trait is
 /// simplifying dependency graph.
 #[async_trait]
@@ -24,6 +40,7 @@ pub trait PieceGetter {
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
+        retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
 }
 
@@ -35,8 +52,9 @@ where
     async fn get_piece(
         &self,
         piece_index: PieceIndex,
+        retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.as_ref().get_piece(piece_index).await
+        self.as_ref().get_piece(piece_index, retry_policy).await
     }
 }
 
@@ -59,6 +77,12 @@ pub enum PlottingError {
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
     PieceNotFound {
+        /// Piece index
+        piece_index: PieceIndex,
+    },
+    /// Can't recover missing piece
+    #[error("Can't recover missing piece")]
+    PieceRecoveryFailed {
         /// Piece index
         piece_index: PieceIndex,
     },
@@ -91,6 +115,7 @@ pub async fn plot_sector<PG, S, SM>(
     public_key: &PublicKey,
     sector_index: u64,
     piece_getter: &PG,
+    piece_getter_retry_policy: PieceGetterRetryPolicy,
     farmer_protocol_info: &FarmerProtocolInfo,
     kzg: &Kzg,
     sector_codec: &SectorCodec,
@@ -130,6 +155,8 @@ where
         &mut in_memory_sector_scalars,
         sector_index,
         piece_getter,
+        piece_getter_retry_policy,
+        kzg,
         &piece_indexes,
         piece_memory_cache,
     )
@@ -192,13 +219,31 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
     in_memory_sector_scalars: &mut Vec<Scalar>,
     sector_index: u64,
     piece_getter: &PG,
+    piece_getter_retry_policy: PieceGetterRetryPolicy,
+    kzg: &Kzg,
     piece_indexes: &[PieceIndex],
     piece_memory_cache: PieceMemoryCache,
 ) -> Result<(), PlottingError> {
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| async {
-            let piece_result = piece_getter.get_piece(*piece_index).await;
+            let piece_result = piece_getter
+                .get_piece(*piece_index, piece_getter_retry_policy)
+                .await;
+
+            let failed = piece_result
+                .as_ref()
+                .map(|piece| piece.is_none())
+                .unwrap_or(true);
+
+            // all retries failed
+            if failed {
+                let recovered_piece =
+                    recover_missing_piece(piece_getter, kzg.clone(), *piece_index).await;
+
+                return (*piece_index, recovered_piece.map(Some).map_err(Into::into));
+            }
+
             (*piece_index, piece_result)
         })
         .collect::<FuturesOrdered<_>>();

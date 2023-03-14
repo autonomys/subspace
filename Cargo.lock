@@ -9824,6 +9824,7 @@ dependencies = [
  "subspace-solving",
  "subspace-verification",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -9850,6 +9851,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
+ "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-test-utils",
  "tempfile",
@@ -10024,6 +10026,7 @@ dependencies = [
 name = "subspace-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "derive_more",
  "domain-runtime-primitives",
  "either",

@@ -76,7 +76,7 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::bundle_validator::{BundleValidator, ValidateBundle};
 use subspace_transaction_pool::FullPool;
-use tracing::{error, info, Instrument};
+use tracing::{debug, error, info, Instrument};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -122,6 +122,7 @@ pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
+    Block,
     Block,
     FullClient<RuntimeApi, ExecutorDispatch>,
     FullBackend,
@@ -346,7 +347,7 @@ where
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Validator:
         ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof + Clone + Send + Sync + 'static,
+    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -555,7 +556,9 @@ where
                             .expect("Must not be poisoned here")
                             .take()
                         {
-                            node_address_sender.send(address.clone()).unwrap();
+                            if let Err(err) = node_address_sender.send(address.clone()) {
+                                debug!(?err, "Couldn't send a node address to the channel.");
+                            }
                         }
                     }
                 }

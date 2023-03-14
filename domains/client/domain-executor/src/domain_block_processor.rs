@@ -524,13 +524,16 @@ where
 
     // TODO: remove once fraud-proof is enabled again.
     #[allow(unreachable_code, unused_variables)]
-    pub(crate) fn on_domain_block_processed(
+    pub(crate) fn on_domain_block_processed<PCB>(
         &self,
         primary_hash: PBlock::Hash,
         domain_block_result: DomainBlockResult<Block, PBlock>,
         head_receipt_number: NumberFor<Block>,
         oldest_receipt_number: NumberFor<Block>,
-    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
+    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
+    where
+        PCB: BlockT,
+    {
         let DomainBlockResult {
             header_hash,
             header_number,
@@ -562,7 +565,7 @@ where
         // Submit fraud proof for the first unconfirmed incorrent ER.
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        self.create_fraud_proof_for_first_unconfirmed_bad_receipt()
+        self.create_fraud_proof_for_first_unconfirmed_bad_receipt::<PCB>()
     }
 
     fn check_receipts_in_primary_block(
@@ -638,20 +641,25 @@ where
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()
             .filter_map(|fraud_proof| {
-                let bad_receipt_number = fraud_proof.parent_number + 1;
-                let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
+                match fraud_proof {
+                    FraudProof::InvalidStateTransition(fraud_proof) => {
+                        let bad_receipt_number = fraud_proof.parent_number + 1;
+                        let bad_bundle_hash = fraud_proof.bad_signed_bundle_hash;
 
-                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                // in case the bad receipt and corresponding farud proof are included in the same block.
-                if let Some(index) = bad_receipts_to_write
-                    .iter()
-                    .map(|(_, hash, _)| hash)
-                    .position(|v| *v == bad_bundle_hash)
-                {
-                    bad_receipts_to_write.swap_remove(index);
-                    None
-                } else {
-                    Some((bad_receipt_number, bad_bundle_hash))
+                        // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
+                        // in case the bad receipt and corresponding farud proof are included in the same block.
+                        if let Some(index) = bad_receipts_to_write
+                            .iter()
+                            .map(|(_, hash, _)| hash)
+                            .position(|v| *v == bad_bundle_hash)
+                        {
+                            bad_receipts_to_write.swap_remove(index);
+                            None
+                        } else {
+                            Some((bad_receipt_number, bad_bundle_hash))
+                        }
+                    }
+                    _ => None,
                 }
             })
             .collect::<Vec<_>>();
@@ -683,9 +691,12 @@ where
         Ok(())
     }
 
-    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
+    fn create_fraud_proof_for_first_unconfirmed_bad_receipt<PCB>(
         &self,
-    ) -> Result<Option<FraudProof>, sp_blockchain::Error> {
+    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
+    where
+        PCB: BlockT,
+    {
         if let Some((bad_signed_bundle_hash, trace_mismatch_index, block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
                 &*self.client,
@@ -701,7 +712,7 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof(
+                .generate_proof::<PCB>(
                     self.domain_id,
                     trace_mismatch_index,
                     &local_receipt,

@@ -104,6 +104,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
                 &system_domain_client,
                 block_hash,
                 &gossip_message_sink,
+                relay_confirmation_depth.into(),
             )
         },
         combined_sync_oracle,

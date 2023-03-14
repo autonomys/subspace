@@ -22,7 +22,7 @@ pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
 
-use crate::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use crate::fraud_proof::FraudProof;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -408,17 +408,7 @@ sp_api::decl_runtime_apis! {
         fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
         /// Submits the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof);
-
-        /// Submits the bundle equivocation proof via an unsigned extrinsic.
-        fn submit_bundle_equivocation_proof_unsigned(
-            bundle_equivocation_proof: BundleEquivocationProof<NumberFor<Block>, Block::Hash>,
-        );
-
-        /// Submits the invalid transaction proof via an unsigned extrinsic.
-        fn submit_invalid_transaction_proof_unsigned(
-            invalid_transaction_proof: InvalidTransactionProof,
-        );
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
 
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
@@ -441,7 +431,10 @@ sp_api::decl_runtime_apis! {
         ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
 
         /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(extrinsics: Vec<Block::Extrinsic>, domain_id: DomainId) -> Vec<FraudProof>;
+        fn extract_fraud_proofs(
+            extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;

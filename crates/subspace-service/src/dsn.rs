@@ -22,13 +22,15 @@ use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
     NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
 };
 use tokio::sync::Semaphore;
-use tracing::{error, info, trace, warn, Instrument};
+use tracing::{debug, error, info, trace, warn, Instrument};
 
 /// Provider records cache size
 const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
+
+const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -103,14 +105,38 @@ where
                 async { Some(PieceByHashResponse { piece: result }) }
             }),
             RootBlockBySegmentIndexesRequestHandler::create(move |req| {
-                let internal_result = req
-                    .segment_indexes
+                let segment_indexes = match req {
+                    RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
+                    RootBlockRequest::LastRootBlocks { root_block_number } => {
+                        let mut block_limit = *root_block_number;
+                        if *root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            debug!(%root_block_number, "Root block number exceeded the limit.");
+
+                            block_limit = ROOT_BLOCK_NUMBER_LIMIT;
+                        }
+
+                        let max_segment_index = root_block_cache.max_segment_index();
+
+                        // several last segment indexes
+                        (0..=max_segment_index)
+                            .rev()
+                            .take(block_limit as usize)
+                            .collect::<Vec<_>>()
+                    }
+                };
+
+                let internal_result = segment_indexes
                     .iter()
                     .map(|segment_index| root_block_cache.get_root_block(*segment_index))
-                    .collect::<Result<Vec<Option<RootBlock>>, _>>();
+                    .collect::<Result<Option<Vec<RootBlock>>, _>>();
 
                 let result = match internal_result {
-                    Ok(root_blocks) => Some(RootBlockResponse { root_blocks }),
+                    Ok(Some(root_blocks)) => Some(RootBlockResponse { root_blocks }),
+                    Ok(None) => {
+                        error!("Root block collection contained empty root blocks.");
+
+                        None
+                    }
                     Err(error) => {
                         error!(%error, "Failed to get root blocks from cache");
 

@@ -37,7 +37,7 @@ use subspace_core_primitives::{
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
-use subspace_farmer_components::plotting::PieceGetter;
+use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::{farming, plotting, SectorMetadata};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -45,6 +45,9 @@ use tokio::runtime::Handle;
 use tokio::sync::{broadcast, OwnedSemaphorePermit};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
+
+/// Get piece retry attempts number.
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(30).expect("Not zero; qed");
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -717,6 +720,7 @@ impl SingleDiskPlot {
                                 &public_key,
                                 sector_index,
                                 &piece_getter,
+                                PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
                                 &farmer_app_info.protocol_info,
                                 &kzg,
                                 &sector_codec,

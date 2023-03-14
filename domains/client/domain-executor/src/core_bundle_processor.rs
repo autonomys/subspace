@@ -211,12 +211,15 @@ where
             domain_block_result.header_number,
         );
 
-        if let Some(fraud_proof) = self.domain_block_processor.on_domain_block_processed(
-            primary_hash,
-            domain_block_result,
-            head_receipt_number,
-            oldest_receipt_number,
-        )? {
+        if let Some(fraud_proof) = self
+            .domain_block_processor
+            .on_domain_block_processed::<SBlock>(
+                primary_hash,
+                domain_block_result,
+                head_receipt_number,
+                oldest_receipt_number,
+            )?
+        {
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 

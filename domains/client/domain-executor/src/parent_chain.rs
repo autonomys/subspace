@@ -14,11 +14,14 @@ use system_runtime_primitives::SystemDomainApi;
 ///
 /// - The parent chain of System Domain => Primary Chain
 /// - The parent chain of Core Domain => System Domain
-pub(crate) trait ParentChainInterface<Block: BlockT> {
+pub trait ParentChainInterface<Block: BlockT> {
     fn best_hash(&self) -> Block::Hash;
     fn head_receipt_number(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
     fn maximum_receipt_drift(&self, at: Block::Hash) -> Result<BlockNumber, sp_api::ApiError>;
-    fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError>;
+    fn submit_fraud_proof_unsigned(
+        &self,
+        fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>,
+    ) -> Result<(), sp_api::ApiError>;
 }
 
 /// The parent chain of the core domain
@@ -77,7 +80,10 @@ where
         Ok(to_number_primitive(max_drift))
     }
 
-    fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError> {
+    fn submit_fraud_proof_unsigned(
+        &self,
+        fraud_proof: FraudProof<NumberFor<SBlock>, SBlock::Hash>,
+    ) -> Result<(), sp_api::ApiError> {
         let at = self.system_domain_client.info().best_hash;
         self.system_domain_client
             .runtime_api()
@@ -138,7 +144,10 @@ where
         Ok(to_number_primitive(max_drift))
     }
 
-    fn submit_fraud_proof_unsigned(&self, fraud_proof: FraudProof) -> Result<(), sp_api::ApiError> {
+    fn submit_fraud_proof_unsigned(
+        &self,
+        fraud_proof: FraudProof<NumberFor<PBlock>, PBlock::Hash>,
+    ) -> Result<(), sp_api::ApiError> {
         let at = self.primary_chain_client.info().best_hash;
         self.primary_chain_client
             .runtime_api()
