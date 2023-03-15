@@ -58,6 +58,7 @@ const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
 // Defines a replication factor for Kademlia on get_record operation.
 // "Good citizen" supports the network health.
 const YAMUX_MAX_STREAMS: usize = 256;
+const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -230,6 +231,7 @@ where
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
+            .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
             .set_max_packet_size(2 * PIECE_SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
