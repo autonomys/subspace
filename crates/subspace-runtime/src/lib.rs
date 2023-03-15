@@ -697,6 +697,14 @@ impl_runtime_apis! {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
             Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }
+
+        fn state_root(
+            domain_id: DomainId,
+            domain_block_number: NumberFor<Block>,
+            domain_block_hash: Hash,
+        ) -> Option<domain_runtime_primitives::Hash> {
+            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
+        }
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {

@@ -537,6 +537,14 @@ impl_runtime_apis! {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
             Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }
+
+        fn state_root(
+            domain_id: DomainId,
+            domain_block_number: BlockNumber,
+            domain_block_hash: Hash,
+        ) -> Option<Hash> {
+            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
+        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {

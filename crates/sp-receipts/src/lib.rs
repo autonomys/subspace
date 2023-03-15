@@ -20,11 +20,19 @@
 use codec::{Decode, Encode};
 use sp_core::H256;
 use sp_domains::DomainId;
+use sp_runtime::traits::NumberFor;
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
     pub trait ReceiptsApi<DomainHash: Encode + Decode> {
         /// Returns the trace of given domain receipt hash.
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<DomainHash>;
+
+        /// Returns the state root of given domain block.
+        fn state_root(
+            domain_id: DomainId,
+            domain_block_number: NumberFor<Block>,
+            domain_block_hash: Block::Hash,
+        ) -> Option<DomainHash>;
     }
 }
