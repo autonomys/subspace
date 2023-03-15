@@ -211,7 +211,7 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
                 sender,
                 PROTOCOL_NAME.into(),
                 announcement.encode(),
-                IfDisconnected::TryConnect,
+                IfDisconnected::ImmediateError,
             )
             .await
         {
@@ -315,7 +315,7 @@ pub fn init_block_relay_config(config: &mut Configuration) -> Receiver<IncomingR
             fallback_names: Vec::new(),
             max_request_size: 1024 * 1024,
             max_response_size: 16 * 1024 * 1024,
-            request_timeout: Duration::from_secs(15),
+            request_timeout: Duration::from_secs(60),
             inbound_queue: Some(request_sender),
         });
     request_receiver
