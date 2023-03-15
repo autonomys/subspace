@@ -50,6 +50,12 @@ pub struct DsnConfig {
 
     /// System base path.
     pub base_path: Option<PathBuf>,
+
+    /// Defines max established incoming swarm connection limit.
+    pub max_in_connections: u32,
+
+    /// Defines max established outgoing swarm connection limit.
+    pub max_out_connections: u32,
 }
 
 type DsnProviderStorage<AS> =
@@ -122,6 +128,9 @@ where
             }),
         ],
         provider_storage,
+        max_established_incoming_connections: dsn_config.max_in_connections,
+        max_established_outgoing_connections: dsn_config.max_out_connections,
+
         ..subspace_networking::Config::default()
     };
 
