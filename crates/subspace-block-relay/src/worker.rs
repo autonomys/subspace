@@ -20,7 +20,8 @@ use std::time::Duration;
 use tracing::{error, info, trace, warn};
 
 const LOG_TARGET: &str = "block_relay_worker";
-const PROTOCOL_NAME: &str = "/subspace/block-relay";
+const BLOCK_RELAY_ANNOUNCE_PROTOCOL: &str = "/subspace/block-relay-announces/1";
+const BLOCK_RELAY_SYNC_PROTOCOL: &str = "/subspace/block-relay-sync/1";
 
 /// TODO: tentative size, to be tuned based on testing.
 const INBOUND_QUEUE_SIZE: usize = 1024;
@@ -64,7 +65,7 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
         });
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
             network.clone(),
-            PROTOCOL_NAME,
+            BLOCK_RELAY_ANNOUNCE_PROTOCOL,
             validator.clone(),
             None,
         )));
@@ -209,7 +210,7 @@ impl<Block: BlockT> BlockRelayWorker<Block> {
             .network
             .request(
                 sender,
-                PROTOCOL_NAME.into(),
+                BLOCK_RELAY_SYNC_PROTOCOL.into(),
                 announcement.encode(),
                 IfDisconnected::ImmediateError,
             )
@@ -297,12 +298,12 @@ impl<Block: BlockT> Validator<Block> for BlockRelayValidator {
 
 /// Block relay message topic.
 fn topic<Block: BlockT>() -> Block::Hash {
-    <<Block::Header as HeaderT>::Hashing as HashT>::hash(PROTOCOL_NAME.as_bytes())
+    <<Block::Header as HeaderT>::Hashing as HashT>::hash(BLOCK_RELAY_ANNOUNCE_PROTOCOL.as_bytes())
 }
 
 /// Sets up the required config for the block relay.
 pub fn init_block_relay_config(config: &mut Configuration) -> Receiver<IncomingRequest> {
-    let mut cfg = NonDefaultSetConfig::new(PROTOCOL_NAME.into(), 1024 * 1024);
+    let mut cfg = NonDefaultSetConfig::new(BLOCK_RELAY_ANNOUNCE_PROTOCOL.into(), 1024 * 1024);
     cfg.allow_non_reserved(25, 25);
     config.network.extra_sets.push(cfg);
 
@@ -311,7 +312,7 @@ pub fn init_block_relay_config(config: &mut Configuration) -> Receiver<IncomingR
         .network
         .request_response_protocols
         .push(RequestResponseConfig {
-            name: PROTOCOL_NAME.into(),
+            name: BLOCK_RELAY_SYNC_PROTOCOL.into(),
             fallback_names: Vec::new(),
             max_request_size: 1024 * 1024,
             max_response_size: 16 * 1024 * 1024,
