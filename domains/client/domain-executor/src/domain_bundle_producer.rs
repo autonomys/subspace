@@ -13,7 +13,7 @@ use sp_domains::{
     Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
 };
 use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -146,6 +146,20 @@ where
 
         let best_hash = self.system_domain_client.info().best_hash;
         let best_number = self.system_domain_client.info().best_number;
+
+        let head_receipt_number = self
+            .parent_chain
+            .head_receipt_number(self.parent_chain.best_hash())?
+            .into();
+        let domain_best_number = self.client.info().best_number;
+        if !domain_best_number.is_zero() && domain_best_number <= head_receipt_number {
+            tracing::warn!(
+                head_receipt_number = ?head_receipt_number,
+                domain_best_number = ?domain_best_number,
+                "Skip slot {slot} due to executor is lagging behind the receipt chain on its parent chain"
+            );
+            return Ok(None);
+        }
 
         if let Some(preliminary_bundle_solution) = self
             .bundle_election_solver
