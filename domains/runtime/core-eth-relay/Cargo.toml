@@ -12,7 +12,7 @@ links = "core-eth-relay-runtime"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"]}
+codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
 domain-pallet-executive = { version = "0.1.0", path = "../../pallets/executive", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
 frame-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
@@ -31,6 +31,11 @@ pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, 
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 pallet-transporter = { version = "0.1.0", path = "../../pallets/transporter", default-features = false }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
+
+# Light client pallet and primitives
+snowbridge-beacon-primitives = { git = "https://github.com/Snowfork/snowbridge", rev = "4f5bfd68456afd41f6c7626c53268d726149a972", default-features = false }
+snowbridge-ethereum-beacon-client = { git = "https://github.com/Snowfork/snowbridge", rev = "4f5bfd68456afd41f6c7626c53268d726149a972", default-features = false }
+
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
@@ -71,6 +76,7 @@ std = [
 	"pallet-transaction-payment/std",
 	"pallet-transporter/std",
 	"scale-info/std",
+	"snowbridge-ethereum-beacon-client/std",
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-core/std",
@@ -94,7 +100,9 @@ runtime-benchmarks = [
 	"sp-runtime/runtime-benchmarks",
 	"frame-benchmarking",
 	"frame-system-benchmarking",
+	"frame-system-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
+	"snowbridge-ethereum-beacon-client/runtime-benchmarks"
 ]

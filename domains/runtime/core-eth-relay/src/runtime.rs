@@ -1,14 +1,17 @@
+use core::time::Duration;
 use domain_runtime_primitives::opaque;
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, RelayerId, Signature,
 };
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, Everything};
+use frame_support::traits::{ConstU16, ConstU32, Everything, UnixTime};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_transporter::EndpointHandler;
+use snowbridge_beacon_primitives::{Fork, ForkVersions};
+use snowbridge_ethereum_beacon_client as pallet_ethereum_beacon_client;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
@@ -290,6 +293,60 @@ impl pallet_sudo::Config for Runtime {
     type RuntimeCall = RuntimeCall;
 }
 
+/// Dummy time provider that always returns zero.
+pub struct DummyTimeProvider;
+impl UnixTime for DummyTimeProvider {
+    fn now() -> Duration {
+        Duration::ZERO
+    }
+}
+
+// Ethereum mainnet configuration
+parameter_types! {
+    pub const MaxSyncCommitteeSize: u32 = 512;
+    pub const MaxProofBranchSize: u32 = 20;
+    pub const MaxExtraDataSize: u32 = 32;
+    pub const MaxLogsBloomSize: u32 = 256;
+    pub const MaxFeeRecipientSize: u32 = 20;
+    pub const MaxPublicKeySize: u32 = 48;
+    pub const MaxSignatureSize: u32 = 96;
+    pub const MaxSlotsPerHistoricalRoot: u64 = 8192;
+    pub const MaxFinalizedHeaderSlotArray: u32 = 1000;
+    pub const WeakSubjectivityPeriodSeconds: u32 = 97200;
+    pub const ChainForkVersions: ForkVersions = ForkVersions{
+        genesis: Fork {
+            version: [0, 0, 16, 32], // 0x00001020
+            epoch: 0,
+        },
+        altair: Fork {
+            version: [1, 0, 16, 32], // 0x01001020
+            epoch: 36660,
+        },
+        bellatrix: Fork {
+            version: [2, 0, 16, 32], // 0x02001020
+            epoch: 112260,
+        },
+    };
+}
+
+impl pallet_ethereum_beacon_client::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    // TODO: Replace this with pallet_timestamp once core domains support inherent extrinsics
+    type TimeProvider = DummyTimeProvider;
+    type MaxSyncCommitteeSize = MaxSyncCommitteeSize;
+    type MaxProofBranchSize = MaxProofBranchSize;
+    type MaxExtraDataSize = MaxExtraDataSize;
+    type MaxLogsBloomSize = MaxLogsBloomSize;
+    type MaxFeeRecipientSize = MaxFeeRecipientSize;
+    type MaxPublicKeySize = MaxPublicKeySize;
+    type MaxSignatureSize = MaxSignatureSize;
+    type MaxSlotsPerHistoricalRoot = MaxSlotsPerHistoricalRoot;
+    type MaxFinalizedHeaderSlotArray = MaxFinalizedHeaderSlotArray;
+    type ForkVersions = ChainForkVersions;
+    type WeakSubjectivityPeriodSeconds = WeakSubjectivityPeriodSeconds;
+    type WeightInfo = pallet_ethereum_beacon_client::weights::SnowbridgeWeight<Self>;
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -311,6 +368,11 @@ construct_runtime!(
         // Note: Indexes should match the indexes of the System domain runtime
         Messenger: pallet_messenger = 6,
         Transporter: pallet_transporter = 7,
+
+        // Having beacon client at 90 to have plenty of room for system domain runtime pallets
+        // (w.r.t future upgrade of system domain runtime) as well as some room for adding light client
+        // related pallets after 90
+        EthereumBeaconClient: pallet_ethereum_beacon_client = 90,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -493,13 +555,14 @@ impl_runtime_apis! {
             Vec<frame_benchmarking::BenchmarkList>,
             Vec<frame_support::traits::StorageInfo>,
         ) {
-            use frame_benchmarking::{Benchmarking, BenchmarkList};
+            use frame_benchmarking::{Benchmarking, BenchmarkList, list_benchmark};
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
 
             let mut list = Vec::<BenchmarkList>::new();
 
-            list_benchmarks!(list, extra);
+            list_benchmark!(list, extra, frame_system, SystemBench::<Runtime>);
+            list_benchmark!(list, extra, ethereum_beacon_client, EthereumBeaconClient);
 
             let storage_info = AllPalletsWithSystem::storage_info();
 
@@ -509,7 +572,7 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{Benchmarking, BenchmarkBatch, TrackedStorageKey};
+            use frame_benchmarking::{Benchmarking, BenchmarkBatch, TrackedStorageKey, add_benchmark};
 
             use frame_system_benchmarking::Pallet as SystemBench;
             impl frame_system_benchmarking::Config for Runtime {}
@@ -530,7 +593,8 @@ impl_runtime_apis! {
             let mut batches = Vec::<BenchmarkBatch>::new();
             let params = (&config, &whitelist);
 
-            add_benchmarks!(params, batches);
+            add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
+            add_benchmark!(params, batches, ethereum_beacon_client, EthereumBeaconClient);
 
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
