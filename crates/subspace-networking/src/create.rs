@@ -32,6 +32,7 @@ use libp2p::yamux::YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, TransportError};
 use parking_lot::Mutex;
 use std::borrow::Cow;
+use std::error::Error;
 use std::iter::Empty;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -315,6 +316,9 @@ pub enum CreationError {
     /// ParityDb storage error
     #[error("ParityDb storage error: {0}")]
     ParityDbStorageError(#[from] parity_db::Error),
+    /// Custom error
+    #[error("Custom error: {0}")]
+    Other(#[from] Box<dyn Error + Send + Sync>),
 }
 
 /// Converts public key from keypair to PeerId.
