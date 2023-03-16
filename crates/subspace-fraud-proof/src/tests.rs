@@ -190,9 +190,8 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _>::new(
         ferdie.client.clone(),
-        ferdie.backend.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
     );
@@ -471,9 +470,8 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _>::new(
         ferdie.client.clone(),
-        ferdie.backend.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
     );

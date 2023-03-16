@@ -183,7 +183,6 @@ async fn run_executor(
     >(
         system_domain_config,
         primary_chain_full_node.client.clone(),
-        primary_chain_full_node.backend.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,
         primary_chain_full_node

@@ -14,7 +14,6 @@ use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockchainEvents, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_network::NetworkService;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
@@ -25,7 +24,7 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::SelectChain;
+use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::Encode;
@@ -122,7 +121,6 @@ type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::Proof
     Block,
     PBlock,
     PClient,
-    TFullBackend<PBlock>,
     NativeElseWasmExecutor<Executor>,
     SpawnTaskHandle,
     Hash,
@@ -133,7 +131,6 @@ type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::Proof
 fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
     config: &ServiceConfiguration,
     primary_chain_client: Arc<PClient>,
-    primary_backend: Arc<TFullBackend<PBlock>>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, Executor>,
@@ -200,7 +197,6 @@ where
 
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         primary_chain_client.clone(),
-        primary_backend,
         executor.clone(),
         task_manager.spawn_handle(),
     );
@@ -249,8 +245,7 @@ where
 pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut system_domain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
-    primary_backend: Arc<TFullBackend<PBlock>>,
-    primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     select_chain: &SC,
     imported_block_notification_stream: IBNS,
     new_slot_notification_stream: NSNS,
@@ -313,7 +308,6 @@ where
     let params = new_partial(
         &system_domain_config.service_config,
         primary_chain_client.clone(),
-        primary_backend,
     )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
@@ -378,7 +372,7 @@ where
         select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),
-            primary_network,
+            primary_network_sync_oracle,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),

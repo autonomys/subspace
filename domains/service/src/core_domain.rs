@@ -25,7 +25,7 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::SelectChain;
+use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::Encode;
@@ -214,17 +214,16 @@ where
     Ok(params)
 }
 
-pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>
+pub struct CoreDomainParams<SBlock, SClient, PClient, SC, IBNS, NSNS>
 where
     SBlock: BlockT,
-    PBlock: BlockT,
 {
     pub domain_id: DomainId,
     pub core_domain_config: DomainConfiguration,
     pub system_domain_client: Arc<SClient>,
     pub system_domain_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
     pub primary_chain_client: Arc<PClient>,
-    pub primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
     pub imported_block_notification_stream: IBNS,
     pub new_slot_notification_stream: NSNS,
@@ -247,7 +246,7 @@ pub async fn new_full_core<
     RuntimeApi,
     ExecutorDispatch,
 >(
-    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>,
+    core_domain_params: CoreDomainParams<SBlock, SClient, PClient, SC, IBNS, NSNS>,
 ) -> sc_service::error::Result<
     NewFullCore<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -305,7 +304,7 @@ where
         system_domain_client,
         system_domain_network,
         primary_chain_client,
-        primary_network,
+        primary_network_sync_oracle,
         select_chain,
         imported_block_notification_stream,
         new_slot_notification_stream,
@@ -391,7 +390,7 @@ where
         &select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),
-            primary_network,
+            primary_network_sync_oracle,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
