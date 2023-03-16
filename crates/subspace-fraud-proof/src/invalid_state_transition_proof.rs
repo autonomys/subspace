@@ -200,11 +200,11 @@ impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: Clone> Cl
 
 /// Verifies the `pre_state_root` in [`InvalidStateTransitionProof`].
 pub trait VerifyPreStateRoot {
-    /// Returns `true` if `pre_state_root` is valid.
+    /// Verifies whether `pre_state_root` declared in the proof is same as the one recorded on chain.
     fn verify_pre_state_root(
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> bool;
+    ) -> Result<(), VerificationError>;
 }
 
 /// Verifier of `pre_state_root` in [`InvalidStateTransitionProof`].
@@ -243,7 +243,7 @@ where
     fn verify_pre_state_root(
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> bool {
+    ) -> Result<(), VerificationError> {
         let InvalidStateTransitionProof {
             domain_id,
             bad_receipt_hash,
@@ -254,25 +254,20 @@ where
             ..
         } = invalid_state_transition_proof;
 
-        let trace = self
-            .client
-            .runtime_api()
-            .execution_trace(self.client.info().best_hash, *domain_id, *bad_receipt_hash)
-            .unwrap_or_default();
+        let trace = self.client.runtime_api().execution_trace(
+            self.client.info().best_hash,
+            *domain_id,
+            *bad_receipt_hash,
+        )?;
 
         let pre_state_root_onchain = match execution_phase {
-            ExecutionPhase::InitializeBlock => self
-                .client
-                .runtime_api()
-                .state_root(
-                    self.client.info().best_hash,
-                    *domain_id,
-                    NumberFor::<Block>::from(*parent_number),
-                    Block::Hash::decode(&mut parent_hash.encode().as_slice())
-                        .expect("Block Hash must be H256; qed"),
-                )
-                .ok()
-                .flatten(),
+            ExecutionPhase::InitializeBlock => self.client.runtime_api().state_root(
+                self.client.info().best_hash,
+                *domain_id,
+                NumberFor::<Block>::from(*parent_number),
+                Block::Hash::decode(&mut parent_hash.encode().as_slice())
+                    .expect("Block Hash must be H256; qed"),
+            )?,
             ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
             | ExecutionPhase::FinalizeBlock {
                 total_extrinsics: trace_index_of_pre_state_root,
@@ -280,12 +275,12 @@ where
         };
 
         match pre_state_root_onchain {
-            Some(expected_pre_state_root) if expected_pre_state_root == *pre_state_root => true,
+            Some(expected_pre_state_root) if expected_pre_state_root == *pre_state_root => Ok(()),
             res => {
                 tracing::debug!(
                     "Invalid `pre_state_root` in InvalidStateTransitionProof for {domain_id:?}, expected: {res:?}, got: {pre_state_root:?}",
                 );
-                false
+                Err(VerificationError::InvalidPreStateRoot)
             }
         }
     }
@@ -297,8 +292,8 @@ impl VerifyPreStateRoot for SkipPreStateRootVerification {
     fn verify_pre_state_root(
         &self,
         _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> bool {
-        true
+    ) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 
@@ -334,12 +329,8 @@ where
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
-        if !self
-            .pre_state_root_verifier
-            .verify_pre_state_root(invalid_state_transition_proof)
-        {
-            return Err(VerificationError::InvalidPreStateRoot);
-        }
+        self.pre_state_root_verifier
+            .verify_pre_state_root(invalid_state_transition_proof)?;
 
         let InvalidStateTransitionProof {
             domain_id,
