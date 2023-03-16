@@ -75,6 +75,8 @@ pub struct BootstrappedNetworkingParameters {
 
 impl BootstrappedNetworkingParameters {
     pub fn new(bootstrap_addresses: Vec<Multiaddr>) -> Self {
+        debug!("In-memory networking parameters manager instantiated.");
+
         Self {
             bootstrap_addresses,
         }
@@ -162,12 +164,17 @@ impl NetworkingParametersManager {
                     .map(|data| data.to_cache());
 
                 if result.is_ok() {
-                    trace!("Networking parameters loaded from DB");
+                    debug!("Networking parameters loaded from DB");
                 }
 
                 result
             })
             .unwrap_or_else(|| Ok(LruCache::new(PEER_CACHE_SIZE)))?;
+
+        debug!(
+            ?path,
+            "Persistent networking parameters manager instantiated."
+        );
 
         Ok(Self {
             cache_need_saving: false,

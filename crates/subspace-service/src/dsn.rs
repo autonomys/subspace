@@ -20,9 +20,10 @@ use subspace_core_primitives::{PieceIndex, RootBlock, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
-    NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
+    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
+    NetworkingParametersManager, Node, NodeRunner, ParityDbProviderStorage,
+    PieceByHashRequestHandler, PieceByHashResponse, RootBlockBySegmentIndexesRequestHandler,
+    RootBlockResponse,
 };
 use tokio::sync::Semaphore;
 use tracing::{error, info, trace, warn, Instrument};
@@ -77,7 +78,7 @@ where
 
     let peer_id = peer_id(&dsn_config.keypair);
 
-    let external_provider_storage = if let Some(path) = dsn_config.base_path {
+    let external_provider_storage = if let Some(path) = &dsn_config.base_path {
         let db_path = path.join("storage_providers_db");
 
         let cache_size: NonZeroUsize = NonZeroUsize::new(MAX_PROVIDER_RECORDS_LIMIT)
@@ -88,6 +89,22 @@ where
         Either::Right(MemoryProviderStorage::new(peer_id))
     };
 
+    let networking_parameters_registry = {
+        let in_memory_registry =
+            BootstrappedNetworkingParameters::new(dsn_config.bootstrap_nodes.clone()).boxed();
+
+        dsn_config
+            .base_path
+            .map(|path| {
+                let db_path = path.join("known_addresses_db");
+
+                NetworkingParametersManager::new(&db_path, dsn_config.bootstrap_nodes)
+                    .map(|manager| manager.boxed())
+            })
+            .unwrap_or(Ok(in_memory_registry))
+            .map_err(|err| CreationError::Other(err.into()))?
+    };
+
     let provider_storage =
         NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
 
@@ -95,10 +112,7 @@ where
         keypair: dsn_config.keypair.clone(),
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(
-            dsn_config.bootstrap_nodes,
-        )
-        .boxed(),
+        networking_parameters_registry,
         request_response_protocols: vec![
             PieceByHashRequestHandler::create(move |req| {
                 let result = match piece_cache.get_piece(req.piece_index_hash) {
