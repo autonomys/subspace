@@ -207,6 +207,7 @@ pub async fn run_validator_node(
                     allow_non_global_addresses_in_dht: true,
                     max_out_connections: 50,
                     max_in_connections: 50,
+                    target_connection_number: 50,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
             },

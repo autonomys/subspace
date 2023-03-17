@@ -58,6 +58,9 @@ pub struct DsnConfig {
 
     /// Defines max established outgoing swarm connection limit.
     pub max_out_connections: u32,
+
+    /// Defines target total (in and out) connection number for DSN that should be maintained.
+    pub target_connection_number: u32,
 }
 
 type DsnProviderStorage<AS> =
