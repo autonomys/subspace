@@ -203,7 +203,7 @@ pub struct Cli {
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
     #[arg(long, default_value_t = 50)]
-    pub dsn_target_connection_number: u32,
+    pub dsn_target_connections: u32,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
     /// in Kademlia DHT for the DSN.
