@@ -35,8 +35,7 @@ use ark_ff::{BigInteger, PrimeField};
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
-use core::ops::Deref;
-use derive_more::{Add, Deref, Display, Div, Mul, Rem, Sub};
+use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
 pub use pieces::{FlatPieces, Piece, PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE};
@@ -280,7 +279,21 @@ impl Scalar {
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    From,
+    Into,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PublicKey(
@@ -293,26 +306,6 @@ impl fmt::Display for PublicKey {
     }
 }
 
-impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
-    fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
-        Self(bytes)
-    }
-}
-
-impl From<PublicKey> for [u8; PUBLIC_KEY_LENGTH] {
-    fn from(public_key: PublicKey) -> Self {
-        public_key.0
-    }
-}
-
-impl Deref for PublicKey {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
@@ -320,31 +313,26 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    From,
+    Into,
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RewardSignature(
     #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))] [u8; REWARD_SIGNATURE_LENGTH],
 );
-
-impl From<[u8; REWARD_SIGNATURE_LENGTH]> for RewardSignature {
-    fn from(bytes: [u8; REWARD_SIGNATURE_LENGTH]) -> Self {
-        Self(bytes)
-    }
-}
-
-impl From<RewardSignature> for [u8; REWARD_SIGNATURE_LENGTH] {
-    fn from(signature: RewardSignature) -> Self {
-        signature.0
-    }
-}
-
-impl Deref for RewardSignature {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl AsRef<[u8]> for RewardSignature {
     fn as_ref(&self) -> &[u8] {
@@ -499,21 +487,9 @@ pub type PieceIndex = u64;
 pub type SectorIndex = u64;
 
 /// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode, From, Into)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(Blake2b256Hash);
-
-impl From<PieceIndexHash> for Blake2b256Hash {
-    fn from(piece_index_hash: PieceIndexHash) -> Self {
-        piece_index_hash.0
-    }
-}
-
-impl From<Blake2b256Hash> for PieceIndexHash {
-    fn from(hash: Blake2b256Hash) -> Self {
-        Self(hash)
-    }
-}
 
 impl AsRef<[u8]> for PieceIndexHash {
     fn as_ref(&self) -> &[u8] {
