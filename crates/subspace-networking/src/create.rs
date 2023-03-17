@@ -27,7 +27,7 @@ use libp2p::kad::{
 };
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::SwarmBuilder;
+use libp2p::swarm::{ConnectionLimits, SwarmBuilder};
 use libp2p::yamux::YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, TransportError};
 use parking_lot::Mutex;
@@ -58,6 +58,8 @@ const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
 // Defines a replication factor for Kademlia on get_record operation.
 // "Good citizen" supports the network health.
 const YAMUX_MAX_STREAMS: usize = 256;
+const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
+const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(2);
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -230,6 +232,7 @@ where
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
+            .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
             .set_max_packet_size(2 * PIECE_SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
@@ -375,6 +378,10 @@ where
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
         .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
+        .connection_limits(
+            ConnectionLimits::default()
+                .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER),
+        )
         .build();
 
     // Setup listen_on addresses

@@ -7,7 +7,7 @@ use crate::TransactionFor;
 use codec::Decode;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
-use sc_consensus::{BlockImport, ForkChoiceStrategy};
+use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
@@ -96,11 +96,11 @@ where
     // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+        primary_info: (PBlock::Hash, NumberFor<PBlock>),
     ) -> Result<(), sp_blockchain::Error> {
         tracing::debug!(?primary_info, "Processing imported primary block");
 
-        let (primary_hash, primary_number, fork_choice) = primary_info;
+        let (primary_hash, primary_number) = primary_info;
 
         let maybe_pending_primary_blocks = self
             .domain_block_processor
@@ -119,20 +119,9 @@ where
 
             let mut domain_parent = initial_parent;
 
-            for (i, primary_info) in primary_imports.iter().enumerate() {
-                // Use the origin fork_choice for the target primary block,
-                // the intermediate ones use `Custom(false)`.
-                let fork_choice = if i == primary_imports.len() - 1 {
-                    fork_choice
-                } else {
-                    ForkChoiceStrategy::Custom(false)
-                };
-
+            for primary_info in primary_imports {
                 domain_parent = self
-                    .process_bundles_at(
-                        (primary_info.hash, primary_info.number, fork_choice),
-                        domain_parent,
-                    )
+                    .process_bundles_at((primary_info.hash, primary_info.number), domain_parent)
                     .await?;
             }
         }
@@ -142,12 +131,12 @@ where
 
     async fn process_bundles_at(
         &self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>, ForkChoiceStrategy),
+        primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_info: (Block::Hash, NumberFor<Block>),
     ) -> Result<(Block::Hash, NumberFor<Block>), sp_blockchain::Error> {
         tracing::debug!(?primary_info, ?parent_info, "Building a new domain block");
 
-        let (primary_hash, primary_number, fork_choice) = primary_info;
+        let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
         let (bundles, shuffling_seed, maybe_new_runtime) =
@@ -182,7 +171,6 @@ where
                 (parent_hash, parent_number),
                 extrinsics,
                 maybe_new_runtime,
-                fork_choice,
                 digests,
             )
             .await?;

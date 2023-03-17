@@ -136,6 +136,8 @@ async fn run_executor(
                     reserved_peers: vec![],
                     keypair: identity::Keypair::generate_ed25519(),
                     allow_non_global_addresses_in_dht: true,
+                    max_out_connections: 50,
+                    max_in_connections: 50,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
             },
@@ -181,7 +183,6 @@ async fn run_executor(
     >(
         system_domain_config,
         primary_chain_full_node.client.clone(),
-        primary_chain_full_node.backend.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,
         primary_chain_full_node
@@ -190,7 +191,6 @@ async fn run_executor(
             .then(|imported_block_notification| async move {
                 (
                     imported_block_notification.block_number,
-                    imported_block_notification.fork_choice,
                     imported_block_notification.block_import_acknowledgement_sender,
                 )
             }),

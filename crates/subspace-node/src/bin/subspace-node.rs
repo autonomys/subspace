@@ -432,6 +432,8 @@ fn main() -> Result<(), Error> {
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
                             allow_non_global_addresses_in_dht: !cli.dsn_disable_private_ips,
+                            max_in_connections: cli.dsn_max_in_connections,
+                            max_out_connections: cli.dsn_max_out_connections,
                         }
                     };
 
@@ -519,7 +521,6 @@ fn main() -> Result<(), Error> {
                             .then(|imported_block_notification| async move {
                                 (
                                     imported_block_notification.block_number,
-                                    imported_block_notification.fork_choice,
                                     imported_block_notification.block_import_acknowledgement_sender,
                                 )
                             })
@@ -551,7 +552,6 @@ fn main() -> Result<(), Error> {
                     >(
                         system_domain_config,
                         primary_chain_node.client.clone(),
-                        primary_chain_node.backend.clone(),
                         primary_chain_node.network.clone(),
                         &primary_chain_node.select_chain,
                         imported_block_notification_stream(),
@@ -589,7 +589,7 @@ fn main() -> Result<(), Error> {
                             system_domain_client: system_domain_node.client.clone(),
                             system_domain_network: system_domain_node.network.clone(),
                             primary_chain_client: primary_chain_node.client.clone(),
-                            primary_network: primary_chain_node.network.clone(),
+                            primary_network_sync_oracle: primary_chain_node.network.clone(),
                             select_chain: primary_chain_node.select_chain.clone(),
                             imported_block_notification_stream: imported_block_notification_stream(
                             ),

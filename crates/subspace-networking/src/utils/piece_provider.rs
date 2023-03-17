@@ -15,6 +15,8 @@ use tracing::{debug, error, trace, warn};
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
+/// Start generating warnings after N failed attempts.
+const START_WARN_AFTER_ATTEMPTS_NUMBER: u64 = 3;
 
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
@@ -132,14 +134,14 @@ where
         let retries = AtomicU64::default();
 
         retry(backoff, || async {
-            let current_attempt = retries.load(Ordering::Relaxed);
+            let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
             if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, current_attempt, "Got piece");
                 return Ok(Some(piece));
             }
 
-            match retry_policy {
+            let retry_limit = match retry_policy {
                 RetryPolicy::Limited(max_retries) => {
                     if current_attempt >= max_retries.into() {
                         if max_retries > 0 {
@@ -152,14 +154,20 @@ where
                         }
                         return Ok(None);
                     }
+
+                    max_retries as u64
                 }
-                RetryPolicy::Unlimited => {
-                    // no action
-                }
+                RetryPolicy::Unlimited => u64::MAX,
             };
 
-            warn!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
-            retries.fetch_add(1, Ordering::Relaxed);
+            // Warn if there were several attempts or retry limit is low.
+            if current_attempt >= START_WARN_AFTER_ATTEMPTS_NUMBER
+                || (retry_limit < START_WARN_AFTER_ATTEMPTS_NUMBER)
+            {
+                warn!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
+            } else {
+                debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
+            }
 
             Err(backoff::Error::transient(
                 "Couldn't get piece from DSN".into(),

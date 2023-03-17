@@ -174,30 +174,20 @@ impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
 }
 
 /// Invalid state transition proof verifier.
-pub struct InvalidStateTransitionProofVerifier<
-    PBlock,
-    C,
-    B,
-    Exec,
-    Spawn,
-    Hash,
-    PreStateRootVerifier,
-> {
+pub struct InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier> {
     client: Arc<C>,
-    backend: Arc<B>,
     executor: Exec,
     spawn_handle: Spawn,
     pre_state_root_verifier: PreStateRootVerifier,
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, C, B, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: Clone> Clone
-    for InvalidStateTransitionProofVerifier<PBlock, C, B, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: Clone> Clone
+    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
-            backend: self.backend.clone(),
             executor: self.executor.clone(),
             spawn_handle: self.spawn_handle.clone(),
             pre_state_root_verifier: self.pre_state_root_verifier.clone(),
@@ -295,13 +285,12 @@ impl VerifyPreStateRoot for SkipPreStateRootVerification {
     }
 }
 
-impl<PBlock, C, B, Exec, Spawn, Hash, PreStateRootVerifier>
-    InvalidStateTransitionProofVerifier<PBlock, C, B, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+    InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
 where
     PBlock: BlockT,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
-    B: backend::Backend<PBlock>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
@@ -310,14 +299,12 @@ where
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
         client: Arc<C>,
-        backend: Arc<B>,
         executor: Exec,
         spawn_handle: Spawn,
         pre_state_root_verifier: PreStateRootVerifier,
     ) -> Self {
         Self {
             client,
-            backend,
             executor,
             spawn_handle,
             pre_state_root_verifier,

@@ -7,8 +7,7 @@ use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
-use sc_consensus::ForkChoiceStrategy;
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
@@ -78,6 +77,7 @@ where
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + BlockchainEvents<PBlock>
         + Send
         + Sync
         + 'static,
@@ -108,9 +108,7 @@ where
     where
         SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
-        IBNS: Stream<Item = (NumberFor<PBlock>, ForkChoiceStrategy, mpsc::Sender<()>)>
-            + Send
-            + 'static,
+        IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     {
         let active_leaves =
@@ -139,7 +137,7 @@ where
             domain_id,
             params.client.clone(),
             params.primary_chain_client.clone(),
-            params.primary_network,
+            params.primary_network_sync_oracle,
             params.backend.clone(),
             fraud_proof_generator.clone(),
         );

@@ -6248,9 +6248,9 @@ dependencies = [
 
 [[package]]
 name = "parity-db"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd684a725651d9588ef21f140a328b6b4f64e646b2e931f3e6f14f75eedf9980"
+checksum = "df89dd8311063c54ae4e03d9aeb597b04212a57e82c339344130a9cad9b3e2d9"
 dependencies = [
  "blake2",
  "crc32fast",
@@ -6262,6 +6262,7 @@ dependencies = [
  "memmap2",
  "parking_lot 0.12.1",
  "rand 0.8.5",
+ "siphasher",
  "snap",
 ]
 
@@ -8805,6 +8806,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "siphasher"
+version = "0.3.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bd3e3206899af3f8b12af284fafc038cc1dc2b41d1b89dd17297221c5d225de"
+
+[[package]]
 name = "slab"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9854,7 +9861,6 @@ dependencies = [
  "parity-scale-codec",
  "sc-cli",
  "sc-client-api",
- "sc-consensus",
  "sc-service",
  "sp-api",
  "sp-blockchain",

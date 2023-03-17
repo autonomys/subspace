@@ -8,7 +8,6 @@ use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
-use sc_network::NetworkService;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
@@ -120,7 +119,7 @@ where
     domain_id: DomainId,
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
-    primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+    primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
 }
@@ -135,7 +134,7 @@ where
             domain_id: self.domain_id,
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
-            primary_network: self.primary_network.clone(),
+            primary_network_sync_oracle: self.primary_network_sync_oracle.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
         }
@@ -185,7 +184,7 @@ where
         domain_id: DomainId,
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
-        primary_network: Arc<NetworkService<PBlock, PBlock::Hash>>,
+        primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
         backend: Arc<Backend>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
     ) -> Self {
@@ -193,7 +192,7 @@ where
             domain_id,
             client,
             primary_chain_client,
-            primary_network,
+            primary_network_sync_oracle,
             backend,
             fraud_proof_generator,
         }
@@ -365,7 +364,6 @@ where
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
         maybe_new_runtime: Option<Cow<'static, [u8]>>,
-        fork_choice: ForkChoiceStrategy,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number = to_number_primitive(primary_number);
@@ -377,6 +375,12 @@ where
                 domain block must match the number of corresponding primary block."
             ))));
         }
+
+        // Although the domain block intuitively ought to use the same fork choice
+        // from the corresponding primary block, it's fine to forcibly always use
+        // the longest chain for simplicity as we manually build all the domain
+        // branches by literally following the primary chain branches anyway.
+        let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
             .build_and_import_block(
@@ -550,7 +554,7 @@ where
 
         self.check_receipts_in_primary_block(primary_hash)?;
 
-        if self.primary_network.is_major_syncing() {
+        if self.primary_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
                 "Skip checking the receipts as the primary node is still major syncing..."
             );

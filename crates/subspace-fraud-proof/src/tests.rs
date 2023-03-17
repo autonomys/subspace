@@ -7,7 +7,6 @@ use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
-use sc_consensus::ForkChoiceStrategy;
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
@@ -119,7 +118,6 @@ async fn execution_proof_creation_and_verification_should_work() {
     let primary_info = (
         ferdie.client.info().best_hash,
         ferdie.client.info().best_number,
-        ForkChoiceStrategy::LongestChain,
     );
     alice.executor.clone().process_bundles(primary_info).await;
 
@@ -193,9 +191,8 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
-        ferdie.backend.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
         SkipPreStateRootVerification,
@@ -475,9 +472,8 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
-        ferdie.backend.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
         SkipPreStateRootVerification,
