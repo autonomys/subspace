@@ -60,7 +60,7 @@ pub struct DsnConfig {
     pub max_out_connections: u32,
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
-    pub target_connection_number: u32,
+    pub target_connections: u32,
 }
 
 type DsnProviderStorage<AS> =
@@ -159,6 +159,7 @@ where
         provider_storage,
         max_established_incoming_connections: dsn_config.max_in_connections,
         max_established_outgoing_connections: dsn_config.max_out_connections,
+        target_connections: dsn_config.target_connections,
 
         ..subspace_networking::Config::default()
     };
