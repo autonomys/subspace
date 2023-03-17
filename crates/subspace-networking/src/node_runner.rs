@@ -211,7 +211,7 @@ where
                     self.handle_peer_dialing().await;
 
                     self.peer_dialing_timeout =
-                        Box::pin(tokio::time::sleep(Duration::from_secs(3)).fuse());
+                        Box::pin(tokio::time::sleep(Duration::from_secs(15)).fuse());
                 },
             }
         }
