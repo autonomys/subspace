@@ -289,6 +289,8 @@ where
 
                 self.dial_peer(peer_id, addr)
             }
+        } else {
+            self.networking_parameters_registry.reset_batcher()
         }
     }
 
