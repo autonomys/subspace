@@ -1,8 +1,6 @@
-
 mod protocol;
 mod runner;
-pub mod worker;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
 
-pub use crate::worker::{init_block_relay_config, BlockRelayWorker};
+pub use crate::protocol::{build_block_relay, init_block_relay_config};

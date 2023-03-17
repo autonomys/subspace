@@ -1,10 +1,9 @@
 //! Implementation of the full block protocol.
 
-use crate::LOG_TARGET;
 use crate::protocol::{BlockRelayProtocol, GossipNetworkService};
+use crate::LOG_TARGET;
 use async_trait::async_trait;
 use futures::channel::mpsc::{self, Receiver};
-use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_consensus_subspace::ImportedBlockNotification;
@@ -15,15 +14,17 @@ use sc_network_gossip::{
 };
 use sc_service::config::{IncomingRequest, OutgoingResponse, RequestResponseConfig};
 use sc_service::Configuration;
-use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, trace, warn};
+use tracing::{info, trace, warn};
 
 const ANNOUNCE_PROTOCOL: &str = "/subspace/full-block-relay-announces/1";
 const SYNC_PROTOCOL: &str = "/subspace/full-block-relay-sync/1";
+
+/// TODO: tentative size, to be tuned based on testing.
+const INBOUND_QUEUE_SIZE: usize = 1024;
 
 /// The gossip message.
 #[derive(Debug, Encode, Decode)]
@@ -50,6 +51,30 @@ pub struct FullBlockRelay<Block: BlockT> {
 pub struct BlockDownloadState;
 
 impl<Block: BlockT> FullBlockRelay<Block> {
+    pub(crate) fn new(
+        network: Arc<GossipNetworkService<Block>>,
+    ) -> (Self, Arc<Mutex<GossipEngine<Block>>>) {
+        let pending_announcements = Arc::new(Mutex::new(HashSet::new()));
+        let validator = Arc::new(FullBlockRelayValidator {
+            pending_announcements: pending_announcements.clone(),
+        });
+        let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
+            network.clone(),
+            ANNOUNCE_PROTOCOL,
+            validator.clone(),
+            None,
+        )));
+
+        let protocol = Self {
+            network,
+            gossip_engine: gossip_engine.clone(),
+            _validator: validator,
+            pending_announcements,
+            pending_downloads: Mutex::new(HashMap::new()),
+        };
+        (protocol, gossip_engine)
+    }
+
     /// Sends the block download request for the announcement.
     async fn send_download_request(&self, sender: PeerId, announcement: BlockAnnouncement<Block>) {
         {
@@ -187,7 +212,9 @@ impl<Block: BlockT> Validator<Block> for FullBlockRelayValidator {
         if let Err(err) = BlockAnnouncement::<Block>::decode(&mut data) {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelayValidator::validate(): peer = {:?}, decode failed: {:?}", sender, err
+                "FullBlockRelayValidator::validate(): peer = {:?}, decode failed: {:?}",
+                sender,
+                err
             );
             ValidationResult::Discard
         } else {
@@ -235,4 +262,25 @@ impl<Block: BlockT> Validator<Block> for FullBlockRelayValidator {
 /// Block relay message topic.
 fn topic<Block: BlockT>() -> Block::Hash {
     <<Block::Header as HeaderT>::Hashing as HashT>::hash(ANNOUNCE_PROTOCOL.as_bytes())
+}
+
+/// Initializes the full block relay specific config.
+pub(crate) fn init_full_block_config(config: &mut Configuration) -> Receiver<IncomingRequest> {
+    let mut cfg = NonDefaultSetConfig::new(ANNOUNCE_PROTOCOL.into(), 1024 * 1024);
+    cfg.allow_non_reserved(25, 25);
+    config.network.extra_sets.push(cfg);
+
+    let (request_sender, request_receiver) = mpsc::channel(INBOUND_QUEUE_SIZE);
+    config
+        .network
+        .request_response_protocols
+        .push(RequestResponseConfig {
+            name: SYNC_PROTOCOL.into(),
+            fallback_names: Vec::new(),
+            max_request_size: 1024 * 1024,
+            max_response_size: 16 * 1024 * 1024,
+            request_timeout: Duration::from_secs(60),
+            inbound_queue: Some(request_sender),
+        });
+    request_receiver
 }

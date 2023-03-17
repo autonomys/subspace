@@ -1,7 +1,7 @@
-//! Block relay worker.
+//! Block relay protocol runner.
 
-use crate::LOG_TARGET;
 use crate::protocol::BlockRelayProtocol;
+use crate::LOG_TARGET;
 use futures::channel::mpsc::Receiver;
 use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
@@ -9,11 +9,12 @@ use sc_consensus_subspace::ImportedBlockNotification;
 use sc_network_gossip::GossipEngine;
 use sc_service::config::IncomingRequest;
 use sc_utils::mpsc::TracingUnboundedReceiver;
-use sp_runtime::traits::{Block as BlockT};
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use tracing::{error, info};
 
-/// Thw block relay runner interfaces between the event sources and the protocol implementation.
+/// Thw block relay runner acts as an interface between the event sources and the protocol
+/// implementation.
 pub struct BlockRelayRunner<Block: BlockT> {
     /// The backend protocol.
     protocol: Box<dyn BlockRelayProtocol<Block>>,
@@ -46,10 +47,11 @@ impl<Block: BlockT> BlockRelayRunner<Block> {
     /// The event loop.
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "BlockRelayRunner: started");
-        let mut block_announcements =
-            Box::pin(self.gossip_engine.lock().messages_for(
-                self.protocol.block_announcement_topic())
-            );
+        let mut block_announcements = Box::pin(
+            self.gossip_engine
+                .lock()
+                .messages_for(self.protocol.block_announcement_topic()),
+        );
 
         loop {
             let engine = self.gossip_engine.clone();
