@@ -16,10 +16,7 @@ const PIECES_IN_SEGMENT: u32 = 8;
 const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces
-        .as_pieces()
-        .map(|piece| piece.try_into().unwrap())
-        .collect()
+    pieces.as_pieces().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {

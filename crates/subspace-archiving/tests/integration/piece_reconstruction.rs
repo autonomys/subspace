@@ -11,10 +11,7 @@ use subspace_core_primitives::{
 };
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces
-        .as_pieces()
-        .map(|piece| piece.try_into().unwrap())
-        .collect()
+    pieces.as_pieces().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
@@ -58,10 +55,7 @@ fn segment_reconstruction_works() {
 
     let flat_pieces = reconstructor.reconstruct_segment(&maybe_pieces).unwrap();
 
-    let reconstructed_pieces = flat_pieces
-        .as_pieces()
-        .map(|bytes| Piece::try_from(bytes).expect("Piece must have the correct size"))
-        .collect::<Vec<_>>();
+    let reconstructed_pieces = flat_pieces_to_regular(&flat_pieces);
 
     assert_eq!(reconstructed_pieces.len(), PIECES_IN_SEGMENT as usize);
     pieces.iter().zip(reconstructed_pieces.iter()).for_each(

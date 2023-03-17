@@ -154,7 +154,7 @@ impl PieceGetter for TestPieceGetter {
             .pieces
             .as_pieces()
             .nth(piece_index as usize)
-            .map(|piece_bytes| Piece::try_from(piece_bytes).unwrap()))
+            .map(Piece::from))
     }
 }
 
