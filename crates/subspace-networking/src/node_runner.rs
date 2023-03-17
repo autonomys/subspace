@@ -103,6 +103,8 @@ where
     max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     max_established_outgoing_connections: u32,
+    /// Defines target total (in and out) connection number that should be maintained.
+    target_connection_number: u32,
     /// Temporarily banned peers.
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     /// Prometheus metrics.
@@ -125,6 +127,7 @@ where
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
     pub(crate) max_established_incoming_connections: u32,
     pub(crate) max_established_outgoing_connections: u32,
+    pub(crate) target_connection_number: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
 }
@@ -144,6 +147,7 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            target_connection_number,
             temporary_bans,
             metrics,
         }: NodeRunnerConfig<ProviderStorage>,
@@ -165,6 +169,7 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            target_connection_number,
             temporary_bans,
             metrics,
             established_connections: HashMap::new(),
@@ -234,16 +239,22 @@ where
             }
         }
 
-        // Maintain minimum connected out-peers number.
-        let outgoing_connections_number = {
+        // Maintain target connection number.
+        let current_connection_number = {
             let network_info = self.swarm.network_info();
             let connections = network_info.connection_counters();
 
-            connections.num_pending_outgoing() + connections.num_established_outgoing()
+            connections.num_pending_outgoing()
+                + connections.num_established_outgoing()
+                + connections.num_pending_incoming()
+                + connections.num_established_incoming()
         };
-        if outgoing_connections_number < self.max_established_outgoing_connections {
+
+        if current_connection_number < self.target_connection_number {
             debug!(
                 %local_peer_id,
+                current_connection_number,
+                target_connection_number=self.target_connection_number,
                 connected_peers=connected_peers.len(),
                 "Initiate connection to known peers",
             );
