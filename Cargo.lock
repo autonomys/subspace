@@ -9728,6 +9728,7 @@ dependencies = [
 name = "subspace-block-relay"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "futures 0.3.26",
  "parity-scale-codec",
  "parking_lot 0.12.1",

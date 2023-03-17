@@ -9,6 +9,7 @@ repository = "https://github.com/subspace/subspace"
 description = "Subspace block relay implementation"
 
 [dependencies]
+async-trait = "0.1.64"
 futures = "0.3.26"
 parity-scale-codec = { version = "3.4.0", features = ["derive"] }
 parking_lot = "0.12.1"
