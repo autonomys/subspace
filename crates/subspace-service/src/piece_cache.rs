@@ -147,7 +147,7 @@ where
             &insert_keys
                 .iter()
                 .zip(pieces.as_pieces())
-                .map(|(key, piece)| (key.as_slice(), piece))
+                .map(|(key, piece)| (key.as_slice(), *piece))
                 .collect::<Vec<_>>(),
             &delete_keys
                 .iter()

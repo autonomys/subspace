@@ -116,7 +116,7 @@ impl PiecesReconstructor {
             .as_pieces_mut()
             .zip(polynomial_data.chunks_exact_mut(BLAKE2B_256_HASH_SIZE))
             .zip(shards)
-            .for_each(|((piece, polynomial_data), record)| {
+            .for_each(|((mut piece, polynomial_data), record)| {
                 let record =
                     record.expect("Reconstruction just happened and all records are present; qed");
                 let record = record.flatten();
@@ -144,7 +144,7 @@ impl PiecesReconstructor {
         pieces
             .as_pieces_mut()
             .enumerate()
-            .for_each(|(position, piece)| {
+            .for_each(|(position, mut piece)| {
                 piece[self.record_size as usize..].copy_from_slice(
                     &self
                         .kzg
@@ -172,15 +172,14 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::try_from(
+        let mut piece = Piece::from(
             reconstructed_records
                 .as_pieces()
                 .nth(piece_position)
                 .expect(
                 "Piece exists at the position within segment after successful reconstruction; qed",
             ),
-        )
-        .expect("Piece in `FlatPieces` always has correct length; qed");
+        );
 
         piece[self.record_size as usize..].copy_from_slice(
             &self

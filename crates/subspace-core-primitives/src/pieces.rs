@@ -1,6 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
+use derive_more::{Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
@@ -95,6 +96,74 @@ impl AsMut<[u8]> for Piece {
     }
 }
 
+impl Piece {
+    /// Get piece reference.
+    pub fn as_ref(&self) -> PieceRef<'_> {
+        PieceRef(&self.0)
+    }
+
+    /// Get mutable piece reference.
+    pub fn as_mut(&mut self) -> PieceRefMut<'_> {
+        PieceRefMut(&mut self.0)
+    }
+}
+
+/// Reference to piece sized slice of memory.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PieceRef<'a>(&'a [u8]);
+
+impl<'a> AsRef<[u8]> for PieceRef<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+impl<'a> From<&'a Piece> for PieceRef<'a> {
+    fn from(value: &'a Piece) -> Self {
+        PieceRef(&value.0)
+    }
+}
+
+impl From<PieceRef<'_>> for Piece {
+    fn from(value: PieceRef<'_>) -> Self {
+        Piece(value.0.to_vec())
+    }
+}
+
+/// Mutable reference to piece sized slice of memory.
+#[derive(Debug, Eq, PartialEq, Deref, DerefMut)]
+pub struct PieceRefMut<'a>(&'a mut [u8]);
+
+impl<'a> AsRef<[u8]> for PieceRefMut<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+impl<'a> AsMut<[u8]> for PieceRefMut<'a> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0
+    }
+}
+
+impl<'a> From<&'a mut Piece> for PieceRefMut<'a> {
+    fn from(value: &'a mut Piece) -> Self {
+        PieceRefMut(&mut value.0)
+    }
+}
+
+impl<'a> From<PieceRefMut<'a>> for PieceRef<'a> {
+    fn from(value: PieceRefMut<'a>) -> Self {
+        PieceRef(value.0)
+    }
+}
+
+impl From<PieceRefMut<'_>> for Piece {
+    fn from(value: PieceRefMut<'_>) -> Self {
+        Piece(value.0.to_vec())
+    }
+}
+
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -119,13 +188,13 @@ impl FlatPieces {
     }
 
     /// Iterator over individual pieces as byte slices.
-    pub fn as_pieces(&self) -> impl ExactSizeIterator<Item = &[u8]> {
-        self.0.chunks_exact(PIECE_SIZE)
+    pub fn as_pieces(&self) -> impl ExactSizeIterator<Item = PieceRef<'_>> {
+        self.0.chunks_exact(PIECE_SIZE).map(PieceRef)
     }
 
     /// Iterator over individual pieces as byte slices.
-    pub fn as_pieces_mut(&mut self) -> impl ExactSizeIterator<Item = &mut [u8]> {
-        self.0.chunks_exact_mut(PIECE_SIZE)
+    pub fn as_pieces_mut(&mut self) -> impl ExactSizeIterator<Item = PieceRefMut<'_>> {
+        self.0.chunks_exact_mut(PIECE_SIZE).map(PieceRefMut)
     }
 }
 

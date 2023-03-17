@@ -67,8 +67,8 @@ fn segment_reconstruction_works() {
     pieces.iter().zip(reconstructed_pieces.iter()).for_each(
         |(original_piece, reconstructed_piece)| {
             assert_eq!(
-                blake2b_256_254_hash(original_piece.as_ref()),
-                blake2b_256_254_hash(reconstructed_piece.as_ref())
+                blake2b_256_254_hash(original_piece),
+                blake2b_256_254_hash(reconstructed_piece)
             );
         },
     );
@@ -108,8 +108,8 @@ fn piece_reconstruction_works() {
         .unwrap();
 
     assert_eq!(
-        blake2b_256_254_hash(pieces[missing_piece_position].as_ref()),
-        blake2b_256_254_hash(missing_piece.as_ref())
+        blake2b_256_254_hash(&pieces[missing_piece_position]),
+        blake2b_256_254_hash(&missing_piece)
     );
 }
 
