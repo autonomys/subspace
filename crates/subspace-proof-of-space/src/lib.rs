@@ -1,3 +1,6 @@
+//! Subspace proof of space implementation based on Chia
+#![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
 
 /// Abstraction that represents quality of the solution in the table

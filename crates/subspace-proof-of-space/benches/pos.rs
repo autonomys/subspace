@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use subspace_core_primitives::PosSeed;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{is_proof_valid, Table};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let seed = PosSeed([
@@ -43,6 +43,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("proof", |b| {
         b.iter(|| {
             quality.create_proof();
+        });
+    });
+
+    let proof = quality.create_proof();
+
+    group.bench_function("verification", |b| {
+        b.iter(|| {
+            assert!(is_proof_valid(&seed, challenge_index_with_solution, &proof));
         });
     });
     group.finish();

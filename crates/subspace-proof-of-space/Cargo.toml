@@ -1,6 +1,6 @@
 [package]
 name = "subspace-proof-of-space"
-description = ""
+description = "Subspace proof of space implementation based on Chia"
 license = "Apache-2.0"
 version = "0.1.0"
 authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
