@@ -759,6 +759,7 @@ where
 
     let block_relay_runner = build_block_relay(
         network.clone(),
+        client.clone(),
         imported_block_notification_stream.subscribe(),
         block_relay_receiver,
     );

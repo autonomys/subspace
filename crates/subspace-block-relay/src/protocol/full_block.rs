@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use futures::channel::mpsc::{self, Receiver};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
+use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::ImportedBlockNotification;
 use sc_network::{IfDisconnected, NetworkRequest, PeerId};
 use sc_network_common::config::NonDefaultSetConfig;
@@ -14,6 +15,7 @@ use sc_network_gossip::{
 };
 use sc_service::config::{IncomingRequest, OutgoingResponse, RequestResponseConfig};
 use sc_service::Configuration;
+use sp_runtime::generic::{BlockId, SignedBlock};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -30,9 +32,12 @@ const INBOUND_QUEUE_SIZE: usize = 1024;
 #[derive(Debug, Encode, Decode)]
 pub struct BlockAnnouncement<Block: BlockT>(NumberFor<Block>);
 
-pub struct FullBlockRelay<Block: BlockT> {
+pub struct FullBlockRelay<Block: BlockT, Client> {
     /// Network handle.
     network: Arc<GossipNetworkService<Block>>,
+
+    /// Block backend.
+    client: Arc<Client>,
 
     /// Announcement gossip engine.
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
@@ -50,9 +55,14 @@ pub struct FullBlockRelay<Block: BlockT> {
 #[derive(Debug)]
 pub struct BlockDownloadState;
 
-impl<Block: BlockT> FullBlockRelay<Block> {
+impl<Block, Client> FullBlockRelay<Block, Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+{
     pub(crate) fn new(
         network: Arc<GossipNetworkService<Block>>,
+        client: Arc<Client>,
     ) -> (Self, Arc<Mutex<GossipEngine<Block>>>) {
         let pending_announcements = Arc::new(Mutex::new(HashSet::new()));
         let validator = Arc::new(FullBlockRelayValidator {
@@ -67,6 +77,7 @@ impl<Block: BlockT> FullBlockRelay<Block> {
 
         let protocol = Self {
             network,
+            client,
             gossip_engine: gossip_engine.clone(),
             _validator: validator,
             pending_announcements,
@@ -112,10 +123,44 @@ impl<Block: BlockT> FullBlockRelay<Block> {
         }
         self.pending_downloads.lock().remove(&announcement.0);
     }
+
+    /// Retrieves the requested block from the backend.
+    fn get_block(
+        &self,
+        request: &BlockAnnouncement<Block>,
+    ) -> Result<Option<SignedBlock<Block>>, String> {
+        let block_id = BlockId::<Block>::Number(request.0);
+        let block_hash = match self.client.block_hash_from_id(&block_id) {
+            Ok(Some(block_hash)) => block_hash,
+            Ok(None) => {
+                return Err(format!(
+                    "FullBlockRelay::get_block(): hash lookup failed: {:?}/{:?}",
+                    request, block_id
+                ))
+            }
+            Err(err) => {
+                return Err(format!(
+                    "FullBlockRelay::get_block(): hash conversion failed: {:?}/{:?}, {:?}",
+                    request, block_id, err
+                ))
+            }
+        };
+
+        self.client.block(block_hash).map_err(|err| {
+            format!(
+                "FullBlockRelay::get_block(): block lookup failed: {:?}/{:?}, {:?}",
+                request, block_id, err
+            )
+        })
+    }
 }
 
 #[async_trait]
-impl<Block: BlockT> BlockRelayProtocol<Block> for FullBlockRelay<Block> {
+impl<Block, Client> BlockRelayProtocol<Block> for FullBlockRelay<Block, Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+{
     fn block_announcement_topic(&self) -> Block::Hash {
         topic::<Block>()
     }
@@ -181,6 +226,29 @@ impl<Block: BlockT> BlockRelayProtocol<Block> for FullBlockRelay<Block> {
                 return;
             }
         };
+
+        match self.get_block(&announcement) {
+            Ok(Some(_)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "FullBlockRelay::on_protocol_message(): found block for {:?}", announcement,
+                );
+            }
+            Ok(None) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "FullBlockRelay::on_protocol_message(): block not found for {:?}", announcement,
+                );
+            }
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "FullBlockRelay::on_protocol_message(): block lookup failed for{:?}: {:?}",
+                    announcement,
+                    err
+                );
+            }
+        }
 
         let response = OutgoingResponse {
             result: Ok(announcement.encode()),

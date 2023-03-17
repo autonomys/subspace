@@ -1,6 +1,7 @@
 /// Common define for the block relay.
 use async_trait::async_trait;
 use futures::channel::mpsc::Receiver;
+use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::ImportedBlockNotification;
 use sc_network_gossip::TopicNotification;
 use sc_service::config::IncomingRequest;
@@ -40,12 +41,17 @@ pub fn init_block_relay_config(config: &mut Configuration) -> Receiver<IncomingR
 /// Creates the protocol implementation and the runner to drive the protocol.
 /// Takes the receive endpoint previously created by init_block_relay_config() as
 /// input.
-pub fn build_block_relay<Block: BlockT>(
+pub fn build_block_relay<Block, Client>(
     network: Arc<GossipNetworkService<Block>>,
+    client: Arc<Client>,
     import_notifications: TracingUnboundedReceiver<ImportedBlockNotification<Block>>,
     receiver: Receiver<IncomingRequest>,
-) -> BlockRelayRunner<Block> {
-    let (protocol, gossip_engine) = FullBlockRelay::new(network);
+) -> BlockRelayRunner<Block>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+{
+    let (protocol, gossip_engine) = FullBlockRelay::new(network, client);
     BlockRelayRunner::new(
         Box::new(protocol),
         gossip_engine,

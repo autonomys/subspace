@@ -9732,6 +9732,7 @@ dependencies = [
  "futures 0.3.26",
  "parity-scale-codec",
  "parking_lot 0.12.1",
+ "sc-client-api",
  "sc-consensus-subspace",
  "sc-network",
  "sc-network-common",
