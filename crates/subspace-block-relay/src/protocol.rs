@@ -6,7 +6,11 @@ use sc_network_gossip::TopicNotification;
 use sc_service::config::IncomingRequest;
 use sp_runtime::traits::{Block as BlockT};
 
+mod full_block;
+
 pub use crate::worker::{init_block_relay_config, BlockRelayWorker};
+
+pub(crate) type GossipNetworkService<Block> = sc_network::NetworkService<Block, <Block as BlockT>::Hash>;
 
 #[async_trait]
 pub trait BlockRelayProtocol<Block: BlockT> : Send + Sync {
