@@ -21,6 +21,7 @@ use sp_consensus::BlockOrigin;
 use sp_runtime::generic::{BlockId, SignedBlock};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, trace, warn};
@@ -33,13 +34,50 @@ const INBOUND_QUEUE_SIZE: usize = 1024;
 
 /// The gossiped block announcement.
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct BlockAnnouncement<Block: BlockT>(NumberFor<Block>);
+struct BlockAnnouncement<Block: BlockT>(NumberFor<Block>);
+
+impl<Block: BlockT> From<&ImportedBlockNotification<Block>> for BlockAnnouncement<Block> {
+    fn from(import_notification: &ImportedBlockNotification<Block>) -> Self {
+        Self(import_notification.block_number)
+    }
+}
+
+impl<Block: BlockT> fmt::Display for BlockAnnouncement<Block> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BlockAnnouncement[block = {}]", self.0)
+    }
+}
 
 /// The block download request.
-type BlockRequest<Block> = BlockAnnouncement<Block>;
+#[derive(Debug, Encode, Decode)]
+struct BlockRequest<Block: BlockT>(NumberFor<Block>);
+
+impl<Block: BlockT> From<&BlockAnnouncement<Block>> for BlockRequest<Block> {
+    fn from(announcement: &BlockAnnouncement<Block>) -> Self {
+        Self(announcement.0)
+    }
+}
+
+impl<Block: BlockT> fmt::Display for BlockRequest<Block> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BlockRequest[block = {}]", self.0)
+    }
+}
 
 /// The block download response.
-type BlockResponse<Block> = SignedBlock<Block>;
+#[derive(Debug, Encode, Decode)]
+struct BlockResponse<Block: BlockT>(SignedBlock<Block>);
+
+impl<Block: BlockT> fmt::Display for BlockResponse<Block> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "BlockResponse[hash = {}, size_hint = {}]",
+            self.0.block.hash(),
+            self.0.block.size_hint()
+        )
+    }
+}
 
 pub struct FullBlockRelay<Block: BlockT, Client> {
     /// Network handle.
@@ -114,12 +152,13 @@ where
             pending_downloads.insert(announcement.0, BlockDownloadState);
         }
 
+        let block_request = BlockRequest::<Block>(announcement.0);
         let ret = self
             .network
             .request(
                 sender,
                 SYNC_PROTOCOL.into(),
-                announcement.encode(),
+                block_request.encode(),
                 IfDisconnected::ImmediateError,
             )
             .await;
@@ -129,8 +168,8 @@ where
             Ok(bytes) => bytes,
             Err(err) => {
                 return Err(format!(
-                    "FullBlockRelay::download_block(): send request failed for {:?}, err = {:?}",
-                    announcement, err
+                    "[{}, send request failed, err = {:?}]",
+                    block_request, err
                 ));
             }
         };
@@ -138,14 +177,17 @@ where
         BlockResponse::<Block>::decode(&mut bytes.as_slice())
             .map(|block| Some(block))
             .map_err(|err| {
-                format!( "FullBlockRelay::download_block(): failed to decode response for {:?}, len = {}, err = {:?}",
-                         announcement, bytes.len(), err
+                format!(
+                    "[{}, failed to decoded block response, len = {}, err = {:?}]",
+                    block_request,
+                    bytes.len(),
+                    err
                 )
             })
     }
 
     /// Imports the block.
-    async fn import_block(&self, block: SignedBlock<Block>) -> Result<(), String> {
+    async fn import_block(&self, block: SignedBlock<Block>) {
         let (header, extrinsics) = block.block.deconstruct();
         let hash = header.hash();
         self.import_queue.lock().import_blocks(
@@ -163,8 +205,6 @@ where
                 skip_execution: false,
             }],
         );
-
-        Err("None".to_string())
     }
 
     /// Sends the response to the block download request.
@@ -172,7 +212,7 @@ where
         &self,
         incoming: IncomingRequest,
         request: BlockRequest<Block>,
-        response: SignedBlock<Block>,
+        response: BlockResponse<Block>,
     ) {
         let encoded = response.encode();
         let encoded_len = encoded.len();
@@ -185,15 +225,19 @@ where
         if let Err(err) = incoming.pending_response.send(outgoing) {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::on_protocol_message(): failed to send response for {:?}, len = {}, err = {:?}",
-                request, encoded_len, err
+                "FullBlockRelay::send_download_response(): {}, {}, response len = {}, err = {:?}",
+                request,
+                response,
+                encoded_len,
+                err
             );
         } else {
-            info!(
+            warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::send_download_response(): sent response for {:?}, len = {}",
+                "FullBlockRelay::send_download_response(): {}, {}, sent response, len = {}",
                 request,
-                encoded_len
+                response,
+                encoded_len,
             );
         }
     }
@@ -241,7 +285,7 @@ where
 
     async fn on_block_import(&self, notification: ImportedBlockNotification<Block>) {
         // Announce the imported block.
-        let announcement = BlockAnnouncement::<Block>(notification.block_number);
+        let announcement: BlockAnnouncement<Block> = (&notification).into();
         let encoded = announcement.encode();
         self.pending_announcements.lock().insert(encoded.clone());
         self.gossip_engine
@@ -249,7 +293,9 @@ where
             .gossip_message(topic::<Block>(), encoded, false);
         info!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_import(): sent announcement for {:?}", notification
+            "FullBlockRelay::on_block_import(): notification = {:?}, sent {}",
+            notification,
+            announcement
         );
     }
 
@@ -264,7 +310,7 @@ where
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "FullBlockRelay::on_block_announcement(): failed to decode announcement {:?}, err = {:?}",
+                    "FullBlockRelay::on_block_announcement(): failed to decode {:?}, err = {:?}",
                     message,
                     err
                 );
@@ -272,14 +318,15 @@ where
             }
         };
 
-        // Download the block
-        let block = match self.download_block(sender, &announcement).await {
-            Ok(Some(block)) => block,
+        // Download/import the block
+        let block_response = match self.download_block(sender, &announcement).await {
+            Ok(Some(block_response)) => block_response,
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "FullBlockRelay::on_block_announcement(): failed to download block {:?}, err = {:?}",
-                    announcement, err
+                    "FullBlockRelay::on_block_announcement(): {}, download failed, err = {:?}",
+                    announcement,
+                    err
                 );
                 return;
             }
@@ -287,46 +334,40 @@ where
         };
 
         // Import the downloaded block
-        if let Err(err) = self.import_block(block).await {
-            warn!(
-                target: LOG_TARGET,
-                "FullBlockRelay::on_block_announcement(): failed to import block {:?}, err = {:?}",
-                announcement,
-                err
-            );
-            return;
-        }
-
         info!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_announcement(): downloaded/imported block {:?}", announcement,
+            "FullBlockRelay::on_block_announcement(): {}, {}, block downloaded/imported",
+            announcement,
+            block_response
         );
+        self.import_block(block_response.0).await;
     }
 
-    async fn on_protocol_message(&self, request: IncomingRequest) {
-        let block_request = match BlockRequest::<Block>::decode(&mut &request.payload[..]) {
+    async fn on_protocol_message(&self, incoming: IncomingRequest) {
+        let block_request = match BlockRequest::<Block>::decode(&mut &incoming.payload[..]) {
             Ok(block_request) => block_request,
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
                     "FullBlockRelay::on_protocol_message(): failed to decode {:?}, err = {:?}",
-                    request,
+                    incoming,
                     err
                 );
                 return;
             }
         };
 
-        let response = self.get_backend_block(&block_request);
-        if let Ok(Some(block_response)) = response {
-            self.send_download_response(request, block_request, block_response)
+        let ret = self.get_backend_block(&block_request);
+        if let Ok(Some(signed_block)) = ret {
+            let block_response = BlockResponse(signed_block);
+            self.send_download_response(incoming, block_request, block_response)
                 .await;
         } else {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::on_protocol_message(): failed to send response for {:?}: {:?}",
-                request,
-                response
+                "FullBlockRelay::on_protocol_message(): {}, backend fetch failed, ret = {:?}",
+                block_request,
+                ret
             );
         }
     }
