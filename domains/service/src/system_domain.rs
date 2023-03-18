@@ -1,5 +1,6 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
     EssentialExecutorParams, SystemDomainParentChain, SystemExecutor, SystemGossipMessageValidator,
@@ -107,7 +108,6 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
         FullClient<RuntimeApi, Executor>,
         SystemDomainXDMVerifier<
             PClient,
-            FullClient<RuntimeApi, Executor>,
             PBlock,
             Block,
             FullChainVerifier<
@@ -116,6 +116,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
                 FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
                 SkipBundleValidation,
             >,
+            StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
         >,
     >;
 
@@ -213,7 +214,7 @@ where
         FullChainVerifier::new(client.clone(), proof_verifier, SkipBundleValidation);
     let system_domain_xdm_verifier = SystemDomainXDMVerifier::new(
         primary_chain_client,
-        client.clone(),
+        StateRootExtractorWithSystemDomainClient::new(client.clone()),
         system_domain_fraud_proof_verifier,
     );
 
