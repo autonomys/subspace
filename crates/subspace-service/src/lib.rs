@@ -129,7 +129,7 @@ pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof
     NativeElseWasmExecutor<ExecutorDispatch>,
     SpawnTaskHandle,
     Hash,
-    subspace_fraud_proof::PreStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
 >;
 
 /// Subspace networking instantiation variant
@@ -260,7 +260,7 @@ where
         client.clone(),
         executor,
         task_manager.spawn_handle(),
-        subspace_fraud_proof::PreStateRootVerifier::new(client.clone()),
+        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
     let transaction_pool = subspace_transaction_pool::new_full(
         config,

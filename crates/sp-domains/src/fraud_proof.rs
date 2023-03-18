@@ -73,6 +73,15 @@ pub enum VerificationError {
     /// `pre_state_root` in the invalid state transition proof is invalid.
     #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
     InvalidPreStateRoot,
+    /// `post_state_root` not found in the state.
+    #[cfg_attr(feature = "thiserror", error("`post_state_root` not found"))]
+    PostStateRootNotFound,
+    /// `post_state_root` is same as the one stored on chain.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("`post_state_root` is same as the one on chain")
+    )]
+    SamePostStateRoot,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",

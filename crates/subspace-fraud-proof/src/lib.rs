@@ -14,7 +14,7 @@ mod tests;
 use codec::{Decode, Encode};
 use invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 pub use invalid_state_transition_proof::{
-    ExecutionProver, PreStateRootVerifier, VerifyPreStateRoot,
+    ExecutionProver, PrePostStateRootVerifier, VerifyPrePostStateRoot,
 };
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
@@ -34,14 +34,14 @@ pub trait VerifyFraudProof<FPBlock: BlockT> {
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier> {
+pub struct ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> {
     invalid_state_transition_proof_verifier:
-        InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>,
+        InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>,
     _phantom: PhantomData<FPBlock>,
 }
 
-impl<FPBlock, PBlock, C, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: Clone> Clone
-    for ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<FPBlock, PBlock, C, Exec: Clone, Spawn: Clone, Hash, PrePostStateRootVerifier: Clone> Clone
+    for ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 {
     fn clone(&self) -> Self {
         Self {
@@ -53,8 +53,8 @@ impl<FPBlock, PBlock, C, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: 
     }
 }
 
-impl<FPBlock, PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
-    ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+    ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 where
     FPBlock: BlockT,
     PBlock: BlockT,
@@ -63,20 +63,20 @@ where
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
-    PreStateRootVerifier: VerifyPreStateRoot,
+    PrePostStateRootVerifier: VerifyPrePostStateRoot,
 {
     /// Constructs a new instance of [`ProofVerifier`].
     pub fn new(
         client: Arc<C>,
         executor: Exec,
         spawn_handle: Spawn,
-        pre_state_root_verifier: PreStateRootVerifier,
+        pre_post_state_root_verifier: PrePostStateRootVerifier,
     ) -> Self {
         let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
             client,
             executor,
             spawn_handle,
-            pre_state_root_verifier,
+            pre_post_state_root_verifier,
         );
         Self {
             invalid_state_transition_proof_verifier,
@@ -98,8 +98,8 @@ where
     }
 }
 
-impl<FPBlock, PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier> VerifyFraudProof<FPBlock>
-    for ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> VerifyFraudProof<FPBlock>
+    for ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 where
     FPBlock: BlockT,
     PBlock: BlockT,
@@ -108,7 +108,7 @@ where
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode + Send + Sync,
-    PreStateRootVerifier: VerifyPreStateRoot,
+    PrePostStateRootVerifier: VerifyPrePostStateRoot,
 {
     fn verify_fraud_proof(
         &self,

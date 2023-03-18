@@ -176,32 +176,45 @@ impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
 }
 
 /// Invalid state transition proof verifier.
-pub struct InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier> {
+pub struct InvalidStateTransitionProofVerifier<
+    PBlock,
+    C,
+    Exec,
+    Spawn,
+    Hash,
+    PrePostStateRootVerifier,
+> {
     client: Arc<C>,
     executor: Exec,
     spawn_handle: Spawn,
-    pre_state_root_verifier: PreStateRootVerifier,
+    pre_post_state_root_verifier: PrePostStateRootVerifier,
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: Clone> Clone
-    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PrePostStateRootVerifier: Clone> Clone
+    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
             executor: self.executor.clone(),
             spawn_handle: self.spawn_handle.clone(),
-            pre_state_root_verifier: self.pre_state_root_verifier.clone(),
+            pre_post_state_root_verifier: self.pre_post_state_root_verifier.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
-/// Verifies the `pre_state_root` in [`InvalidStateTransitionProof`].
-pub trait VerifyPreStateRoot {
+/// Verifies `pre_state_root` and `post_state_root` in [`InvalidStateTransitionProof`].
+pub trait VerifyPrePostStateRoot {
     /// Verifies whether `pre_state_root` declared in the proof is same as the one recorded on chain.
     fn verify_pre_state_root(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError>;
+
+    /// Verifies whether `post_state_root` declared in the proof is different from the one recorded on chain.
+    fn verify_post_state_root(
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError>;
@@ -210,12 +223,12 @@ pub trait VerifyPreStateRoot {
 /// Verifier of `pre_state_root` in [`InvalidStateTransitionProof`].
 ///
 /// `client` could be either the primary chain client or system domain client.
-pub struct PreStateRootVerifier<Client, Block> {
+pub struct PrePostStateRootVerifier<Client, Block> {
     client: Arc<Client>,
     _phantom: PhantomData<Block>,
 }
 
-impl<Client, Block> Clone for PreStateRootVerifier<Client, Block> {
+impl<Client, Block> Clone for PrePostStateRootVerifier<Client, Block> {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
@@ -224,8 +237,8 @@ impl<Client, Block> Clone for PreStateRootVerifier<Client, Block> {
     }
 }
 
-impl<Client, Block> PreStateRootVerifier<Client, Block> {
-    /// Constructs a new instance of [`PreStateRootVerifier`].
+impl<Client, Block> PrePostStateRootVerifier<Client, Block> {
+    /// Constructs a new instance of [`PrePostStateRootVerifier`].
     pub fn new(client: Arc<Client>) -> Self {
         Self {
             client,
@@ -234,7 +247,7 @@ impl<Client, Block> PreStateRootVerifier<Client, Block> {
     }
 }
 
-impl<Client, Block> VerifyPreStateRoot for PreStateRootVerifier<Client, Block>
+impl<Client, Block> VerifyPrePostStateRoot for PrePostStateRootVerifier<Client, Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
@@ -284,12 +297,56 @@ where
             }
         }
     }
+
+    fn verify_post_state_root(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        let InvalidStateTransitionProof {
+            domain_id,
+            bad_receipt_hash,
+            execution_phase,
+            post_state_root,
+            ..
+        } = invalid_state_transition_proof;
+
+        let trace = self.client.runtime_api().execution_trace(
+            self.client.info().best_hash,
+            *domain_id,
+            *bad_receipt_hash,
+        )?;
+
+        let post_state_root_onchain = match execution_phase {
+            ExecutionPhase::InitializeBlock => trace
+                .get(0)
+                .ok_or(VerificationError::PostStateRootNotFound)?,
+            ExecutionPhase::ApplyExtrinsic(trace_index_of_post_state_root)
+            | ExecutionPhase::FinalizeBlock {
+                total_extrinsics: trace_index_of_post_state_root,
+            } => trace
+                .get(*trace_index_of_post_state_root as usize + 1)
+                .ok_or(VerificationError::PostStateRootNotFound)?,
+        };
+
+        if post_state_root_onchain == post_state_root {
+            Err(VerificationError::SamePostStateRoot)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 pub(crate) struct SkipPreStateRootVerification;
 
-impl VerifyPreStateRoot for SkipPreStateRootVerification {
+impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
     fn verify_pre_state_root(
+        &self,
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        Ok(())
+    }
+
+    fn verify_post_state_root(
         &self,
         _invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
@@ -297,8 +354,8 @@ impl VerifyPreStateRoot for SkipPreStateRootVerification {
     }
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
-    InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+    InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 where
     PBlock: BlockT,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
@@ -306,20 +363,20 @@ where
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
-    PreStateRootVerifier: VerifyPreStateRoot,
+    PrePostStateRootVerifier: VerifyPrePostStateRoot,
 {
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
         client: Arc<C>,
         executor: Exec,
         spawn_handle: Spawn,
-        pre_state_root_verifier: PreStateRootVerifier,
+        pre_post_state_root_verifier: PrePostStateRootVerifier,
     ) -> Self {
         Self {
             client,
             executor,
             spawn_handle,
-            pre_state_root_verifier,
+            pre_post_state_root_verifier,
             _phantom: PhantomData::<(PBlock, Hash)>,
         }
     }
@@ -329,8 +386,11 @@ where
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
-        self.pre_state_root_verifier
+        self.pre_post_state_root_verifier
             .verify_pre_state_root(invalid_state_transition_proof)?;
+
+        self.pre_post_state_root_verifier
+            .verify_post_state_root(invalid_state_transition_proof)?;
 
         let InvalidStateTransitionProof {
             domain_id,

@@ -127,7 +127,7 @@ type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        subspace_fraud_proof::PreStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
     >;
 
 /// Constructs a partial system domain node.
@@ -204,7 +204,7 @@ where
         primary_chain_client.clone(),
         executor.clone(),
         task_manager.spawn_handle(),
-        subspace_fraud_proof::PreStateRootVerifier::new(client.clone()),
+        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
 
     // Skip bundle validation here because for the system domain the bundle is extract from the
