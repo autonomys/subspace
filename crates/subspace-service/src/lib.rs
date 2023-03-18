@@ -37,7 +37,7 @@ use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, StateBackendFor};
-use sc_consensus::{BlockImport, DefaultImportQueue};
+use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
@@ -606,6 +606,7 @@ where
     assert!(config.network.request_response_protocols.len() == 0);
     let block_relay_receiver = init_block_relay_config(&mut config);
     assert!(config.network.request_response_protocols.len() == 1);
+    let import_queue_service = import_queue.service();
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -760,6 +761,7 @@ where
     let block_relay_runner = build_block_relay(
         network.clone(),
         client.clone(),
+        import_queue_service,
         imported_block_notification_stream.subscribe(),
         block_relay_receiver,
     );
