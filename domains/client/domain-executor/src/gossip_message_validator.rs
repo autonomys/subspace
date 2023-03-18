@@ -7,7 +7,6 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorPublicKey};
 use sp_runtime::generic::BlockId;
@@ -146,7 +145,6 @@ where
     pub(crate) fn validate_gossiped_execution_receipt<PCB, ParentChain>(
         &self,
         parent_chain: &ParentChain,
-        signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         domain_id: DomainId,
     ) -> Result<(), GossipMessageError>
@@ -158,7 +156,6 @@ where
         let head_receipt_number = to_number_primitive(head_receipt_number);
 
         if let Some(fraud_proof) = self.validate_execution_receipt::<PCB>(
-            signed_bundle_hash,
             execution_receipt,
             head_receipt_number,
             domain_id,
@@ -172,7 +169,6 @@ where
     #[allow(clippy::type_complexity)]
     fn validate_execution_receipt<PCB>(
         &self,
-        signed_bundle_hash: H256,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
         domain_id: DomainId,
@@ -225,7 +221,7 @@ where
                 domain_id,
                 trace_mismatch_index,
                 &local_receipt,
-                signed_bundle_hash,
+                execution_receipt.hash(),
             )?;
             Ok(Some(fraud_proof))
         } else {

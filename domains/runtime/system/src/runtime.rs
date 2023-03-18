@@ -11,7 +11,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::OpaqueMetadata;
+use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
@@ -530,6 +530,12 @@ impl_runtime_apis! {
                     weight: Weight::zero(),
                 }.into()
             ).encode()
+        }
+    }
+
+    impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
+            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }
     }
 

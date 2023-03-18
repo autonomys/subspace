@@ -32,6 +32,7 @@ use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
+use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
@@ -77,6 +78,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, RelayerId, NumberFor<Block>>
+        + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
 {
     /// Task manager.
@@ -111,20 +113,22 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
             FullChainVerifier<
                 Block,
                 FullClient<RuntimeApi, Executor>,
-                FraudProofVerifier<PBlock, PClient, Executor>,
+                FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
                 SkipBundleValidation,
             >,
         >,
     >;
 
-type FraudProofVerifier<PBlock, PClient, Executor> = subspace_fraud_proof::ProofVerifier<
-    Block,
-    PBlock,
-    PClient,
-    NativeElseWasmExecutor<Executor>,
-    SpawnTaskHandle,
-    Hash,
->;
+type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_fraud_proof::ProofVerifier<
+        Block,
+        PBlock,
+        PClient,
+        NativeElseWasmExecutor<Executor>,
+        SpawnTaskHandle,
+        Hash,
+        subspace_fraud_proof::PreStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+    >;
 
 /// Constructs a partial system domain node.
 #[allow(clippy::type_complexity)]
@@ -158,6 +162,7 @@ where
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+        + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
     Executor: NativeExecutionDispatch + 'static,
 {
@@ -199,6 +204,7 @@ where
         primary_chain_client.clone(),
         executor.clone(),
         task_manager.spawn_handle(),
+        subspace_fraud_proof::PreStateRootVerifier::new(client.clone()),
     );
 
     // Skip bundle validation here because for the system domain the bundle is extract from the
@@ -293,6 +299,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, RelayerId, NumberFor<Block>>
+        + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

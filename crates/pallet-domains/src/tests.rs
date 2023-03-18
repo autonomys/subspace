@@ -468,7 +468,7 @@ fn submit_fraud_proof_should_work() {
     let dummy_proof = |domain_id| {
         FraudProof::InvalidStateTransition(InvalidStateTransitionProof {
             domain_id,
-            bad_signed_bundle_hash: Hash::random(),
+            bad_receipt_hash: Hash::random(),
             parent_number: 99,
             parent_hash: block_hashes[98],
             pre_state_root: H256::random(),
