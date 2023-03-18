@@ -9745,6 +9745,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-chiapos"
+version = "0.1.0"
+source = "git+https://github.com/subspace/chiapos?rev=a239ddf83b4d8420f23616d604af83c756c40116#a239ddf83b4d8420f23616d604af83c756c40116"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
@@ -9965,6 +9973,15 @@ dependencies = [
  "system-domain-runtime",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "subspace-proof-of-space"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "subspace-chiapos",
+ "subspace-core-primitives",
 ]
 
 [[package]]

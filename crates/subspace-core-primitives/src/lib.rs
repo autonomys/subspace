@@ -37,7 +37,7 @@ use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
-use derive_more::{Add, Display, Div, Mul, Rem, Sub};
+use derive_more::{Add, Deref, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
 use scale_info::{Type, TypeInfo};
@@ -118,6 +118,42 @@ pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
 pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
+
+/// Size of proof of space seed in bytes.
+const POS_SEED_SIZE: usize = 32;
+
+/// Proof of space seed.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosSeed(pub [u8; POS_SEED_SIZE]);
+
+impl PosSeed {
+    /// Size of proof of space seed in bytes.
+    pub const SIZE: usize = POS_SEED_SIZE;
+}
+
+/// Size of proof of space quality in bytes.
+const POS_QUALITY_SIZE: usize = 32;
+
+/// Proof of space quality.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosQualityBytes(pub [u8; POS_QUALITY_SIZE]);
+
+impl PosQualityBytes {
+    /// Size of proof of space quality in bytes.
+    pub const SIZE: usize = POS_QUALITY_SIZE;
+}
+
+/// Length of proof of space proof in bytes.
+const POS_PROOF_LENGTH: usize = 17 * 8;
+
+/// Proof of space proof bytes.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosProof(pub [u8; POS_PROOF_LENGTH]);
+
+impl PosProof {
+    /// Size of proof of space proof in bytes.
+    pub const SIZE: usize = POS_PROOF_LENGTH;
+}
 
 /// Representation of a single BLS12-381 scalar value.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
