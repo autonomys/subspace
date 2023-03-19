@@ -145,12 +145,22 @@ impl AsMut<[u8]> for Piece {
 impl Piece {
     /// Get piece reference.
     pub fn as_ref(&self) -> PieceRef<'_> {
-        PieceRef(&self.0)
+        PieceRef(
+            self.0
+                .as_slice()
+                .try_into()
+                .expect("Piece has correct size; qed"),
+        )
     }
 
     /// Get mutable piece reference.
     pub fn as_mut(&mut self) -> PieceRefMut<'_> {
-        PieceRefMut(&mut self.0)
+        PieceRefMut(
+            self.0
+                .as_mut_slice()
+                .try_into()
+                .expect("Piece has correct size; qed"),
+        )
     }
 
     /// Split piece into underlying components.
@@ -202,7 +212,7 @@ impl Piece {
 
 /// Reference to piece sized slice of memory.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PieceRef<'a>(&'a [u8]);
+pub struct PieceRef<'a>(&'a [u8; PIECE_SIZE]);
 
 impl<'a> AsRef<[u8]> for PieceRef<'a> {
     fn as_ref(&self) -> &[u8] {
@@ -212,7 +222,13 @@ impl<'a> AsRef<[u8]> for PieceRef<'a> {
 
 impl<'a> From<&'a Piece> for PieceRef<'a> {
     fn from(value: &'a Piece) -> Self {
-        PieceRef(&value.0)
+        PieceRef(
+            value
+                .0
+                .as_slice()
+                .try_into()
+                .expect("Piece has correct size; qed"),
+        )
     }
 }
 
@@ -249,7 +265,7 @@ impl<'a> PieceRef<'a> {
 
 /// Mutable reference to piece sized slice of memory.
 #[derive(Debug, Eq, PartialEq, Deref, DerefMut)]
-pub struct PieceRefMut<'a>(&'a mut [u8]);
+pub struct PieceRefMut<'a>(&'a mut [u8; PIECE_SIZE]);
 
 impl<'a> AsRef<[u8]> for PieceRefMut<'a> {
     fn as_ref(&self) -> &[u8] {
@@ -265,7 +281,13 @@ impl<'a> AsMut<[u8]> for PieceRefMut<'a> {
 
 impl<'a> From<&'a mut Piece> for PieceRefMut<'a> {
     fn from(value: &'a mut Piece) -> Self {
-        PieceRefMut(&mut value.0)
+        PieceRefMut(
+            value
+                .0
+                .as_mut_slice()
+                .try_into()
+                .expect("Piece has correct size; qed"),
+        )
     }
 }
 
@@ -360,12 +382,16 @@ impl FlatPieces {
 
     /// Iterator over individual pieces as byte slices.
     pub fn as_pieces(&self) -> impl ExactSizeIterator<Item = PieceRef<'_>> {
-        self.0.chunks_exact(PIECE_SIZE).map(PieceRef)
+        self.0
+            .chunks_exact(PIECE_SIZE)
+            .map(|piece| PieceRef(piece.try_into().expect("Piece has correct size; qed")))
     }
 
     /// Iterator over individual pieces as byte slices.
     pub fn as_pieces_mut(&mut self) -> impl ExactSizeIterator<Item = PieceRefMut<'_>> {
-        self.0.chunks_exact_mut(PIECE_SIZE).map(PieceRefMut)
+        self.0
+            .chunks_exact_mut(PIECE_SIZE)
+            .map(|piece| PieceRefMut(piece.try_into().expect("Piece has correct size; qed")))
     }
 }
 

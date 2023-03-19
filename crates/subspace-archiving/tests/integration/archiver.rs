@@ -30,7 +30,7 @@ fn compare_block_objects_to_piece_objects<'a>(
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
             assert_eq!(
-                extract_data(&piece, piece_object_mapping.offset()),
+                extract_data(piece.as_ref(), piece_object_mapping.offset()),
                 extract_data(block, block_object_mapping.offset())
             );
         },
