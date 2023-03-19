@@ -145,15 +145,15 @@ async fn start_farming<Client>(
         let keypair = keypair.clone();
 
         move || {
-            let (farmer_protocol_info, sector, sector_metadata) =
+            let (sector, sector_metadata) =
                 block_on(plot_one_segment(client.as_ref(), &keypair, &sector_codec));
             plotting_result_sender
-                .send((farmer_protocol_info, sector, sector_metadata))
+                .send((sector, sector_metadata))
                 .unwrap();
         }
     });
 
-    let (farmer_protocol_info, sector, sector_metadata) = plotting_result_receiver.await.unwrap();
+    let (sector, sector_metadata) = plotting_result_receiver.await.unwrap();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
@@ -178,7 +178,6 @@ async fn start_farming<Client>(
                 .try_into_solutions(
                     &keypair,
                     public_key,
-                    &farmer_protocol_info,
                     &sector_codec,
                     sector.as_slice(),
                     sector_metadata.as_slice(),
@@ -221,7 +220,7 @@ async fn plot_one_segment<Client>(
     client: &Client,
     keypair: &schnorrkel::Keypair,
     sector_codec: &SectorCodec,
-) -> (FarmerProtocolInfo, Vec<u8>, Vec<u8>)
+) -> (Vec<u8>, Vec<u8>)
 where
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
@@ -268,5 +267,5 @@ where
     .await
     .expect("Plotting one sector in memory must not fail");
 
-    (farmer_protocol_info, sector, sector_metadata)
+    (sector, sector_metadata)
 }

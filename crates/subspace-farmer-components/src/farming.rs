@@ -1,4 +1,4 @@
-use crate::{FarmerProtocolInfo, SectorMetadata};
+use crate::SectorMetadata;
 use parity_scale_codec::{Decode, IoReader};
 use schnorrkel::Keypair;
 use std::io;
@@ -63,7 +63,6 @@ impl EligibleSector {
         self,
         keypair: &Keypair,
         reward_address: PublicKey,
-        farmer_protocol_info: &FarmerProtocolInfo,
         sector_codec: &SectorCodec,
         mut sector: S,
         sector_metadata: SM,
@@ -115,11 +114,8 @@ impl EligibleSector {
                 output.copy_from_slice(&input.to_bytes()[..Scalar::SAFE_BYTES]);
             });
 
-        let (record, witness_bytes) =
-            piece.split_at(farmer_protocol_info.record_size.get() as usize);
-        let piece_witness = match Witness::try_from_bytes(witness_bytes.try_into().expect(
-            "Witness must have correct size unless implementation is broken in a big way; qed",
-        )) {
+        let (record, witness) = piece.split();
+        let piece_witness = match Witness::try_from_bytes(&witness) {
             Ok(piece_witness) => piece_witness,
             Err(error) => {
                 let piece_index = self
@@ -147,7 +143,7 @@ impl EligibleSector {
                 sector_index: self.sector_index,
                 total_pieces: sector_metadata.total_pieces,
                 piece_offset: self.audit_piece_offset,
-                piece_record_hash: blake2b_256_254_hash(record),
+                piece_record_hash: blake2b_256_254_hash(&record),
                 piece_witness,
                 chunk_offset: offset,
                 chunk,

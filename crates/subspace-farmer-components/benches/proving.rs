@@ -104,7 +104,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .try_into_solutions(
                     black_box(&keypair),
                     black_box(reward_address),
-                    black_box(&farmer_protocol_info),
                     black_box(&sector_codec),
                     black_box(plotted_sector.as_slice()),
                     black_box(sector_metadata.as_slice()),
@@ -151,7 +150,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         .try_into_solutions(
                             black_box(&keypair),
                             black_box(reward_address),
-                            black_box(&farmer_protocol_info),
                             black_box(&sector_codec),
                             black_box(plotted_sector.as_slice()),
                             black_box(metadata),

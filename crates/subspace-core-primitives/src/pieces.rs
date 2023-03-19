@@ -21,6 +21,58 @@ pub const WITNESS_SIZE: u32 = 48;
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 
+/// Reference to record sized slice of memory.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct RecordRef<'a>(&'a [u8]);
+
+impl<'a> AsRef<[u8]> for RecordRef<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+/// Mutable reference to record sized slice of memory.
+#[derive(Debug, Eq, PartialEq, Deref)]
+pub struct RecordRefMut<'a>(&'a mut [u8]);
+
+impl<'a> AsRef<[u8]> for RecordRefMut<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+impl<'a> AsMut<[u8]> for RecordRefMut<'a> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0
+    }
+}
+
+/// Reference to witness sized slice of memory.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct WitnessRef<'a>(&'a [u8; WITNESS_SIZE as usize]);
+
+impl<'a> AsRef<[u8]> for WitnessRef<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+/// Mutable reference to witness sized slice of memory.
+#[derive(Debug, Eq, PartialEq, Deref)]
+pub struct WitnessRefMut<'a>(&'a mut [u8; WITNESS_SIZE as usize]);
+
+impl<'a> AsRef<[u8]> for WitnessRefMut<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.0
+    }
+}
+
+impl<'a> AsMut<[u8]> for WitnessRefMut<'a> {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0
+    }
+}
+
 /// A piece of archival history in Subspace Network.
 ///
 /// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
@@ -100,6 +152,52 @@ impl Piece {
     pub fn as_mut(&mut self) -> PieceRefMut<'_> {
         PieceRefMut(&mut self.0)
     }
+
+    /// Split piece into underlying components.
+    pub fn split(&self) -> (RecordRef<'_>, WitnessRef<'_>) {
+        let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
+        (
+            RecordRef(record),
+            WitnessRef(
+                witness
+                    .try_into()
+                    .expect("Witness withing a piece has correct size; qed"),
+            ),
+        )
+    }
+
+    /// Split piece into underlying mutable components.
+    pub fn split_mut(&mut self) -> (RecordRefMut<'_>, WitnessRefMut<'_>) {
+        let (record, witness) = self.0.split_at_mut(RECORD_SIZE as usize);
+        (
+            RecordRefMut(record),
+            WitnessRefMut(
+                witness
+                    .try_into()
+                    .expect("Witness withing a piece has correct size; qed"),
+            ),
+        )
+    }
+
+    /// Record contained within a piece.
+    pub fn record(&self) -> RecordRef<'_> {
+        self.split().0
+    }
+
+    /// Mutable record contained within a piece.
+    pub fn record_mut(&mut self) -> RecordRefMut<'_> {
+        self.split_mut().0
+    }
+
+    /// Witness contained within a piece.
+    pub fn witness(&self) -> WitnessRef<'_> {
+        self.split().1
+    }
+
+    /// Mutable witness contained within a piece.
+    pub fn witness_mut(&mut self) -> WitnessRefMut<'_> {
+        self.split_mut().1
+    }
 }
 
 /// Reference to piece sized slice of memory.
@@ -121,6 +219,31 @@ impl<'a> From<&'a Piece> for PieceRef<'a> {
 impl From<PieceRef<'_>> for Piece {
     fn from(value: PieceRef<'_>) -> Self {
         Piece(value.0.to_vec())
+    }
+}
+
+impl<'a> PieceRef<'a> {
+    /// Split piece into underlying components.
+    pub fn split(&'a self) -> (RecordRef<'a>, WitnessRef<'a>) {
+        let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
+        (
+            RecordRef(record),
+            WitnessRef(
+                witness
+                    .try_into()
+                    .expect("Witness withing a piece has correct size; qed"),
+            ),
+        )
+    }
+
+    /// Record contained within a piece.
+    pub fn record(&'a self) -> RecordRef<'a> {
+        self.split().0
+    }
+
+    /// Witness contained within a piece.
+    pub fn witness(&'a self) -> WitnessRef<'a> {
+        self.split().1
     }
 }
 
@@ -152,9 +275,63 @@ impl<'a> From<PieceRefMut<'a>> for PieceRef<'a> {
     }
 }
 
+impl<'a> From<&'a PieceRefMut<'a>> for PieceRef<'a> {
+    fn from(value: &'a PieceRefMut<'a>) -> Self {
+        PieceRef(value.0)
+    }
+}
+
 impl From<PieceRefMut<'_>> for Piece {
     fn from(value: PieceRefMut<'_>) -> Self {
         Piece(value.0.to_vec())
+    }
+}
+
+impl<'a> PieceRefMut<'a> {
+    /// Split piece into underlying components.
+    pub fn split(&'a self) -> (RecordRef<'a>, WitnessRef<'a>) {
+        let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
+        (
+            RecordRef(record),
+            WitnessRef(
+                witness
+                    .try_into()
+                    .expect("Witness withing a piece has correct size; qed"),
+            ),
+        )
+    }
+
+    /// Split piece into underlying mutable components.
+    pub fn split_mut(&'a mut self) -> (RecordRefMut<'a>, WitnessRefMut<'a>) {
+        let (record, witness) = self.0.split_at_mut(RECORD_SIZE as usize);
+        (
+            RecordRefMut(record),
+            WitnessRefMut(
+                witness
+                    .try_into()
+                    .expect("Witness withing a piece has correct size; qed"),
+            ),
+        )
+    }
+
+    /// Record contained within a piece.
+    pub fn record(&'a self) -> RecordRef<'a> {
+        self.split().0
+    }
+
+    /// Mutable record contained within a piece.
+    pub fn record_mut(&'a mut self) -> RecordRefMut<'a> {
+        self.split_mut().0
+    }
+
+    /// Witness contained within a piece.
+    pub fn witness(&'a self) -> WitnessRef<'a> {
+        self.split().1
+    }
+
+    /// Mutable witness contained within a piece.
+    pub fn witness_mut(&'a mut self) -> WitnessRefMut<'a> {
+        self.split_mut().1
     }
 }
 

@@ -794,11 +794,11 @@ impl Archiver {
                     .chunks_exact(self.record_size as usize),
             )
             .for_each(|((position, mut piece), shard_chunk)| {
-                let (record_part, witness_part) = piece.split_at_mut(self.record_size as usize);
+                let (mut record, mut witness) = piece.split_mut();
 
-                record_part.copy_from_slice(shard_chunk);
+                record.as_mut().copy_from_slice(shard_chunk);
                 // TODO: Consider batch witness creation for improved performance
-                witness_part.copy_from_slice(
+                witness.as_mut().copy_from_slice(
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
@@ -844,14 +844,14 @@ pub fn is_piece_valid(
         return false;
     }
 
-    let (record, witness) = piece.split_at(record_size as usize);
-    let witness = match witness.try_into().map(Witness::try_from_bytes) {
-        Ok(Ok(witness)) => witness,
+    let (record, witness) = piece.split();
+    let witness = match Witness::try_from_bytes(&witness) {
+        Ok(witness) => witness,
         _ => {
             return false;
         }
     };
-    let leaf_hash = blake2b_256_254_hash(record);
+    let leaf_hash = blake2b_256_254_hash(&record);
 
     kzg.verify(
         &commitment,
