@@ -36,7 +36,7 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceRef,
-    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, WITNESS_SIZE,
+    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -838,12 +838,7 @@ pub fn is_piece_valid(
     piece: PieceRef<'_>,
     commitment: RecordsRoot,
     position: u32,
-    record_size: u32,
 ) -> bool {
-    if piece.len() != (record_size + WITNESS_SIZE) as usize {
-        return false;
-    }
-
     let (record, witness) = piece.split();
     let witness = match Witness::try_from_bytes(&witness) {
         Ok(witness) => witness,

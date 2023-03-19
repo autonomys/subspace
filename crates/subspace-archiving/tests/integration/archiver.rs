@@ -151,7 +151,6 @@ fn archiver() {
             piece,
             first_archived_segment.root_block.records_root(),
             position as u32,
-            RECORD_SIZE,
         ));
     }
 
@@ -239,7 +238,6 @@ fn archiver() {
                 piece,
                 archived_segment.root_block.records_root(),
                 position as u32,
-                RECORD_SIZE,
             ));
         }
 
@@ -285,7 +283,6 @@ fn archiver() {
                 piece,
                 archived_segment.root_block.records_root(),
                 position as u32,
-                RECORD_SIZE,
             ));
         }
     }
