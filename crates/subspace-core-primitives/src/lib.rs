@@ -38,7 +38,10 @@ use core::num::NonZeroU64;
 use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
-pub use pieces::{FlatPieces, Piece, PieceRef, PieceRefMut, PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE};
+pub use pieces::{
+    FlatPieces, Piece, PieceRef, PieceRefMut, RecordRef, RecordRefMut, WitnessRef, WitnessRefMut,
+    PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
+};
 use scale_info::{Type, TypeInfo};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

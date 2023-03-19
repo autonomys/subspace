@@ -75,7 +75,7 @@ impl<'a> AsMut<[u8]> for WitnessRefMut<'a> {
 
 /// A piece of archival history in Subspace Network.
 ///
-/// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
+/// Internally piece contains a record and corresponding witness that together with `RootBlock` of
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
