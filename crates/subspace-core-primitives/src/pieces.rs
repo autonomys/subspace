@@ -36,12 +36,6 @@ impl Default for Piece {
     }
 }
 
-impl From<[u8; PIECE_SIZE]> for Piece {
-    fn from(piece: [u8; PIECE_SIZE]) -> Self {
-        Self(piece.to_vec())
-    }
-}
-
 impl From<Piece> for Vec<u8> {
     fn from(piece: Piece) -> Self {
         piece.0

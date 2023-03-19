@@ -1,3 +1,4 @@
+use rand::{thread_rng, Rng};
 use std::assert_matches::assert_matches;
 use std::iter;
 use subspace_archiving::archiver::Archiver;
@@ -7,7 +8,7 @@ use subspace_archiving::reconstructor::{
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PIECE_SIZE, RECORD_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RECORD_SIZE,
 };
 
 // This is data + parity shards
@@ -346,9 +347,13 @@ fn invalid_usage() {
         let result = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
             .unwrap()
             .add_segment(
-                &iter::repeat_with(|| Some(rand::random::<[u8; PIECE_SIZE]>().into()))
-                    .take(PIECES_IN_SEGMENT as usize)
-                    .collect::<Vec<_>>(),
+                &iter::repeat_with(|| {
+                    let mut piece = Piece::default();
+                    thread_rng().fill(*piece.as_mut());
+                    Some(piece)
+                })
+                .take(PIECES_IN_SEGMENT as usize)
+                .collect::<Vec<_>>(),
             );
 
         assert_matches!(result, Err(ReconstructorError::SegmentDecoding(_)));
