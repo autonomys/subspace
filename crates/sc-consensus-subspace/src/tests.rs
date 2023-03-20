@@ -551,8 +551,8 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
                 .iter()
                 .flat_map(|flat_pieces| flat_pieces.as_pieces())
                 .enumerate()
-                .choose(&mut rand::thread_rng())
-                .map(|(piece_index, piece)| (piece_index as u64, Piece::try_from(piece).unwrap()))
+                .choose(&mut thread_rng())
+                .map(|(piece_index, piece)| (piece_index as u64, Piece::from(piece)))
                 .unwrap();
 
             while let Some(NewSlotNotification {

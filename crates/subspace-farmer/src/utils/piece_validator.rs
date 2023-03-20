@@ -4,9 +4,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    Piece, PieceIndex, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT, RECORD_SIZE,
-};
+use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
@@ -89,11 +87,10 @@ where
             if !is_piece_valid(
                 &self.kzg,
                 PIECES_IN_SEGMENT,
-                &piece,
+                piece.as_ref(),
                 records_root,
                 u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
                     .expect("Always fix into u32; qed"),
-                RECORD_SIZE,
             ) {
                 error!(
                     %piece_index,
