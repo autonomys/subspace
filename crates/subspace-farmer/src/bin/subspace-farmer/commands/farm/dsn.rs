@@ -17,7 +17,7 @@ use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
-    create, peer_id, BootstrappedNetworkingParameters, Config, Node, NodeRunner,
+    create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
     RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
@@ -54,6 +54,13 @@ pub(super) fn configure_dsn(
     ),
     anyhow::Error,
 > {
+    let networking_parameters_registry = {
+        let known_addresses_db_path = base_path.join("known_addresses_db");
+
+        NetworkingParametersManager::new(&known_addresses_db_path, bootstrap_nodes)
+            .map(|manager| manager.boxed())?
+    };
+
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
     let piece_cache_db_path = base_path.join("piece_cache_db");
@@ -114,8 +121,7 @@ pub(super) fn configure_dsn(
         keypair,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(bootstrap_nodes)
-            .boxed(),
+        networking_parameters_registry,
         request_response_protocols: vec![
             PieceByHashRequestHandler::create(move |&PieceByHashRequest { piece_index_hash }| {
                 debug!(?piece_index_hash, "Piece request received. Trying cache...");
