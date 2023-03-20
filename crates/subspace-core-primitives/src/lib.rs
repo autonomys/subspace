@@ -234,17 +234,35 @@ impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
     }
 }
 
+impl From<[u8; Self::SAFE_BYTES]> for Scalar {
+    fn from(value: [u8; Self::SAFE_BYTES]) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&[u8; Self::FULL_BYTES]> for Scalar {
     fn from(value: &[u8; Self::FULL_BYTES]) -> Self {
         Scalar(Fr::from_le_bytes_mod_order(value))
     }
 }
 
+impl From<[u8; Self::FULL_BYTES]> for Scalar {
+    fn from(value: [u8; Self::FULL_BYTES]) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: &Scalar) -> [u8; Scalar::FULL_BYTES] {
-        let mut bytes = [0u8; Scalar::FULL_BYTES];
+    fn from(value: &Scalar) -> Self {
+        let mut bytes = Self::default();
         value.write_to_bytes(&mut bytes);
         bytes
+    }
+}
+
+impl From<Scalar> for [u8; Scalar::FULL_BYTES] {
+    fn from(value: Scalar) -> Self {
+        Self::from(&value)
     }
 }
 
