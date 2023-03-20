@@ -227,6 +227,11 @@ pub struct Cli {
     /// Parameters used to create the storage monitor.
     #[clap(flatten)]
     pub storage_monitor: StorageMonitorParams,
+
+    /// Disables the default substrate block relay path. Instead, the alternate block relay
+    /// implementation from subspace will be used.
+    #[arg(long, default_value_t = false)]
+    pub enable_subspace_block_relay: bool,
 }
 
 impl SubstrateCli for Cli {

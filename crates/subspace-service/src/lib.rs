@@ -446,6 +446,9 @@ where
     } = partial_components;
 
     let root_block_cache = RootBlockCache::new(client.clone());
+    // Enable the alternate block relay implementation if the CLI params request
+    // disabling the default path.
+    let enable_block_relay = !config.base.announce_block;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -603,9 +606,11 @@ where
             })?;
     }
 
-    assert!(config.network.request_response_protocols.len() == 0);
-    let block_relay_receiver = init_block_relay_config(&mut config);
-    assert!(config.network.request_response_protocols.len() == 1);
+    let block_relay_receiver = if enable_block_relay {
+        Some(init_block_relay_config(&mut config))
+    } else {
+        None
+    };
     let import_queue_service = import_queue.service();
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -758,16 +763,18 @@ where
         tx_handler_controller,
     })?;
 
-    let block_relay_runner = build_block_relay(
-        network.clone(),
-        client.clone(),
-        import_queue_service,
-        imported_block_notification_stream.subscribe(),
-        block_relay_receiver,
-    );
-    task_manager
-        .spawn_handle()
-        .spawn("block-relay-runner", None, block_relay_runner.run());
+    if let Some(block_relay_receiver) = block_relay_receiver {
+        let block_relay_runner = build_block_relay(
+            network.clone(),
+            client.clone(),
+            import_queue_service,
+            imported_block_notification_stream.subscribe(),
+            block_relay_receiver,
+        );
+        task_manager
+            .spawn_handle()
+            .spawn("block-relay-runner", None, block_relay_runner.run());
+    }
 
     Ok(NewFull {
         task_manager,

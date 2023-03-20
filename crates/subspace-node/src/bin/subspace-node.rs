@@ -440,6 +440,9 @@ fn main() -> Result<(), Error> {
                         .network
                         .extra_sets
                         .push(cdm_gossip_peers_set_config());
+                    if cli.enable_subspace_block_relay {
+                        primary_chain_config.announce_block = false;
+                    }
 
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
