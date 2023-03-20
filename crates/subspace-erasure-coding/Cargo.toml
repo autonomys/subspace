@@ -11,8 +11,10 @@ include = [
 ]
 
 [dependencies]
-blst_from_scratch = { git = "https://github.com/sifraitech/rust-kzg", rev = "7eb52ca97576ea1eefe4dd2165f224c916f8c862", default-features = false }
-kzg = { git = "https://github.com/sifraitech/rust-kzg", rev = "7eb52ca97576ea1eefe4dd2165f224c916f8c862", default-features = false }
+# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
+blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
+# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
+kzg = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
@@ -23,5 +25,6 @@ rand = "0.8.5"
 default = ["std"]
 std = [
     "blst_from_scratch/std",
+    "kzg/std",
     "subspace-core-primitives/std",
 ]

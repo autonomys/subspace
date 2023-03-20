@@ -224,7 +224,7 @@ async fn plot_one_segment<Client>(
 where
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = subspace_archiving::archiver::Archiver::new(
         RECORD_SIZE,
         RECORDED_HISTORY_SEGMENT_SIZE,

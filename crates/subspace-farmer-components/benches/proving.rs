@@ -38,7 +38,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let sector_index = 0;
     let input = vec![1u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver =
         Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();

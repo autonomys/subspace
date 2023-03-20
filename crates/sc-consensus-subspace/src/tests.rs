@@ -427,7 +427,7 @@ fn rejects_empty_block() {
 }
 
 fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
         .expect("Incorrect parameters for archiver");
 

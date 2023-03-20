@@ -8,7 +8,6 @@ use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
@@ -99,7 +98,7 @@ pub enum PlottingError {
     FailedToEncodeSector(#[from] SectorCodecError),
     /// Failed to commit
     #[error("Failed to commit: {0}")]
-    FailedToCommit(#[from] kzg::Error),
+    FailedToCommit(String),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -194,8 +193,11 @@ where
                 expanded_piece.extend(chunk);
                 expanded_piece.extend([0]);
             });
-            let polynomial = kzg.poly(&expanded_piece)?;
-            kzg.commit(&polynomial).map_err(Into::into)
+            let polynomial = kzg
+                .poly(&expanded_piece)
+                .map_err(PlottingError::FailedToCommit)?;
+            kzg.commit(&polynomial)
+                .map_err(PlottingError::FailedToCommit)
         })
         .collect::<Result<Vec<Commitment>, PlottingError>>()?;
 

@@ -34,6 +34,7 @@ frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/subs
 futures = "0.3.26"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 
 [features]

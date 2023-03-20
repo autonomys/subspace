@@ -4,7 +4,7 @@ use subspace_archiving::piece_reconstructor::{
     PiecesReconstructor, ReconstructorError, ReconstructorInstantiationError,
 };
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     FlatPieces, Piece, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
@@ -27,7 +27,7 @@ fn get_random_block() -> Vec<u8> {
 
 #[test]
 fn segment_reconstruction_works() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver =
         Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
 
@@ -70,7 +70,7 @@ fn segment_reconstruction_works() {
 
 #[test]
 fn piece_reconstruction_works() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver =
         Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
     // Block that fits into the segment fully
@@ -109,7 +109,7 @@ fn piece_reconstruction_works() {
 
 #[test]
 fn piece_reconstructor_creation_fails() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     let reconstructor = PiecesReconstructor::new(10, 1, kzg.clone());
 
@@ -133,7 +133,7 @@ fn piece_reconstructor_creation_fails() {
 
 #[test]
 fn segment_reconstruction_fails() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     let reconstructor =
         PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
@@ -172,7 +172,7 @@ fn segment_reconstruction_fails() {
 
 #[test]
 fn piece_reconstruction_fails() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     let reconstructor =
         PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();

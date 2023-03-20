@@ -45,6 +45,10 @@ pub use pieces::{
 use scale_info::{Type, TypeInfo};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use uint::static_assertions::const_assert;
+
+// Refuse to compile on lower than 32-bit platforms
+const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
