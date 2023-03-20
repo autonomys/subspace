@@ -1,6 +1,6 @@
 //! Tools for KZG commitment scheme
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "std")]
 mod serde;
 #[cfg(test)]
 mod tests;

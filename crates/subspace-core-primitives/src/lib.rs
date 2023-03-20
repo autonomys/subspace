@@ -41,7 +41,7 @@ use derive_more::{Add, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
 use scale_info::{Type, TypeInfo};
-#[cfg(feature = "serde")]
+#[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
 
 /// Size of BLAKE2b-256 hash output (in bytes).
@@ -164,7 +164,7 @@ impl TypeInfo for Scalar {
     }
 }
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "std")]
 mod scalar_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -241,9 +241,9 @@ impl Scalar {
 #[derive(
     Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
 )]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PublicKey(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; PUBLIC_KEY_LENGTH],
+    #[cfg_attr(feature = "std", serde(with = "hex::serde"))] [u8; PUBLIC_KEY_LENGTH],
 );
 
 impl fmt::Display for PublicKey {
@@ -280,9 +280,9 @@ impl AsRef<[u8]> for PublicKey {
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct RewardSignature(
-    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))] [u8; REWARD_SIGNATURE_LENGTH],
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; REWARD_SIGNATURE_LENGTH],
 );
 
 impl From<[u8; REWARD_SIGNATURE_LENGTH]> for RewardSignature {
@@ -313,12 +313,12 @@ impl AsRef<[u8]> for RewardSignature {
 
 /// VRF signature output and proof as produced by `schnorrkel` crate.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct ChunkSignature {
     /// VRF output bytes.
     pub output: [u8; VRF_OUTPUT_LENGTH],
     /// VRF proof bytes.
-    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))]
+    #[cfg_attr(feature = "std", serde(with = "serde_arrays"))]
     pub proof: [u8; VRF_PROOF_LENGTH],
 }
 
@@ -328,8 +328,8 @@ pub struct ChunkSignature {
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Piece(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct Piece(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Vec<u8>);
 
 impl Default for Piece {
     fn default() -> Self {
@@ -399,8 +399,8 @@ impl AsMut<[u8]> for Piece {
 
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FlatPieces(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct FlatPieces(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Vec<u8>);
 
 // TODO: Introduce `PieceRef` and `PieceRefMut` that can be converted into `Piece` without
 //  `.expect()` and maybe add convenience methods for accessing record and witness parts of it
@@ -477,8 +477,8 @@ impl AsMut<[u8]> for FlatPieces {
 
 /// Progress of an archived block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum ArchivedBlockProgress {
     /// The block has been fully archived.
     Complete,
@@ -512,8 +512,8 @@ impl ArchivedBlockProgress {
 
 /// Last archived block
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
     /// Block number
     pub number: u32,
@@ -545,12 +545,12 @@ impl LastArchivedBlock {
 /// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
 /// the actual archival history of the blockchain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub enum RootBlock {
     /// V0 of the root block data structure
     #[codec(index = 0)]
-    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+    #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
     V0 {
         /// Segment index
         segment_index: SegmentIndex,
@@ -612,7 +612,7 @@ pub type SectorIndex = u64;
 
 /// Hash of `PieceIndex`
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(Blake2b256Hash);
 
 impl From<PieceIndexHash> for Blake2b256Hash {
@@ -643,8 +643,8 @@ impl PieceIndexHash {
 // TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
 #[derive(Clone, Debug, Eq, PartialEq, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
 pub struct Solution<PublicKey, RewardAddress> {
     /// Public key of the farmer that created the solution
     pub public_key: PublicKey,
@@ -916,8 +916,8 @@ impl TryFrom<U256> for u64 {
 
 /// Data structure representing sector ID in farmer's plot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+pub struct SectorId(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Blake2b256Hash);
 
 impl AsRef<[u8]> for SectorId {
     fn as_ref(&self) -> &[u8] {

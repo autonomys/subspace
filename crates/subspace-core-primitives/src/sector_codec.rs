@@ -12,15 +12,15 @@ use num_integer::Roots;
 use rayon::prelude::*;
 
 #[derive(Debug, Copy, Clone)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
 /// Errors that happen when using `SectorCodec`
 pub enum SectorCodecError {
     /// Sector size is wrong
-    #[cfg_attr(feature = "thiserror", error("Sector size is wrong"))]
+    #[cfg_attr(feature = "std", error("Sector size is wrong"))]
     WrongSectorSize,
     /// Input sector size is wrong
     #[cfg_attr(
-        feature = "thiserror",
+        feature = "std",
         error("Input sector size is wrong: expected {expected} bytes provided {actual} bytes")
     )]
     WrongInputSectorSize {
@@ -30,7 +30,7 @@ pub enum SectorCodecError {
         actual: usize,
     },
     /// Failed to instantiate domain
-    #[cfg_attr(feature = "thiserror", error("Failed to instantiate domain"))]
+    #[cfg_attr(feature = "std", error("Failed to instantiate domain"))]
     FailedToInstantiateDomain,
 }
 
