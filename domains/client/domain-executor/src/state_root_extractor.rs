@@ -19,9 +19,13 @@ type ExtractedStateRoots<Block> = ExtractedStateRootsFromProof<
 
 /// Trait to extract XDM state roots from the Extrinsic.
 pub trait StateRootExtractor<Block: BlockT> {
+    /// Provides the known correct hash of the chain to decode the extrinsic.
+    fn block_hash(&self) -> Block::Hash;
+
     /// Extracts the state roots from the extrinsic.
     fn extract_state_roots(
         &self,
+        at: Block::Hash,
         ext: &Block::Extrinsic,
     ) -> Result<ExtractedStateRoots<Block>, ApiError>;
 }
@@ -52,11 +56,16 @@ where
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>,
     SBlock: BlockT,
 {
+    /// we always use the best hash when system domain client is used.
+    fn block_hash(&self) -> SBlock::Hash {
+        self.client.info().best_hash
+    }
+
     fn extract_state_roots(
         &self,
+        best_hash: SBlock::Hash,
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
-        let best_hash = self.client.info().best_hash;
         let api = self.client.runtime_api();
         api.extract_xdm_proof_state_roots(best_hash, ext)
             .and_then(|maybe_state_roots| {
@@ -70,12 +79,13 @@ where
 /// relies on state of the chain.
 /// Note: Be sure to use this only when there is no System domain client available as this holds
 /// entire system domain runtime on heap.
-pub struct StateRootExtractorWithSystemDomainRuntime<Executor> {
+pub struct StateRootExtractorWithSystemDomainRuntime<SBlock: BlockT, Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,
+    block_hash: SBlock::Hash,
 }
 
-impl<SBlock, Executor> Core<SBlock> for StateRootExtractorWithSystemDomainRuntime<Executor>
+impl<SBlock, Executor> Core<SBlock> for StateRootExtractorWithSystemDomainRuntime<SBlock, Executor>
 where
     SBlock: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -92,7 +102,7 @@ where
 }
 
 impl<SBlock, Executor> MessengerApi<SBlock, NumberFor<SBlock>>
-    for StateRootExtractorWithSystemDomainRuntime<Executor>
+    for StateRootExtractorWithSystemDomainRuntime<SBlock, Executor>
 where
     SBlock: BlockT,
     NumberFor<SBlock>: Encode + Decode,
@@ -109,20 +119,28 @@ where
     }
 }
 
-impl<Executor> FetchRuntimeCode for StateRootExtractorWithSystemDomainRuntime<Executor> {
+impl<SBlock: BlockT, Executor> FetchRuntimeCode
+    for StateRootExtractorWithSystemDomainRuntime<SBlock, Executor>
+{
     fn fetch_runtime_code(&self) -> Option<Cow<[u8]>> {
         Some(self.runtime_code.clone())
     }
 }
 
-impl<Executor> StateRootExtractorWithSystemDomainRuntime<Executor>
+impl<SBlock, Executor> StateRootExtractorWithSystemDomainRuntime<SBlock, Executor>
 where
+    SBlock: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
-    pub fn new(executor: Arc<Executor>, runtime_code: Cow<'static, [u8]>) -> Self {
+    pub fn new(
+        executor: Arc<Executor>,
+        runtime_code: Cow<'static, [u8]>,
+        best_hash: SBlock::Hash,
+    ) -> Self {
         Self {
             executor,
             runtime_code,
+            block_hash: best_hash,
         }
     }
 
@@ -167,19 +185,22 @@ where
 }
 
 impl<SBlock, Executor> StateRootExtractor<SBlock>
-    for StateRootExtractorWithSystemDomainRuntime<Executor>
+    for StateRootExtractorWithSystemDomainRuntime<SBlock, Executor>
 where
     SBlock: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
+    fn block_hash(&self) -> SBlock::Hash {
+        self.block_hash
+    }
+
     fn extract_state_roots(
         &self,
+        block_hash: SBlock::Hash,
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
         <Self as MessengerApi<SBlock, NumberFor<SBlock>>>::extract_xdm_proof_state_roots(
-            self,
-            Default::default(),
-            ext,
+            self, block_hash, ext,
         )
         .and_then(|maybe_state_roots| {
             maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))

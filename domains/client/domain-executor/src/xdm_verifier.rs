@@ -100,7 +100,8 @@ where
     PBlock::Hash: From<SBlock::Hash>,
     SRE: StateRootExtractor<SBlock>,
 {
-    if let Ok(state_roots) = state_root_extractor.extract_state_roots(extrinsic) {
+    let at = state_root_extractor.block_hash();
+    if let Ok(state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {
         // verify system domain state root
         let best_hash = primary_chain_client.info().best_hash;
         let primary_runtime = primary_chain_client.runtime_api();
