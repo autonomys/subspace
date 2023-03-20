@@ -23,7 +23,7 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, Numb
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{info, trace, warn};
 
 const ANNOUNCE_PROTOCOL: &str = "/subspace/full-block-relay-announces/1";
@@ -300,6 +300,7 @@ where
     }
 
     async fn on_block_announcement(&self, message: TopicNotification) {
+        let start_ts = Instant::now();
         let sender = match message.sender {
             Some(sender) => sender,
             None => return,
@@ -329,6 +330,7 @@ where
         }
 
         // Download/import the block
+        let download_start_ts = Instant::now();
         let block_response = match self.download_block(sender, &announcement).await {
             Ok(Some(block_response)) => block_response,
             Err(err) => {
@@ -342,15 +344,20 @@ where
             }
             _ => return,
         };
+        let download_time = download_start_ts.elapsed();
+        let response_str = format!("{}", block_response);
 
         // Import the downloaded block
+        self.import_block(block_response.0).await;
         info!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_announcement(): {}, {}, block downloaded/imported",
+            "FullBlockRelay::on_block_announcement(): {}, {}. Block downloaded/imported \
+            [total = {:?}, download = {:?}]",
             announcement,
-            block_response
+            response_str,
+            start_ts.elapsed(),
+            download_time
         );
-        self.import_block(block_response.0).await;
     }
 
     async fn on_protocol_message(&self, incoming: IncomingRequest) {
