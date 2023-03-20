@@ -54,6 +54,7 @@ sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", re
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
 sp-objects = { version = "0.1.0", path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-receipts = { version = "0.1.0", path = "../sp-receipts" }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }

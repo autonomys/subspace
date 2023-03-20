@@ -51,6 +51,8 @@ const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
 // The default maximum incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
+// The default maximum connection number to be maintained for the swarm.
+const SWARM_TARGET_CONNECTION_NUMBER: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
 const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
@@ -201,6 +203,8 @@ pub struct Config<ProviderStorage> {
     pub max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// Defines target total (in and out) connection number that should be maintained.
+    pub target_connections: u32,
     /// How many temporarily banned unreachable peers to keep in memory.
     pub temporary_bans_cache_size: NonZeroUsize,
     /// Backoff policy for temporary banning of unreachable peers.
@@ -291,6 +295,7 @@ where
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
             metrics: None,
@@ -351,6 +356,7 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        target_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
         metrics,
@@ -430,6 +436,7 @@ where
         reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        target_connections,
         temporary_bans,
         metrics,
     });

@@ -1,0 +1,27 @@
+[package]
+name = "subspace-erasure-coding"
+description = "Polynomial erasure coding implementation used in Subspace Network"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+blst_from_scratch = { git = "https://github.com/sifraitech/rust-kzg", rev = "7eb52ca97576ea1eefe4dd2165f224c916f8c862", default-features = false }
+kzg = { git = "https://github.com/sifraitech/rust-kzg", rev = "7eb52ca97576ea1eefe4dd2165f224c916f8c862", default-features = false }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+
+[dev-dependencies]
+criterion = "0.4.0"
+rand = "0.8.5"
+
+[features]
+default = ["std"]
+std = [
+    "blst_from_scratch/std",
+    "subspace-core-primitives/std",
+]

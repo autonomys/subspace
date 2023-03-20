@@ -43,6 +43,12 @@ impl<T: Clone> CollectionBatcher<T> {
             _marker: PhantomData,
         }
     }
+
+    /// Sets the last batch number to zero.
+    pub fn reset(&mut self) {
+        self.last_batch_number = 0;
+    }
+
     /// Extract the next batch from the collection
     pub fn next_batch(&mut self, collection: Vec<T>) -> Vec<T> {
         // Collection is empty or less than batch size.

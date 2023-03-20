@@ -83,7 +83,7 @@ where
         domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        bad_signed_bundle_hash: H256,
+        bad_receipt_hash: H256,
     ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
     where
         PCB: BlockT,
@@ -140,7 +140,7 @@ where
 
             InvalidStateTransitionProof {
                 domain_id,
-                bad_signed_bundle_hash,
+                bad_receipt_hash,
                 parent_number,
                 parent_hash: as_h256(&parent_header.hash())?,
                 pre_state_root,
@@ -176,7 +176,7 @@ where
 
             InvalidStateTransitionProof {
                 domain_id,
-                bad_signed_bundle_hash,
+                bad_receipt_hash,
                 parent_number,
                 parent_hash: as_h256(&parent_header.hash())?,
                 pre_state_root,
@@ -199,7 +199,7 @@ where
             // TODO: proof should be a CompactProof.
             InvalidStateTransitionProof {
                 domain_id,
-                bad_signed_bundle_hash,
+                bad_receipt_hash,
                 parent_number,
                 parent_hash: as_h256(&parent_header.hash())?,
                 pre_state_root,

@@ -1,3 +1,4 @@
+use crate::invalid_state_transition_proof::SkipPreStateRootVerification;
 use crate::{ExecutionProver, ProofVerifier};
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
@@ -190,10 +191,11 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
+        SkipPreStateRootVerification,
     );
 
     // Incorrect but it's fine for the test purpose.
@@ -202,7 +204,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
-        bad_signed_bundle_hash: Hash::random(),
+        bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: *parent_header.state_root(),
@@ -258,7 +260,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
         let invalid_state_transition_proof = InvalidStateTransitionProof {
             domain_id: TEST_DOMAIN_ID,
-            bad_signed_bundle_hash: Hash::random(),
+            bad_receipt_hash: Hash::random(),
             parent_number: parent_number_alice,
             parent_hash: parent_hash_alice,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
@@ -306,7 +308,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
-        bad_signed_bundle_hash: Hash::random(),
+        bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: intermediate_roots.last().unwrap().into(),
@@ -470,10 +472,11 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
+        SkipPreStateRootVerification,
     );
 
     // Incorrect but it's fine for the test purpose.
@@ -482,7 +485,7 @@ async fn invalid_execution_proof_should_not_work() {
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
-        bad_signed_bundle_hash: Hash::random(),
+        bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
@@ -495,7 +498,7 @@ async fn invalid_execution_proof_should_not_work() {
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
-        bad_signed_bundle_hash: Hash::random(),
+        bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
@@ -508,7 +511,7 @@ async fn invalid_execution_proof_should_not_work() {
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
-        bad_signed_bundle_hash: Hash::random(),
+        bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
