@@ -697,6 +697,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic-polyfill"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d299f547288d6db8d5c3a2916f7b2f66134b15b8c1ac1c4357dd3b8752af7bb2"
+dependencies = [
+ "critical-section",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -924,6 +933,29 @@ name = "block-padding"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
+
+[[package]]
+name = "blst"
+version = "0.3.10"
+source = "git+https://github.com/supranational/blst.git#ca03e11a3ff24d818ae390a1e7f435f15bf72aee"
+dependencies = [
+ "cc",
+ "glob",
+ "threadpool",
+ "zeroize",
+]
+
+[[package]]
+name = "blst_from_scratch"
+version = "0.1.0"
+source = "git+https://github.com/sifraitech/rust-kzg?rev=7eb52ca97576ea1eefe4dd2165f224c916f8c862#7eb52ca97576ea1eefe4dd2165f224c916f8c862"
+dependencies = [
+ "blst",
+ "kzg",
+ "libc",
+ "once_cell",
+ "sha2 0.10.6",
+]
 
 [[package]]
 name = "bounded-collections"
@@ -1583,6 +1615,12 @@ dependencies = [
  "cast",
  "itertools 0.10.5",
 ]
+
+[[package]]
+name = "critical-section"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6548a0ad5d2549e111e1f6a11a6c2e2d00ce6a3dafe22948d67c2b443f775e52"
 
 [[package]]
 name = "cross-domain-message-gossip"
@@ -2302,6 +2340,7 @@ dependencies = [
  "sp-keystore",
  "sp-messenger",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-transaction-pool",
@@ -2345,6 +2384,7 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",
@@ -3290,6 +3330,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad0a93d233ebf96623465aad4046a8d3aa4da22d4f4beba5388838c8a434bbb4"
 
 [[package]]
+name = "glob"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+
+[[package]]
 name = "globset"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4126,6 +4172,11 @@ dependencies = [
  "kvdb",
  "parking_lot 0.12.1",
 ]
+
+[[package]]
+name = "kzg"
+version = "0.1.0"
+source = "git+https://github.com/sifraitech/rust-kzg?rev=7eb52ca97576ea1eefe4dd2165f224c916f8c862#7eb52ca97576ea1eefe4dd2165f224c916f8c862"
 
 [[package]]
 name = "language-tags"
@@ -5800,6 +5851,10 @@ name = "once_cell"
 version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
+dependencies = [
+ "atomic-polyfill",
+ "critical-section",
+]
 
 [[package]]
 name = "oorandom"
@@ -9330,6 +9385,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-receipts"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
+ "sp-std",
+]
+
+[[package]]
 name = "sp-rpc"
 version = "6.0.0"
 source = "git+https://github.com/subspace/substrate?rev=456cfad45a178617f6886ec400c312f2fea59232#456cfad45a178617f6886ec400c312f2fea59232"
@@ -9732,6 +9798,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-chiapos"
+version = "0.1.0"
+source = "git+https://github.com/subspace/chiapos?rev=a239ddf83b4d8420f23616d604af83c756c40116#a239ddf83b4d8420f23616d604af83c756c40116"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
@@ -9757,6 +9831,17 @@ dependencies = [
  "serde_arrays",
  "thiserror",
  "uint",
+]
+
+[[package]]
+name = "subspace-erasure-coding"
+version = "0.1.0"
+dependencies = [
+ "blst_from_scratch",
+ "criterion",
+ "kzg",
+ "rand 0.8.5",
+ "subspace-core-primitives",
 ]
 
 [[package]]
@@ -9855,6 +9940,7 @@ dependencies = [
  "sp-domain-digests",
  "sp-domains",
  "sp-keyring",
+ "sp-receipts",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
@@ -9954,6 +10040,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-proof-of-space"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "subspace-chiapos",
+ "subspace-core-primitives",
+]
+
+[[package]]
 name = "subspace-rpc-primitives"
 version = "0.1.0"
 dependencies = [
@@ -10004,6 +10099,7 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",
@@ -10073,6 +10169,7 @@ dependencies = [
  "sp-domains",
  "sp-objects",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-timestamp",
@@ -10165,6 +10262,7 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",
@@ -10542,6 +10640,7 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-offchain",
+ "sp-receipts",
  "sp-runtime",
  "sp-session",
  "sp-std",

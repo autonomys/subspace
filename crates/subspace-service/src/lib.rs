@@ -62,6 +62,7 @@ use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::ExecutorApi;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
+use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -128,6 +129,7 @@ pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof
     NativeElseWasmExecutor<ExecutorDispatch>,
     SpawnTaskHandle,
     Hash,
+    subspace_fraud_proof::PreStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
 >;
 
 /// Subspace networking instantiation variant
@@ -211,6 +213,7 @@ where
         + TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
+        + ReceiptsApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -257,6 +260,7 @@ where
         client.clone(),
         executor,
         task_manager.spawn_handle(),
+        subspace_fraud_proof::PreStateRootVerifier::new(client.clone()),
     );
     let transaction_pool = subspace_transaction_pool::new_full(
         config,
@@ -421,6 +425,7 @@ where
         + TransactionPaymentApi<Block, Balance>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
+        + ReceiptsApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,

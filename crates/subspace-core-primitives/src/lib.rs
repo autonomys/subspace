@@ -37,7 +37,7 @@ use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
-use derive_more::{Add, Display, Div, Mul, Rem, Sub};
+use derive_more::{Add, Deref, Display, Div, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
 use scale_info::{Type, TypeInfo};
@@ -119,6 +119,42 @@ pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
 
+/// Size of proof of space seed in bytes.
+const POS_SEED_SIZE: usize = 32;
+
+/// Proof of space seed.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosSeed(pub [u8; POS_SEED_SIZE]);
+
+impl PosSeed {
+    /// Size of proof of space seed in bytes.
+    pub const SIZE: usize = POS_SEED_SIZE;
+}
+
+/// Size of proof of space quality in bytes.
+const POS_QUALITY_SIZE: usize = 32;
+
+/// Proof of space quality.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosQualityBytes(pub [u8; POS_QUALITY_SIZE]);
+
+impl PosQualityBytes {
+    /// Size of proof of space quality in bytes.
+    pub const SIZE: usize = POS_QUALITY_SIZE;
+}
+
+/// Length of proof of space proof in bytes.
+const POS_PROOF_LENGTH: usize = 17 * 8;
+
+/// Proof of space proof bytes.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosProof(pub [u8; POS_PROOF_LENGTH]);
+
+impl PosProof {
+    /// Size of proof of space proof in bytes.
+    pub const SIZE: usize = POS_PROOF_LENGTH;
+}
+
 /// Representation of a single BLS12-381 scalar value.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub struct Scalar(Fr);
@@ -198,17 +234,35 @@ impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
     }
 }
 
+impl From<[u8; Self::SAFE_BYTES]> for Scalar {
+    fn from(value: [u8; Self::SAFE_BYTES]) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&[u8; Self::FULL_BYTES]> for Scalar {
     fn from(value: &[u8; Self::FULL_BYTES]) -> Self {
         Scalar(Fr::from_le_bytes_mod_order(value))
     }
 }
 
+impl From<[u8; Self::FULL_BYTES]> for Scalar {
+    fn from(value: [u8; Self::FULL_BYTES]) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: &Scalar) -> [u8; Scalar::FULL_BYTES] {
-        let mut bytes = [0u8; Scalar::FULL_BYTES];
+    fn from(value: &Scalar) -> Self {
+        let mut bytes = Self::default();
         value.write_to_bytes(&mut bytes);
         bytes
+    }
+}
+
+impl From<Scalar> for [u8; Scalar::FULL_BYTES] {
+    fn from(value: Scalar) -> Self {
+        Self::from(&value)
     }
 }
 

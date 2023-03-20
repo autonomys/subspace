@@ -80,7 +80,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ```PowerShell
 # Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 .\FARMER_FILE_NAME.exe farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
@@ -131,7 +131,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 ./FARMER_FILE_NAME farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 
@@ -186,7 +186,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 ./FARMER_FILE_NAME farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
 ```
 7. It may prompt again in here. Refer to the note on step 4.
@@ -262,7 +262,7 @@ services:
       "--listen-on", "/ip4/0.0.0.0/tcp/30533",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 60G of disk space for node and some for OS)
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
       "--plot-size", "PLOT_SIZE"
     ]
 volumes:
@@ -275,7 +275,7 @@ After which follow these steps:
   * Replace `snapshot-DATE` with the latest release (not pre-release!) snapshot (like `snapshot-2022-apr-29`)
   * Replace `INSERT_YOUR_ID` with desired name that will be shown in telemetry (doesn't impact anything else)
   * Replace `WALLET_ADDRESS` with your wallet address
-  * Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
+  * Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 10G of disk space for node)
   * If you want to store files on a separate disk or customize port, read comments in the file
 * Ensure [Docker](https://www.docker.com/) is installed and running
 * Now go to directory with `docker-compose.yml` and type `docker-compose up -d` to start everything

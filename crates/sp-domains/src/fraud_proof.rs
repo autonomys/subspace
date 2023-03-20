@@ -81,6 +81,9 @@ impl ExecutionPhase {
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
+    /// `pre_state_root` in the invalid state transition proof is invalid.
+    #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
+    InvalidPreStateRoot,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",
@@ -153,8 +156,8 @@ impl<Number, Hash> FraudProof<Number, Hash> {
 pub struct InvalidStateTransitionProof {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
-    /// Hash of the signed bundle in which an invalid state transition occurred.
-    pub bad_signed_bundle_hash: H256,
+    /// Hash of the bad receipt in which an invalid trace occurred.
+    pub bad_receipt_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
     /// Parent hash of the block at which the invalid execution occurred.
