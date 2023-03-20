@@ -322,7 +322,8 @@ where
         if let Ok(Some(_)) = self.get_backend_block(announcement.0) {
             info!(
                 target: LOG_TARGET,
-                "FullBlockRelay::on_block_announcement(): {}, skipping", announcement,
+                "FullBlockRelay::on_block_announcement(): {}, existing block announced, skipping",
+                announcement,
             );
             return;
         }
