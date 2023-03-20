@@ -245,29 +245,29 @@ where
     /// Retrieves the requested block from the backend.
     fn get_backend_block(
         &self,
-        request: &BlockRequest<Block>,
+        block_number: NumberFor<Block>,
     ) -> Result<Option<SignedBlock<Block>>, String> {
-        let block_id = BlockId::<Block>::Number(request.0);
+        let block_id = BlockId::<Block>::Number(block_number);
         let block_hash = match self.client.block_hash_from_id(&block_id) {
             Ok(Some(block_hash)) => block_hash,
             Ok(None) => {
                 return Err(format!(
-                    "FullBlockRelay::get_block(): hash lookup failed: {:?}/{:?}",
-                    request, block_id
+                    "FullBlockRelay::get_block(): hash lookup failed: {:?}",
+                    block_id
                 ))
             }
             Err(err) => {
                 return Err(format!(
-                    "FullBlockRelay::get_block(): hash conversion failed: {:?}/{:?}, {:?}",
-                    request, block_id, err
+                    "FullBlockRelay::get_block(): hash conversion failed: {:?}, {:?}",
+                    block_id, err
                 ))
             }
         };
 
         self.client.block(block_hash).map_err(|err| {
             format!(
-                "FullBlockRelay::get_block(): block lookup failed: {:?}/{:?}, {:?}",
-                request, block_id, err
+                "FullBlockRelay::get_block(): block lookup failed: {:?}, {:?}",
+                block_id, err
             )
         })
     }
@@ -318,6 +318,15 @@ where
             }
         };
 
+        // Skip the announcement if we already have the block.
+        if let Ok(Some(_)) = self.get_backend_block(announcement.0) {
+            info!(
+                target: LOG_TARGET,
+                "FullBlockRelay::on_block_announcement(): {}, skipping", announcement,
+            );
+            return;
+        }
+
         // Download/import the block
         let block_response = match self.download_block(sender, &announcement).await {
             Ok(Some(block_response)) => block_response,
@@ -357,7 +366,7 @@ where
             }
         };
 
-        let ret = self.get_backend_block(&block_request);
+        let ret = self.get_backend_block(block_request.0);
         if let Ok(Some(signed_block)) = ret {
             let block_response = BlockResponse(signed_block);
             self.send_download_response(incoming, block_request, block_response)
