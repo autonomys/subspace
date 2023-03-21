@@ -34,6 +34,7 @@ sp-domain-digests = { version = "0.1.0", path = "../../primitives/digests" }
 sp-keystore = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }

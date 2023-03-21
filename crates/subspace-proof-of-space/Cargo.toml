@@ -1,0 +1,23 @@
+[package]
+name = "subspace-proof-of-space"
+description = "Subspace proof of space implementation based on Chia"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Nazar Mokrynskyi <nazar@mokrynskyi.com>"]
+edition = "2021"
+include = [
+    "/benches",
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "a239ddf83b4d8420f23616d604af83c756c40116" }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+
+[dev-dependencies]
+criterion = "0.4.0"
+
+[[bench]]
+name = "pos"
+harness = false

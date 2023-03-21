@@ -11,7 +11,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::OpaqueMetadata;
+use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
@@ -533,6 +533,12 @@ impl_runtime_apis! {
         }
     }
 
+    impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {
+        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
+            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
+        }
+    }
+
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
@@ -648,10 +654,7 @@ impl_runtime_apis! {
         fn extract_xdm_proof_state_roots(
             extrinsic: &<Block as BlockT>::Extrinsic,
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            match &extrinsic.function {
-                RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
-                _ => None,
-            }
+            extract_xdm_proof_state_roots(extrinsic)
         }
 
         fn confirmation_depth() -> BlockNumber {
@@ -712,5 +715,19 @@ impl_runtime_apis! {
 
             Ok(batches)
         }
+    }
+}
+
+fn extract_xdm_proof_state_roots(
+    ext: &UncheckedExtrinsic,
+) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+    match &ext.function {
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+        }
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+        }
+        _ => None,
     }
 }

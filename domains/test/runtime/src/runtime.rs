@@ -12,7 +12,7 @@ use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::OpaqueMetadata;
+use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
@@ -509,6 +509,12 @@ impl_runtime_apis! {
         }
     }
 
+    impl sp_receipts::ReceiptsApi<Block, Hash> for Runtime {
+        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<Hash> {
+            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
+        }
+    }
+
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
@@ -650,7 +656,12 @@ fn extract_xdm_proof_state_roots(
     ext: &UncheckedExtrinsic,
 ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
     match &ext.function {
-        RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+        }
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+        }
         _ => None,
     }
 }

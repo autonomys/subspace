@@ -21,6 +21,7 @@
 
 pub mod crypto;
 pub mod objects;
+mod pieces;
 pub mod sector_codec;
 #[cfg(test)]
 mod tests;
@@ -29,17 +30,18 @@ extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
-use alloc::vec;
-use alloc::vec::Vec;
 use ark_bls12_381::Fr;
 use ark_ff::{BigInteger, PrimeField};
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
-use core::ops::{Deref, DerefMut};
-use derive_more::{Add, Display, Div, Mul, Rem, Sub};
+use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+pub use pieces::{
+    FlatPieces, Piece, PieceRef, PieceRefMut, RecordRef, RecordRefMut, WitnessRef, WitnessRefMut,
+    PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
+};
 use scale_info::{Type, TypeInfo};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
@@ -47,19 +49,6 @@ use serde::{Deserialize, Serialize};
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
-/// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
-/// BLS12-381 scalar safely).
-///
-/// TODO: Requirement of being a multiple of 2 bytes may go away eventually as we switch erasure
-///  coding implementation, so we might be able to bump it by one field element in size.
-///
-/// This can not changed after the network is launched.
-pub const PIECE_SIZE: usize = 31_744;
-/// Size of witness for a segment record (in bytes).
-pub const WITNESS_SIZE: u32 = 48;
-/// Size of a segment record given the global piece size (in bytes).
-pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 /// Size of one plotted sector.
 ///
 /// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
@@ -118,6 +107,42 @@ pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
 pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
+
+/// Size of proof of space seed in bytes.
+const POS_SEED_SIZE: usize = 32;
+
+/// Proof of space seed.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosSeed(pub [u8; POS_SEED_SIZE]);
+
+impl PosSeed {
+    /// Size of proof of space seed in bytes.
+    pub const SIZE: usize = POS_SEED_SIZE;
+}
+
+/// Size of proof of space quality in bytes.
+const POS_QUALITY_SIZE: usize = 32;
+
+/// Proof of space quality.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosQualityBytes(pub [u8; POS_QUALITY_SIZE]);
+
+impl PosQualityBytes {
+    /// Size of proof of space quality in bytes.
+    pub const SIZE: usize = POS_QUALITY_SIZE;
+}
+
+/// Length of proof of space proof in bytes.
+const POS_PROOF_LENGTH: usize = 17 * 8;
+
+/// Proof of space proof bytes.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
+pub struct PosProof(pub [u8; POS_PROOF_LENGTH]);
+
+impl PosProof {
+    /// Size of proof of space proof in bytes.
+    pub const SIZE: usize = POS_PROOF_LENGTH;
+}
 
 /// Representation of a single BLS12-381 scalar value.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
@@ -198,17 +223,35 @@ impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
     }
 }
 
+impl From<[u8; Self::SAFE_BYTES]> for Scalar {
+    fn from(value: [u8; Self::SAFE_BYTES]) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&[u8; Self::FULL_BYTES]> for Scalar {
     fn from(value: &[u8; Self::FULL_BYTES]) -> Self {
         Scalar(Fr::from_le_bytes_mod_order(value))
     }
 }
 
+impl From<[u8; Self::FULL_BYTES]> for Scalar {
+    fn from(value: [u8; Self::FULL_BYTES]) -> Self {
+        Self::from(&value)
+    }
+}
+
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: &Scalar) -> [u8; Scalar::FULL_BYTES] {
-        let mut bytes = [0u8; Scalar::FULL_BYTES];
+    fn from(value: &Scalar) -> Self {
+        let mut bytes = Self::default();
         value.write_to_bytes(&mut bytes);
         bytes
+    }
+}
+
+impl From<Scalar> for [u8; Scalar::FULL_BYTES] {
+    fn from(value: Scalar) -> Self {
+        Self::from(&value)
     }
 }
 
@@ -239,7 +282,21 @@ impl Scalar {
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
 #[derive(
-    Debug, Default, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    From,
+    Into,
 )]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PublicKey(
@@ -252,26 +309,6 @@ impl fmt::Display for PublicKey {
     }
 }
 
-impl From<[u8; PUBLIC_KEY_LENGTH]> for PublicKey {
-    fn from(bytes: [u8; PUBLIC_KEY_LENGTH]) -> Self {
-        Self(bytes)
-    }
-}
-
-impl From<PublicKey> for [u8; PUBLIC_KEY_LENGTH] {
-    fn from(public_key: PublicKey) -> Self {
-        public_key.0
-    }
-}
-
-impl Deref for PublicKey {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl AsRef<[u8]> for PublicKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
@@ -279,31 +316,26 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 /// A Ristretto Schnorr signature as bytes produced by `schnorrkel` crate.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    From,
+    Into,
+)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct RewardSignature(
     #[cfg_attr(feature = "std", serde(with = "serde_arrays"))] [u8; REWARD_SIGNATURE_LENGTH],
 );
-
-impl From<[u8; REWARD_SIGNATURE_LENGTH]> for RewardSignature {
-    fn from(bytes: [u8; REWARD_SIGNATURE_LENGTH]) -> Self {
-        Self(bytes)
-    }
-}
-
-impl From<RewardSignature> for [u8; REWARD_SIGNATURE_LENGTH] {
-    fn from(signature: RewardSignature) -> Self {
-        signature.0
-    }
-}
-
-impl Deref for RewardSignature {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl AsRef<[u8]> for RewardSignature {
     fn as_ref(&self) -> &[u8] {
@@ -320,159 +352,6 @@ pub struct ChunkSignature {
     /// VRF proof bytes.
     #[cfg_attr(feature = "std", serde(with = "serde_arrays"))]
     pub proof: [u8; VRF_PROOF_LENGTH],
-}
-
-/// A piece of archival history in Subspace Network.
-///
-/// Internally piece contains a record and corresponding witness that together with [`RootBlock`] of
-/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
-/// archival history of the blockchain.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Piece(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Vec<u8>);
-
-impl Default for Piece {
-    fn default() -> Self {
-        Self(vec![0u8; PIECE_SIZE])
-    }
-}
-
-impl From<[u8; PIECE_SIZE]> for Piece {
-    fn from(piece: [u8; PIECE_SIZE]) -> Self {
-        Self(piece.to_vec())
-    }
-}
-
-impl From<Piece> for Vec<u8> {
-    fn from(piece: Piece) -> Self {
-        piece.0
-    }
-}
-
-impl TryFrom<&[u8]> for Piece {
-    type Error = &'static str;
-    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        if slice.len() != PIECE_SIZE {
-            Err("Wrong piece size, expected: 32768")
-        } else {
-            Ok(Self(slice.to_vec()))
-        }
-    }
-}
-
-impl TryFrom<Vec<u8>> for Piece {
-    type Error = &'static str;
-
-    fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
-        if vec.len() != PIECE_SIZE {
-            Err("Wrong piece size, expected: 32768")
-        } else {
-            Ok(Self(vec))
-        }
-    }
-}
-
-impl Deref for Piece {
-    type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Piece {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl AsRef<[u8]> for Piece {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for Piece {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
-}
-
-/// Flat representation of multiple pieces concatenated for higher efficient for processing.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct FlatPieces(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Vec<u8>);
-
-// TODO: Introduce `PieceRef` and `PieceRefMut` that can be converted into `Piece` without
-//  `.expect()` and maybe add convenience methods for accessing record and witness parts of it
-impl FlatPieces {
-    /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
-    pub fn new(piece_count: usize) -> Self {
-        Self(vec![0u8; piece_count * PIECE_SIZE])
-    }
-
-    /// Number of pieces contained.
-    pub fn count(&self) -> usize {
-        self.0.len() / PIECE_SIZE
-    }
-
-    /// Extract internal flat representation of bytes.
-    pub fn into_inner(self) -> Vec<u8> {
-        self.0
-    }
-
-    /// Iterator over individual pieces as byte slices.
-    pub fn as_pieces(&self) -> impl ExactSizeIterator<Item = &[u8]> {
-        self.0.chunks_exact(PIECE_SIZE)
-    }
-
-    /// Iterator over individual pieces as byte slices.
-    pub fn as_pieces_mut(&mut self) -> impl ExactSizeIterator<Item = &mut [u8]> {
-        self.0.chunks_exact_mut(PIECE_SIZE)
-    }
-}
-
-impl From<Piece> for FlatPieces {
-    fn from(Piece(piece): Piece) -> Self {
-        Self(piece)
-    }
-}
-
-impl TryFrom<Vec<u8>> for FlatPieces {
-    type Error = Vec<u8>;
-
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        if value.len() % PIECE_SIZE != 0 {
-            return Err(value);
-        }
-
-        Ok(Self(value))
-    }
-}
-
-impl Deref for FlatPieces {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for FlatPieces {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl AsRef<[u8]> for FlatPieces {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsMut<[u8]> for FlatPieces {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
-    }
 }
 
 /// Progress of an archived block.
@@ -611,21 +490,9 @@ pub type PieceIndex = u64;
 pub type SectorIndex = u64;
 
 /// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode, From, Into)]
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 pub struct PieceIndexHash(Blake2b256Hash);
-
-impl From<PieceIndexHash> for Blake2b256Hash {
-    fn from(piece_index_hash: PieceIndexHash) -> Self {
-        piece_index_hash.0
-    }
-}
-
-impl From<Blake2b256Hash> for PieceIndexHash {
-    fn from(hash: Blake2b256Hash) -> Self {
-        Self(hash)
-    }
-}
 
 impl AsRef<[u8]> for PieceIndexHash {
     fn as_ref(&self) -> &[u8] {

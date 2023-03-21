@@ -45,6 +45,7 @@ sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https:/
 sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger", default-features = false }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-receipts = { version = "0.1.0", path = "../../../crates/sp-receipts", default-features = false }
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
@@ -82,6 +83,7 @@ std = [
 	"sp-io/std",
 	"sp-messenger/std",
 	"sp-offchain/std",
+	"sp-receipts/std",
 	"sp-runtime/std",
 	"sp-session/std",
 	"sp-std/std",
