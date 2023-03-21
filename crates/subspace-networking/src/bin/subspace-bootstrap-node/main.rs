@@ -101,17 +101,19 @@ async fn main() -> anyhow::Result<()> {
             };
 
             let networking_parameters_registry = {
-                let in_memory_registry =
-                    BootstrappedNetworkingParameters::new(bootstrap_nodes.clone()).boxed();
-
                 db_path
                     .map(|path| {
                         let known_addresses_db = path.join("known_addresses_db");
 
-                        NetworkingParametersManager::new(&known_addresses_db, bootstrap_nodes)
-                            .map(|manager| manager.boxed())
+                        NetworkingParametersManager::new(
+                            &known_addresses_db,
+                            bootstrap_nodes.clone(),
+                        )
+                        .map(|manager| manager.boxed())
                     })
-                    .unwrap_or(Ok(in_memory_registry))
+                    .unwrap_or(Ok(
+                        BootstrappedNetworkingParameters::new(bootstrap_nodes).boxed()
+                    ))
                     .map_err(|err| anyhow!(err))?
             };
 

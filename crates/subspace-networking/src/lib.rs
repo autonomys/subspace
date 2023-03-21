@@ -33,7 +33,8 @@ mod shared;
 pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
-    BootstrappedNetworkingParameters, NetworkingParametersManager,
+    BootstrappedNetworkingParameters, NetworkParametersPersistenceError,
+    NetworkingParametersManager, ParityDbError,
 };
 pub use crate::node::{
     CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
