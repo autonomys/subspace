@@ -1,9 +1,12 @@
 //! Implementation of the full block protocol.
 
-use crate::protocol::{BlockRelayProtocol, GossipNetworkService};
+use crate::protocol::{BlockRelayProtocol, GossipNetworkService, ProtocolResponse};
 use crate::LOG_TARGET;
 use async_trait::async_trait;
 use futures::channel::mpsc::{self, Receiver};
+use futures::channel::oneshot;
+use futures::stream::FuturesUnordered;
+use futures::{Future, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -20,8 +23,9 @@ use sc_service::Configuration;
 use sp_consensus::BlockOrigin;
 use sp_runtime::generic::{BlockId, SignedBlock};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{info, trace, warn};
@@ -99,11 +103,13 @@ pub struct FullBlockRelay<Block: BlockT, Client> {
     pending_announcements: Arc<Mutex<HashSet<Vec<u8>>>>,
 
     /// Block downloads in progress.
-    pending_downloads: HashMap<NumberFor<Block>, BlockDownloadState>,
-}
+    pending_downloads: HashSet<NumberFor<Block>>,
 
-#[derive(Debug)]
-pub struct BlockDownloadState;
+    /// Requests waiting for responses from peers.
+    pending_responses: FuturesUnordered<
+        Pin<Box<dyn Future<Output = ProtocolResponse<BlockRequest<Block>>> + Send>>,
+    >,
+}
 
 impl<Block, Client> FullBlockRelay<Block, Client>
 where
@@ -133,55 +139,86 @@ where
             gossip_engine: gossip_engine.clone(),
             _validator: validator,
             pending_announcements,
-            pending_downloads: HashMap::new(),
+            pending_downloads: HashSet::new(),
+            pending_responses: Default::default(),
         };
         (protocol, gossip_engine)
     }
 
-    /// Downloads the announced block.
-    async fn download_block(
-        &mut self,
-        sender: PeerId,
-        announcement: &BlockAnnouncement<Block>,
-    ) -> Result<Option<BlockResponse<Block>>, String> {
-        if self.pending_downloads.contains_key(&announcement.0) {
-            return Ok(None);
+    /// Initiates the block download request.
+    fn start_block_download(&mut self, sender: PeerId, announcement: &BlockAnnouncement<Block>) {
+        if self.pending_downloads.contains(&announcement.0) {
+            return;
         }
-        self.pending_downloads
-            .insert(announcement.0, BlockDownloadState);
+        self.pending_downloads.insert(announcement.0);
 
         let block_request = BlockRequest::<Block>(announcement.0);
-        let ret = self
-            .network
-            .request(
-                sender,
-                SYNC_PROTOCOL.into(),
-                block_request.encode(),
-                IfDisconnected::ImmediateError,
-            )
-            .await;
-        self.pending_downloads.remove(&announcement.0);
+        let (tx, rx) = oneshot::channel();
+        let request_ts = Instant::now();
+        self.network.start_request(
+            sender,
+            SYNC_PROTOCOL.into(),
+            block_request.encode(),
+            tx,
+            IfDisconnected::ImmediateError,
+        );
+        self.pending_responses.push(Box::pin(async move {
+            ProtocolResponse {
+                peer_id: sender,
+                request_id: block_request,
+                response: rx.await.ok(),
+                request_ts,
+            }
+        }));
+    }
 
-        let bytes = match ret {
-            Ok(bytes) => bytes,
+    /// Processes the block download response.
+    async fn on_block_download_response(
+        &mut self,
+        sender: PeerId,
+        request: BlockRequest<Block>,
+        bytes: Vec<u8>,
+        elapsed: Duration,
+    ) {
+        if !self.pending_downloads.remove(&request.0) {
+            warn!(
+                target: LOG_TARGET,
+                "FullBlockRelay::on_block_download_response(): unknown request: \
+                peer = {:?}, request = {}, len = {}",
+                sender,
+                request,
+                bytes.len()
+            );
+            return;
+        }
+
+        let block_response = match BlockResponse::<Block>::decode(&mut bytes.as_slice()) {
+            Ok(block_response) => block_response,
             Err(err) => {
-                return Err(format!(
-                    "[{}, send request failed, err = {:?}]",
-                    block_request, err
-                ));
+                warn!(
+                    target: LOG_TARGET,
+                    "FullBlockRelay::on_block_download_response(): failed to decode response: \
+                    peer = {:?}, request = {}, len = {}, err = {:?}",
+                    sender,
+                    request,
+                    bytes.len(),
+                    err
+                );
+                return;
             }
         };
 
-        BlockResponse::<Block>::decode(&mut bytes.as_slice())
-            .map(|block| Some(block))
-            .map_err(|err| {
-                format!(
-                    "[{}, failed to decoded block response, len = {}, err = {:?}]",
-                    block_request,
-                    bytes.len(),
-                    err
-                )
-            })
+        // Import the downloaded block.
+        let reponse_str = format!("{}", block_response);
+        self.import_block(block_response.0).await;
+        info!(
+            target: LOG_TARGET,
+            "FullBlockRelay::on_block_download_response(): {}, {}. Block downloaded/imported, \
+            elapsed = {:?}",
+            request,
+            reponse_str,
+            elapsed,
+        );
     }
 
     /// Imports the block.
@@ -298,7 +335,6 @@ where
     }
 
     async fn on_block_announcement(&mut self, message: TopicNotification) {
-        let start_ts = Instant::now();
         let sender = match message.sender {
             Some(sender) => sender,
             None => return,
@@ -327,34 +363,13 @@ where
             return;
         }
 
-        // Download/import the block
-        let download_start_ts = Instant::now();
-        let block_response = match self.download_block(sender, &announcement).await {
-            Ok(Some(block_response)) => block_response,
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "FullBlockRelay::on_block_announcement(): {}, download failed, err = {:?}",
-                    announcement,
-                    err
-                );
-                return;
-            }
-            _ => return,
-        };
-        let download_time = download_start_ts.elapsed();
-        let response_str = format!("{}", block_response);
-
-        // Import the downloaded block
-        self.import_block(block_response.0).await;
+        // Initiate the block download.
+        self.start_block_download(sender, &announcement);
         info!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_announcement(): {}, {}. Block downloaded/imported \
-            [total = {:?}, download = {:?}]",
-            announcement,
-            response_str,
-            start_ts.elapsed(),
-            download_time
+            "FullBlockRelay::on_block_announcement(): {}, {}. Block downloaded initiated",
+            sender,
+            announcement
         );
     }
 
@@ -383,6 +398,32 @@ where
                 "FullBlockRelay::on_protocol_message(): {}, backend fetch failed, ret = {:?}",
                 block_request,
                 ret
+            );
+        }
+    }
+
+    async fn poll(&mut self) {
+        let protocol_response = match self.pending_responses.next().await {
+            Some(protocol_response) => protocol_response,
+            None => return,
+        };
+
+        if let Some(Ok(response)) = protocol_response.response {
+            self.on_block_download_response(
+                protocol_response.peer_id,
+                protocol_response.request_id,
+                response,
+                protocol_response.request_ts.elapsed(),
+            )
+            .await;
+        } else {
+            warn!(
+                target: LOG_TARGET,
+                "FullBlockRelay::poll(): download request failed: sender = {:?}, request = {}, \
+                response = {:?}",
+                protocol_response.peer_id,
+                protocol_response.request_id,
+                protocol_response.response
             );
         }
     }

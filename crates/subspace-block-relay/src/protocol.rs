@@ -4,12 +4,14 @@ use futures::channel::mpsc::Receiver;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::ImportedBlockNotification;
+use sc_network::{PeerId, RequestFailure};
 use sc_network_gossip::TopicNotification;
 use sc_service::config::IncomingRequest;
 use sc_service::Configuration;
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
+use std::time::Instant;
 
 mod full_block;
 
@@ -32,6 +34,24 @@ pub trait BlockRelayProtocol<Block: BlockT>: Send {
 
     /// Handles the protocol handshake messages from peers.
     async fn on_protocol_message(&mut self, request: IncomingRequest);
+
+    /// Interface to drive any protocol specific polling.
+    async fn poll(&mut self);
+}
+
+/// Async response to start_request().
+pub(crate) struct ProtocolResponse<ReqId> {
+    /// Peer to which the request was sent.
+    peer_id: PeerId,
+
+    /// Protocol specific request identifier.
+    request_id: ReqId,
+
+    /// The response. Set to None if the oneshot receiver returned Canceled.
+    response: Option<Result<Vec<u8>, RequestFailure>>,
+
+    /// When the request was sent.
+    request_ts: Instant,
 }
 
 /// Initializes the block relay specific parts in the network config.

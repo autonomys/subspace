@@ -55,6 +55,7 @@ impl<Block: BlockT> BlockRelayRunner<Block> {
         loop {
             let engine = self.gossip_engine.clone();
             let gossip_engine = futures::future::poll_fn(|cx| engine.lock().poll_unpin(cx));
+            let poll_protocol = futures::future::poll_fn(|cx| self.protocol.poll().poll_unpin(cx));
 
             futures::select! {
                 block_import = self.import_notifications.next().fuse() => {
@@ -71,8 +72,8 @@ impl<Block: BlockT> BlockRelayRunner<Block> {
                     if let Some(protocol_message) = protocol_message {
                         self.protocol.on_protocol_message(protocol_message).await;
                     }
-                },
-
+                }
+                _ = poll_protocol.fuse() => {}
                 _ = gossip_engine.fuse() => {
                     error!(target: LOG_TARGET, "BlockRelayRunner(): gossip engine has terminated.");
                     return;
