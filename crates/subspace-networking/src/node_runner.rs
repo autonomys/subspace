@@ -103,6 +103,8 @@ where
     max_established_incoming_connections: u32,
     /// Outgoing swarm connection limit.
     max_established_outgoing_connections: u32,
+    /// Defines target total (in and out) connection number that should be maintained.
+    target_connections: u32,
     /// Temporarily banned peers.
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     /// Prometheus metrics.
@@ -125,6 +127,7 @@ where
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
     pub(crate) max_established_incoming_connections: u32,
     pub(crate) max_established_outgoing_connections: u32,
+    pub(crate) target_connections: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
 }
@@ -144,6 +147,7 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            target_connections,
             temporary_bans,
             metrics,
         }: NodeRunnerConfig<ProviderStorage>,
@@ -165,6 +169,7 @@ where
             reserved_peers,
             max_established_incoming_connections,
             max_established_outgoing_connections,
+            target_connections,
             temporary_bans,
             metrics,
             established_connections: HashMap::new(),
@@ -206,7 +211,7 @@ where
                     self.handle_peer_dialing().await;
 
                     self.peer_dialing_timeout =
-                        Box::pin(tokio::time::sleep(Duration::from_secs(3)).fuse());
+                        Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
                 },
             }
         }
@@ -234,16 +239,25 @@ where
             }
         }
 
-        // Maintain minimum connected out-peers number.
-        let outgoing_connections_number = {
+        // Maintain target connection number.
+        let (total_current_connections, established_connections) = {
             let network_info = self.swarm.network_info();
             let connections = network_info.connection_counters();
 
-            connections.num_pending_outgoing() + connections.num_established_outgoing()
+            (
+                connections.num_pending_outgoing()
+                    + connections.num_established_outgoing()
+                    + connections.num_pending_incoming()
+                    + connections.num_established_incoming(),
+                connections.num_established_outgoing() + connections.num_established_incoming(),
+            )
         };
-        if outgoing_connections_number < self.max_established_outgoing_connections {
+
+        if total_current_connections < self.target_connections {
             debug!(
                 %local_peer_id,
+                total_current_connections,
+                target_connections=self.target_connections,
                 connected_peers=connected_peers.len(),
                 "Initiate connection to known peers",
             );
@@ -278,6 +292,9 @@ where
 
                 self.dial_peer(peer_id, addr)
             }
+        } else if established_connections < self.target_connections {
+            self.networking_parameters_registry
+                .start_over_address_batching()
         }
     }
 

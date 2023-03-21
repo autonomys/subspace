@@ -35,8 +35,8 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    crypto, ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock,
-    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, WITNESS_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceRef,
+    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -793,12 +793,12 @@ impl Archiver {
                     .as_ref()
                     .chunks_exact(self.record_size as usize),
             )
-            .for_each(|((position, piece), shard_chunk)| {
-                let (record_part, witness_part) = piece.split_at_mut(self.record_size as usize);
+            .for_each(|((position, mut piece), shard_chunk)| {
+                let (mut record, mut witness) = piece.split_mut();
 
-                record_part.copy_from_slice(shard_chunk);
+                record.as_mut().copy_from_slice(shard_chunk);
                 // TODO: Consider batch witness creation for improved performance
-                witness_part.copy_from_slice(
+                witness.as_mut().copy_from_slice(
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
@@ -835,23 +835,18 @@ impl Archiver {
 pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: u32,
-    piece: &[u8],
+    piece: PieceRef<'_>,
     commitment: RecordsRoot,
     position: u32,
-    record_size: u32,
 ) -> bool {
-    if piece.len() != (record_size + WITNESS_SIZE) as usize {
-        return false;
-    }
-
-    let (record, witness) = piece.split_at(record_size as usize);
-    let witness = match witness.try_into().map(Witness::try_from_bytes) {
-        Ok(Ok(witness)) => witness,
+    let (record, witness) = piece.split();
+    let witness = match Witness::try_from_bytes(&witness) {
+        Ok(witness) => witness,
         _ => {
             return false;
         }
     };
-    let leaf_hash = crypto::blake2b_256_254_hash(record);
+    let leaf_hash = blake2b_256_254_hash(&record);
 
     kzg.verify(
         &commitment,

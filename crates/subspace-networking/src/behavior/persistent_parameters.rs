@@ -51,6 +51,9 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     /// It removes p2p-protocol suffix.
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress>;
 
+    /// Reset the batching process to the initial state.
+    fn start_over_address_batching(&mut self) {}
+
     /// Drive async work in the persistence provider
     async fn run(&mut self);
 
@@ -301,6 +304,10 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
         );
 
         self.collection_batcher.next_batch(combined_addresses)
+    }
+
+    fn start_over_address_batching(&mut self) {
+        self.collection_batcher.reset();
     }
 
     async fn run(&mut self) {

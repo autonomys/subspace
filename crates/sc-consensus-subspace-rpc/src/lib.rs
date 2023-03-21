@@ -281,10 +281,11 @@ where
                     let forward_solution_fut = async move {
                         if let Ok(solution_response) = response_receiver.await {
                             for solution in solution_response.solutions {
-                                let public_key = FarmerPublicKey::from_slice(&solution.public_key)
-                                    .expect("Always correct length; qed");
+                                let public_key =
+                                    FarmerPublicKey::from_slice(solution.public_key.as_ref())
+                                        .expect("Always correct length; qed");
                                 let reward_address =
-                                    FarmerPublicKey::from_slice(&solution.reward_address)
+                                    FarmerPublicKey::from_slice(solution.reward_address.as_ref())
                                         .expect("Always correct length; qed");
 
                                 let solution = Solution {
