@@ -31,7 +31,7 @@ use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
-use schnorrkel::Keypair;
+use schnorrkel::{Keypair, SignatureError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, GlobalRandomnesses, SolutionRanges, Vote,
@@ -1003,10 +1003,10 @@ fn vote_outside_of_solution_range() {
             1,
         );
 
-        assert_matches!(
+        assert_eq!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::OutsideSolutionRange
+                VerificationError::OutsideSolutionRange.to_string()
             ))
         );
     });
@@ -1055,10 +1055,11 @@ fn vote_invalid_solution_signature() {
                 .to_bytes(),
         );
 
-        assert_matches!(
+        assert_eq!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::InvalidSolutionSignature(_)
+                VerificationError::InvalidSolutionSignature(SignatureError::ScalarFormatError)
+                    .to_string()
             ))
         );
     });

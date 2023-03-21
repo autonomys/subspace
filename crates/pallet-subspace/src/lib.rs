@@ -18,6 +18,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
+extern crate alloc;
+
 mod default_weights;
 pub mod equivocation;
 
@@ -26,6 +28,7 @@ mod mock;
 #[cfg(all(feature = "std", test))]
 mod tests;
 
+use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
@@ -38,6 +41,7 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
@@ -52,16 +56,14 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     PublicKey, Randomness, RewardSignature, RootBlock, SectorId, SectorIndex, SegmentIndex,
     SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
-    check_reward_signature, derive_next_solution_range, derive_randomness, verify_solution,
-    Error as VerificationError, PieceCheckParams, VerifySolutionParams,
+    check_reward_signature, derive_next_solution_range, derive_randomness, PieceCheckParams,
+    VerifySolutionParams,
 };
 
 pub trait WeightInfo {
@@ -1197,7 +1199,7 @@ enum CheckVoteError {
     SlotInThePast,
     BadRewardSignature(SignatureError),
     UnknownRecordsRoot,
-    InvalidSolution(VerificationError),
+    InvalidSolution(String),
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
@@ -1358,20 +1360,18 @@ fn check_vote<T: Config>(
         return Err(CheckVoteError::UnknownRecordsRoot);
     };
 
-    let kzg = Kzg::new(kzg::test_public_parameters());
-
-    if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
-        solution,
+    if let Err(error) = verify_solution(
+        solution.into(),
         slot.into(),
-        &VerifySolutionParams {
+        (&VerifySolutionParams {
             global_randomness: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 records_root,
                 pieces_in_segment,
             }),
-        },
-        Some(&kzg),
+        })
+            .into(),
     ) {
         debug!(
             target: "runtime::subspace",

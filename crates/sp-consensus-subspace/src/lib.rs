@@ -19,7 +19,7 @@
 #![forbid(unsafe_code, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate core;
+extern crate alloc;
 
 pub mod digests;
 pub mod inherents;
@@ -28,6 +28,8 @@ pub mod offence;
 mod tests;
 
 use crate::digests::{CompatibleDigestItem, PreDigest};
+use alloc::borrow::Cow;
+use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use core::time::Duration;
@@ -39,6 +41,8 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
+use sp_runtime_interface::pass_by::PassBy;
+use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
@@ -332,6 +336,81 @@ impl ChainConstants {
             slot_probability, ..
         } = self;
         *slot_probability
+    }
+}
+
+/// Wrapped solution for the purposes of runtime interface.
+#[derive(Debug, Encode, Decode)]
+pub struct WrappedSolution(Solution<FarmerPublicKey, ()>);
+
+impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedSolution {
+    fn from(solution: &Solution<FarmerPublicKey, RewardAddress>) -> Self {
+        Self(Solution {
+            public_key: solution.public_key.clone(),
+            reward_address: (),
+            sector_index: solution.sector_index,
+            total_pieces: solution.total_pieces,
+            piece_offset: solution.piece_offset,
+            piece_record_hash: solution.piece_record_hash,
+            piece_witness: solution.piece_witness,
+            chunk_offset: solution.chunk_offset,
+            chunk: solution.chunk,
+            chunk_signature: solution.chunk_signature,
+        })
+    }
+}
+
+impl PassBy for WrappedSolution {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+/// Wrapped solution verification parameters for the purposes of runtime interface.
+#[derive(Debug, Encode, Decode)]
+pub struct WrappedVerifySolutionParams<'a>(Cow<'a, VerifySolutionParams>);
+
+impl<'a> From<&'a VerifySolutionParams> for WrappedVerifySolutionParams<'a> {
+    fn from(value: &'a VerifySolutionParams) -> Self {
+        Self(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+#[cfg(feature = "std")]
+sp_externalities::decl_extension! {
+    /// A KZG extension.
+    pub struct KzgExtension(Kzg);
+}
+
+#[cfg(feature = "std")]
+impl KzgExtension {
+    /// Create new instance.
+    pub fn new(kzg: Kzg) -> Self {
+        Self(kzg)
+    }
+}
+
+/// Consensus-related runtime interface
+#[runtime_interface]
+pub trait Consensus {
+    /// Verify whether solution is valid.
+    fn verify_solution(
+        &mut self,
+        solution: WrappedSolution,
+        slot: u64,
+        params: WrappedVerifySolutionParams<'_>,
+    ) -> Result<(), String> {
+        use sp_externalities::ExternalitiesExt;
+
+        let kzg = &self
+            .extension::<KzgExtension>()
+            .expect("No `KzgExtension` associated for the current context!")
+            .0;
+
+        subspace_verification::verify_solution(&solution.0, slot, &params.0, Some(kzg))
+            .map_err(|error| error.to_string())
     }
 }
 

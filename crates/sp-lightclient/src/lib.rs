@@ -23,6 +23,7 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, verify_next_digests, CompatibleDigestItem,
     Error as DigestError, ErrorDigestType, NextDigestsVerificationParams, PreDigest,
@@ -34,16 +35,13 @@ use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockWeight, PublicKey, Randomness, RecordsRoot, RewardSignature, SectorId, SegmentIndex,
     SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
-    check_reward_signature, derive_audit_chunk, verify_solution, PieceCheckParams,
-    VerifySolutionParams,
+    check_reward_signature, derive_audit_chunk, PieceCheckParams, VerifySolutionParams,
 };
 
 #[cfg(test)]
@@ -239,7 +237,7 @@ pub enum ImportError<Header: HeaderT> {
     /// Block signature is invalid.
     InvalidBlockSignature,
     /// Solution present in the header is invalid.
-    InvalidSolution(subspace_verification::Error),
+    InvalidSolution(String),
     /// Arithmetic error.
     ArithmeticError(ArithmeticError),
     /// Switched to different fork beyond archiving depth.
@@ -349,21 +347,18 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let records_root =
             self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
 
-        // TODO: Probably should have public parameters in chain constants instead
-        let kzg = Kzg::new(kzg::test_public_parameters());
-
         verify_solution(
-            &header_digests.pre_digest.solution,
+            (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
-            &VerifySolutionParams {
+            (&VerifySolutionParams {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     records_root,
                     pieces_in_segment: PIECES_IN_SEGMENT,
                 }),
-            },
-            Some(&kzg),
+            })
+                .into(),
         )
         .map_err(ImportError::InvalidSolution)?;
 

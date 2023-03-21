@@ -19,6 +19,7 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use schnorrkel::context::SigningContext;
 use schnorrkel::vrf::VRFOutput;
 use schnorrkel::{SignatureError, SignatureResult};
@@ -113,7 +114,7 @@ pub fn is_within_solution_range(
 }
 
 /// Parameters for checking piece validity
-#[derive(Debug)]
+#[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct PieceCheckParams {
     /// Records root of segment to which piece belongs
     pub records_root: RecordsRoot,
@@ -122,7 +123,7 @@ pub struct PieceCheckParams {
 }
 
 /// Parameters for solution verification
-#[derive(Debug)]
+#[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct VerifySolutionParams {
     /// Global randomness
     pub global_randomness: Randomness,
@@ -140,8 +141,8 @@ pub struct VerifySolutionParams {
 pub fn verify_solution<'a, FarmerPublicKey, RewardAddress>(
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
     slot: u64,
-    params: &VerifySolutionParams,
-    kzg: Option<&Kzg>,
+    params: &'a VerifySolutionParams,
+    kzg: Option<&'a Kzg>,
 ) -> Result<(), Error>
 where
     PublicKey: From<&'a FarmerPublicKey>,
