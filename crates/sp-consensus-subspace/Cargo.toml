@@ -20,8 +20,6 @@ scale-info = { version = "2.3.1", default-features = false, features = ["derive"
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-application-crypto = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
-sp-arithmetic = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
-sp-consensus = { version = "0.10.0-dev", optional = true, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
@@ -45,8 +43,6 @@ std = [
 	"schnorrkel/std",
 	"sp-api/std",
 	"sp-application-crypto/std",
-	"sp-arithmetic/std",
-	"sp-consensus",
 	"sp-consensus-slots/std",
 	"sp-core/std",
 	"sp-inherents/std",
