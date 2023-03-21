@@ -20,6 +20,8 @@ use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::{debug, trace};
 
+pub type ParityDbError = parity_db::Error;
+
 // Defines optional time for address dial failure
 type FailureTime = Option<DateTime<Utc>>;
 
@@ -75,8 +77,6 @@ pub struct BootstrappedNetworkingParameters {
 
 impl BootstrappedNetworkingParameters {
     pub fn new(bootstrap_addresses: Vec<Multiaddr>) -> Self {
-        debug!("In-memory networking parameters manager instantiated.");
-
         Self {
             bootstrap_addresses,
         }
@@ -170,11 +170,6 @@ impl NetworkingParametersManager {
                 result
             })
             .unwrap_or_else(|| Ok(LruCache::new(PEER_CACHE_SIZE)))?;
-
-        debug!(
-            ?path,
-            "Persistent networking parameters manager instantiated."
-        );
 
         Ok(Self {
             cache_need_saving: false,

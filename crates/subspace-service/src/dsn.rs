@@ -21,15 +21,30 @@ use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
-    NetworkingParametersManager, Node, NodeRunner, ParityDbProviderStorage,
-    PieceByHashRequestHandler, PieceByHashResponse, RootBlockBySegmentIndexesRequestHandler,
-    RootBlockResponse,
+    NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
+    ParityDbError, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
+    RootBlockBySegmentIndexesRequestHandler, RootBlockResponse,
 };
+use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{error, info, trace, warn, Instrument};
 
 /// Provider records cache size
 const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
+
+/// Errors that might happen during DSN configuration.
+#[derive(Debug, Error)]
+pub enum DsnConfigurationError {
+    /// Can't instantiate the DSN.
+    #[error("Can't instantiate the DSN: {0}")]
+    CreationError(#[from] CreationError),
+    /// ParityDb storage error
+    #[error("ParityDb storage error: {0}")]
+    ParityDbStorageError(#[from] ParityDbError),
+    /// Network parameter manager error.
+    #[error("Network parameter manager error: {0}")]
+    NetworkParameterManagerError(#[from] NetworkParametersPersistenceError),
+}
 
 /// DSN configuration parameters.
 #[derive(Clone, Debug)]
@@ -69,7 +84,7 @@ pub(crate) fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     root_block_cache: RootBlockCache<AS>,
-) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), CreationError>
+) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
 where
     Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
@@ -90,19 +105,18 @@ where
     };
 
     let networking_parameters_registry = {
-        let in_memory_registry =
-            BootstrappedNetworkingParameters::new(dsn_config.bootstrap_nodes.clone()).boxed();
-
         dsn_config
             .base_path
             .map(|path| {
                 let db_path = path.join("known_addresses_db");
 
-                NetworkingParametersManager::new(&db_path, dsn_config.bootstrap_nodes)
+                NetworkingParametersManager::new(&db_path, dsn_config.bootstrap_nodes.clone())
                     .map(|manager| manager.boxed())
             })
-            .unwrap_or(Ok(in_memory_registry))
-            .map_err(|err| CreationError::Other(err.into()))?
+            .unwrap_or(Ok(BootstrappedNetworkingParameters::new(
+                dsn_config.bootstrap_nodes,
+            )
+            .boxed()))?
     };
 
     let provider_storage =
@@ -152,7 +166,7 @@ where
         ..subspace_networking::Config::default()
     };
 
-    subspace_networking::create(networking_config)
+    subspace_networking::create(networking_config).map_err(Into::into)
 }
 
 /// Start an archiver that will listen for archived segments and send it to DSN network using
