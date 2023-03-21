@@ -23,6 +23,7 @@ use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage, Node,
     NodeRunner, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
     RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
+    SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
 };
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn, Instrument};
@@ -159,6 +160,10 @@ where
         provider_storage,
         max_established_incoming_connections: dsn_config.max_in_connections,
         max_established_outgoing_connections: dsn_config.max_out_connections,
+        max_pending_incoming_connections: dsn_config.max_in_connections
+            * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
+        max_pending_outgoing_connections: dsn_config.max_out_connections
+            * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
         target_connections: dsn_config.target_connections,
 
         ..subspace_networking::Config::default()

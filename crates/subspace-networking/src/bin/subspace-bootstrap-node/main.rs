@@ -14,7 +14,7 @@ use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
-    ParityDbProviderStorage,
+    ParityDbProviderStorage, SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
 };
 use tracing::info;
 
@@ -100,6 +100,9 @@ async fn main() -> anyhow::Result<()> {
                 Either::Right(MemoryProviderStorage::new(local_peer_id))
             };
 
+            let in_peers = in_peers.unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS);
+            let out_peers = out_peers.unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS);
+
             let config = Config {
                 networking_parameters_registry: BootstrappedNetworkingParameters::new(
                     bootstrap_nodes,
@@ -108,10 +111,12 @@ async fn main() -> anyhow::Result<()> {
                 listen_on,
                 allow_non_global_addresses_in_dht: !disable_private_ips,
                 reserved_peers,
-                max_established_incoming_connections: in_peers
-                    .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
-                max_established_outgoing_connections: out_peers
-                    .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
+                max_established_incoming_connections: in_peers,
+                max_established_outgoing_connections: out_peers,
+                max_pending_incoming_connections: in_peers
+                    * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
+                max_pending_outgoing_connections: out_peers
+                    * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
                 ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
             let (node, mut node_runner) =

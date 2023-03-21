@@ -43,7 +43,10 @@ pub use crate::node_runner::NodeRunner;
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage,
 };
-pub use create::{create, peer_id, Config, CreationError, RelayMode};
+pub use create::{
+    create, peer_id, Config, CreationError, RelayMode,
+    SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
+};
 pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{
