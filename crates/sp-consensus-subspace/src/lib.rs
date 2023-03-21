@@ -40,6 +40,7 @@ use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_std::vec::Vec;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, SegmentIndex,
     Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
@@ -459,9 +460,12 @@ pub struct VerifiedHeaderInfo<RewardAddress> {
 ///
 /// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
 /// it from the header twice.
+///
+/// KZG needs to be provided if [`VerifySolutionParams::piece_check_params`] is not `None`.
 pub fn check_header<Header, RewardAddress>(
     params: VerificationParams<Header>,
     pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
+    kzg: Option<&Kzg>,
 ) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
 where
     Header: HeaderT,
@@ -511,8 +515,13 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(&pre_digest.solution, slot.into(), verify_solution_params)
-        .map_err(|error| VerificationError::VerificationError(slot, error))?;
+    verify_solution(
+        &pre_digest.solution,
+        slot.into(),
+        verify_solution_params,
+        kzg,
+    )
+    .map_err(|error| VerificationError::VerificationError(slot, error))?;
 
     Ok(CheckedHeader::Checked(
         header,
