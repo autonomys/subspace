@@ -1,5 +1,6 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
     EssentialExecutorParams, SystemDomainParentChain, SystemExecutor, SystemGossipMessageValidator,
@@ -107,7 +108,6 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
         FullClient<RuntimeApi, Executor>,
         SystemDomainXDMVerifier<
             PClient,
-            FullClient<RuntimeApi, Executor>,
             PBlock,
             Block,
             FullChainVerifier<
@@ -116,6 +116,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
                 FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
                 SkipBundleValidation,
             >,
+            StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
         >,
     >;
 
@@ -132,20 +133,20 @@ type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
 
 /// Constructs a partial system domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
+fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient>(
     config: &ServiceConfiguration,
     primary_chain_client: Arc<PClient>,
 ) -> Result<
     PartialComponents<
-        FullClient<RuntimeApi, Executor>,
+        FullClient<RuntimeApi, ExecutionDispatch>,
         FullBackend,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
-        FullPool<PBlock, PClient, RuntimeApi, Executor>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutionDispatch>>,
+        FullPool<PBlock, PClient, RuntimeApi, ExecutionDispatch>,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
-            NativeElseWasmExecutor<Executor>,
+            NativeElseWasmExecutor<ExecutionDispatch>,
         ),
     >,
     sc_service::Error,
@@ -156,15 +157,17 @@ where
     PBlock::Hash: From<Hash>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
-    RuntimeApi:
-        ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutionDispatch>>
+        + Send
+        + Sync
+        + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
         + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
-    Executor: NativeExecutionDispatch + 'static,
+    ExecutionDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -213,7 +216,7 @@ where
         FullChainVerifier::new(client.clone(), proof_verifier, SkipBundleValidation);
     let system_domain_xdm_verifier = SystemDomainXDMVerifier::new(
         primary_chain_client,
-        client.clone(),
+        StateRootExtractorWithSystemDomainClient::new(client.clone()),
         system_domain_fraud_proof_verifier,
     );
 
