@@ -20,6 +20,7 @@ ark-bls12-381 = "0.3.0"
 ark-ff = "0.3.0"
 ark-poly = "0.3.0"
 blake2 = { version = "0.10.6", default-features = false }
+cfg-if = { version = "1.0.0", default-features = false }
 derive_more = "0.99.17"
 dusk-bls12_381 = { version = "0.11.2", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
 dusk-bytes = "0.1"
@@ -48,7 +49,10 @@ default = [
 ]
 # Parallel decoding will use all CPUs available, but will allocate a memory of a size of a sector instead of square root
 # of that
-parallel-decoding = ["dep:rayon"]
+parallel-decoding = ["rayon"]
+hex_serde = [
+    "hex/serde"
+]
 std = [
     "ark-bls12-381/std",
     "ark-ff/std",
@@ -56,20 +60,20 @@ std = [
     "blake2/std",
     "dusk-bls12_381/std",
     "dusk-plonk/std",
-    "hex/serde",
+    "hex_serde",
     "hex/std",
     "num-integer/std",
     "num-traits/std",
     "parity-scale-codec/std",
-    "dep:rand",
+    "rand",
     # These two are `default`
     "rand_chacha/simd",
     "rand_chacha/std",
     "rand_core/std",
     "scale-info/std",
-    "dep:serde",
-    "dep:serde_arrays",
-    "dep:thiserror",
+    "serde",
+    "serde_arrays",
+    "thiserror",
     "uint/std",
 ]
 

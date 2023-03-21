@@ -9812,6 +9812,7 @@ dependencies = [
  "ark-ff",
  "ark-poly",
  "blake2",
+ "cfg-if",
  "criterion",
  "derive_more",
  "dusk-bls12_381",

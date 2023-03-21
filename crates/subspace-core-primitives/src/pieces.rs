@@ -4,7 +4,7 @@ use core::ops::{Deref, DerefMut};
 use derive_more::{Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-#[cfg(feature = "std")]
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
@@ -79,8 +79,8 @@ impl<'a> AsMut<[u8]> for WitnessRefMut<'a> {
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct Piece(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Vec<u8>);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Piece(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
 impl Default for Piece {
     fn default() -> Self {
@@ -359,8 +359,8 @@ impl<'a> PieceRefMut<'a> {
 
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-pub struct FlatPieces(#[cfg_attr(feature = "std", serde(with = "hex::serde"))] Vec<u8>);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FlatPieces(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
 
 // TODO: Introduce `PieceRef` and `PieceRefMut` that can be converted into `Piece` without
 //  `.expect()` and maybe add convenience methods for accessing record and witness parts of it
