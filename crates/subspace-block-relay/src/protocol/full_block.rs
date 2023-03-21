@@ -87,7 +87,7 @@ pub struct FullBlockRelay<Block: BlockT, Client> {
     client: Arc<Client>,
 
     /// The import queue for the downloaded blocks.
-    import_queue: Mutex<Box<dyn ImportQueueService<Block>>>,
+    import_queue: Box<dyn ImportQueueService<Block>>,
 
     /// Announcement gossip engine.
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
@@ -99,7 +99,7 @@ pub struct FullBlockRelay<Block: BlockT, Client> {
     pending_announcements: Arc<Mutex<HashSet<Vec<u8>>>>,
 
     /// Block downloads in progress.
-    pending_downloads: Mutex<HashMap<NumberFor<Block>, BlockDownloadState>>,
+    pending_downloads: HashMap<NumberFor<Block>, BlockDownloadState>,
 }
 
 #[derive(Debug)]
@@ -129,28 +129,26 @@ where
         let protocol = Self {
             network,
             client,
-            import_queue: Mutex::new(import_queue),
+            import_queue,
             gossip_engine: gossip_engine.clone(),
             _validator: validator,
             pending_announcements,
-            pending_downloads: Mutex::new(HashMap::new()),
+            pending_downloads: HashMap::new(),
         };
         (protocol, gossip_engine)
     }
 
     /// Downloads the announced block.
     async fn download_block(
-        &self,
+        &mut self,
         sender: PeerId,
         announcement: &BlockAnnouncement<Block>,
     ) -> Result<Option<BlockResponse<Block>>, String> {
-        {
-            let mut pending_downloads = self.pending_downloads.lock();
-            if pending_downloads.contains_key(&announcement.0) {
-                return Ok(None);
-            }
-            pending_downloads.insert(announcement.0, BlockDownloadState);
+        if self.pending_downloads.contains_key(&announcement.0) {
+            return Ok(None);
         }
+        self.pending_downloads
+            .insert(announcement.0, BlockDownloadState);
 
         let block_request = BlockRequest::<Block>(announcement.0);
         let ret = self
@@ -162,7 +160,7 @@ where
                 IfDisconnected::ImmediateError,
             )
             .await;
-        self.pending_downloads.lock().remove(&announcement.0);
+        self.pending_downloads.remove(&announcement.0);
 
         let bytes = match ret {
             Ok(bytes) => bytes,
@@ -187,10 +185,10 @@ where
     }
 
     /// Imports the block.
-    async fn import_block(&self, block: SignedBlock<Block>) {
+    async fn import_block(&mut self, block: SignedBlock<Block>) {
         let (header, extrinsics) = block.block.deconstruct();
         let hash = header.hash();
-        self.import_queue.lock().import_blocks(
+        self.import_queue.import_blocks(
             BlockOrigin::ConsensusBroadcast,
             vec![IncomingBlock::<Block> {
                 hash,
@@ -209,7 +207,7 @@ where
 
     /// Sends the response to the block download request.
     async fn send_download_response(
-        &self,
+        &mut self,
         incoming: IncomingRequest,
         request: BlockRequest<Block>,
         response: BlockResponse<Block>,
@@ -244,7 +242,7 @@ where
 
     /// Retrieves the requested block from the backend.
     fn get_backend_block(
-        &self,
+        &mut self,
         block_number: NumberFor<Block>,
     ) -> Result<Option<SignedBlock<Block>>, String> {
         let block_id = BlockId::<Block>::Number(block_number);
@@ -283,7 +281,7 @@ where
         topic::<Block>()
     }
 
-    async fn on_block_import(&self, notification: ImportedBlockNotification<Block>) {
+    async fn on_block_import(&mut self, notification: ImportedBlockNotification<Block>) {
         // Announce the imported block.
         let announcement: BlockAnnouncement<Block> = (&notification).into();
         let encoded = announcement.encode();
@@ -299,7 +297,7 @@ where
         );
     }
 
-    async fn on_block_announcement(&self, message: TopicNotification) {
+    async fn on_block_announcement(&mut self, message: TopicNotification) {
         let start_ts = Instant::now();
         let sender = match message.sender {
             Some(sender) => sender,
@@ -360,7 +358,7 @@ where
         );
     }
 
-    async fn on_protocol_message(&self, incoming: IncomingRequest) {
+    async fn on_protocol_message(&mut self, incoming: IncomingRequest) {
         let block_request = match BlockRequest::<Block>::decode(&mut &incoming.payload[..]) {
             Ok(block_request) => block_request,
             Err(err) => {

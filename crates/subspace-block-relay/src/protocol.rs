@@ -20,18 +20,18 @@ pub(crate) type GossipNetworkService<Block> =
     sc_network::NetworkService<Block, <Block as BlockT>::Hash>;
 
 #[async_trait]
-pub trait BlockRelayProtocol<Block: BlockT>: Send + Sync {
+pub trait BlockRelayProtocol<Block: BlockT>: Send {
     /// The gossip topic to be used for announcements.
     fn block_announcement_topic(&self) -> Block::Hash;
 
     /// Handles the block import notifications.
-    async fn on_block_import(&self, notification: ImportedBlockNotification<Block>);
+    async fn on_block_import(&mut self, notification: ImportedBlockNotification<Block>);
 
     /// Handles the block announcements from peers.
-    async fn on_block_announcement(&self, message: TopicNotification);
+    async fn on_block_announcement(&mut self, message: TopicNotification);
 
     /// Handles the protocol handshake messages from peers.
-    async fn on_protocol_message(&self, request: IncomingRequest);
+    async fn on_protocol_message(&mut self, request: IncomingRequest);
 }
 
 /// Initializes the block relay specific parts in the network config.

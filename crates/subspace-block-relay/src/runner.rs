@@ -13,8 +13,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use tracing::{error, info};
 
-/// Thw block relay runner acts as an interface between the event sources and the protocol
-/// implementation.
+/// The block relay runner acts as an interface between the event sources and the protocol implementation.
 pub struct BlockRelayRunner<Block: BlockT> {
     /// The backend protocol.
     protocol: Box<dyn BlockRelayProtocol<Block>>,
