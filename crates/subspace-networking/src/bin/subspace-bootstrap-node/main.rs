@@ -14,7 +14,7 @@ use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
-    ParityDbProviderStorage,
+    NetworkingParametersManager, ParityDbProviderStorage,
 };
 use tracing::info;
 
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
             let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
 
-            let provider_storage = if let Some(path) = db_path {
+            let provider_storage = if let Some(path) = &db_path {
                 let db_path = path.join("subspace_storage_providers_db");
 
                 Either::Left(ParityDbProviderStorage::new(
@@ -100,11 +100,25 @@ async fn main() -> anyhow::Result<()> {
                 Either::Right(MemoryProviderStorage::new(local_peer_id))
             };
 
+            let networking_parameters_registry = {
+                db_path
+                    .map(|path| {
+                        let known_addresses_db = path.join("known_addresses_db");
+
+                        NetworkingParametersManager::new(
+                            &known_addresses_db,
+                            bootstrap_nodes.clone(),
+                        )
+                        .map(|manager| manager.boxed())
+                    })
+                    .unwrap_or(Ok(
+                        BootstrappedNetworkingParameters::new(bootstrap_nodes).boxed()
+                    ))
+                    .map_err(|err| anyhow!(err))?
+            };
+
             let config = Config {
-                networking_parameters_registry: BootstrappedNetworkingParameters::new(
-                    bootstrap_nodes,
-                )
-                .boxed(),
+                networking_parameters_registry,
                 listen_on,
                 allow_non_global_addresses_in_dht: !disable_private_ips,
                 reserved_peers,

@@ -656,7 +656,12 @@ fn extract_xdm_proof_state_roots(
     ext: &UncheckedExtrinsic,
 ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
     match &ext.function {
-        RuntimeCall::Messenger(call) => call.extract_xdm_proof_state_roots(),
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+        }
+        RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+        }
         _ => None,
     }
 }

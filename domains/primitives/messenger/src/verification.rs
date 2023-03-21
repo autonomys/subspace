@@ -19,10 +19,10 @@ pub enum VerificationError {
     FailedToDecode,
 }
 
-pub(crate) struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
+pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
 
 impl<H: Hasher> StorageProofVerifier<H> {
-    pub(crate) fn verify_and_get_value<V: Decode>(
+    pub fn verify_and_get_value<V: Decode>(
         state_root: &H::Out,
         proof: StorageProof,
         key: StorageKey,

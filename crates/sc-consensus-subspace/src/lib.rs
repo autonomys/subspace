@@ -254,6 +254,9 @@ where
                 VerificationPrimitiveError::InvalidSolutionSignature(err) => {
                     Error::BadSolutionSignature(slot, err)
                 }
+                VerificationPrimitiveError::MissingKzgInstance => {
+                    unreachable!("Implementation bug");
+                }
             },
         }
     }
@@ -682,6 +685,7 @@ where
                     reward_signing_context: &self.reward_signing_context,
                 },
                 Some(pre_digest),
+                None,
             )
             .map_err(Error::<Block::Header>::from)?
         };

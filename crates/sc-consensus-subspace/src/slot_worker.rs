@@ -243,10 +243,11 @@ where
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
                         records_root: &records_root,
-                        kzg: &self.subspace_link.kzg,
+
                         pieces_in_segment: PIECES_IN_SEGMENT,
                     }),
                 },
+                Some(&self.subspace_link.kzg),
             );
 
             if let Err(error) = solution_verification_result {

@@ -82,7 +82,6 @@ fn archived_segment(kzg: Kzg) -> ArchivedSegment {
 
 struct Farmer {
     root_block: RootBlock,
-    farmer_protocol_info: FarmerProtocolInfo,
     sector: Vec<u8>,
     sector_metadata: Vec<u8>,
 }
@@ -122,7 +121,6 @@ impl Farmer {
 
         Self {
             root_block,
-            farmer_protocol_info,
             sector,
             sector_metadata,
         }
@@ -154,7 +152,7 @@ impl PieceGetter for TestPieceGetter {
             .pieces
             .as_pieces()
             .nth(piece_index as usize)
-            .map(|piece_bytes| Piece::try_from(piece_bytes).unwrap()))
+            .map(Piece::from))
     }
 }
 
@@ -191,7 +189,6 @@ fn valid_header(
         .try_into_solutions(
             keypair,
             public_key,
-            &farmer.farmer_protocol_info,
             &sector_codec,
             farmer.sector.as_slice(),
             farmer.sector_metadata.as_slice(),

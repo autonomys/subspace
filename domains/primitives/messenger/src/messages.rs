@@ -1,8 +1,9 @@
 use crate::endpoint::{EndpointRequest, EndpointResponse};
+use crate::verification::StorageProofVerifier;
 use codec::{Decode, Encode, FullCodec};
 use frame_support::pallet_prelude::NMapKey;
 use frame_support::storage::generator::StorageNMap;
-use frame_support::Twox64Concat;
+use frame_support::{log, Twox64Concat};
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
@@ -170,6 +171,69 @@ pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
     pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
+}
+
+impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
+    /// Extracts state roots.
+    /// If the core domain proof is present, then then we construct the trie and extract core domain state root.
+    pub fn extract_state_roots_from_proof<Hashing>(
+        &self,
+    ) -> Option<ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot>>
+    where
+        Hashing: hash_db::Hasher,
+        StateRoot: Clone + Decode + Into<Hashing::Out> + FullCodec + TypeInfo + 'static,
+        BlockNumber: Clone + FullCodec + TypeInfo + 'static,
+        BlockHash: Clone + FullCodec + TypeInfo + 'static,
+    {
+        let xdm_proof = self.proof.clone();
+        let system_domain_state_root = xdm_proof.system_domain_state_root.clone();
+        let mut extracted_state_roots = ExtractedStateRootsFromProof {
+            system_domain_block_info: xdm_proof.system_domain_block_info,
+            system_domain_state_root: xdm_proof.system_domain_state_root,
+            core_domain_info: None,
+        };
+
+        // verify intermediate core domain proof and retrieve state root of the message.
+        let core_domain_state_root_proof = xdm_proof.core_domain_proof;
+        // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
+        if self.src_domain_id.is_system() && core_domain_state_root_proof.is_none() {
+            Some(extracted_state_roots)
+        }
+        // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
+        else if self.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
+            let (domain_info, core_domain_state_root_proof) =
+                core_domain_state_root_proof.expect("checked for existence value above");
+            let core_domain_state_root_key =
+                CoreDomainStateRootStorage::<_, _, StateRoot>::storage_key(
+                    self.src_domain_id,
+                    domain_info.block_number.clone(),
+                    domain_info.block_hash.clone(),
+                );
+            let core_domain_state_root =
+                match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
+                    &system_domain_state_root.into(),
+                    core_domain_state_root_proof,
+                    core_domain_state_root_key,
+                ) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        log::error!(
+                            target: "runtime::messenger",
+                            "Failed to verify Core domain proof: {:?}",
+                            err
+                        );
+                        return None;
+                    }
+                };
+
+            extracted_state_roots.core_domain_info =
+                Some((self.src_domain_id, domain_info, core_domain_state_root));
+
+            Some(extracted_state_roots)
+        } else {
+            None
+        }
+    }
 }
 
 /// Relayer message with storage key to generate storage proof using the backend.

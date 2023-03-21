@@ -20,6 +20,8 @@ use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::{debug, trace};
 
+pub type ParityDbError = parity_db::Error;
+
 // Defines optional time for address dial failure
 type FailureTime = Option<DateTime<Utc>>;
 
@@ -50,6 +52,9 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     /// and boostrap addresses from networking parameters initialization.
     /// It removes p2p-protocol suffix.
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress>;
+
+    /// Reset the batching process to the initial state.
+    fn start_over_address_batching(&mut self) {}
 
     /// Drive async work in the persistence provider
     async fn run(&mut self);
@@ -159,7 +164,7 @@ impl NetworkingParametersManager {
                     .map(|data| data.to_cache());
 
                 if result.is_ok() {
-                    trace!("Networking parameters loaded from DB");
+                    debug!("Networking parameters loaded from DB");
                 }
 
                 result
@@ -301,6 +306,10 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
         );
 
         self.collection_batcher.next_batch(combined_addresses)
+    }
+
+    fn start_over_address_batching(&mut self) {
+        self.collection_batcher.reset();
     }
 
     async fn run(&mut self) {
