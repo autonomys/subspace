@@ -49,6 +49,10 @@ pub enum Error {
     /// Invalid solution signature
     #[cfg_attr(feature = "thiserror", error("Invalid solution signature"))]
     InvalidSolutionSignature(SignatureError),
+
+    /// Missing KZG instance
+    #[cfg_attr(feature = "thiserror", error("Missing KZG instance"))]
+    MissingKzgInstance,
 }
 
 /// Check the reward signature validity.
@@ -113,8 +117,6 @@ pub fn is_within_solution_range(
 pub struct PieceCheckParams<'a> {
     /// Records root of segment to which piece belongs
     pub records_root: &'a RecordsRoot,
-    /// KZG instance
-    pub kzg: &'a Kzg,
     /// Number of pieces in a segment
     pub pieces_in_segment: u32,
 }
@@ -132,11 +134,14 @@ pub struct VerifySolutionParams<'a> {
     pub piece_check_params: Option<PieceCheckParams<'a>>,
 }
 
-/// Solution verification
+/// Solution verification.
+///
+/// KZG needs to be provided if [`VerifySolutionParams::piece_check_params`] is not `None`.
 pub fn verify_solution<'a, FarmerPublicKey, RewardAddress>(
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
     slot: u64,
     params: VerifySolutionParams<'_>,
+    kzg: Option<&Kzg>,
 ) -> Result<(), Error>
 where
     PublicKey: From<&'a FarmerPublicKey>,
@@ -177,7 +182,6 @@ where
 
     if let Some(PieceCheckParams {
         records_root,
-        kzg,
         pieces_in_segment,
     }) = piece_check_params
     {
@@ -187,7 +191,12 @@ where
             .expect("Position within segment always fits into u32; qed");
 
         // TODO: Check that chunk belongs to the encoded piece
-
+        let kzg = match kzg {
+            Some(kzg) => kzg,
+            None => {
+                return Err(Error::MissingKzgInstance);
+            }
+        };
         check_piece(kzg, pieces_in_segment, records_root, position, solution)?;
     }
 

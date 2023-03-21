@@ -1368,10 +1368,10 @@ fn check_vote<T: Config>(
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 records_root: &records_root,
-                kzg: &kzg,
                 pieces_in_segment,
             }),
         },
+        Some(&kzg),
     ) {
         debug!(
             target: "runtime::subspace",

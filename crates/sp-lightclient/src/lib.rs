@@ -360,10 +360,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     records_root: &records_root,
-                    kzg: &kzg,
                     pieces_in_segment: PIECES_IN_SEGMENT,
                 }),
             },
+            Some(&kzg),
         )
         .map_err(ImportError::InvalidSolution)?;
 
