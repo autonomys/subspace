@@ -897,7 +897,6 @@ impl SingleDiskPlot {
                                     .try_into_solutions(
                                         &identity,
                                         reward_address,
-                                        &farmer_app_info.protocol_info,
                                         &sector_codec,
                                         sector,
                                         sector_metadata,

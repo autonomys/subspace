@@ -85,6 +85,10 @@ pub fn create_runtime_bundle_inclusion_file(
     .unwrap_or_else(|error| {
         panic!("Must be able to write to {target_file_name}: {error}");
     });
+
+    // Ensure this build script is re-run when runtime wasm contents changes.
+    // This will ensure the inclusion file will be updated with updated WASM contents.
+    println!("cargo:rerun-if-changed={execution_wasm_bundle_path}");
 }
 
 /// Read the core domain runtime blob from the system domain runtime blob.

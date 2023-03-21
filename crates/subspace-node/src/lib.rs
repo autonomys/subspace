@@ -196,11 +196,15 @@ pub struct Cli {
 
     /// Defines max established incoming connection limit for DSN.
     #[arg(long, default_value_t = 100)]
-    pub dsn_max_in_connections: u32,
+    pub dsn_in_connections: u32,
 
     /// Defines max established outgoing swarm connection limit for DSN.
     #[arg(long, default_value_t = 100)]
-    pub dsn_max_out_connections: u32,
+    pub dsn_out_connections: u32,
+
+    /// Defines target total (in and out) connection number for DSN that should be maintained.
+    #[arg(long, default_value_t = 50)]
+    pub dsn_target_connections: u32,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
     /// in Kademlia DHT for the DSN.
