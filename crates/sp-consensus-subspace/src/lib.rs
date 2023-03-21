@@ -436,7 +436,7 @@ where
     /// The slot number of the current time.
     pub slot_now: Slot,
     /// Parameters for solution verification
-    pub verify_solution_params: VerifySolutionParams<'a>,
+    pub verify_solution_params: &'a VerifySolutionParams,
     /// Signing context for reward signature
     pub reward_signing_context: &'a SigningContext,
 }

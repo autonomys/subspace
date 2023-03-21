@@ -1363,11 +1363,11 @@ fn check_vote<T: Config>(
     if let Err(error) = verify_solution::<FarmerPublicKey, T::AccountId>(
         solution,
         slot.into(),
-        VerifySolutionParams {
-            global_randomness: &vote_verification_data.global_randomness,
+        &VerifySolutionParams {
+            global_randomness: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
-                records_root: &records_root,
+                records_root,
                 pieces_in_segment,
             }),
         },
