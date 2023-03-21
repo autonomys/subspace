@@ -40,7 +40,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut archiver =
         Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
-    let piece = Piece::try_from(
+    let piece = Piece::from(
         archiver
             .add_block(input, Default::default())
             .into_iter()
@@ -50,8 +50,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .as_pieces()
             .next()
             .unwrap(),
-    )
-    .unwrap();
+    );
 
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),

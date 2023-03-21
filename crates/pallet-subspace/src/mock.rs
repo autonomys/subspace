@@ -375,11 +375,8 @@ pub fn create_signed_vote(
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
             piece_offset: 0,
-            piece_record_hash: blake2b_256_254_hash(&piece[..RECORD_SIZE as usize]),
-            piece_witness: Witness::try_from_bytes(
-                &piece[RECORD_SIZE as usize..].try_into().unwrap(),
-            )
-            .unwrap(),
+            piece_record_hash: blake2b_256_254_hash(&piece.record()),
+            piece_witness: Witness::try_from_bytes(&piece.witness()).unwrap(),
             chunk_offset: 0,
             chunk,
             chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
