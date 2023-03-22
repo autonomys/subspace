@@ -243,7 +243,7 @@ pub struct Archiver {
     /// Intermediate record commitments that are built incrementally as above buffer fills up.
     incremental_record_commitments: IncrementalRecordCommitmentsState,
     /// Number of data shards
-    data_shards: u32,
+    source_shards: u32,
     /// Number of parity shards
     parity_shards: u32,
     /// Configuration parameter defining the size of one recorded history segment
@@ -285,17 +285,17 @@ impl Archiver {
             return Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = recorded_history_segment_size / RECORD_SIZE;
-        let parity_shards = data_shards;
-        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
+        let source_shards = recorded_history_segment_size / RECORD_SIZE;
+        let parity_shards = source_shards;
+        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
             buffer: VecDeque::default(),
             incremental_record_commitments: IncrementalRecordCommitmentsState::with_capacity(
-                data_shards as usize,
+                source_shards as usize,
             ),
-            data_shards,
+            source_shards,
             parity_shards,
             recorded_history_segment_size,
             reed_solomon,
@@ -703,8 +703,12 @@ impl Archiver {
             corrected_object_mapping
         };
 
-        let mut record_shards =
-            RecordShards::new(self.data_shards, self.parity_shards, RECORD_SIZE, &segment);
+        let mut record_shards = RecordShards::new(
+            self.source_shards,
+            self.parity_shards,
+            RECORD_SIZE,
+            &segment,
+        );
 
         drop(segment);
 
@@ -728,7 +732,7 @@ impl Archiver {
                     .as_bytes()
                     .as_ref()
                     .chunks_exact(RECORD_SIZE as usize)
-                    .skip(self.data_shards as usize)
+                    .skip(self.source_shards as usize)
                     .map(blake2b_256_254_hash_to_scalar),
             )
             .collect::<Vec<_>>();

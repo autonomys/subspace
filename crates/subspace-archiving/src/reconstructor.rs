@@ -87,9 +87,9 @@ impl Reconstructor {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = recorded_history_segment_size / RECORD_SIZE;
-        let parity_shards = data_shards;
-        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
+        let source_shards = recorded_history_segment_size / RECORD_SIZE;
+        let parity_shards = source_shards;
+        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {

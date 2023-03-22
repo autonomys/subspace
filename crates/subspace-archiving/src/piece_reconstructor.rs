@@ -46,7 +46,7 @@ pub enum ReconstructorError {
 #[derive(Debug, Clone)]
 pub struct PiecesReconstructor {
     /// Number of data shards
-    data_shards: u32,
+    source_shards: u32,
     /// Number of parity shards
     parity_shards: u32,
     /// Erasure coding data structure
@@ -64,13 +64,13 @@ impl PiecesReconstructor {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = segment_size / RECORD_SIZE;
-        let parity_shards = data_shards;
-        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
+        let source_shards = segment_size / RECORD_SIZE;
+        let parity_shards = source_shards;
+        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
-            data_shards,
+            source_shards,
             parity_shards,
             reed_solomon,
             kzg,
@@ -100,7 +100,7 @@ impl PiecesReconstructor {
 
         let mut reconstructed_record_shards = FlatPieces::new(shards.len());
         let mut record_commitments =
-            vec![Scalar::default(); (self.data_shards + self.parity_shards) as usize];
+            vec![Scalar::default(); (self.source_shards + self.parity_shards) as usize];
         //TODO: Parity hashes will be erasure coded instead in the future
         //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
         // we already have
