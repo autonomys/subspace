@@ -293,11 +293,16 @@ impl TypeInfo for Witness {
     }
 }
 
+#[derive(Debug)]
+struct Inner {
+    kzg_settings: FsKZGSettings,
+    fft_settings_cache: Mutex<BTreeMap<usize, Arc<FsFFTSettings>>>,
+}
+
 /// Wrapper data structure for working with KZG commitment scheme
 #[derive(Debug, Clone)]
 pub struct Kzg {
-    kzg_settings: FsKZGSettings,
-    fft_settings_cache: Arc<Mutex<BTreeMap<usize, Arc<FsFFTSettings>>>>,
+    inner: Arc<Inner>,
 }
 
 impl Kzg {
@@ -306,10 +311,12 @@ impl Kzg {
     /// Canonical KZG settings can be obtained using `embedded_kzg_settings()` function that becomes
     /// available with `embedded-kzg-settings` feature (enabled by default).
     pub fn new(kzg_settings: FsKZGSettings) -> Self {
-        Self {
+        let inner = Arc::new(Inner {
             kzg_settings,
-            fft_settings_cache: Arc::default(),
-        }
+            fft_settings_cache: Mutex::default(),
+        });
+
+        Self { inner }
     }
 
     /// Create polynomial from data. Data must be multiple of 32 bytes, each containing up to 254
@@ -327,7 +334,8 @@ impl Kzg {
 
     /// Computes a `Commitment` to `polynomial`
     pub fn commit(&self, polynomial: &Polynomial) -> Result<Commitment, String> {
-        self.kzg_settings
+        self.inner
+            .kzg_settings
             .commit_to_poly(&polynomial.0)
             .map(Commitment)
     }
@@ -337,7 +345,8 @@ impl Kzg {
         let x = self
             .get_fft_settings(polynomial.0.coeffs.len())?
             .get_expanded_roots_of_unity_at(index as usize);
-        self.kzg_settings
+        self.inner
+            .kzg_settings
             .compute_proof_single(&polynomial.0, &x)
             .map(Witness)
     }
@@ -362,6 +371,7 @@ impl Kzg {
         let x = fft_settings.get_expanded_roots_of_unity_at(index as usize);
 
         match self
+            .inner
             .kzg_settings
             .check_proof_single(&commitment.0, &witness.0, &x, value)
         {
@@ -376,13 +386,15 @@ impl Kzg {
     /// Get FFT settings for specified number of values, uses internal cache to avoid derivation
     /// every time.
     pub fn get_fft_settings(&self, num_values: usize) -> Result<Arc<FsFFTSettings>, String> {
-        Ok(match self.fft_settings_cache.lock().entry(num_values) {
-            Entry::Vacant(entry) => {
-                let fft_settings = Arc::new(FsFFTSettings::new(num_values.ilog2() as usize)?);
-                entry.insert(Arc::clone(&fft_settings));
-                fft_settings
-            }
-            Entry::Occupied(entry) => Arc::clone(entry.get()),
-        })
+        Ok(
+            match self.inner.fft_settings_cache.lock().entry(num_values) {
+                Entry::Vacant(entry) => {
+                    let fft_settings = Arc::new(FsFFTSettings::new(num_values.ilog2() as usize)?);
+                    entry.insert(Arc::clone(&fft_settings));
+                    fft_settings
+                }
+                Entry::Occupied(entry) => Arc::clone(entry.get()),
+            },
+        )
     }
 }
