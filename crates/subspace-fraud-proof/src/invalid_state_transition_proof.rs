@@ -267,12 +267,6 @@ where
             ..
         } = invalid_state_transition_proof;
 
-        let trace = self.client.runtime_api().execution_trace(
-            self.client.info().best_hash,
-            *domain_id,
-            *bad_receipt_hash,
-        )?;
-
         let pre_state_root_onchain = match execution_phase {
             ExecutionPhase::InitializeBlock => self.client.runtime_api().state_root(
                 self.client.info().best_hash,
@@ -284,7 +278,15 @@ where
             ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
             | ExecutionPhase::FinalizeBlock {
                 total_extrinsics: trace_index_of_pre_state_root,
-            } => trace.get(*trace_index_of_pre_state_root as usize).copied(),
+            } => {
+                let trace = self.client.runtime_api().execution_trace(
+                    self.client.info().best_hash,
+                    *domain_id,
+                    *bad_receipt_hash,
+                )?;
+
+                trace.get(*trace_index_of_pre_state_root as usize).copied()
+            }
         };
 
         match pre_state_root_onchain {

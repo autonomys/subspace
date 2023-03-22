@@ -154,10 +154,7 @@ where
             let post_state_root = as_h256(local_root)?;
             let extrinsics = self.block_body(block_hash)?;
             let execution_phase = ExecutionPhase::FinalizeBlock {
-                total_extrinsics: extrinsics
-                    .len()
-                    .try_into()
-                    .expect("extrinsic_index must fit into u32"),
+                total_extrinsics: local_trace_index - 1,
             };
             let finalize_block_call_data = Vec::new();
 
