@@ -238,11 +238,11 @@ where
             let solution_verification_result = verify_solution(
                 &solution,
                 slot.into(),
-                VerifySolutionParams {
-                    global_randomness: &global_randomness,
+                &VerifySolutionParams {
+                    global_randomness,
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
-                        records_root: &records_root,
+                        records_root,
 
                         pieces_in_segment: PIECES_IN_SEGMENT,
                     }),
