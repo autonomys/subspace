@@ -99,10 +99,6 @@ where
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
-    /// Incoming swarm connection limit.
-    max_established_incoming_connections: u32,
-    /// Outgoing swarm connection limit.
-    max_established_outgoing_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained.
     target_connections: u32,
     /// Temporarily banned peers.
@@ -125,8 +121,6 @@ where
     pub(crate) next_random_query_interval: Duration,
     pub(crate) networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
-    pub(crate) max_established_incoming_connections: u32,
-    pub(crate) max_established_outgoing_connections: u32,
     pub(crate) target_connections: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
@@ -145,8 +139,6 @@ where
             next_random_query_interval,
             networking_parameters_registry,
             reserved_peers,
-            max_established_incoming_connections,
-            max_established_outgoing_connections,
             target_connections,
             temporary_bans,
             metrics,
@@ -167,8 +159,6 @@ where
             peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
             reserved_peers,
-            max_established_incoming_connections,
-            max_established_outgoing_connections,
             target_connections,
             temporary_bans,
             metrics,
@@ -373,7 +363,7 @@ where
 
                 // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
                 self.established_connections
-                    .entry((peer_id, endpoint.clone()))
+                    .entry((peer_id, endpoint))
                     .and_modify(|entry| {
                         *entry += 1;
                     })
@@ -393,51 +383,6 @@ where
                         .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
                     {
                         warn!(%error, "Failed to expand regular concurrent tasks");
-                    }
-                }
-
-                let (in_connections_number, out_connections_number) = {
-                    let network_info = self.swarm.network_info();
-                    let connections = network_info.connection_counters();
-
-                    (
-                        connections.num_established_incoming(),
-                        connections.num_established_outgoing(),
-                    )
-                };
-
-                match endpoint {
-                    // In connections
-                    ConnectedPoint::Listener { .. } => {
-                        // check connections limit for non-reserved peers
-                        if !is_reserved_peer
-                            && in_connections_number > self.max_established_incoming_connections
-                        {
-                            debug!(
-                                %peer_id,
-                                "Incoming connections limit exceeded. Disconnecting in-peer ..."
-                            );
-                            // Error here means: "peer was already disconnected"
-                            let _ = self.swarm.disconnect_peer_id(peer_id);
-                        }
-                    }
-                    // Out connections
-                    ConnectedPoint::Dialer { address, .. } => {
-                        self.networking_parameters_registry
-                            .add_known_peer(peer_id, vec![address])
-                            .await;
-
-                        // check connections limit for non-reserved peers
-                        if !is_reserved_peer
-                            && out_connections_number > self.max_established_outgoing_connections
-                        {
-                            debug!(
-                                %peer_id,
-                                "Outgoing connections limit exceeded. Disconnecting out-peer ..."
-                            );
-                            // Error here means: "peer was already disconnected"
-                            let _ = self.swarm.disconnect_peer_id(peer_id);
-                        }
                     }
                 }
             }
