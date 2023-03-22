@@ -1,7 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use dusk_bls12_381::BlsScalar;
-use dusk_bytes::Serializable;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::Scalar;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let data = {
@@ -9,14 +8,14 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut data = rand::random::<[u8; 256]>();
 
         // We can only store 254 bits, set last byte to zero because of that
-        data.chunks_exact_mut(BlsScalar::SIZE)
+        data.chunks_exact_mut(Scalar::FULL_BYTES)
             .flat_map(|chunk| chunk.iter_mut().last())
             .for_each(|last_byte| *last_byte = 0);
 
         data
     };
 
-    let kzg = Kzg::random(256).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     c.bench_function("create-polynomial", |b| {
         b.iter(|| {
@@ -45,8 +44,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         let commitment = kzg.commit(&polynomial).unwrap();
         let index = 0;
         let witness = kzg.create_witness(&polynomial, index).unwrap();
-        let values = data.chunks_exact(BlsScalar::SIZE);
-        let num_values = values.len() as u32;
+        let values = data.chunks_exact(Scalar::FULL_BYTES);
+        let num_values = values.len();
         let value = values.into_iter().next().unwrap();
 
         b.iter(|| {

@@ -73,7 +73,7 @@ pub fn check_reward_signature(
 /// If `records_root` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     kzg: &Kzg,
-    pieces_in_segment: u32,
+    pieces_in_segment: usize,
     records_root: &RecordsRoot,
     position: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
@@ -198,7 +198,13 @@ where
                 return Err(Error::MissingKzgInstance);
             }
         };
-        check_piece(kzg, *pieces_in_segment, records_root, position, solution)?;
+        check_piece(
+            kzg,
+            *pieces_in_segment as usize,
+            records_root,
+            position,
+            solution,
+        )?;
     }
 
     Ok(())

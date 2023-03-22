@@ -88,7 +88,7 @@ struct Farmer {
 
 impl Farmer {
     fn new(keypair: &Keypair) -> Self {
-        let kzg = Kzg::new(kzg::test_public_parameters());
+        let kzg = Kzg::new(kzg::embedded_kzg_settings());
         let archived_segment = archived_segment(kzg.clone());
         let root_block = archived_segment.root_block;
         let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();

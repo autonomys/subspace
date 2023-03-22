@@ -20,36 +20,44 @@ ark-bls12-381 = "0.3.0"
 ark-ff = "0.3.0"
 ark-poly = "0.3.0"
 blake2 = { version = "0.10.6", default-features = false }
+# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
+blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
 derive_more = "0.99.17"
-dusk-bls12_381 = { version = "0.11.2", default-features = false, features = ["alloc", "groups", "pairings", "endo"] }
-dusk-bytes = "0.1"
-dusk-plonk = { version = "0.12.0", default-features = false, features = ["alloc"], git = "https://github.com/subspace/plonk", rev = "193e68ba3d20f737d730e4b6edc757e4f639e7c3" }
 hex = { version  = "0.4.3", default-features = false, features = ["alloc"] }
+# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
+kzg = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
 num-integer = { version = "0.1.45", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive"] }
-rand = { version = "0.8.5", features = ["min_const_gen"], optional = true }
-rand_chacha = { version = "0.3.1", default-features = false }
-rand_core = { version = "0.6.4", default-features = false, features = ["alloc"] }
+parking_lot = { version = "0.12.1", optional = true }
 rayon = { version = "1.6.1", optional = true }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
 serde = { version = "1.0.152", optional = true, features = ["alloc", "derive"] }
 serde_arrays = { version = "0.1.0", optional = true }
+# Replacement for `parking_lot` in `no_std` environment
+spin = "0.9.6"
+static_assertions = "1.1.0"
 thiserror = { version = "1.0.38", optional = true }
+tracing = { version = "0.1.37", default-features = false }
 uint = { version = "0.9.5", default-features = false }
 
 [dev-dependencies]
 criterion = "0.4.0"
+rand = { version = "0.8.5", features = ["min_const_gen"] }
+rand_chacha = "0.3.1"
+rand_core = "0.6.4"
 
 [features]
 default = [
     "parallel-decoding",
+    "embedded-kzg-settings",
     "serde",
     "std",
 ]
 # Parallel decoding will use all CPUs available, but will allocate a memory of a size of a sector instead of square root
 # of that
 parallel-decoding = ["rayon"]
+embedded-kzg-settings = []
 serde = [
     "dep:serde",
     # TODO: `serde_arrays` doesn't support `no_std` right now: https://github.com/Kromey/serde_arrays/issues/8
@@ -61,20 +69,18 @@ std = [
     "ark-ff/std",
     "ark-poly/std",
     "blake2/std",
-    "dusk-bls12_381/std",
-    "dusk-plonk/std",
+    "blst_from_scratch/std",
     "hex/std",
+    "kzg/std",
     "num-integer/std",
     "num-traits/std",
     "parity-scale-codec/std",
-    "rand",
-    # These two are `default`
-    "rand_chacha/simd",
-    "rand_chacha/std",
-    "rand_core/std",
+    # In no-std environment we use `spin`
+    "parking_lot",
     "scale-info/std",
     "serde?/std",
     "thiserror",
+    "tracing/std",
     "uint/std",
 ]
 

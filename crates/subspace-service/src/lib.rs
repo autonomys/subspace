@@ -73,7 +73,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -272,7 +272,7 @@ where
     client
         .execution_extensions()
         .set_extensions_factory(SubspaceExtensionsFactory {
-            kzg: Kzg::new(test_public_parameters()),
+            kzg: Kzg::new(embedded_kzg_settings()),
         });
 
     let client = Arc::new(client);

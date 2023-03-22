@@ -948,7 +948,7 @@ where
         // root block, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
-            PIECES_IN_SEGMENT,
+            PIECES_IN_SEGMENT as usize,
             &records_root,
             position,
             &pre_digest.solution,
@@ -1256,7 +1256,7 @@ where
         .confirmation_depth_k();
 
     // TODO: Probably should have public parameters in chain constants instead
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
 
     let link = SubspaceLink {
         slot_duration,

@@ -330,12 +330,6 @@ dependencies = [
 
 [[package]]
 name = "ahash"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
-
-[[package]]
-name = "ahash"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
@@ -937,7 +931,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blst"
 version = "0.3.10"
-source = "git+https://github.com/supranational/blst.git#ca03e11a3ff24d818ae390a1e7f435f15bf72aee"
+source = "git+https://github.com/subspace/blst.git?rev=079887d2d05bb2d61df4ceef3d4c836228ebc6ff#079887d2d05bb2d61df4ceef3d4c836228ebc6ff"
 dependencies = [
  "cc",
  "glob",
@@ -948,7 +942,7 @@ dependencies = [
 [[package]]
 name = "blst_from_scratch"
 version = "0.1.0"
-source = "git+https://github.com/sifraitech/rust-kzg?rev=7eb52ca97576ea1eefe4dd2165f224c916f8c862#7eb52ca97576ea1eefe4dd2165f224c916f8c862"
+source = "git+https://github.com/subspace/rust-kzg?rev=49e7b60ea51d918f04779dd83191ae0e01afcb30#49e7b60ea51d918f04779dd83191ae0e01afcb30"
 dependencies = [
  "blst",
  "kzg",
@@ -1549,7 +1543,7 @@ dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
- "itertools 0.10.5",
+ "itertools",
  "log",
  "smallvec",
  "wasmparser",
@@ -1592,7 +1586,7 @@ dependencies = [
  "ciborium",
  "clap 3.2.23",
  "criterion-plot",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -1613,7 +1607,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools 0.10.5",
+ "itertools",
 ]
 
 [[package]]
@@ -1964,17 +1958,6 @@ name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "derive-hex"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b6618553c32cd1c1f4fbdb9418cc035f3168422f24406ebb08576f6db5ed6ec"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2460,56 +2443,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c00704156a7de8df8da0911424e30c2049957b0a714542a44e05fe693dd85313"
 
 [[package]]
-name = "dusk-bls12_381"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fc81248ab76f1739dd4241ea2e7037a4d4cb0bd170443a7049e13b0e09acd6"
-dependencies = [
- "byteorder",
- "dusk-bytes",
- "rand_core 0.6.4",
- "rayon",
- "subtle",
-]
-
-[[package]]
-name = "dusk-bytes"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4aae12696d965c95ce5b79bc5612575e8aeac958c9e037b74ffa9e73e1cd8c7"
-dependencies = [
- "derive-hex",
-]
-
-[[package]]
-name = "dusk-jubjub"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c228f2adec5255faf67fe6d106caa093a6c2ef798dca42019b684716528250ff"
-dependencies = [
- "dusk-bls12_381",
- "dusk-bytes",
- "rand_core 0.6.4",
- "subtle",
-]
-
-[[package]]
-name = "dusk-plonk"
-version = "0.12.0"
-source = "git+https://github.com/subspace/plonk?rev=193e68ba3d20f737d730e4b6edc757e4f639e7c3#193e68ba3d20f737d730e4b6edc757e4f639e7c3"
-dependencies = [
- "cfg-if",
- "dusk-bls12_381",
- "dusk-bytes",
- "dusk-jubjub",
- "hashbrown 0.9.1",
- "itertools 0.9.0",
- "merlin 3.0.0",
- "rand_core 0.6.4",
- "rayon",
-]
-
-[[package]]
 name = "dyn-clonable"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2891,7 +2824,7 @@ dependencies = [
  "frame-system",
  "gethostname",
  "handlebars",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "linked-hash-map",
  "log",
@@ -2993,7 +2926,7 @@ dependencies = [
  "cfg-expr",
  "derive-syn-parse",
  "frame-support-procedural-tools",
- "itertools 0.10.5",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn",
@@ -3460,15 +3393,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
-dependencies = [
- "ahash 0.4.7",
-]
-
-[[package]]
-name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
@@ -3911,15 +3835,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
@@ -4176,7 +4091,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/sifraitech/rust-kzg?rev=7eb52ca97576ea1eefe4dd2165f224c916f8c862#7eb52ca97576ea1eefe4dd2165f224c916f8c862"
+source = "git+https://github.com/subspace/rust-kzg?rev=49e7b60ea51d918f04779dd83191ae0e01afcb30#49e7b60ea51d918f04779dd83191ae0e01afcb30"
 
 [[package]]
 name = "language-tags"
@@ -5383,18 +5298,6 @@ dependencies = [
  "byteorder",
  "keccak",
  "rand_core 0.5.1",
- "zeroize",
-]
-
-[[package]]
-name = "merlin"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c38e2799fc0978b65dfff8023ec7843e2330bb462f19198840b34b6582397d"
-dependencies = [
- "byteorder",
- "keccak",
- "rand_core 0.6.4",
  "zeroize",
 ]
 
@@ -6668,7 +6571,7 @@ checksum = "59230a63c37f3e18569bdb90e4a89cbf5bf8b06fea0b84e65ea10cc4df47addd"
 dependencies = [
  "difflib",
  "float-cmp",
- "itertools 0.10.5",
+ "itertools",
  "normalize-line-endings",
  "predicates-core",
  "regex",
@@ -6834,7 +6737,7 @@ checksum = "2c828f93f5ca4826f97fedcbd3f9a536c16b12cff3dbbb4a007f932bbad95b12"
 dependencies = [
  "bytes",
  "heck",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "log",
  "multimap",
@@ -6880,7 +6783,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ea9b0f8cbe5e15a8a042d030bd96668db28ecb567ec37d691971ff5731d2b1b"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn",
@@ -7119,7 +7022,7 @@ dependencies = [
  "lru 0.7.8",
  "parking_lot 0.11.2",
  "smallvec",
- "spin 0.9.5",
+ "spin 0.9.6",
 ]
 
 [[package]]
@@ -8519,7 +8422,7 @@ dependencies = [
  "arrayvec 0.5.2",
  "curve25519-dalek 2.1.3",
  "getrandom 0.1.16",
- "merlin 2.0.1",
+ "merlin",
  "rand 0.7.3",
  "rand_core 0.5.1",
  "sha2 0.8.2",
@@ -9113,7 +9016,7 @@ dependencies = [
  "lazy_static",
  "libsecp256k1",
  "log",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "primitive-types",
@@ -9197,7 +9100,7 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "rs_merkle",
  "scale-info",
@@ -9295,7 +9198,7 @@ source = "git+https://github.com/subspace/substrate?rev=456cfad45a178617f6886ec4
 dependencies = [
  "async-trait",
  "futures 0.3.26",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "schnorrkel",
@@ -9660,9 +9563,12 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spin"
-version = "0.9.5"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dccf47db1b41fa1573ed27ccf5e08e3ca771cb994f776668c5ebda893b248fc"
+checksum = "b5d6e0250b93c8427a177b849d144a96d5acc57006149479403d7861ab721e34"
+dependencies = [
+ "lock_api",
+]
 
 [[package]]
 name = "spki"
@@ -9812,15 +9718,15 @@ dependencies = [
  "ark-ff",
  "ark-poly",
  "blake2",
+ "blst_from_scratch",
  "criterion",
  "derive_more",
- "dusk-bls12_381",
- "dusk-bytes",
- "dusk-plonk",
  "hex",
+ "kzg",
  "num-integer",
  "num-traits",
  "parity-scale-codec",
+ "parking_lot 0.12.1",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
@@ -9828,7 +9734,10 @@ dependencies = [
  "scale-info",
  "serde",
  "serde_arrays",
+ "spin 0.9.6",
+ "static_assertions",
  "thiserror",
+ "tracing",
  "uint",
 ]
 
@@ -10192,7 +10101,7 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
- "merlin 2.0.1",
+ "merlin",
  "rand 0.8.5",
  "schnorrkel",
  "subspace-core-primitives",
@@ -10338,7 +10247,7 @@ dependencies = [
 name = "subspace-verification"
 version = "0.1.0"
 dependencies = [
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",

@@ -86,7 +86,7 @@ where
 
             if !is_piece_valid(
                 &self.kzg,
-                PIECES_IN_SEGMENT,
+                PIECES_IN_SEGMENT as usize,
                 piece.as_ref(),
                 records_root,
                 u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))

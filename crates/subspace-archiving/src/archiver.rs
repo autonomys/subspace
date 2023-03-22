@@ -834,7 +834,7 @@ impl Archiver {
 /// Validate witness embedded within a piece produced by archiver
 pub fn is_piece_valid(
     kzg: &Kzg,
-    num_pieces_in_segment: u32,
+    num_pieces_in_segment: usize,
     piece: PieceRef<'_>,
     commitment: RecordsRoot,
     position: u32,
@@ -860,7 +860,7 @@ pub fn is_piece_valid(
 /// Validate witness for pieces record hash produced by archiver
 pub fn is_piece_record_hash_valid(
     kzg: &Kzg,
-    num_pieces_in_segment: u32,
+    num_pieces_in_segment: usize,
     piece_record_hash: &Blake2b256Hash,
     commitment: &RecordsRoot,
     witness: &Witness,

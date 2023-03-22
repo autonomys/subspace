@@ -7,86 +7,116 @@ mod tests;
 
 extern crate alloc;
 
+use crate::Scalar;
+use alloc::collections::btree_map::Entry;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_to_g1_rust, bytes_to_g2_rust};
+use blst_from_scratch::types::fft_settings::FsFFTSettings;
+use blst_from_scratch::types::fr::FsFr;
+use blst_from_scratch::types::g1::FsG1;
+use blst_from_scratch::types::kzg_settings::FsKZGSettings;
+use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
-use dusk_bls12_381::{G1Affine, G2Affine, G2Prepared};
-pub use dusk_bytes;
-use dusk_bytes::{DeserializableSlice, Serializable};
-pub use dusk_plonk::commitment_scheme::kzg10::key::{CommitKey, OpeningKey};
-pub use dusk_plonk::commitment_scheme::PublicParameters;
-pub use dusk_plonk::error::Error;
-use dusk_plonk::fft::domain::EvaluationDomain;
-use dusk_plonk::fft::evaluations::Evaluations;
-use dusk_plonk::fft::polynomial::Polynomial as PlonkPolynomial;
-use dusk_plonk::prelude::BlsScalar;
+use kzg::{FFTFr, FFTSettings, KZGSettings};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
+#[cfg(feature = "std")]
+use parking_lot::Mutex;
 use scale_info::{Type, TypeInfo};
+#[cfg(not(feature = "std"))]
+use spin::Mutex;
+use tracing::debug;
 
-const TEST_PUBLIC_PARAMETERS: &[u8] = include_bytes!("kzg/test-public-parameters.bin");
+/// Embedded KZG settings as bytes, too big for `no_std` in most cases
+#[cfg(feature = "embedded-kzg-settings")]
+pub const EMBEDDED_KZG_SETTINGS_BYTES: &[u8] = include_bytes!("kzg/test-public-parameters.bin");
+
+// Symmetric function is present in tests
+/// Function turns bytes into `FsKZGSettings`, it is up to the user to ensure that bytes make sense,
+/// otherwise result can be very wrong (but will not panic).
+pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
+    // 48 bytes per G1 and 96 bytes per G2;
+    if bytes.is_empty() || bytes.len() % (48 + 96) != 0 {
+        return Err("Bad bytes".to_string());
+    }
+    let secret_len = bytes.len() / (48 + 96);
+
+    let (secret_g1_bytes, secret_g2_bytes) = bytes.split_at(secret_len * 48);
+    let secret_g1 = secret_g1_bytes
+        .chunks_exact(48)
+        .map(|bytes| {
+            bytes_to_g1_rust(
+                bytes
+                    .try_into()
+                    .expect("Chunked into correct number of bytes above; qed"),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let secret_g2 = secret_g2_bytes
+        .chunks_exact(96)
+        .map(|bytes| {
+            bytes_to_g2_rust(
+                bytes
+                    .try_into()
+                    .expect("Chunked into correct number of bytes above; qed"),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let fft_settings = FsFFTSettings::new(
+        secret_len
+            .checked_sub(1)
+            .expect("Checked to be not empty above; qed")
+            .ilog2() as usize,
+    )
+    .expect("Scale is within allowed bounds; qed");
+
+    // Below is the same as `FsKZGSettings::new(&s1, &s2, secret_len, &fft_settings)`, but without
+    // extra checks (parameters are static anyway) and without unnecessary allocations
+    Ok(FsKZGSettings {
+        fs: fft_settings,
+        secret_g1,
+        secret_g2,
+    })
+}
 
 /// TODO: Test public parameters, must be replaced with proper public parameters later
-pub fn test_public_parameters() -> PublicParameters {
-    // SAFETY: Bytes were produced with below `test_public_parameters_generate()` and are guaranteed
-    // to be correct
-    unsafe { PublicParameters::from_slice_unchecked(TEST_PUBLIC_PARAMETERS) }
-}
-
-#[cfg(test)]
-fn test_public_parameters_generate() -> PublicParameters {
-    use rand_core::SeedableRng;
-
-    let mut rng = rand_chacha::ChaChaRng::seed_from_u64(1969897683899915189);
-    PublicParameters::setup(1024, &mut rng).expect("Static value, doesn't error")
-}
-
-#[test]
-fn test_public_parameters_correct() {
-    assert_eq!(
-        test_public_parameters_generate().to_raw_var_bytes(),
-        test_public_parameters().to_raw_var_bytes()
-    );
+/// Embedded KZG settings
+#[cfg(feature = "embedded-kzg-settings")]
+pub fn embedded_kzg_settings() -> FsKZGSettings {
+    bytes_to_kzg_settings(EMBEDDED_KZG_SETTINGS_BYTES)
+        .expect("Static bytes are correct, there is a test for this; qed")
 }
 
 /// Commitment to polynomial
 #[derive(Debug, Clone)]
-pub struct Polynomial(PlonkPolynomial);
-
-impl From<Polynomial> for Vec<u8> {
-    fn from(polynomial: Polynomial) -> Vec<u8> {
-        polynomial.0.to_var_bytes()
-    }
-}
-
-impl TryFrom<&[u8]> for Polynomial {
-    type Error = Error;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(PlonkPolynomial::from_slice(bytes)?))
-    }
-}
+pub struct Polynomial(FsPoly);
 
 /// Commitment size in bytes.
 pub const COMMITMENT_SIZE: usize = 48;
 
 /// Commitment to polynomial
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct Commitment(G1Affine);
+pub struct Commitment(FsG1);
 
 impl Commitment {
     /// Convert commitment to raw bytes
     pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
-        self.0.to_bytes()
+        bytes_from_g1_rust(&self.0)
     }
 
     /// Try to deserialize commitment from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, dusk_bytes::Error> {
-        Ok(Commitment(G1Affine::from_bytes(bytes)?))
+    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, String> {
+        Ok(Commitment(bytes_to_g1_rust(bytes)?))
     }
 }
 
 impl Hash for Commitment {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.to_bytes().hash(state);
+        self.to_bytes().hash(state);
     }
 }
 
@@ -103,7 +133,7 @@ impl From<&Commitment> for [u8; COMMITMENT_SIZE] {
 }
 
 impl TryFrom<&[u8; COMMITMENT_SIZE]> for Commitment {
-    type Error = dusk_bytes::Error;
+    type Error = String;
 
     fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
@@ -111,7 +141,7 @@ impl TryFrom<&[u8; COMMITMENT_SIZE]> for Commitment {
 }
 
 impl TryFrom<[u8; COMMITMENT_SIZE]> for Commitment {
-    type Error = dusk_bytes::Error;
+    type Error = String;
 
     fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
@@ -173,17 +203,17 @@ impl TypeInfo for Commitment {
 
 /// Witness for polynomial evaluation
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct Witness(G1Affine);
+pub struct Witness(FsG1);
 
 impl Witness {
     /// Convert witness to raw bytes
     pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
-        self.0.to_bytes()
+        bytes_from_g1_rust(&self.0)
     }
 
     /// Try to deserialize witness from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, dusk_bytes::Error> {
-        Ok(Witness(G1Affine::from_bytes(bytes)?))
+    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, String> {
+        Ok(Witness(bytes_to_g1_rust(bytes)?))
     }
 }
 
@@ -200,7 +230,7 @@ impl From<&Witness> for [u8; COMMITMENT_SIZE] {
 }
 
 impl TryFrom<&[u8; COMMITMENT_SIZE]> for Witness {
-    type Error = dusk_bytes::Error;
+    type Error = String;
 
     fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
@@ -208,7 +238,7 @@ impl TryFrom<&[u8; COMMITMENT_SIZE]> for Witness {
 }
 
 impl TryFrom<[u8; COMMITMENT_SIZE]> for Witness {
-    type Error = dusk_bytes::Error;
+    type Error = String;
 
     fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
@@ -268,94 +298,61 @@ impl TypeInfo for Witness {
 /// Wrapper data structure for working with KZG commitment scheme
 #[derive(Debug, Clone)]
 pub struct Kzg {
-    public_parameters: PublicParameters,
+    kzg_settings: FsKZGSettings,
+    fft_settings_cache: Arc<Mutex<BTreeMap<usize, Arc<FsFFTSettings>>>>,
 }
 
-// Most of below implementation and comments are basically taken following code samples (and
-// adapted):
-// https://github.com/subspace/plonk/blob/65db5f0da6edef54048ddbf4495c6c5b4a664dff/src/commitment_scheme/kzg10/key.rs
-// https://github.com/maticnetwork/avail/blob/76e2b45d13975ba87b632f62f29497f279986cbc/kate/src/com.rs
-// https://github.com/maticnetwork/avail/blob/76e2b45d13975ba87b632f62f29497f279986cbc/kate/proof/src/lib.rs
 impl Kzg {
-    /// Create new instance with given public parameters
-    pub fn new(public_parameters: PublicParameters) -> Self {
-        Self { public_parameters }
+    /// Create new instance with given KZG settings.
+    ///
+    /// Canonical KZG settings can be obtained using `embedded_kzg_settings()` function that becomes
+    /// available with `embedded-kzg-settings` feature (enabled by default).
+    pub fn new(kzg_settings: FsKZGSettings) -> Self {
+        Self {
+            kzg_settings,
+            fft_settings_cache: Arc::default(),
+        }
     }
 
-    #[cfg(feature = "std")]
-    /// For testing purposes only.
-    ///
-    /// Returns an error if the configured degree is less than one.
-    pub fn random(max_degree: u32) -> Result<Self, Error> {
-        let public_parameters =
-            PublicParameters::setup(max_degree as usize, &mut rand::thread_rng())?;
-        Ok(Self { public_parameters })
-    }
-
-    // /// Runs a one-time trusted setup of the universal reference values `KZG_PARAMETERS`. The
-    // /// initial `seed` for value generation can be provided by a multi-party computation at genesis.
-    // fn setup(seed: &[u8]) -> PublicParameters {
-    //     todo!()
-    // }
-
-    /// Represents data as a `polynomial` needed for the rest of the scheme. The degree of the
-    /// polynomial $d$ is equal to the length of data.
-    ///
-    /// An ordered data set is treated as a set of values as `(x,y) = (w^i, data[i])`, where
-    /// `data[i]` are `DATA_CHUNK_SIZE`-byte (currently 31 bytes) chunks, and `w` is a root of unity
-    /// of degree $d$, of from which a polynomial that satisfies $p(x)=y$  for all these points is
-    /// interpolated. This may be done every time needed using a saved root of unity (one field
-    /// element).
+    /// Create polynomial from data. Data must be multiple of 32 bytes, each containing up to 254
+    /// bits of information.
     ///
     /// The resulting polynomial is in coefficient form.
-    pub fn poly(&self, data: &[u8]) -> Result<Polynomial, Error> {
+    pub fn poly(&self, data: &[u8]) -> Result<Polynomial, String> {
         let evals = data
-            .chunks(BlsScalar::SIZE)
-            .map(BlsScalar::from_slice)
-            .collect::<Result<Vec<BlsScalar>, dusk_bytes::Error>>()?;
-        let domain = EvaluationDomain::new(evals.len())?;
-        let evaluations = Evaluations::from_vec_and_domain(evals, domain);
-        Ok(Polynomial(evaluations.interpolate()))
+            .chunks(Scalar::FULL_BYTES)
+            .map(|scalar| {
+                FsFr::from_scalar(
+                    scalar
+                        .try_into()
+                        .map_err(|_| "Failed to convert value to scalar".to_string())?,
+                )
+                .map_err(|error_code| {
+                    format!("Failed to create scalar from bytes with code: {error_code}")
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let poly = FsPoly {
+            coeffs: self.get_fft_settings(evals.len())?.fft_fr(&evals, true)?,
+        };
+        Ok(Polynomial(poly))
     }
 
     /// Computes a `Commitment` to `polynomial`
-    pub fn commit(&self, polynomial: &Polynomial) -> Result<Commitment, Error> {
-        self.public_parameters
-            .commit_key
-            .commit(&polynomial.0)
-            .map(|commitment| Commitment(commitment.0))
+    pub fn commit(&self, polynomial: &Polynomial) -> Result<Commitment, String> {
+        self.kzg_settings
+            .commit_to_poly(&polynomial.0)
+            .map(Commitment)
     }
 
     /// Computes a `Witness` of evaluation of `polynomial` at `index`
-    pub fn create_witness(&self, polynomial: &Polynomial, index: u32) -> Result<Witness, Error> {
-        let polynomial_degree = polynomial.0.degree();
-        assert!((index as usize) <= polynomial_degree);
-        // For a given polynomial `p` and a point `z`, compute the witness
-        // for p(z) using Ruffini's method for simplicity.
-        // The Witness is the quotient of f(x) - f(z) / x-z.
-        // However we note that the quotient polynomial is invariant under the value
-        // f(z) ie. only the remainder changes. We can therefore compute the
-        // witness as f(x) / x - z and only use the remainder term f(z) during
-        // verification.
-
-        // Generate all the x-axis points of the domain on which all the row polynomials reside
-        let eval_domain = EvaluationDomain::new(polynomial_degree)?;
-        let point = eval_domain
-            .elements()
-            .nth(
-                index
-                    .try_into()
-                    .expect("Always fits into usize on 32-bit+ platforms; qed"),
-            )
-            .ok_or(Error::MismatchedPolyLen)?;
-
-        // Computes `f(x) / x-z`, returning it as the witness poly
-        let witness_poly = polynomial.0.ruffini(point);
-
-        self.public_parameters
-            .commit_key
-            .commit(&witness_poly)
-            .map(|commitment| Witness(commitment.0))
+    pub fn create_witness(&self, polynomial: &Polynomial, index: u32) -> Result<Witness, String> {
+        let x = self
+            .get_fft_settings(polynomial.0.coeffs.len())?
+            .get_expanded_roots_of_unity_at(index as usize);
+        self.kzg_settings
+            .compute_proof_single(&polynomial.0, &x)
+            .map(Witness)
     }
 
     /// Verifies that `value` is the evaluation at `index` of the polynomial created from
@@ -363,61 +360,56 @@ impl Kzg {
     pub fn verify(
         &self,
         commitment: &Commitment,
-        num_values: u32,
+        num_values: usize,
         index: u32,
         value: &[u8],
         witness: &Witness,
     ) -> bool {
-        let degree_of_polynomial = match num_values.checked_sub(1) {
-            Some(degree_of_polynomial) => degree_of_polynomial,
-            None => {
+        let fft_settings = match self.get_fft_settings(num_values) {
+            Ok(fft_settings) => fft_settings,
+            Err(error) => {
+                debug!(error, "Failed to derive fft settings");
                 return false;
             }
         };
-
-        // Generate all the x-axis points of the domain on which all the row polynomials reside
-        let eval_domain = match EvaluationDomain::new(
-            degree_of_polynomial
-                .try_into()
-                .expect("Always fits into usize on 32-bit+ platforms; qed"),
-        ) {
-            Ok(eval_domain) => eval_domain,
-            Err(_error) => {
-                return false;
-            }
-        };
-        let point = eval_domain
-            .elements()
-            .nth(
-                index
-                    .try_into()
-                    .expect("Always fits into usize on 32-bit+ platforms; qed"),
-            )
-            // TODO: Remove unwrap
-            .unwrap();
-        let value = match BlsScalar::from_slice(value) {
+        let x = fft_settings.get_expanded_roots_of_unity_at(index as usize);
+        let value = match value.try_into() {
             Ok(value) => value,
-            Err(_error) => {
+            Err(_) => {
+                debug!("Failed to convert value to scalar");
+                return false;
+            }
+        };
+        let value = match FsFr::from_scalar(value) {
+            Ok(value) => value,
+            Err(error_code) => {
+                debug!(error_code, "Failed to create scalar from bytes with code");
                 return false;
             }
         };
 
-        // Checks that a polynomial `p` was evaluated at a point `z` and returned
-        // the value specified `v`. ie. v = p(z).
-        let inner_a: G1Affine =
-            (commitment.0 - (self.public_parameters.opening_key.g * value)).into();
+        match self
+            .kzg_settings
+            .check_proof_single(&commitment.0, &witness.0, &x, &value)
+        {
+            Ok(result) => result,
+            Err(error) => {
+                debug!(error, "Failed to check proof");
+                false
+            }
+        }
+    }
 
-        let inner_b: G2Affine = (self.public_parameters.opening_key.beta_h
-            - (self.public_parameters.opening_key.h * point))
-            .into();
-        let prepared_inner_b = G2Prepared::from(-inner_b);
-
-        let pairing = dusk_bls12_381::multi_miller_loop(&[
-            (&inner_a, &self.public_parameters.opening_key.prepared_h),
-            (&witness.0, &prepared_inner_b),
-        ])
-        .final_exponentiation();
-
-        pairing == dusk_bls12_381::Gt::identity()
+    /// Get FFT settings for specified number of values, uses internal cache to avoid derivation
+    /// every time.
+    pub fn get_fft_settings(&self, num_values: usize) -> Result<Arc<FsFFTSettings>, String> {
+        Ok(match self.fft_settings_cache.lock().entry(num_values) {
+            Entry::Vacant(entry) => {
+                let fft_settings = Arc::new(FsFFTSettings::new(num_values.ilog2() as usize)?);
+                entry.insert(Arc::clone(&fft_settings));
+                fft_settings
+            }
+            Entry::Occupied(entry) => Arc::clone(entry.get()),
+        })
     }
 }

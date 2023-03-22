@@ -38,7 +38,7 @@ use sp_runtime::Perbill;
 use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg, Witness};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
@@ -249,7 +249,7 @@ pub fn new_test_ext() -> TestExternalities {
 
     let mut ext = TestExternalities::from(storage);
 
-    ext.register_extension(KzgExtension::new(Kzg::new(test_public_parameters())));
+    ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
 
     ext
 }
@@ -344,7 +344,7 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
 }
 
 pub fn create_archived_segment() -> ArchivedSegment {
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];

@@ -29,7 +29,7 @@ use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
     Piece, PieceIndex, RootBlock, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
     RECORD_SIZE,
@@ -103,7 +103,7 @@ where
         node.clone(),
         Some(RecordsRootPieceValidator::new(
             node.clone(),
-            Kzg::new(test_public_parameters()),
+            Kzg::new(embedded_kzg_settings()),
             record_roots,
         )),
     );
