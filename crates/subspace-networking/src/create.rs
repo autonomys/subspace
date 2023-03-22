@@ -62,6 +62,9 @@ const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
 const YAMUX_MAX_STREAMS: usize = 256;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(2);
+// TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
+// use-case for gossipsub protocol.
+const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -183,7 +186,7 @@ pub struct Config<ProviderStorage> {
     /// The configuration for the Kademlia behaviour.
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
-    pub gossipsub: GossipsubConfig,
+    pub gossipsub: Option<GossipsubConfig>,
     /// Externally provided implementation of the custom provider storage for Kademlia DHT,
     pub provider_storage: ProviderStorage,
     /// Yamux multiplexing configuration.
@@ -251,17 +254,19 @@ where
         let mut yamux_config = YamuxConfig::default();
         yamux_config.set_max_num_streams(YAMUX_MAX_STREAMS);
 
-        let gossipsub = GossipsubConfigBuilder::default()
-            .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
-            // TODO: Do we want message signing?
-            .validation_mode(ValidationMode::None)
-            // To content-address message, we can take the hash of message and use it as an ID.
-            .message_id_fn(|message: &GossipsubMessage| {
-                MessageId::from(crypto::blake2b_256_hash(&message.data))
-            })
-            .max_transmit_size(2 * 1024 * 1024) // 2MB
-            .build()
-            .expect("Default config for gossipsub is always correct; qed");
+        let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
+            GossipsubConfigBuilder::default()
+                .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
+                // TODO: Do we want message signing?
+                .validation_mode(ValidationMode::None)
+                // To content-address message, we can take the hash of message and use it as an ID.
+                .message_id_fn(|message: &GossipsubMessage| {
+                    MessageId::from(crypto::blake2b_256_hash(&message.data))
+                })
+                .max_transmit_size(2 * 1024 * 1024) // 2MB
+                .build()
+                .expect("Default config for gossipsub is always correct; qed")
+        });
 
         let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());

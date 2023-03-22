@@ -977,6 +977,10 @@ where
                 topic,
                 result_sender,
             } => {
+                if !self.swarm.behaviour().gossipsub.is_enabled() {
+                    panic!("Gossibsub protocol is disabled.");
+                }
+
                 let topic_hash = topic.hash();
                 let (sender, receiver) = mpsc::unbounded();
 
@@ -999,20 +1003,23 @@ where
                     Entry::Vacant(entry) => {
                         // Otherwise subscription needs to be created.
 
-                        match self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
-                            Ok(true) => {
-                                if result_sender.send(Ok(created_subscription)).is_ok() {
-                                    entry.insert(IntMap::from_iter([(subscription_id, sender)]));
+                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
+                            match gossipsub.subscribe(&topic) {
+                                Ok(true) => {
+                                    if result_sender.send(Ok(created_subscription)).is_ok() {
+                                        entry
+                                            .insert(IntMap::from_iter([(subscription_id, sender)]));
+                                    }
                                 }
-                            }
-                            Ok(false) => {
-                                panic!(
-                                    "Logic error, topic subscription wasn't created, this must never \
+                                Ok(false) => {
+                                    panic!(
+                                        "Logic error, topic subscription wasn't created, this must never \
                             happen"
-                                );
-                            }
-                            Err(error) => {
-                                let _ = result_sender.send(Err(error));
+                                    );
+                                }
+                                Err(error) => {
+                                    let _ = result_sender.send(Err(error));
+                                }
                             }
                         }
                     }
@@ -1022,6 +1029,10 @@ where
                 topic,
                 subscription_id,
             } => {
+                if !self.swarm.behaviour().gossipsub.is_enabled() {
+                    panic!("Gossibsub protocol is disabled.");
+                }
+
                 if let Entry::Occupied(mut entry) =
                     self.topic_subscription_senders.entry(topic.hash())
                 {
@@ -1031,9 +1042,10 @@ where
                     if entry.get().is_empty() {
                         entry.remove_entry();
 
-                        if let Err(error) = self.swarm.behaviour_mut().gossipsub.unsubscribe(&topic)
-                        {
-                            warn!("Failed to unsubscribe from topic {topic}: {error}");
+                        if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
+                            if let Err(error) = gossipsub.unsubscribe(&topic) {
+                                warn!("Failed to unsubscribe from topic {topic}: {error}");
+                            }
                         }
                     }
                 } else {
@@ -1048,14 +1060,15 @@ where
                 message,
                 result_sender,
             } => {
-                // Doesn't matter if receiver still waits for response.
-                let _ = result_sender.send(
-                    self.swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .publish(topic, message)
-                        .map(|_message_id| ()),
-                );
+                if !self.swarm.behaviour().gossipsub.is_enabled() {
+                    panic!("Gossibsub protocol is disabled.");
+                }
+
+                if let Some(gossipsub) = self.swarm.behaviour_mut().gossipsub.as_mut() {
+                    // Doesn't matter if receiver still waits for response.
+                    let _ =
+                        result_sender.send(gossipsub.publish(topic, message).map(|_message_id| ()));
+                }
             }
             Command::GetClosestPeers {
                 key,
