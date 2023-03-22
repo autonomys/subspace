@@ -402,7 +402,9 @@ where
     let connection_limits = ConnectionLimits::default()
         .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER)
         .with_max_pending_incoming(Some(max_pending_incoming_connections))
-        .with_max_pending_outgoing(Some(max_pending_outgoing_connections));
+        .with_max_pending_outgoing(Some(max_pending_outgoing_connections))
+        .with_max_established_incoming(Some(max_established_incoming_connections))
+        .with_max_established_outgoing(Some(max_established_outgoing_connections));
 
     debug!(?connection_limits, "DSN connection limits set.");
 
@@ -451,8 +453,6 @@ where
         next_random_query_interval: initial_random_query_interval,
         networking_parameters_registry,
         reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-        max_established_incoming_connections,
-        max_established_outgoing_connections,
         target_connections,
         temporary_bans,
         metrics,
