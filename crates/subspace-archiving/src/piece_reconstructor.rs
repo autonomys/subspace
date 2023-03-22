@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::crypto::kzg::{Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
-use subspace_core_primitives::{FlatPieces, Piece, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{FlatPieces, Piece, PIECES_IN_SEGMENT, RECORD_SIZE};
 
 /// Reconstructor-related instantiation error.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -56,19 +56,15 @@ pub struct PiecesReconstructor {
 }
 
 impl PiecesReconstructor {
-    pub fn new(
-        record_size: u32,
-        segment_size: u32,
-        kzg: Kzg,
-    ) -> Result<Self, ReconstructorInstantiationError> {
-        if segment_size <= record_size {
+    pub fn new(segment_size: u32, kzg: Kzg) -> Result<Self, ReconstructorInstantiationError> {
+        if segment_size <= RECORD_SIZE {
             return Err(ReconstructorInstantiationError::SegmentSizeTooSmall);
         }
-        if segment_size % record_size != 0 {
+        if segment_size % RECORD_SIZE != 0 {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = segment_size / record_size;
+        let data_shards = segment_size / RECORD_SIZE;
         let parity_shards = data_shards;
         let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");

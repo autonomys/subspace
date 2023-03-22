@@ -28,8 +28,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     thread_rng().fill(input.as_mut_slice());
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver =
-        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
     let piece = Piece::from(
         archiver

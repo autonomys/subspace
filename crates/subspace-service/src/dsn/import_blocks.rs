@@ -115,7 +115,7 @@ where
     let best_block_number = client.info().best_number;
     let mut link = WaitLink::new();
     let mut imported_blocks = 0;
-    let mut reconstructor = Reconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE)
+    let mut reconstructor = Reconstructor::new(RECORDED_HISTORY_SEGMENT_SIZE)
         .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
     let pieces_in_segment = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
