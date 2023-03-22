@@ -29,11 +29,10 @@ mod tests;
 extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
-use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
+use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
-use crypto::ScalarLegacy;
 use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
@@ -55,14 +54,14 @@ pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 /// Size of one plotted sector.
 ///
 /// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
-/// equal to number of columns, but we need to account for the fact that [`ScalarLegacy::SAFE_BYTES`] will
-/// be expanded to [`ScalarLegacy::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
+/// equal to number of columns, but we need to account for the fact that [`Scalar::SAFE_BYTES`] will
+/// be expanded to [`Scalar::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
 /// and decoding operate on the same amount of data.
 pub const PLOT_SECTOR_SIZE: u64 =
-    (PIECE_SIZE as u64 / ScalarLegacy::SAFE_BYTES as u64).pow(2) * ScalarLegacy::FULL_BYTES as u64;
+    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
 /// How many pieces we have in a sector
 pub const PIECES_IN_SECTOR: u64 =
-    PLOT_SECTOR_SIZE / (PIECE_SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
+    PLOT_SECTOR_SIZE / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
