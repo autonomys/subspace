@@ -24,7 +24,6 @@ use subspace_networking::{
     NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
     ParityDbError, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
     RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
-    SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
 };
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -75,6 +74,12 @@ pub struct DsnConfig {
 
     /// Defines max established outgoing swarm connection limit.
     pub max_out_connections: u32,
+
+    /// Defines max pending incoming swarm connection limit.
+    pub max_pending_in_connections: u32,
+
+    /// Defines max pending outgoing swarm connection limit.
+    pub max_pending_out_connections: u32,
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
     pub target_connections: u32,
@@ -188,10 +193,8 @@ where
         provider_storage,
         max_established_incoming_connections: dsn_config.max_in_connections,
         max_established_outgoing_connections: dsn_config.max_out_connections,
-        max_pending_incoming_connections: dsn_config.max_in_connections
-            * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
-        max_pending_outgoing_connections: dsn_config.max_out_connections
-            * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
+        max_pending_incoming_connections: dsn_config.max_pending_in_connections,
+        max_pending_outgoing_connections: dsn_config.max_pending_out_connections,
         target_connections: dsn_config.target_connections,
 
         ..subspace_networking::Config::default()

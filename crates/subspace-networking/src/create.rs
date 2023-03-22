@@ -39,17 +39,21 @@ use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
-// The default maximum incoming connection number for the swarm.
+/// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
-// The default maximum incoming connection number for the swarm.
+/// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
+/// The default maximum pending incoming connection number for the swarm.
+const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 150;
+/// The default maximum pending incoming connection number for the swarm.
+const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 150;
 // The default maximum connection number to be maintained for the swarm.
 const SWARM_TARGET_CONNECTION_NUMBER: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
@@ -62,8 +66,6 @@ const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
 const YAMUX_MAX_STREAMS: usize = 256;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(2);
-/// Defines established to pending connections ratio for swarm connections limit.
-pub const SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR: u32 = 3;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -300,10 +302,8 @@ where
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
-            max_pending_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS
-                * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
-            max_pending_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS
-                * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
+            max_pending_incoming_connections: SWARM_MAX_PENDING_INCOMING_CONNECTIONS,
+            max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
@@ -398,6 +398,8 @@ where
         .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER)
         .with_max_pending_incoming(Some(max_pending_incoming_connections))
         .with_max_pending_outgoing(Some(max_pending_outgoing_connections));
+
+    debug!(?connection_limits, "DSN connection limits set.");
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
         .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)

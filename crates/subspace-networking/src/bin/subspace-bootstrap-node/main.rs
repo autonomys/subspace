@@ -15,14 +15,17 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
     NetworkingParametersManager, ParityDbProviderStorage,
-    SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
 };
 use tracing::info;
 
-// The default maximum incoming connections number for the peer.
+/// The default maximum established incoming connections number for the peer.
 const MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 300;
-// The default maximum outgoing connections number for the peer.
+/// The default maximum established outgoing connections number for the peer.
 const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 300;
+/// The default maximum pending incoming connections number for the peer.
+const MAX_PENDING_INCOMING_CONNECTIONS: u32 = 900;
+/// The default maximum pending outgoing connections number for the peer.
+const MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 900;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -40,12 +43,18 @@ enum Command {
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[arg(long, alias = "reserved-peer")]
         reserved_peers: Vec<Multiaddr>,
-        /// Defines max incoming connections limit for the peer.
+        /// Defines max establishedincoming connections limit for the peer.
         #[arg(long)]
         in_peers: Option<u32>,
-        /// Defines max outgoing connections limit for the peer.
+        /// Defines max establishedoutgoing connections limit for the peer.
         #[arg(long)]
         out_peers: Option<u32>,
+        /// Defines max pending incoming connections limit for the peer.
+        #[arg(long)]
+        pending_in_peers: Option<u32>,
+        /// Defines max pending outgoing connections limit for the peer.
+        #[arg(long)]
+        pending_out_peers: Option<u32>,
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
         disable_private_ips: bool,
@@ -77,6 +86,8 @@ async fn main() -> anyhow::Result<()> {
             reserved_peers,
             in_peers,
             out_peers,
+            pending_in_peers,
+            pending_out_peers,
             disable_private_ips,
             db_path,
             piece_providers_cache_size,
@@ -101,8 +112,6 @@ async fn main() -> anyhow::Result<()> {
                 Either::Right(MemoryProviderStorage::new(local_peer_id))
             };
 
-            let in_peers = in_peers.unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS);
-            let out_peers = out_peers.unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS);
             let networking_parameters_registry = {
                 db_path
                     .map(|path| {
@@ -125,12 +134,14 @@ async fn main() -> anyhow::Result<()> {
                 listen_on,
                 allow_non_global_addresses_in_dht: !disable_private_ips,
                 reserved_peers,
-                max_established_incoming_connections: in_peers,
-                max_established_outgoing_connections: out_peers,
-                max_pending_incoming_connections: in_peers
-                    * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
-                max_pending_outgoing_connections: out_peers
-                    * SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
+                max_established_incoming_connections: in_peers
+                    .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
+                max_established_outgoing_connections: out_peers
+                    .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
+                max_pending_incoming_connections: pending_in_peers
+                    .unwrap_or(MAX_PENDING_INCOMING_CONNECTIONS),
+                max_pending_outgoing_connections: pending_out_peers
+                    .unwrap_or(MAX_PENDING_OUTGOING_CONNECTIONS),
                 ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
             let (node, mut node_runner) =
