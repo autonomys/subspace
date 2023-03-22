@@ -138,6 +138,8 @@ async fn run_executor(
                     allow_non_global_addresses_in_dht: true,
                     max_out_connections: 50,
                     max_in_connections: 50,
+                    max_pending_out_connections: 150,
+                    max_pending_in_connections: 150,
                     target_connections: 50,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,

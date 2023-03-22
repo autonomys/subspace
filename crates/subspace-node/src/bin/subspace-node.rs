@@ -432,6 +432,8 @@ fn main() -> Result<(), Error> {
                             allow_non_global_addresses_in_dht: !cli.dsn_disable_private_ips,
                             max_in_connections: cli.dsn_in_connections,
                             max_out_connections: cli.dsn_out_connections,
+                            max_pending_in_connections: cli.dsn_pending_in_connections,
+                            max_pending_out_connections: cli.dsn_pending_out_connections,
                             target_connections: cli.dsn_target_connections,
                         }
                     };
