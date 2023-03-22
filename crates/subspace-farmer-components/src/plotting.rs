@@ -9,9 +9,10 @@ use std::error::Error;
 use std::io;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PieceIndexHash, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE,
+    Piece, PieceIndex, PieceIndexHash, PublicKey, SectorId, SectorIndex, PIECE_SIZE,
     PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;

@@ -1,4 +1,5 @@
-use crate::{Scalar, PIECE_SIZE, PLOT_SECTOR_SIZE, U256};
+use crate::crypto::Scalar;
+use crate::{PIECE_SIZE, PLOT_SECTOR_SIZE, U256};
 use num_integer::Roots;
 use rand::thread_rng;
 use rand_core::RngCore;

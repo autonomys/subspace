@@ -3,12 +3,12 @@ use parity_scale_codec::{Decode, IoReader};
 use schnorrkel::Keypair;
 use std::io;
 use std::io::SeekFrom;
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
+use subspace_core_primitives::crypto::{blake2b_256_254_hash, Scalar};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Blake2b256Hash, Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, Solution,
-    SolutionRange, PIECES_IN_SECTOR, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    Blake2b256Hash, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
+    PIECES_IN_SECTOR, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use subspace_solving::create_chunk_signature;
 use subspace_verification::{derive_audit_chunk, is_within_solution_range};

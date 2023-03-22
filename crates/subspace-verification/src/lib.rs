@@ -25,11 +25,11 @@ use schnorrkel::vrf::VRFOutput;
 use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
-use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::{blake2b_256_hash, Scalar};
 use subspace_core_primitives::{
     BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RecordsRoot, RewardSignature,
-    Scalar, SectorId, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
+    SectorId, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,

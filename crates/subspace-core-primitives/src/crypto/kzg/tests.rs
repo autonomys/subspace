@@ -1,5 +1,5 @@
 use crate::crypto::kzg::{embedded_kzg_settings, Kzg};
-use crate::Scalar;
+use crate::crypto::Scalar;
 use blst_from_scratch::consts::{G1_GENERATOR, G2_GENERATOR};
 use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_from_g2_rust};
 use blst_from_scratch::types::fft_settings::FsFFTSettings;

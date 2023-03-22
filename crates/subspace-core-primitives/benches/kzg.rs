@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::Scalar;
+use subspace_core_primitives::crypto::Scalar;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let data = {

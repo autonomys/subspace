@@ -30,19 +30,18 @@ extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key};
-use ark_bls12_381::Fr;
-use ark_ff::{BigInteger, PrimeField};
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
+use crypto::Scalar;
 use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+use parity_scale_codec::{Decode, Encode};
 pub use pieces::{
     FlatPieces, Piece, PieceRef, PieceRefMut, RecordRef, RecordRefMut, WitnessRef, WitnessRefMut,
     PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
 };
-use scale_info::{Type, TypeInfo};
+use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use uint::static_assertions::const_assert;
@@ -146,142 +145,6 @@ pub struct PosProof(pub [u8; POS_PROOF_LENGTH]);
 impl PosProof {
     /// Size of proof of space proof in bytes.
     pub const SIZE: usize = POS_PROOF_LENGTH;
-}
-
-/// Representation of a single BLS12-381 scalar value.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
-pub struct Scalar(Fr);
-
-impl Encode for Scalar {
-    fn size_hint(&self) -> usize {
-        Self::FULL_BYTES
-    }
-
-    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
-        f(&self.to_bytes())
-    }
-
-    fn encoded_size(&self) -> usize {
-        Self::FULL_BYTES
-    }
-}
-
-impl EncodeLike for Scalar {}
-
-impl Decode for Scalar {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        Ok(Self::from(&<[u8; Self::FULL_BYTES]>::decode(input)?))
-    }
-
-    fn encoded_fixed_size() -> Option<usize> {
-        Some(Self::FULL_BYTES)
-    }
-}
-
-impl TypeInfo for Scalar {
-    type Identity = Self;
-
-    fn type_info() -> Type {
-        Type::builder()
-            .path(scale_info::Path::new(stringify!(Scalar), module_path!()))
-            .docs(&["BLS12-381 scalar"])
-            .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; Self::FULL_BYTES]>()
-                    .name(stringify!(inner))
-                    .type_name("Fr")
-            }))
-    }
-}
-
-#[cfg(feature = "serde")]
-mod scalar_serde {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    // Custom wrapper so we don't have to write serialization/deserialization code manually
-    #[derive(Serialize, Deserialize)]
-    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::FULL_BYTES]);
-
-    impl Serialize for super::Scalar {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            Scalar(self.to_bytes()).serialize(serializer)
-        }
-    }
-
-    impl<'de> Deserialize<'de> for super::Scalar {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            let Scalar(bytes) = Scalar::deserialize(deserializer)?;
-            Ok(Self::from(&bytes))
-        }
-    }
-}
-
-impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
-    fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
-        Scalar(Fr::from_le_bytes_mod_order(value))
-    }
-}
-
-impl From<[u8; Self::SAFE_BYTES]> for Scalar {
-    fn from(value: [u8; Self::SAFE_BYTES]) -> Self {
-        Self::from(&value)
-    }
-}
-
-impl From<&[u8; Self::FULL_BYTES]> for Scalar {
-    fn from(value: &[u8; Self::FULL_BYTES]) -> Self {
-        Scalar(Fr::from_le_bytes_mod_order(value))
-    }
-}
-
-impl From<[u8; Self::FULL_BYTES]> for Scalar {
-    fn from(value: [u8; Self::FULL_BYTES]) -> Self {
-        Self::from(&value)
-    }
-}
-
-impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: &Scalar) -> Self {
-        let mut bytes = Self::default();
-        value.write_to_bytes(&mut bytes);
-        bytes
-    }
-}
-
-impl From<Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: Scalar) -> Self {
-        Self::from(&value)
-    }
-}
-
-impl Scalar {
-    /// How many full bytes can be stored in BLS12-381 scalar (for instance before encoding). It is
-    /// actually 254 bits, but bits are mut harder to work with and likely not worth it.
-    ///
-    /// NOTE: After encoding more bytes can be used, so don't rely on this as the max number of
-    /// bytes stored within at all times!
-    pub const SAFE_BYTES: usize = 31;
-    /// How many bytes Scalar contains physically, use [`Self::SAFE_BYTES`] for the amount of data
-    /// that you can put into it safely (for instance before encoding).
-    pub const FULL_BYTES: usize = 32;
-
-    /// Convert scalar into bytes
-    pub fn to_bytes(&self) -> [u8; Scalar::FULL_BYTES] {
-        self.into()
-    }
-
-    /// Converts scalar to bytes that will be written to `bytes`.
-    pub fn write_to_bytes(&self, bytes: &mut [u8; Self::FULL_BYTES]) {
-        self.0
-            .into_repr()
-            .write_le(&mut bytes.as_mut())
-            .expect("Correct length input was provided; qed");
-    }
 }
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.

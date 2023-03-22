@@ -7,7 +7,7 @@ mod tests;
 
 extern crate alloc;
 
-use crate::Scalar;
+use crate::crypto::Scalar;
 use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
 use alloc::format;

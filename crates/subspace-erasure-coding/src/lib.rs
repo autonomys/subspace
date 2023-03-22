@@ -13,7 +13,7 @@ use blst_from_scratch::types::fr::FsFr;
 use blst_from_scratch::types::poly::FsPoly;
 use core::num::NonZeroUsize;
 use kzg::{FFTSettings, PolyRecover, DAS};
-use subspace_core_primitives::Scalar;
+use subspace_core_primitives::crypto::Scalar;
 
 /// Erasure coding abstraction.
 ///

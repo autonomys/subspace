@@ -1,7 +1,8 @@
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{Piece, Scalar, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{Piece, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
 use tracing::warn;
 
 #[derive(Debug)]

@@ -1,5 +1,5 @@
+use crate::crypto::Scalar;
 use crate::sector_codec::SectorCodec;
-use crate::Scalar;
 
 #[test]
 fn basic() {

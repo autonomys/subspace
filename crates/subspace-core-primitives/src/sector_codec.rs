@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::Scalar;
+use crate::crypto::Scalar;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
 use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};

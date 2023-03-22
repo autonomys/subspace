@@ -23,8 +23,8 @@
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
-use subspace_core_primitives::{Blake2b256Hash, ChunkSignature, Randomness, Scalar};
+use subspace_core_primitives::crypto::{blake2b_256_hash_list, Scalar};
+use subspace_core_primitives::{Blake2b256Hash, ChunkSignature, Randomness};
 
 const CHUNK_SIGNATURE_LABEL: &[u8] = b"subspace_chunk_signature";
 

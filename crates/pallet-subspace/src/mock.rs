@@ -39,11 +39,11 @@ use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg, Scalar};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
-    RootBlock, Scalar, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
+    RECORD_SIZE,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
