@@ -154,7 +154,7 @@ pub struct Scalar(Fr);
 
 impl Encode for Scalar {
     fn size_hint(&self) -> usize {
-        48
+        Self::FULL_BYTES
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -162,7 +162,7 @@ impl Encode for Scalar {
     }
 
     fn encoded_size(&self) -> usize {
-        48
+        Self::FULL_BYTES
     }
 }
 
