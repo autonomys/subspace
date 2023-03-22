@@ -51,9 +51,9 @@ const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
 /// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
 /// The default maximum pending incoming connection number for the swarm.
-const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 150;
+const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 50;
 /// The default maximum pending incoming connection number for the swarm.
-const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 150;
+const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 50;
 // The default maximum connection number to be maintained for the swarm.
 const SWARM_TARGET_CONNECTION_NUMBER: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
