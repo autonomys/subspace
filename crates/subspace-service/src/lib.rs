@@ -22,8 +22,8 @@ pub mod piece_cache;
 pub mod root_blocks;
 pub mod rpc;
 
-use crate::dsn::create_dsn_instance;
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
+use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::piece_cache::PieceCache;
 use crate::root_blocks::{start_root_block_archiver, RootBlockCache};
 use derive_more::{Deref, DerefMut, Into};
@@ -36,7 +36,10 @@ use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use sc_basic_authorship::ProposerFactory;
-use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, StateBackendFor};
+use sc_client_api::execution_extensions::ExtensionsFactory;
+use sc_client_api::{
+    BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend, StateBackendFor,
+};
 use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -56,18 +59,21 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::{Error as ConsensusError, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, SubspaceApi};
+use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::ExecutorApi;
+use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_receipts::ReceiptsApi;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -108,7 +114,7 @@ pub enum Error {
 
     /// Subspace networking (DSN) error.
     #[error(transparent)]
-    SubspaceDsn(#[from] subspace_networking::CreationError),
+    SubspaceDsn(#[from] DsnConfigurationError),
 
     /// Other.
     #[error(transparent)]
@@ -169,6 +175,26 @@ pub struct SubspaceConfiguration {
     pub segment_publish_concurrency: NonZeroUsize,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
+}
+
+struct SubspaceExtensionsFactory {
+    kzg: Kzg,
+}
+
+impl<Block> ExtensionsFactory<Block> for SubspaceExtensionsFactory
+where
+    Block: BlockT,
+{
+    fn extensions_for(
+        &self,
+        _block_hash: Block::Hash,
+        _block_number: NumberFor<Block>,
+        _capabilities: offchain::Capabilities,
+    ) -> Extensions {
+        let mut exts = Extensions::new();
+        exts.register(KzgExtension::new(self.kzg.clone()));
+        exts
+    }
 }
 
 /// Creates `PartialComponents` for Subspace client.
@@ -242,6 +268,12 @@ where
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
         )?;
+
+    client
+        .execution_extensions()
+        .set_extensions_factory(SubspaceExtensionsFactory {
+            kzg: Kzg::new(test_public_parameters()),
+        });
 
     let client = Arc::new(client);
 

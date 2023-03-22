@@ -93,6 +93,7 @@ mod domain_worker;
 mod fraud_proof;
 mod gossip_message_validator;
 mod parent_chain;
+pub mod state_root_extractor;
 mod system_bundle_processor;
 mod system_domain_worker;
 mod system_executor;

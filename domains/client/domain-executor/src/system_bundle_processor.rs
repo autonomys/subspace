@@ -1,6 +1,7 @@
 use crate::domain_block_processor::{
     preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
 };
+use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::{translate_number_type, DomainBundles};
 use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use crate::TransactionFor;
@@ -30,6 +31,7 @@ where
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    state_root_extractor: StateRootExtractorWithSystemDomainClient<Client>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -44,6 +46,7 @@ where
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
+            state_root_extractor: self.state_root_extractor.clone(),
         }
     }
 }
@@ -86,10 +89,11 @@ where
     ) -> Self {
         Self {
             primary_chain_client,
-            client,
+            client: client.clone(),
             backend,
             keystore,
             domain_block_processor,
+            state_root_extractor: StateRootExtractorWithSystemDomainClient::new(client),
         }
     }
 
@@ -264,9 +268,9 @@ where
     fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
-                match verify_xdm_with_primary_chain_client::<PClient, Client, PBlock, Block>(
+                match verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, _>(
                     &self.primary_chain_client,
-                    &self.client,
+                    &self.state_root_extractor,
                     ext,
                 ) {
                     Ok(valid) => valid,

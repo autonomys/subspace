@@ -19,7 +19,7 @@
 #![forbid(unsafe_code, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate core;
+extern crate alloc;
 
 pub mod digests;
 pub mod inherents;
@@ -28,6 +28,8 @@ pub mod offence;
 mod tests;
 
 use crate::digests::{CompatibleDigestItem, PreDigest};
+use alloc::borrow::Cow;
+use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use core::time::Duration;
@@ -39,7 +41,10 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem};
+use sp_runtime_interface::pass_by::PassBy;
+use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, SegmentIndex,
     Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
@@ -334,6 +339,81 @@ impl ChainConstants {
     }
 }
 
+/// Wrapped solution for the purposes of runtime interface.
+#[derive(Debug, Encode, Decode)]
+pub struct WrappedSolution(Solution<FarmerPublicKey, ()>);
+
+impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedSolution {
+    fn from(solution: &Solution<FarmerPublicKey, RewardAddress>) -> Self {
+        Self(Solution {
+            public_key: solution.public_key.clone(),
+            reward_address: (),
+            sector_index: solution.sector_index,
+            total_pieces: solution.total_pieces,
+            piece_offset: solution.piece_offset,
+            piece_record_hash: solution.piece_record_hash,
+            piece_witness: solution.piece_witness,
+            chunk_offset: solution.chunk_offset,
+            chunk: solution.chunk,
+            chunk_signature: solution.chunk_signature,
+        })
+    }
+}
+
+impl PassBy for WrappedSolution {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+/// Wrapped solution verification parameters for the purposes of runtime interface.
+#[derive(Debug, Encode, Decode)]
+pub struct WrappedVerifySolutionParams<'a>(Cow<'a, VerifySolutionParams>);
+
+impl<'a> From<&'a VerifySolutionParams> for WrappedVerifySolutionParams<'a> {
+    fn from(value: &'a VerifySolutionParams) -> Self {
+        Self(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+#[cfg(feature = "std")]
+sp_externalities::decl_extension! {
+    /// A KZG extension.
+    pub struct KzgExtension(Kzg);
+}
+
+#[cfg(feature = "std")]
+impl KzgExtension {
+    /// Create new instance.
+    pub fn new(kzg: Kzg) -> Self {
+        Self(kzg)
+    }
+}
+
+/// Consensus-related runtime interface
+#[runtime_interface]
+pub trait Consensus {
+    /// Verify whether solution is valid.
+    fn verify_solution(
+        &mut self,
+        solution: WrappedSolution,
+        slot: u64,
+        params: WrappedVerifySolutionParams<'_>,
+    ) -> Result<(), String> {
+        use sp_externalities::ExternalitiesExt;
+
+        let kzg = &self
+            .extension::<KzgExtension>()
+            .expect("No `KzgExtension` associated for the current context!")
+            .0;
+
+        subspace_verification::verify_solution(&solution.0, slot, &params.0, Some(kzg))
+            .map_err(|error| error.to_string())
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
@@ -435,7 +515,7 @@ where
     /// The slot number of the current time.
     pub slot_now: Slot,
     /// Parameters for solution verification
-    pub verify_solution_params: VerifySolutionParams<'a>,
+    pub verify_solution_params: &'a VerifySolutionParams,
     /// Signing context for reward signature
     pub reward_signing_context: &'a SigningContext,
 }
@@ -459,9 +539,12 @@ pub struct VerifiedHeaderInfo<RewardAddress> {
 ///
 /// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
 /// it from the header twice.
+///
+/// KZG needs to be provided if [`VerifySolutionParams::piece_check_params`] is not `None`.
 pub fn check_header<Header, RewardAddress>(
     params: VerificationParams<Header>,
     pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
+    kzg: Option<&Kzg>,
 ) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
 where
     Header: HeaderT,
@@ -511,8 +594,13 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(&pre_digest.solution, slot.into(), verify_solution_params)
-        .map_err(|error| VerificationError::VerificationError(slot, error))?;
+    verify_solution(
+        &pre_digest.solution,
+        slot.into(),
+        verify_solution_params,
+        kzg,
+    )
+    .map_err(|error| VerificationError::VerificationError(slot, error))?;
 
     Ok(CheckedHeader::Checked(
         header,

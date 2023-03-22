@@ -254,6 +254,9 @@ where
                 VerificationPrimitiveError::InvalidSolutionSignature(err) => {
                     Error::BadSolutionSignature(slot, err)
                 }
+                VerificationPrimitiveError::MissingKzgInstance => {
+                    unreachable!("Implementation bug");
+                }
             },
         }
     }
@@ -674,14 +677,15 @@ where
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
-                    verify_solution_params: VerifySolutionParams {
-                        global_randomness: &subspace_digest_items.global_randomness,
+                    verify_solution_params: &VerifySolutionParams {
+                        global_randomness: subspace_digest_items.global_randomness,
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
                     reward_signing_context: &self.reward_signing_context,
                 },
                 Some(pre_digest),
+                None,
             )
             .map_err(Error::<Block::Header>::from)?
         };

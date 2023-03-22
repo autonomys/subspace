@@ -28,16 +28,17 @@ use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-use sp_consensus_subspace::{FarmerSignature, SignedVote, Vote};
+use sp_consensus_subspace::{FarmerSignature, KzgExtension, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::H256;
+use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
+use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
@@ -230,20 +231,27 @@ pub fn make_pre_digest(
     Digest { logs: vec![log] }
 }
 
-pub fn new_test_ext() -> sp_io::TestExternalities {
+pub fn new_test_ext() -> TestExternalities {
     static INITIALIZE_LOGGER: Once = Once::new();
     INITIALIZE_LOGGER.call_once(|| {
         let _ = env_logger::try_init_from_env(env_logger::Env::new().default_filter_or("error"));
     });
 
-    let mut t = frame_system::GenesisConfig::default()
+    let mut storage = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
 
-    GenesisBuild::<Test>::assimilate_storage(&pallet_subspace::GenesisConfig::default(), &mut t)
-        .unwrap();
+    GenesisBuild::<Test>::assimilate_storage(
+        &pallet_subspace::GenesisConfig::default(),
+        &mut storage,
+    )
+    .unwrap();
 
-    t.into()
+    let mut ext = TestExternalities::from(storage);
+
+    ext.register_extension(KzgExtension::new(Kzg::new(test_public_parameters())));
+
+    ext
 }
 
 /// Creates an equivocation at the current block, by generating two headers.

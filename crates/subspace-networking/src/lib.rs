@@ -33,7 +33,8 @@ mod shared;
 pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
-    BootstrappedNetworkingParameters, NetworkingParametersManager,
+    BootstrappedNetworkingParameters, NetworkParametersPersistenceError,
+    NetworkingParametersManager, ParityDbError,
 };
 pub use crate::node::{
     CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
@@ -43,10 +44,7 @@ pub use crate::node_runner::NodeRunner;
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage,
 };
-pub use create::{
-    create, peer_id, Config, CreationError, RelayMode,
-    SWARM_PENDING_TO_ESTABLISHED_CONNECTIONS_FACTOR,
-};
+pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{

@@ -1,4 +1,4 @@
-use crate::mock::{Header, MockStorage};
+use crate::mock::{new_test_ext, Header, MockStorage};
 use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
     NumberOf, Storage, StorageBound,
@@ -480,755 +480,783 @@ fn ensure_finalized_heads_have_no_forks(store: &MockStorage, finalized_number: N
 
 #[test]
 fn test_header_import_missing_parent() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let constants = default_test_constants();
-    let (mut store, _genesis_hash) = initialize_store(constants, true, None);
-    let randomness = default_randomness();
-    let (header, _, segment_index, records_root) = valid_header(ValidHeaderParams {
-        parent_hash: Default::default(),
-        number: 1,
-        slot: 1,
-        keypair: &keypair,
-        randomness,
-        farmer: &farmer,
+        let constants = default_test_constants();
+        let (mut store, _genesis_hash) = initialize_store(constants, true, None);
+        let randomness = default_randomness();
+        let (header, _, segment_index, records_root) = valid_header(ValidHeaderParams {
+            parent_hash: Default::default(),
+            number: 1,
+            slot: 1,
+            keypair: &keypair,
+            randomness,
+            farmer: &farmer,
+        });
+        store.store_records_root(segment_index, records_root);
+        let mut importer = HeaderImporter::new(store);
+        assert_err!(
+            importer.import_header(header.clone()),
+            ImportError::MissingParent(header.hash())
+        );
     });
-    store.store_records_root(segment_index, records_root);
-    let mut importer = HeaderImporter::new(store);
-    assert_err!(
-        importer.import_header(header.clone()),
-        ImportError::MissingParent(header.hash())
-    );
 }
 
 #[test]
 fn test_header_import_non_canonical() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let constants = default_test_constants();
-    let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_2);
+        let constants = default_test_constants();
+        let (store, _genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_2);
 
-    // import canonical block 3
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_3);
-    let best_header = importer.store.header(hash_of_3).unwrap();
-    assert_eq!(importer.store.headers_at_number(3).len(), 1);
+        // import canonical block 3
+        let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_3);
+        let best_header = importer.store.header(hash_of_3).unwrap();
+        assert_eq!(importer.store.headers_at_number(3).len(), 1);
 
-    // import non canonical block 3
-    add_headers_to_chain(
-        &mut importer,
-        &keypair,
-        1,
-        Some(ForkAt {
-            parent_hash: hash_of_2,
-            is_best: Some(false),
-        }),
-        &farmer,
-    );
+        // import non canonical block 3
+        add_headers_to_chain(
+            &mut importer,
+            &keypair,
+            1,
+            Some(ForkAt {
+                parent_hash: hash_of_2,
+                is_best: Some(false),
+            }),
+            &farmer,
+        );
 
-    let best_header_ext = importer.store.best_header();
-    assert_eq!(best_header_ext.header, best_header.header);
-    // we still track the forks
-    assert_eq!(importer.store.headers_at_number(3).len(), 2);
+        let best_header_ext = importer.store.best_header();
+        assert_eq!(best_header_ext.header, best_header.header);
+        // we still track the forks
+        assert_eq!(importer.store.headers_at_number(3).len(), 2);
+    });
 }
 
 #[test]
 fn test_header_import_canonical() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let constants = default_test_constants();
-    let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_5);
+        let constants = default_test_constants();
+        let (store, _genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_5);
 
-    // import some more canonical blocks
-    let hash_of_25 = add_headers_to_chain(&mut importer, &keypair, 20, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_25);
-    assert_eq!(importer.store.headers_at_number(25).len(), 1);
+        // import some more canonical blocks
+        let hash_of_25 = add_headers_to_chain(&mut importer, &keypair, 20, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_25);
+        assert_eq!(importer.store.headers_at_number(25).len(), 1);
+    });
 }
 
 #[test]
 fn test_header_import_non_canonical_with_equal_block_weight() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let constants = default_test_constants();
-    let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_2);
+        let constants = default_test_constants();
+        let (store, _genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        let hash_of_2 = add_headers_to_chain(&mut importer, &keypair, 2, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_2);
 
-    // import canonical block 3
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_3);
-    let best_header = importer.store.header(hash_of_3).unwrap();
-    assert_eq!(importer.store.headers_at_number(3).len(), 1);
+        // import canonical block 3
+        let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_3);
+        let best_header = importer.store.header(hash_of_3).unwrap();
+        assert_eq!(importer.store.headers_at_number(3).len(), 1);
 
-    // import non canonical block 3
-    add_headers_to_chain(
-        &mut importer,
-        &keypair,
-        1,
-        Some(ForkAt {
-            parent_hash: hash_of_2,
-            is_best: None,
-        }),
-        &farmer,
-    );
+        // import non canonical block 3
+        add_headers_to_chain(
+            &mut importer,
+            &keypair,
+            1,
+            Some(ForkAt {
+                parent_hash: hash_of_2,
+                is_best: None,
+            }),
+            &farmer,
+        );
 
-    let best_header_ext = importer.store.best_header();
-    assert_eq!(best_header_ext.header, best_header.header);
-    // we still track the forks
-    assert_eq!(importer.store.headers_at_number(3).len(), 2);
+        let best_header_ext = importer.store.best_header();
+        assert_eq!(best_header_ext.header, best_header.header);
+        // we still track the forks
+        assert_eq!(importer.store.headers_at_number(3).len(), 2);
+    });
 }
 
 #[test]
 fn test_chain_reorg_to_longer_chain() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.k_depth = 4;
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.k_depth = 4;
+        let (store, genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_4);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_4);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    // create a fork chain of 4 headers from number 1
-    add_headers_to_chain(
-        &mut importer,
-        &keypair,
-        4,
-        Some(ForkAt {
-            parent_hash: genesis_hash,
-            is_best: Some(false),
-        }),
-        &farmer,
-    );
-    assert_eq!(best_header.header.hash(), hash_of_4);
-    // block 0 is still finalized
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
-    ensure_finalized_heads_have_no_forks(&importer.store, 0);
+        // create a fork chain of 4 headers from number 1
+        add_headers_to_chain(
+            &mut importer,
+            &keypair,
+            4,
+            Some(ForkAt {
+                parent_hash: genesis_hash,
+                is_best: Some(false),
+            }),
+            &farmer,
+        );
+        assert_eq!(best_header.header.hash(), hash_of_4);
+        // block 0 is still finalized
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
+        ensure_finalized_heads_have_no_forks(&importer.store, 0);
 
-    // add new best header at 5
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_5);
+        // add new best header at 5
+        let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 1, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_5);
 
-    // block 1 should be finalized
-    assert_eq!(importer.store.finalized_header().header.number, 1);
-    ensure_finalized_heads_have_no_forks(&importer.store, 1);
+        // block 1 should be finalized
+        assert_eq!(importer.store.finalized_header().header.number, 1);
+        ensure_finalized_heads_have_no_forks(&importer.store, 1);
 
-    // create a fork chain from number 5 with block until 8
-    let fork_hash_of_8 = add_headers_to_chain(
-        &mut importer,
-        &keypair,
-        4,
-        Some(ForkAt {
-            parent_hash: hash_of_4,
-            is_best: Some(false),
-        }),
-        &farmer,
-    );
+        // create a fork chain from number 5 with block until 8
+        let fork_hash_of_8 = add_headers_to_chain(
+            &mut importer,
+            &keypair,
+            4,
+            Some(ForkAt {
+                parent_hash: hash_of_4,
+                is_best: Some(false),
+            }),
+            &farmer,
+        );
 
-    // best header should still be the same
-    assert_eq!(best_header.header, importer.store.best_header().header);
+        // best header should still be the same
+        assert_eq!(best_header.header, importer.store.best_header().header);
 
-    // there must be 2 heads at 5
-    assert_eq!(importer.store.headers_at_number(5).len(), 2);
+        // there must be 2 heads at 5
+        assert_eq!(importer.store.headers_at_number(5).len(), 2);
 
-    // block 1 should be finalized
-    assert_eq!(importer.store.finalized_header().header.number, 1);
-    ensure_finalized_heads_have_no_forks(&importer.store, 1);
+        // block 1 should be finalized
+        assert_eq!(importer.store.finalized_header().header.number, 1);
+        ensure_finalized_heads_have_no_forks(&importer.store, 1);
 
-    // import a new head to the fork chain and make it the best.
-    let hash_of_9 = add_headers_to_chain(
-        &mut importer,
-        &keypair,
-        1,
-        Some(ForkAt {
-            parent_hash: fork_hash_of_8,
-            is_best: Some(true),
-        }),
-        &farmer,
-    );
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_9);
+        // import a new head to the fork chain and make it the best.
+        let hash_of_9 = add_headers_to_chain(
+            &mut importer,
+            &keypair,
+            1,
+            Some(ForkAt {
+                parent_hash: fork_hash_of_8,
+                is_best: Some(true),
+            }),
+            &farmer,
+        );
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_9);
 
-    // now the finalized header must be 5
-    ensure_finalized_heads_have_no_forks(&importer.store, 5)
+        // now the finalized header must be 5
+        ensure_finalized_heads_have_no_forks(&importer.store, 5);
+    });
 }
 
 #[test]
 fn test_reorg_to_heavier_smaller_chain() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.k_depth = 4;
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.k_depth = 4;
+        let (store, genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_5);
-    assert_eq!(importer.store.finalized_header().header.number, 1);
+        let hash_of_5 = add_headers_to_chain(&mut importer, &keypair, 5, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_5);
+        assert_eq!(importer.store.finalized_header().header.number, 1);
 
-    // header count at the finalized head must be 1
-    ensure_finalized_heads_have_no_forks(&importer.store, 1);
+        // header count at the finalized head must be 1
+        ensure_finalized_heads_have_no_forks(&importer.store, 1);
 
-    // now import a fork header 3 that becomes canonical
-    let constants = importer.store.chain_constants();
-    let header_at_2 = importer
-        .store
-        .headers_at_number(2)
-        .first()
-        .cloned()
-        .unwrap();
-    let digests_at_2 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_2.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_2.header.hash(),
-            number: 3,
-            slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_2.global_randomness,
-            farmer: &farmer,
-        });
-    seal_header(&keypair, &mut header);
-    let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
-        extract_subspace_digest_items(&header).unwrap();
-    let sector_id = SectorId::new(
-        &(&digests.pre_digest.solution.public_key).into(),
-        digests.pre_digest.solution.sector_index,
-    );
-    let new_weight =
-        HeaderImporter::<Header, MockStorage>::calculate_block_weight(&sector_id, &digests);
-    importer
-        .store
-        .override_solution_range(header_at_2.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(importer.store.best_header().header.hash(), new_weight - 1);
-    // override parent weight to 0
-    importer
-        .store
-        .override_cumulative_weight(header_at_2.header.hash(), 0);
-    let res = importer.import_header(header);
-    assert_err!(res, ImportError::SwitchedToForkBelowArchivingDepth)
+        // now import a fork header 3 that becomes canonical
+        let constants = importer.store.chain_constants();
+        let header_at_2 = importer
+            .store
+            .headers_at_number(2)
+            .first()
+            .cloned()
+            .unwrap();
+        let digests_at_2 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_2.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_2.header.hash(),
+                number: 3,
+                slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_2.global_randomness,
+                farmer: &farmer,
+            });
+        seal_header(&keypair, &mut header);
+        let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
+            extract_subspace_digest_items(&header).unwrap();
+        let sector_id = SectorId::new(
+            &(&digests.pre_digest.solution.public_key).into(),
+            digests.pre_digest.solution.sector_index,
+        );
+        let new_weight =
+            HeaderImporter::<Header, MockStorage>::calculate_block_weight(&sector_id, &digests);
+        importer
+            .store
+            .override_solution_range(header_at_2.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(importer.store.best_header().header.hash(), new_weight - 1);
+        // override parent weight to 0
+        importer
+            .store
+            .override_cumulative_weight(header_at_2.header.hash(), 0);
+        let res = importer.import_header(header);
+        assert_err!(res, ImportError::SwitchedToForkBelowArchivingDepth);
+    });
 }
 
 #[test]
 fn test_next_global_randomness_digest() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.global_randomness_interval = 5;
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.global_randomness_interval = 5;
+        let (store, genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
-    // try to import header with out next global randomness
-    let constants = importer.store.chain_constants();
-    let header_at_4 = importer.store.header(hash_of_4).unwrap();
-    let digests_at_4 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_4.header,
+        // try to import header with out next global randomness
+        let constants = importer.store.chain_constants();
+        let header_at_4 = importer.store.header(hash_of_4).unwrap();
+        let digests_at_4 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_4.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_4.header.hash(),
+                number: 5,
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_4.global_randomness,
+                farmer: &farmer,
+            });
+        seal_header(&keypair, &mut header);
+        importer
+            .store
+            .override_solution_range(header_at_4.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_4.header.hash(), 0);
+        let res = importer.import_header(header.clone());
+        assert_err!(
+            res,
+            ImportError::DigestError(DigestError::NextDigestVerificationError(
+                ErrorDigestType::NextGlobalRandomness
+            ))
+        );
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+
+        // add next global randomness
+        remove_seal(&mut header);
+        let pre_digest = extract_pre_digest(&header).unwrap();
+        let randomness = derive_randomness(
+            &PublicKey::from(&pre_digest.solution.public_key),
+            &pre_digest.solution.chunk.to_bytes(),
+            &pre_digest.solution.chunk_signature,
         )
         .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_4.header.hash(),
-            number: 5,
-            slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_4.global_randomness,
-            farmer: &farmer,
-        });
-    seal_header(&keypair, &mut header);
-    importer
-        .store
-        .override_solution_range(header_at_4.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_4.header.hash(), 0);
-    let res = importer.import_header(header.clone());
-    assert_err!(
-        res,
-        ImportError::DigestError(DigestError::NextDigestVerificationError(
-            ErrorDigestType::NextGlobalRandomness
-        ))
-    );
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
-
-    // add next global randomness
-    remove_seal(&mut header);
-    let pre_digest = extract_pre_digest(&header).unwrap();
-    let randomness = derive_randomness(
-        &PublicKey::from(&pre_digest.solution.public_key),
-        &pre_digest.solution.chunk.to_bytes(),
-        &pre_digest.solution.chunk_signature,
-    )
-    .unwrap();
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_global_randomness(randomness));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    assert_eq!(importer.store.best_header().header.hash(), header.hash());
+        let digests = header.digest_mut();
+        digests.push(DigestItem::next_global_randomness(randomness));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        assert_eq!(importer.store.best_header().header.hash(), header.hash());
+    });
 }
 
 #[test]
 fn test_next_solution_range_digest_with_adjustment_enabled() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.era_duration = 5;
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.era_duration = 5;
+        let (store, genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
-    // try to import header with out next global randomness
-    let constants = importer.store.chain_constants();
-    let header_at_4 = importer.store.header(hash_of_4).unwrap();
-    let digests_at_4 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_4.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_4.header.hash(),
-            number: 5,
-            slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_4.global_randomness,
-            farmer: &farmer,
-        });
-    seal_header(&keypair, &mut header);
-    importer
-        .store
-        .override_solution_range(header_at_4.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_4.header.hash(), 0);
-    let pre_digest = extract_pre_digest(&header).unwrap();
-    let res = importer.import_header(header.clone());
-    assert_err!(
-        res,
-        ImportError::DigestError(DigestError::NextDigestVerificationError(
-            ErrorDigestType::NextSolutionRange
-        ))
-    );
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        // try to import header with out next global randomness
+        let constants = importer.store.chain_constants();
+        let header_at_4 = importer.store.header(hash_of_4).unwrap();
+        let digests_at_4 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_4.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_4.header.hash(),
+                number: 5,
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_4.global_randomness,
+                farmer: &farmer,
+            });
+        seal_header(&keypair, &mut header);
+        importer
+            .store
+            .override_solution_range(header_at_4.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_4.header.hash(), 0);
+        let pre_digest = extract_pre_digest(&header).unwrap();
+        let res = importer.import_header(header.clone());
+        assert_err!(
+            res,
+            ImportError::DigestError(DigestError::NextDigestVerificationError(
+                ErrorDigestType::NextSolutionRange
+            ))
+        );
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
-    // add next solution range
-    remove_seal(&mut header);
-    let next_solution_range = subspace_verification::derive_next_solution_range(
-        u64::from(header_at_4.era_start_slot),
-        u64::from(pre_digest.slot),
-        constants.slot_probability,
-        solution_range,
-        constants.era_duration,
-    );
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_solution_range(next_solution_range));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    assert_eq!(importer.store.best_header().header.hash(), header.hash());
+        // add next solution range
+        remove_seal(&mut header);
+        let next_solution_range = subspace_verification::derive_next_solution_range(
+            u64::from(header_at_4.era_start_slot),
+            u64::from(pre_digest.slot),
+            constants.slot_probability,
+            solution_range,
+            constants.era_duration,
+        );
+        let digests = header.digest_mut();
+        digests.push(DigestItem::next_solution_range(next_solution_range));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        assert_eq!(importer.store.best_header().header.hash(), header.hash());
+    });
 }
 
 #[test]
 fn test_next_solution_range_digest_with_adjustment_disabled() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.era_duration = 5;
-    let (store, genesis_hash) = initialize_store(constants, false, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.era_duration = 5;
+        let (store, genesis_hash) = initialize_store(constants, false, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
-    // try to import header with out next global randomness
-    let constants = importer.store.chain_constants();
-    let header_at_4 = importer.store.header(hash_of_4).unwrap();
-    let digests_at_4 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_4.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_4.header.hash(),
-            number: 5,
-            slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_4.global_randomness,
-            farmer: &farmer,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_4.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_4.header.hash(), 0);
+        // try to import header with out next global randomness
+        let constants = importer.store.chain_constants();
+        let header_at_4 = importer.store.header(hash_of_4).unwrap();
+        let digests_at_4 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_4.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_4.header.hash(),
+                number: 5,
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_4.global_randomness,
+                farmer: &farmer,
+            });
+        importer
+            .store
+            .override_solution_range(header_at_4.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_4.header.hash(), 0);
 
-    // since solution range adjustment is disabled
-    // current solution range is used as next
-    let next_solution_range = solution_range;
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_solution_range(next_solution_range));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    assert_eq!(importer.store.best_header().header.hash(), header.hash());
-    assert!(!importer.store.best_header().should_adjust_solution_range);
+        // since solution range adjustment is disabled
+        // current solution range is used as next
+        let next_solution_range = solution_range;
+        let digests = header.digest_mut();
+        digests.push(DigestItem::next_solution_range(next_solution_range));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        assert_eq!(importer.store.best_header().header.hash(), header.hash());
+        assert!(!importer.store.best_header().should_adjust_solution_range);
+    });
 }
 
 #[test]
 fn test_enable_solution_range_adjustment_without_override() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.era_duration = 5;
-    let (store, genesis_hash) = initialize_store(constants, false, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.era_duration = 5;
+        let (store, genesis_hash) = initialize_store(constants, false, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
-    // solution range adjustment is disabled
-    assert!(!importer.store.best_header().should_adjust_solution_range);
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        // solution range adjustment is disabled
+        assert!(!importer.store.best_header().should_adjust_solution_range);
 
-    // enable solution range adjustment in this header
-    let constants = importer.store.chain_constants();
-    let header_at_4 = importer.store.header(hash_of_4).unwrap();
-    let digests_at_4 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_4.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_4.header.hash(),
-            number: 5,
-            slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_4.global_randomness,
-            farmer: &farmer,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_4.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_4.header.hash(), 0);
-    let pre_digest = extract_pre_digest(&header).unwrap();
-    let next_solution_range = subspace_verification::derive_next_solution_range(
-        u64::from(header_at_4.era_start_slot),
-        u64::from(pre_digest.slot),
-        constants.slot_probability,
-        solution_range,
-        constants.era_duration,
-    );
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_solution_range(next_solution_range));
-    digests.push(DigestItem::enable_solution_range_adjustment_and_override(
-        None,
-    ));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    assert_eq!(importer.store.best_header().header.hash(), header.hash());
-    assert!(importer.store.best_header().should_adjust_solution_range);
-    assert_eq!(header_at_4.maybe_current_solution_range_override, None);
-    assert_eq!(header_at_4.maybe_next_solution_range_override, None);
+        // enable solution range adjustment in this header
+        let constants = importer.store.chain_constants();
+        let header_at_4 = importer.store.header(hash_of_4).unwrap();
+        let digests_at_4 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_4.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_4.header.hash(),
+                number: 5,
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_4.global_randomness,
+                farmer: &farmer,
+            });
+        importer
+            .store
+            .override_solution_range(header_at_4.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_4.header.hash(), 0);
+        let pre_digest = extract_pre_digest(&header).unwrap();
+        let next_solution_range = subspace_verification::derive_next_solution_range(
+            u64::from(header_at_4.era_start_slot),
+            u64::from(pre_digest.slot),
+            constants.slot_probability,
+            solution_range,
+            constants.era_duration,
+        );
+        let digests = header.digest_mut();
+        digests.push(DigestItem::next_solution_range(next_solution_range));
+        digests.push(DigestItem::enable_solution_range_adjustment_and_override(
+            None,
+        ));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        assert_eq!(importer.store.best_header().header.hash(), header.hash());
+        assert!(importer.store.best_header().should_adjust_solution_range);
+        assert_eq!(header_at_4.maybe_current_solution_range_override, None);
+        assert_eq!(header_at_4.maybe_next_solution_range_override, None);
+    });
 }
 
 #[test]
 fn test_enable_solution_range_adjustment_with_override_between_update_intervals() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.era_duration = 5;
-    let (store, genesis_hash) = initialize_store(constants, false, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.era_duration = 5;
+        let (store, genesis_hash) = initialize_store(constants, false, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_3);
-    // solution range adjustment is disabled
-    assert!(!importer.store.best_header().should_adjust_solution_range);
+        let hash_of_3 = add_headers_to_chain(&mut importer, &keypair, 3, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_3);
+        // solution range adjustment is disabled
+        assert!(!importer.store.best_header().should_adjust_solution_range);
 
-    // enable solution range adjustment with override in this header
-    let constants = importer.store.chain_constants();
-    let header_at_3 = importer.store.header(hash_of_3).unwrap();
-    let digests_at_3 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_3.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_3.header.hash(),
-            number: 4,
-            slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_3.global_randomness,
-            farmer: &farmer,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_3.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_3.header.hash(), 0);
-    let digests = header.digest_mut();
-    let solution_range_override = 100;
-    digests.push(DigestItem::enable_solution_range_adjustment_and_override(
-        Some(solution_range_override),
-    ));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    let header_at_4 = importer.store.best_header();
-    assert_eq!(header_at_4.header.hash(), header.hash());
-    assert!(header_at_4.should_adjust_solution_range);
-    // current solution range override and next solution range overrides are updated
-    assert_eq!(
-        header_at_4.maybe_current_solution_range_override,
-        Some(solution_range_override)
-    );
-    assert_eq!(
-        header_at_4.maybe_next_solution_range_override,
-        Some(solution_range_override)
-    );
+        // enable solution range adjustment with override in this header
+        let constants = importer.store.chain_constants();
+        let header_at_3 = importer.store.header(hash_of_3).unwrap();
+        let digests_at_3 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_3.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_3.header.hash(),
+                number: 4,
+                slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_3.global_randomness,
+                farmer: &farmer,
+            });
+        importer
+            .store
+            .override_solution_range(header_at_3.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_3.header.hash(), 0);
+        let digests = header.digest_mut();
+        let solution_range_override = 100;
+        digests.push(DigestItem::enable_solution_range_adjustment_and_override(
+            Some(solution_range_override),
+        ));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        let header_at_4 = importer.store.best_header();
+        assert_eq!(header_at_4.header.hash(), header.hash());
+        assert!(header_at_4.should_adjust_solution_range);
+        // current solution range override and next solution range overrides are updated
+        assert_eq!(
+            header_at_4.maybe_current_solution_range_override,
+            Some(solution_range_override)
+        );
+        assert_eq!(
+            header_at_4.maybe_next_solution_range_override,
+            Some(solution_range_override)
+        );
+    });
 }
 
 #[test]
 fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.era_duration = 5;
-    let (store, genesis_hash) = initialize_store(constants, false, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.era_duration = 5;
+        let (store, genesis_hash) = initialize_store(constants, false, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
-    // solution range adjustment is disabled
-    assert!(!importer.store.best_header().should_adjust_solution_range);
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        // solution range adjustment is disabled
+        assert!(!importer.store.best_header().should_adjust_solution_range);
 
-    // enable solution range adjustment in this header
-    let constants = importer.store.chain_constants();
-    let header_at_4 = importer.store.header(hash_of_4).unwrap();
-    let digests_at_4 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_4.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_4.header.hash(),
-            number: 5,
-            slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_4.global_randomness,
-            farmer: &farmer,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_4.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_4.header.hash(), 0);
-    let solution_range_override = 100;
-    let next_solution_range = solution_range_override;
-    let digests = header.digest_mut();
-    digests.push(DigestItem::next_solution_range(next_solution_range));
-    digests.push(DigestItem::enable_solution_range_adjustment_and_override(
-        Some(solution_range_override),
-    ));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    assert_eq!(importer.store.best_header().header.hash(), header.hash());
-    assert!(importer.store.best_header().should_adjust_solution_range);
-    assert_eq!(header_at_4.maybe_current_solution_range_override, None);
-    assert_eq!(header_at_4.maybe_next_solution_range_override, None);
+        // enable solution range adjustment in this header
+        let constants = importer.store.chain_constants();
+        let header_at_4 = importer.store.header(hash_of_4).unwrap();
+        let digests_at_4 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_4.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_4.header.hash(),
+                number: 5,
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_4.global_randomness,
+                farmer: &farmer,
+            });
+        importer
+            .store
+            .override_solution_range(header_at_4.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_4.header.hash(), 0);
+        let solution_range_override = 100;
+        let next_solution_range = solution_range_override;
+        let digests = header.digest_mut();
+        digests.push(DigestItem::next_solution_range(next_solution_range));
+        digests.push(DigestItem::enable_solution_range_adjustment_and_override(
+            Some(solution_range_override),
+        ));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        assert_eq!(importer.store.best_header().header.hash(), header.hash());
+        assert!(importer.store.best_header().should_adjust_solution_range);
+        assert_eq!(header_at_4.maybe_current_solution_range_override, None);
+        assert_eq!(header_at_4.maybe_next_solution_range_override, None);
+    });
 }
 
 #[test]
 fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_already_enabled() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.era_duration = 5;
-    let (store, genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    assert_eq!(
-        importer.store.finalized_header().header.hash(),
-        genesis_hash
-    );
+        let mut constants = default_test_constants();
+        constants.era_duration = 5;
+        let (store, genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        assert_eq!(
+            importer.store.finalized_header().header.hash(),
+            genesis_hash
+        );
 
-    let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
-    assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
+        let hash_of_4 = add_headers_to_chain(&mut importer, &keypair, 4, None, &farmer);
+        assert_eq!(importer.store.best_header().header.hash(), hash_of_4);
 
-    // try to import header with enable solution range adjustment digest
-    let constants = importer.store.chain_constants();
-    let header_at_4 = importer.store.header(hash_of_4).unwrap();
-    let digests_at_4 =
-        extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
-            &header_at_4.header,
-        )
-        .unwrap();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: header_at_4.header.hash(),
-            number: 5,
-            slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
-            keypair: &keypair,
-            randomness: digests_at_4.global_randomness,
-            farmer: &farmer,
-        });
-    importer
-        .store
-        .override_solution_range(header_at_4.header.hash(), solution_range);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer
-        .store
-        .override_cumulative_weight(header_at_4.header.hash(), 0);
-    let digests = header.digest_mut();
-    digests.push(DigestItem::enable_solution_range_adjustment_and_override(
-        None,
-    ));
-    seal_header(&keypair, &mut header);
-    let res = importer.import_header(header.clone());
-    assert_err!(
-        res,
-        ImportError::DigestError(DigestError::NextDigestVerificationError(
-            ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride
-        ))
-    );
+        // try to import header with enable solution range adjustment digest
+        let constants = importer.store.chain_constants();
+        let header_at_4 = importer.store.header(hash_of_4).unwrap();
+        let digests_at_4 =
+            extract_subspace_digest_items::<_, FarmerPublicKey, FarmerPublicKey, FarmerSignature>(
+                &header_at_4.header,
+            )
+            .unwrap();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: header_at_4.header.hash(),
+                number: 5,
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                keypair: &keypair,
+                randomness: digests_at_4.global_randomness,
+                farmer: &farmer,
+            });
+        importer
+            .store
+            .override_solution_range(header_at_4.header.hash(), solution_range);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer
+            .store
+            .override_cumulative_weight(header_at_4.header.hash(), 0);
+        let digests = header.digest_mut();
+        digests.push(DigestItem::enable_solution_range_adjustment_and_override(
+            None,
+        ));
+        seal_header(&keypair, &mut header);
+        let res = importer.import_header(header.clone());
+        assert_err!(
+            res,
+            ImportError::DigestError(DigestError::NextDigestVerificationError(
+                ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride
+            ))
+        );
+    });
 }
 
 fn ensure_store_is_storage_bounded(headers_to_keep_beyond_k_depth: NumberOf<Header>) {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    constants.k_depth = 7;
-    constants.storage_bound =
-        StorageBound::NumberOfHeaderToKeepBeyondKDepth(headers_to_keep_beyond_k_depth);
-    let (store, _genesis_hash) = initialize_store(constants, true, None);
-    let mut importer = HeaderImporter::new(store);
-    // import some more canonical blocks
-    let hash_of_50 = add_headers_to_chain(&mut importer, &keypair, 50, None, &farmer);
-    let best_header = importer.store.best_header();
-    assert_eq!(best_header.header.hash(), hash_of_50);
+        let mut constants = default_test_constants();
+        constants.k_depth = 7;
+        constants.storage_bound =
+            StorageBound::NumberOfHeaderToKeepBeyondKDepth(headers_to_keep_beyond_k_depth);
+        let (store, _genesis_hash) = initialize_store(constants, true, None);
+        let mut importer = HeaderImporter::new(store);
+        // import some more canonical blocks
+        let hash_of_50 = add_headers_to_chain(&mut importer, &keypair, 50, None, &farmer);
+        let best_header = importer.store.best_header();
+        assert_eq!(best_header.header.hash(), hash_of_50);
 
-    // check storage bound
-    let finalized_head = importer.store.finalized_header();
-    assert_eq!(finalized_head.header.number, 43);
-    // there should be headers at and below (finalized_head - bound - 1)
-    let mut pruned_number = 43 - headers_to_keep_beyond_k_depth - 1;
-    while pruned_number != 0 {
-        assert!(importer.store.headers_at_number(pruned_number).is_empty());
-        pruned_number -= 1;
-    }
+        // check storage bound
+        let finalized_head = importer.store.finalized_header();
+        assert_eq!(finalized_head.header.number, 43);
+        // there should be headers at and below (finalized_head - bound - 1)
+        let mut pruned_number = 43 - headers_to_keep_beyond_k_depth - 1;
+        while pruned_number != 0 {
+            assert!(importer.store.headers_at_number(pruned_number).is_empty());
+            pruned_number -= 1;
+        }
 
-    assert!(importer.store.headers_at_number(0).is_empty());
+        assert!(importer.store.headers_at_number(0).is_empty());
+    });
 }
 
 #[test]
@@ -1248,163 +1276,171 @@ fn test_storage_bound_with_headers_beyond_k_depth_is_more_than_one() {
 
 #[test]
 fn test_block_author_different_farmer() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    let keypair_allowed = Keypair::generate();
-    let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
-    let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
-    let mut importer = HeaderImporter::new(store);
+        let mut constants = default_test_constants();
+        let keypair_allowed = Keypair::generate();
+        let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
+        let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
+        let mut importer = HeaderImporter::new(store);
 
-    // try to import header authored by different farmer
-    let keypair_disallowed = Keypair::generate();
-    let randomness = default_randomness();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: genesis_hash,
-            number: 1,
-            slot: 1,
-            keypair: &keypair_disallowed,
-            randomness,
-            farmer: &farmer,
-        });
-    seal_header(&keypair_disallowed, &mut header);
-    constants.genesis_digest_items.next_solution_range = solution_range;
-    importer.store.override_constants(constants);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer.store.override_cumulative_weight(genesis_hash, 0);
-    let res = importer.import_header(header);
-    assert_err!(
-        res,
-        ImportError::IncorrectBlockAuthor(FarmerPublicKey::unchecked_from(
-            keypair_disallowed.public.to_bytes()
-        ))
-    )
+        // try to import header authored by different farmer
+        let keypair_disallowed = Keypair::generate();
+        let randomness = default_randomness();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: genesis_hash,
+                number: 1,
+                slot: 1,
+                keypair: &keypair_disallowed,
+                randomness,
+                farmer: &farmer,
+            });
+        seal_header(&keypair_disallowed, &mut header);
+        constants.genesis_digest_items.next_solution_range = solution_range;
+        importer.store.override_constants(constants);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer.store.override_cumulative_weight(genesis_hash, 0);
+        let res = importer.import_header(header);
+        assert_err!(
+            res,
+            ImportError::IncorrectBlockAuthor(FarmerPublicKey::unchecked_from(
+                keypair_disallowed.public.to_bytes()
+            ))
+        );
+    });
 }
 
 #[test]
 fn test_block_author_first_farmer() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
-    let (store, genesis_hash) = initialize_store(constants.clone(), true, None);
-    let mut importer = HeaderImporter::new(store);
+        let mut constants = default_test_constants();
+        let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let (store, genesis_hash) = initialize_store(constants.clone(), true, None);
+        let mut importer = HeaderImporter::new(store);
 
-    // try import header with first farmer
-    let randomness = default_randomness();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: genesis_hash,
-            number: 1,
-            slot: 1,
-            keypair: &keypair,
-            randomness,
-            farmer: &farmer,
-        });
-    header
-        .digest
-        .logs
-        .push(DigestItem::root_plot_public_key_update(Some(
-            pub_key.clone(),
-        )));
-    seal_header(&keypair, &mut header);
-    constants.genesis_digest_items.next_solution_range = solution_range;
-    importer.store.override_constants(constants);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer.store.override_cumulative_weight(genesis_hash, 0);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    let best_header = importer.store.best_header();
-    assert_eq!(header.hash(), best_header.header.hash());
-    assert_eq!(best_header.maybe_root_plot_public_key, Some(pub_key))
+        // try import header with first farmer
+        let randomness = default_randomness();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: genesis_hash,
+                number: 1,
+                slot: 1,
+                keypair: &keypair,
+                randomness,
+                farmer: &farmer,
+            });
+        header
+            .digest
+            .logs
+            .push(DigestItem::root_plot_public_key_update(Some(
+                pub_key.clone(),
+            )));
+        seal_header(&keypair, &mut header);
+        constants.genesis_digest_items.next_solution_range = solution_range;
+        importer.store.override_constants(constants);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer.store.override_cumulative_weight(genesis_hash, 0);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        let best_header = importer.store.best_header();
+        assert_eq!(header.hash(), best_header.header.hash());
+        assert_eq!(best_header.maybe_root_plot_public_key, Some(pub_key));
+    });
 }
 
 #[test]
 fn test_block_author_allow_any_farmer() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
-    let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
-    let mut importer = HeaderImporter::new(store);
+        let mut constants = default_test_constants();
+        let pub_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
+        let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
+        let mut importer = HeaderImporter::new(store);
 
-    // try to import header authored by different farmer
-    let randomness = default_randomness();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: genesis_hash,
-            number: 1,
-            slot: 1,
-            keypair: &keypair,
-            randomness,
-            farmer: &farmer,
-        });
-    header
-        .digest
-        .logs
-        .push(DigestItem::root_plot_public_key_update(None));
-    seal_header(&keypair, &mut header);
-    constants.genesis_digest_items.next_solution_range = solution_range;
-    importer.store.override_constants(constants);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer.store.override_cumulative_weight(genesis_hash, 0);
-    let res = importer.import_header(header.clone());
-    assert_ok!(res);
-    let best_header = importer.store.best_header();
-    assert_eq!(header.hash(), best_header.header.hash());
-    assert_eq!(best_header.maybe_root_plot_public_key, None)
+        // try to import header authored by different farmer
+        let randomness = default_randomness();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: genesis_hash,
+                number: 1,
+                slot: 1,
+                keypair: &keypair,
+                randomness,
+                farmer: &farmer,
+            });
+        header
+            .digest
+            .logs
+            .push(DigestItem::root_plot_public_key_update(None));
+        seal_header(&keypair, &mut header);
+        constants.genesis_digest_items.next_solution_range = solution_range;
+        importer.store.override_constants(constants);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer.store.override_cumulative_weight(genesis_hash, 0);
+        let res = importer.import_header(header.clone());
+        assert_ok!(res);
+        let best_header = importer.store.best_header();
+        assert_eq!(header.hash(), best_header.header.hash());
+        assert_eq!(best_header.maybe_root_plot_public_key, None);
+    });
 }
 
 #[test]
 fn test_disallow_root_plot_public_key_override() {
-    let keypair = Keypair::generate();
-    let farmer = Farmer::new(&keypair);
+    new_test_ext().execute_with(|| {
+        let keypair = Keypair::generate();
+        let farmer = Farmer::new(&keypair);
 
-    let mut constants = default_test_constants();
-    let keypair_allowed = Keypair::generate();
-    let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
-    let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
-    let mut importer = HeaderImporter::new(store);
+        let mut constants = default_test_constants();
+        let keypair_allowed = Keypair::generate();
+        let pub_key = FarmerPublicKey::unchecked_from(keypair_allowed.public.to_bytes());
+        let (store, genesis_hash) = initialize_store(constants.clone(), true, Some(pub_key));
+        let mut importer = HeaderImporter::new(store);
 
-    // try to import header that contains root plot public key override
-    let randomness = default_randomness();
-    let (mut header, solution_range, segment_index, records_root) =
-        valid_header(ValidHeaderParams {
-            parent_hash: genesis_hash,
-            number: 1,
-            slot: 1,
-            keypair: &keypair_allowed,
-            randomness,
-            farmer: &farmer,
-        });
-    let keypair_disallowed = Keypair::generate();
-    let pub_key = FarmerPublicKey::unchecked_from(keypair_disallowed.public.to_bytes());
-    header
-        .digest
-        .logs
-        .push(DigestItem::root_plot_public_key_update(Some(pub_key)));
-    seal_header(&keypair_allowed, &mut header);
-    constants.genesis_digest_items.next_solution_range = solution_range;
-    importer.store.override_constants(constants);
-    importer
-        .store
-        .store_records_root(segment_index, records_root);
-    importer.store.override_cumulative_weight(genesis_hash, 0);
-    let res = importer.import_header(header);
-    assert_err!(
-        res,
-        ImportError::DigestError(DigestError::NextDigestVerificationError(
-            ErrorDigestType::RootPlotPublicKeyUpdate
-        ))
-    )
+        // try to import header that contains root plot public key override
+        let randomness = default_randomness();
+        let (mut header, solution_range, segment_index, records_root) =
+            valid_header(ValidHeaderParams {
+                parent_hash: genesis_hash,
+                number: 1,
+                slot: 1,
+                keypair: &keypair_allowed,
+                randomness,
+                farmer: &farmer,
+            });
+        let keypair_disallowed = Keypair::generate();
+        let pub_key = FarmerPublicKey::unchecked_from(keypair_disallowed.public.to_bytes());
+        header
+            .digest
+            .logs
+            .push(DigestItem::root_plot_public_key_update(Some(pub_key)));
+        seal_header(&keypair_allowed, &mut header);
+        constants.genesis_digest_items.next_solution_range = solution_range;
+        importer.store.override_constants(constants);
+        importer
+            .store
+            .store_records_root(segment_index, records_root);
+        importer.store.override_cumulative_weight(genesis_hash, 0);
+        let res = importer.import_header(header);
+        assert_err!(
+            res,
+            ImportError::DigestError(DigestError::NextDigestVerificationError(
+                ErrorDigestType::RootPlotPublicKeyUpdate
+            ))
+        );
+    });
 }
