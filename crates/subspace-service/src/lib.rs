@@ -501,6 +501,18 @@ where
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 
+            node.on_new_listener(Arc::new({
+                let node = node.clone();
+
+                move |address| {
+                    info!(
+                        "DSN listening on {}",
+                        address.clone().with(Protocol::P2p(node.id().into()))
+                    );
+                }
+            }))
+            .detach();
+
             task_manager.spawn_essential_handle().spawn_essential(
                 "node-runner",
                 Some("subspace-networking"),
