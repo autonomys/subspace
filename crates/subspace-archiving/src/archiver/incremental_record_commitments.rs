@@ -7,6 +7,7 @@ use blake2::digest::{FixedOutput, Update};
 use blake2::Blake2b;
 use core::mem;
 use parity_scale_codec::{Encode, Output};
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::Blake2b256Hash;
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
@@ -17,7 +18,7 @@ pub(super) struct IncrementalRecordCommitmentsState {
     ///
     /// NOTE: Until full segment is processed, this will not contain commitment to the first record
     /// since it is not ready yet. This in turn means all commitments will be at `-1` offset.
-    state: VecDeque<Blake2b256Hash>,
+    state: VecDeque<Scalar>,
 }
 
 impl IncrementalRecordCommitmentsState {
@@ -28,7 +29,7 @@ impl IncrementalRecordCommitmentsState {
         }
     }
 
-    pub(super) fn drain(&mut self) -> impl Iterator<Item = Blake2b256Hash> + '_ {
+    pub(super) fn drain(&mut self) -> impl Iterator<Item = Scalar> + '_ {
         self.state.drain(..)
     }
 }
@@ -60,7 +61,7 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
     full: bool,
     /// Intermediate hashing state that computes Blake2-256-254.
     ///
-    /// See [`subspace_core_primitives::crypto::blake2b_256_254_hash`] for details.
+    /// See [`subspace_core_primitives::crypto::blake2b_256_254_hash_to_scalar`] for details.
     hashing_state: Blake2b<U32>,
 }
 
@@ -162,7 +163,10 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
             // little-endian)
             hash[31] &= 0b00111111;
 
-            self.incremental_record_commitments.state.push_back(hash);
+            self.incremental_record_commitments.state.push_back(
+                Scalar::try_from(hash)
+                    .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed"),
+            );
         }
     }
 }

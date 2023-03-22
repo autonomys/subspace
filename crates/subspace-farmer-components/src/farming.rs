@@ -4,7 +4,7 @@ use schnorrkel::Keypair;
 use std::io;
 use std::io::SeekFrom;
 use subspace_core_primitives::crypto::kzg::Witness;
-use subspace_core_primitives::crypto::{blake2b_256_254_hash, ScalarLegacy};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
     Blake2b256Hash, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
@@ -143,7 +143,7 @@ impl EligibleSector {
                 sector_index: self.sector_index,
                 total_pieces: sector_metadata.total_pieces,
                 piece_offset: self.audit_piece_offset,
-                piece_record_hash: blake2b_256_254_hash(&record),
+                piece_record_hash: blake2b_256_254_hash_to_scalar(&record),
                 piece_witness,
                 chunk_offset: offset,
                 chunk,

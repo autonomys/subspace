@@ -7,16 +7,14 @@ mod tests;
 
 extern crate alloc;
 
-use crate::crypto::ScalarLegacy;
+use crate::crypto::Scalar;
 use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
-use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_to_g1_rust, bytes_to_g2_rust};
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
-use blst_from_scratch::types::fr::FsFr;
 use blst_from_scratch::types::g1::FsG1;
 use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use blst_from_scratch::types::poly::FsPoly;
@@ -318,22 +316,11 @@ impl Kzg {
     /// bits of information.
     ///
     /// The resulting polynomial is in coefficient form.
-    pub fn poly(&self, data: &[u8]) -> Result<Polynomial, String> {
-        let evals = data
-            .chunks(ScalarLegacy::FULL_BYTES)
-            .map(|scalar| {
-                FsFr::from_scalar(
-                    scalar
-                        .try_into()
-                        .map_err(|_| "Failed to convert value to scalar".to_string())?,
-                )
-                .map_err(|error_code| {
-                    format!("Failed to create scalar from bytes with code: {error_code}")
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
+    pub fn poly(&self, data: &[Scalar]) -> Result<Polynomial, String> {
         let poly = FsPoly {
-            coeffs: self.get_fft_settings(evals.len())?.fft_fr(&evals, true)?,
+            coeffs: self
+                .get_fft_settings(data.len())?
+                .fft_fr(Scalar::slice_to_repr(data), true)?,
         };
         Ok(Polynomial(poly))
     }
@@ -362,7 +349,7 @@ impl Kzg {
         commitment: &Commitment,
         num_values: usize,
         index: u32,
-        value: &[u8],
+        value: &Scalar,
         witness: &Witness,
     ) -> bool {
         let fft_settings = match self.get_fft_settings(num_values) {
@@ -373,24 +360,10 @@ impl Kzg {
             }
         };
         let x = fft_settings.get_expanded_roots_of_unity_at(index as usize);
-        let value = match value.try_into() {
-            Ok(value) => value,
-            Err(_) => {
-                debug!("Failed to convert value to scalar");
-                return false;
-            }
-        };
-        let value = match FsFr::from_scalar(value) {
-            Ok(value) => value,
-            Err(error_code) => {
-                debug!(error_code, "Failed to create scalar from bytes with code");
-                return false;
-            }
-        };
 
         match self
             .kzg_settings
-            .check_proof_single(&commitment.0, &witness.0, &x, &value)
+            .check_proof_single(&commitment.0, &witness.0, &x, value)
         {
             Ok(result) => result,
             Err(error) => {

@@ -29,14 +29,14 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceRef,
-    RecordsRoot, RootBlock, BLAKE2B_256_HASH_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
+    RecordsRoot, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
@@ -758,24 +758,13 @@ impl Archiver {
                     .as_ref()
                     .chunks_exact(self.record_size as usize)
                     .skip(self.data_shards as usize)
-                    .map(blake2b_256_254_hash),
+                    .map(blake2b_256_254_hash_to_scalar),
             )
             .collect::<Vec<_>>();
 
-        let data = {
-            let mut data = Vec::with_capacity(
-                (self.data_shards + self.parity_shards) as usize * BLAKE2B_256_HASH_SIZE,
-            );
-
-            for shard_commitment in record_commitments {
-                data.extend_from_slice(&shard_commitment);
-            }
-
-            data
-        };
         let polynomial = self
             .kzg
-            .poly(&data)
+            .poly(&record_commitments)
             .expect("Internally produced values must never fail; qed");
         let commitment = self
             .kzg
@@ -846,7 +835,7 @@ pub fn is_piece_valid(
             return false;
         }
     };
-    let leaf_hash = blake2b_256_254_hash(&record);
+    let leaf_hash = blake2b_256_254_hash_to_scalar(&record);
 
     kzg.verify(
         &commitment,
@@ -861,7 +850,7 @@ pub fn is_piece_valid(
 pub fn is_piece_record_hash_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
-    piece_record_hash: &Blake2b256Hash,
+    piece_record_hash: &Scalar,
     commitment: &RecordsRoot,
     witness: &Witness,
     position: u32,

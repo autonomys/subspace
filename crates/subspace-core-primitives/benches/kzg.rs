@@ -1,37 +1,29 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::crypto::ScalarLegacy;
+use subspace_core_primitives::crypto::Scalar;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let data = {
-        // Multiple of 32
-        let mut data = rand::random::<[u8; 256]>();
-
-        // We can only store 254 bits, set last byte to zero because of that
-        data.chunks_exact_mut(ScalarLegacy::FULL_BYTES)
-            .flat_map(|chunk| chunk.iter_mut().last())
-            .for_each(|last_byte| *last_byte = 0);
-
-        data
-    };
+    let values = (0..8)
+        .map(|_| Scalar::from(rand::random::<[u8; Scalar::SAFE_BYTES]>()))
+        .collect::<Vec<_>>();
 
     let kzg = Kzg::new(embedded_kzg_settings());
 
     c.bench_function("create-polynomial", |b| {
         b.iter(|| {
-            kzg.poly(black_box(&data)).unwrap();
+            kzg.poly(black_box(&values)).unwrap();
         })
     });
 
     c.bench_function("commit", |b| {
-        let polynomial = kzg.poly(&data).unwrap();
+        let polynomial = kzg.poly(&values).unwrap();
         b.iter(|| {
             kzg.commit(black_box(&polynomial)).unwrap();
         })
     });
 
     c.bench_function("create-witness", |b| {
-        let polynomial = kzg.poly(&data).unwrap();
+        let polynomial = kzg.poly(&values).unwrap();
 
         b.iter(|| {
             kzg.create_witness(black_box(&polynomial), black_box(0))
@@ -40,13 +32,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 
     c.bench_function("verify", |b| {
-        let polynomial = kzg.poly(&data).unwrap();
+        let polynomial = kzg.poly(&values).unwrap();
         let commitment = kzg.commit(&polynomial).unwrap();
         let index = 0;
         let witness = kzg.create_witness(&polynomial, index).unwrap();
-        let values = data.chunks_exact(ScalarLegacy::FULL_BYTES);
         let num_values = values.len();
-        let value = values.into_iter().next().unwrap();
+        let value = values.first().unwrap();
 
         b.iter(|| {
             kzg.verify(

@@ -39,7 +39,7 @@ use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg, ScalarLegacy};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
     RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
@@ -383,7 +383,7 @@ pub fn create_signed_vote(
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
             piece_offset: 0,
-            piece_record_hash: blake2b_256_254_hash(&piece.record()),
+            piece_record_hash: blake2b_256_254_hash_to_scalar(&piece.record()),
             piece_witness: Witness::try_from_bytes(&piece.witness()).unwrap(),
             chunk_offset: 0,
             chunk,

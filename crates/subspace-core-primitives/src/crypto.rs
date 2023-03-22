@@ -51,6 +51,17 @@ pub fn blake2b_256_254_hash(data: &[u8]) -> Blake2b256Hash {
     hash
 }
 
+/// BLAKE2b-256 hashing of a single value truncated to 254 bits.
+///
+/// TODO: We probably wouldn't need this eventually
+pub fn blake2b_256_254_hash_to_scalar(data: &[u8]) -> Scalar {
+    let mut hash = blake2b_256_hash(data);
+    // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
+    hash[31] &= 0b00111111;
+    Scalar::try_from(hash)
+        .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed")
+}
+
 /// BLAKE2b-256 keyed hashing of a single value.
 ///
 /// PANIC: Panics if key is longer than 64 bytes.

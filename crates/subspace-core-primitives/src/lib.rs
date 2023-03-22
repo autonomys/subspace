@@ -390,7 +390,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Pieces offset within sector
     pub piece_offset: PieceIndex,
     /// Piece commitment that can use used to verify that piece was included in blockchain history
-    pub piece_record_hash: Blake2b256Hash,
+    pub piece_record_hash: Scalar,
     /// Witness for above piece commitment
     pub piece_witness: Witness,
     /// Chunk offset within a piece
@@ -451,7 +451,7 @@ where
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             piece_offset: 0,
-            piece_record_hash: Blake2b256Hash::default(),
+            piece_record_hash: Scalar::default(),
             piece_witness: Witness::default(),
             chunk_offset: 0,
             chunk: ScalarLegacy::default(),
