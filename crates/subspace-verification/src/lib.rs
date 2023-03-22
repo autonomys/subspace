@@ -19,6 +19,7 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use schnorrkel::context::SigningContext;
 use schnorrkel::vrf::VRFOutput;
 use schnorrkel::{SignatureError, SignatureResult};
@@ -113,25 +114,25 @@ pub fn is_within_solution_range(
 }
 
 /// Parameters for checking piece validity
-#[derive(Debug)]
-pub struct PieceCheckParams<'a> {
+#[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
+pub struct PieceCheckParams {
     /// Records root of segment to which piece belongs
-    pub records_root: &'a RecordsRoot,
+    pub records_root: RecordsRoot,
     /// Number of pieces in a segment
     pub pieces_in_segment: u32,
 }
 
 /// Parameters for solution verification
-#[derive(Debug)]
-pub struct VerifySolutionParams<'a> {
+#[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
+pub struct VerifySolutionParams {
     /// Global randomness
-    pub global_randomness: &'a Randomness,
+    pub global_randomness: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Parameters for checking piece validity.
     ///
     /// If `None`, piece validity check will be skipped.
-    pub piece_check_params: Option<PieceCheckParams<'a>>,
+    pub piece_check_params: Option<PieceCheckParams>,
 }
 
 /// Solution verification.
@@ -140,8 +141,8 @@ pub struct VerifySolutionParams<'a> {
 pub fn verify_solution<'a, FarmerPublicKey, RewardAddress>(
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
     slot: u64,
-    params: VerifySolutionParams<'_>,
-    kzg: Option<&Kzg>,
+    params: &'a VerifySolutionParams,
+    kzg: Option<&'a Kzg>,
 ) -> Result<(), Error>
 where
     PublicKey: From<&'a FarmerPublicKey>,
@@ -164,7 +165,7 @@ where
     if !is_within_solution_range(
         local_challenge,
         derive_audit_chunk(&chunk_bytes),
-        solution_range,
+        *solution_range,
     ) {
         return Err(Error::OutsideSolutionRange);
     }
@@ -187,7 +188,7 @@ where
     {
         let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
         let piece_index = sector_id.derive_piece_index(audit_piece_offset, solution.total_pieces);
-        let position = u32::try_from(piece_index % u64::from(pieces_in_segment))
+        let position = u32::try_from(piece_index % u64::from(*pieces_in_segment))
             .expect("Position within segment always fits into u32; qed");
 
         // TODO: Check that chunk belongs to the encoded piece
@@ -197,7 +198,7 @@ where
                 return Err(Error::MissingKzgInstance);
             }
         };
-        check_piece(kzg, pieces_in_segment, records_root, position, solution)?;
+        check_piece(kzg, *pieces_in_segment, records_root, position, solution)?;
     }
 
     Ok(())

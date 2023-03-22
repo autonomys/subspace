@@ -19,7 +19,7 @@ use dusk_plonk::fft::domain::EvaluationDomain;
 use dusk_plonk::fft::evaluations::Evaluations;
 use dusk_plonk::fft::polynomial::Polynomial as PlonkPolynomial;
 use dusk_plonk::prelude::BlsScalar;
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 use scale_info::{Type, TypeInfo};
 
 const TEST_PUBLIC_PARAMETERS: &[u8] = include_bytes!("kzg/test-public-parameters.bin");
@@ -134,6 +134,12 @@ impl Encode for Commitment {
 
 impl EncodeLike for Commitment {}
 
+impl MaxEncodedLen for Commitment {
+    fn max_encoded_len() -> usize {
+        COMMITMENT_SIZE
+    }
+}
+
 impl Decode for Commitment {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
         Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
@@ -224,6 +230,12 @@ impl Encode for Witness {
 }
 
 impl EncodeLike for Witness {}
+
+impl MaxEncodedLen for Witness {
+    fn max_encoded_len() -> usize {
+        COMMITMENT_SIZE
+    }
+}
 
 impl Decode for Witness {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
