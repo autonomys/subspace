@@ -39,17 +39,21 @@ use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
-// The default maximum incoming connection number for the swarm.
+/// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
-// The default maximum incoming connection number for the swarm.
+/// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
+/// The default maximum pending incoming connection number for the swarm.
+const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 50;
+/// The default maximum pending incoming connection number for the swarm.
+const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 50;
 // The default maximum connection number to be maintained for the swarm.
 const SWARM_TARGET_CONNECTION_NUMBER: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
@@ -201,10 +205,14 @@ pub struct Config<ProviderStorage> {
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     pub reserved_peers: Vec<Multiaddr>,
-    /// Incoming swarm connection limit.
+    /// Established incoming swarm connection limit.
     pub max_established_incoming_connections: u32,
-    /// Outgoing swarm connection limit.
+    /// Established outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// Pending incoming swarm connection limit.
+    pub max_pending_incoming_connections: u32,
+    /// Pending outgoing swarm connection limit.
+    pub max_pending_outgoing_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained.
     pub target_connections: u32,
     /// How many temporarily banned unreachable peers to keep in memory.
@@ -299,6 +307,8 @@ where
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            max_pending_incoming_connections: SWARM_MAX_PENDING_INCOMING_CONNECTIONS,
+            max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
@@ -357,6 +367,8 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        max_pending_incoming_connections,
+        max_pending_outgoing_connections,
         target_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
@@ -387,12 +399,16 @@ where
         request_response_protocols,
     });
 
+    let connection_limits = ConnectionLimits::default()
+        .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER)
+        .with_max_pending_incoming(Some(max_pending_incoming_connections))
+        .with_max_pending_outgoing(Some(max_pending_outgoing_connections));
+
+    debug!(?connection_limits, "DSN connection limits set.");
+
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
         .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
-        .connection_limits(
-            ConnectionLimits::default()
-                .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER),
-        )
+        .connection_limits(connection_limits)
         .build();
 
     // Setup listen_on addresses

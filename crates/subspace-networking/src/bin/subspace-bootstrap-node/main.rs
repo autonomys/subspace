@@ -18,11 +18,6 @@ use subspace_networking::{
 };
 use tracing::info;
 
-// The default maximum incoming connections number for the peer.
-const MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 300;
-// The default maximum outgoing connections number for the peer.
-const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 300;
-
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 enum Command {
@@ -39,12 +34,18 @@ enum Command {
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[arg(long, alias = "reserved-peer")]
         reserved_peers: Vec<Multiaddr>,
-        /// Defines max incoming connections limit for the peer.
-        #[arg(long)]
-        in_peers: Option<u32>,
-        /// Defines max outgoing connections limit for the peer.
-        #[arg(long)]
-        out_peers: Option<u32>,
+        /// Defines max established incoming connections limit for the peer.
+        #[arg(long, default_value_t = 300)]
+        in_peers: u32,
+        /// Defines max established outgoing connections limit for the peer.
+        #[arg(long, default_value_t = 300)]
+        out_peers: u32,
+        /// Defines max pending incoming connections limit for the peer.
+        #[arg(long, default_value_t = 300)]
+        pending_in_peers: u32,
+        /// Defines max pending outgoing connections limit for the peer.
+        #[arg(long, default_value_t = 300)]
+        pending_out_peers: u32,
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
         disable_private_ips: bool,
@@ -76,6 +77,8 @@ async fn main() -> anyhow::Result<()> {
             reserved_peers,
             in_peers,
             out_peers,
+            pending_in_peers,
+            pending_out_peers,
             disable_private_ips,
             db_path,
             piece_providers_cache_size,
@@ -122,10 +125,10 @@ async fn main() -> anyhow::Result<()> {
                 listen_on,
                 allow_non_global_addresses_in_dht: !disable_private_ips,
                 reserved_peers,
-                max_established_incoming_connections: in_peers
-                    .unwrap_or(MAX_ESTABLISHED_INCOMING_CONNECTIONS),
-                max_established_outgoing_connections: out_peers
-                    .unwrap_or(MAX_ESTABLISHED_OUTGOING_CONNECTIONS),
+                max_established_incoming_connections: in_peers,
+                max_established_outgoing_connections: out_peers,
+                max_pending_incoming_connections: pending_in_peers,
+                max_pending_outgoing_connections: pending_out_peers,
                 ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
             };
             let (node, mut node_runner) =
