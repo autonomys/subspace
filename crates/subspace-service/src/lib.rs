@@ -22,8 +22,8 @@ pub mod piece_cache;
 pub mod root_blocks;
 pub mod rpc;
 
-use crate::dsn::create_dsn_instance;
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
+use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::piece_cache::PieceCache;
 use crate::root_blocks::{start_root_block_archiver, RootBlockCache};
 use derive_more::{Deref, DerefMut, Into};
@@ -108,7 +108,7 @@ pub enum Error {
 
     /// Subspace networking (DSN) error.
     #[error(transparent)]
-    SubspaceDsn(#[from] subspace_networking::CreationError),
+    SubspaceDsn(#[from] DsnConfigurationError),
 
     /// Other.
     #[error(transparent)]
