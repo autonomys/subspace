@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::crypto::Scalar;
+use crate::crypto::ScalarLegacy;
 use alloc::vec::Vec;
 use ark_bls12_381::Fr;
 use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
@@ -46,11 +46,11 @@ pub struct SectorCodec {
 impl SectorCodec {
     /// Create new instance for sector size (in bytes)
     pub fn new(sector_size: usize) -> Result<Self, SectorCodecError> {
-        if sector_size % Scalar::FULL_BYTES != 0 {
+        if sector_size % ScalarLegacy::FULL_BYTES != 0 {
             return Err(SectorCodecError::WrongSectorSize);
         }
 
-        let sector_size_in_scalars = sector_size / Scalar::FULL_BYTES;
+        let sector_size_in_scalars = sector_size / ScalarLegacy::FULL_BYTES;
 
         if sector_size_in_scalars == 0 || !sector_size_in_scalars.is_power_of_two() {
             return Err(SectorCodecError::WrongSectorSize);
@@ -72,11 +72,11 @@ impl SectorCodec {
     /// Data layout is expected to be flat pieces one after another, each piece is a column. The
     /// size of the sector should be equal to the global protocol parameters or else encoding will
     /// fail.
-    pub fn encode(&self, sector: &mut [Scalar]) -> Result<(), SectorCodecError> {
+    pub fn encode(&self, sector: &mut [ScalarLegacy]) -> Result<(), SectorCodecError> {
         if sector.len() != self.sector_size_in_scalars {
             return Err(SectorCodecError::WrongInputSectorSize {
-                expected: self.sector_size_in_scalars * Scalar::FULL_BYTES,
-                actual: sector.len() * Scalar::FULL_BYTES,
+                expected: self.sector_size_in_scalars * ScalarLegacy::FULL_BYTES,
+                actual: sector.len() * ScalarLegacy::FULL_BYTES,
             });
         }
 
@@ -103,7 +103,7 @@ impl SectorCodec {
                 .skip(row_index)
                 .step_by(self.sector_side_size_in_scalars)
                 .zip(row.iter())
-                .for_each(|(output, input)| *output = Scalar(*input));
+                .for_each(|(output, input)| *output = ScalarLegacy(*input));
 
             // Clear for next iteration of the loop
             row.clear();
@@ -115,11 +115,11 @@ impl SectorCodec {
     /// Decode sector in place.
     ///
     /// Data layout is the same as in encoding.
-    pub fn decode(&self, sector: &mut [Scalar]) -> Result<(), SectorCodecError> {
+    pub fn decode(&self, sector: &mut [ScalarLegacy]) -> Result<(), SectorCodecError> {
         if sector.len() != self.sector_size_in_scalars {
             return Err(SectorCodecError::WrongInputSectorSize {
-                expected: self.sector_size_in_scalars * Scalar::FULL_BYTES,
-                actual: sector.len() * Scalar::FULL_BYTES,
+                expected: self.sector_size_in_scalars * ScalarLegacy::FULL_BYTES,
+                actual: sector.len() * ScalarLegacy::FULL_BYTES,
             });
         }
 
@@ -148,7 +148,7 @@ impl SectorCodec {
                     .skip(row_index)
                     .step_by(self.sector_side_size_in_scalars)
                     .zip(row.iter())
-                    .for_each(|(output, input)| *output = Scalar(*input));
+                    .for_each(|(output, input)| *output = ScalarLegacy(*input));
 
                 // Clear for next iteration of the loop
                 row.clear();
@@ -183,7 +183,7 @@ impl SectorCodec {
                     .skip(row_index)
                     .step_by(self.sector_side_size_in_scalars)
                     .zip(row)
-                    .for_each(|(output, input)| *output = Scalar(input));
+                    .for_each(|(output, input)| *output = ScalarLegacy(input));
             }
         }
 

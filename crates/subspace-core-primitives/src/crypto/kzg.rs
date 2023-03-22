@@ -7,7 +7,7 @@ mod tests;
 
 extern crate alloc;
 
-use crate::crypto::Scalar;
+use crate::crypto::ScalarLegacy;
 use alloc::collections::btree_map::Entry;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -320,7 +320,7 @@ impl Kzg {
     /// The resulting polynomial is in coefficient form.
     pub fn poly(&self, data: &[u8]) -> Result<Polynomial, String> {
         let evals = data
-            .chunks(Scalar::FULL_BYTES)
+            .chunks(ScalarLegacy::FULL_BYTES)
             .map(|scalar| {
                 FsFr::from_scalar(
                     scalar

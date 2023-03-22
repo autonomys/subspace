@@ -1,6 +1,6 @@
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::ScalarLegacy;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{Piece, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
 use tracing::warn;
@@ -96,29 +96,29 @@ pub(super) fn read_piece(
             [..PLOT_SECTOR_SIZE as usize];
 
         let mut sector_bytes_scalars = sector_bytes
-            .chunks_exact(Scalar::FULL_BYTES)
+            .chunks_exact(ScalarLegacy::FULL_BYTES)
             .map(|bytes| {
-                Scalar::from(
-                    <&[u8; Scalar::FULL_BYTES]>::try_from(bytes)
+                ScalarLegacy::from(
+                    <&[u8; ScalarLegacy::FULL_BYTES]>::try_from(bytes)
                         .expect("Chunked into scalar full bytes above; qed"),
                 )
             })
             .collect::<Vec<_>>();
         sector_codec.decode(&mut sector_bytes_scalars).ok()?;
 
-        let scalars_in_piece = PIECE_SIZE / Scalar::SAFE_BYTES;
+        let scalars_in_piece = PIECE_SIZE / ScalarLegacy::SAFE_BYTES;
         let piece_scalars =
             &sector_bytes_scalars[piece_offset as usize * scalars_in_piece..][..scalars_in_piece];
 
         let mut piece = Piece::default();
         piece
-            .chunks_exact_mut(Scalar::SAFE_BYTES)
+            .chunks_exact_mut(ScalarLegacy::SAFE_BYTES)
             .zip(piece_scalars)
             .for_each(|(output, input)| {
                 // After decoding we get piece scalar bytes padded with zero byte, so we can read
                 // the whole thing first and then copy just first `Scalar::SAFE_BYTES` we actually
                 // care about
-                output.copy_from_slice(&input.to_bytes()[..Scalar::SAFE_BYTES]);
+                output.copy_from_slice(&input.to_bytes()[..ScalarLegacy::SAFE_BYTES]);
             });
 
         piece

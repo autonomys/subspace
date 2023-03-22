@@ -9,7 +9,7 @@ use std::error::Error;
 use std::io;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::ScalarLegacy;
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
     Piece, PieceIndex, PieceIndexHash, PublicKey, SectorId, SectorIndex, PIECE_SIZE,
@@ -139,7 +139,10 @@ where
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (0u64..)
-        .take(PLOT_SECTOR_SIZE as usize / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
+        .take(
+            PLOT_SECTOR_SIZE as usize
+                / (PIECE_SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES),
+        )
         .map(|piece_offset| {
             sector_id.derive_piece_index(
                 piece_offset as PieceIndex,
@@ -149,7 +152,7 @@ where
         .collect();
 
     let mut in_memory_sector_scalars =
-        Vec::with_capacity(PLOT_SECTOR_SIZE as usize / Scalar::FULL_BYTES);
+        Vec::with_capacity(PLOT_SECTOR_SIZE as usize / ScalarLegacy::FULL_BYTES);
 
     plot_pieces_in_batches_non_blocking(
         &mut in_memory_sector_scalars,
@@ -169,11 +172,11 @@ where
     let mut in_memory_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
 
     in_memory_sector
-        .chunks_exact_mut(Scalar::FULL_BYTES)
+        .chunks_exact_mut(ScalarLegacy::FULL_BYTES)
         .zip(in_memory_sector_scalars)
         .for_each(|(output, input)| {
             input.write_to_bytes(
-                <&mut [u8; Scalar::FULL_BYTES]>::try_from(output)
+                <&mut [u8; ScalarLegacy::FULL_BYTES]>::try_from(output)
                     .expect("Chunked into scalar full bytes above; qed"),
             );
         });
@@ -189,11 +192,13 @@ where
             //  32-byte chunks that have up to 254 bits of data in them and in sector encoding we're
             //  dealing with 31-byte chunks instead. This workaround will not be necessary once we
             //  change `kzg.poly()` API to use 31-byte chunks as well.
-            let mut expanded_piece = Vec::with_capacity(PIECE_SIZE / Scalar::SAFE_BYTES * 32);
-            piece.chunks_exact(Scalar::SAFE_BYTES).for_each(|chunk| {
-                expanded_piece.extend(chunk);
-                expanded_piece.extend([0]);
-            });
+            let mut expanded_piece = Vec::with_capacity(PIECE_SIZE / ScalarLegacy::SAFE_BYTES * 32);
+            piece
+                .chunks_exact(ScalarLegacy::SAFE_BYTES)
+                .for_each(|chunk| {
+                    expanded_piece.extend(chunk);
+                    expanded_piece.extend([0]);
+                });
             let polynomial = kzg
                 .poly(&expanded_piece)
                 .map_err(PlottingError::FailedToCommit)?;
@@ -219,7 +224,7 @@ where
 }
 
 async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
-    in_memory_sector_scalars: &mut Vec<Scalar>,
+    in_memory_sector_scalars: &mut Vec<ScalarLegacy>,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
@@ -256,12 +261,14 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
-        in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
-            Scalar::from(
-                <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
-                    .expect("Chunked into scalar safe bytes above; qed"),
-            )
-        }));
+        in_memory_sector_scalars.extend(piece.chunks_exact(ScalarLegacy::SAFE_BYTES).map(
+            |bytes| {
+                ScalarLegacy::from(
+                    <&[u8; ScalarLegacy::SAFE_BYTES]>::try_from(bytes)
+                        .expect("Chunked into scalar safe bytes above; qed"),
+                )
+            },
+        ));
 
         piece_memory_cache.add_piece(PieceIndexHash::from_index(piece_index), piece);
     }

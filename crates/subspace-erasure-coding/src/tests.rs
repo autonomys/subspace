@@ -1,7 +1,7 @@
 use crate::ErasureCoding;
 use std::iter;
 use std::num::NonZeroUsize;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::ScalarLegacy;
 
 // TODO: This could have been done in-place, once implemented can be exposed as a utility
 fn concatenated_to_interleaved<T>(input: Vec<T>) -> Vec<T>
@@ -40,8 +40,8 @@ fn basic() {
     let ec = ErasureCoding::new(scale).unwrap();
 
     let source_shards = (0..num_shards / 2)
-        .map(|_| rand::random::<[u8; Scalar::SAFE_BYTES]>())
-        .map(Scalar::from)
+        .map(|_| rand::random::<[u8; ScalarLegacy::SAFE_BYTES]>())
+        .map(ScalarLegacy::from)
         .collect::<Vec<_>>();
 
     let parity_shards = ec.extend(&source_shards).unwrap();
@@ -96,7 +96,7 @@ fn not_enough_partial() {
         .iter_mut()
         .take(num_shards / 2 - 1)
         .for_each(|maybe_scalar| {
-            maybe_scalar.replace(Scalar::default());
+            maybe_scalar.replace(ScalarLegacy::default());
         });
     assert!(ec.recover(&partial_shards).is_err());
 
@@ -104,6 +104,6 @@ fn not_enough_partial() {
     partial_shards
         .last_mut()
         .unwrap()
-        .replace(Scalar::default());
+        .replace(ScalarLegacy::default());
     assert!(ec.recover(&partial_shards).is_ok());
 }

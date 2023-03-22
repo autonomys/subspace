@@ -26,7 +26,7 @@ use schnorrkel::{SignatureError, SignatureResult};
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake2b_256_hash, Scalar};
+use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
     BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RecordsRoot, RewardSignature,
     SectorId, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
@@ -96,7 +96,7 @@ where
 }
 
 /// Derive audit chunk from scalar bytes contained within plotted piece
-pub fn derive_audit_chunk(chunk_bytes: &[u8; Scalar::FULL_BYTES]) -> SolutionRange {
+pub fn derive_audit_chunk(chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES]) -> SolutionRange {
     let hash = blake2b_256_hash(chunk_bytes);
     SolutionRange::from_le_bytes([
         hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
@@ -216,7 +216,7 @@ where
 /// function.
 pub fn derive_randomness(
     public_key: &PublicKey,
-    chunk_bytes: &[u8; Scalar::FULL_BYTES],
+    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
     chunk_signature: &ChunkSignature,
 ) -> SignatureResult<Randomness> {
     let in_out = VRFOutput(chunk_signature.output).attach_input_hash(

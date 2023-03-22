@@ -5,7 +5,7 @@ use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::ops::Deref;
 use std::path::Path;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::ScalarLegacy;
 use subspace_core_primitives::ChunkSignature;
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_bip39::mini_secret_from_entropy;
@@ -131,7 +131,10 @@ impl Identity {
         &self.entropy
     }
 
-    pub fn create_chunk_signature(&self, chunk_bytes: &[u8; Scalar::FULL_BYTES]) -> ChunkSignature {
+    pub fn create_chunk_signature(
+        &self,
+        chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
+    ) -> ChunkSignature {
         create_chunk_signature(&self.keypair, chunk_bytes)
     }
 

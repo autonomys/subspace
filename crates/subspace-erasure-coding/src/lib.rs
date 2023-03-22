@@ -13,7 +13,7 @@ use blst_from_scratch::types::fr::FsFr;
 use blst_from_scratch::types::poly::FsPoly;
 use core::num::NonZeroUsize;
 use kzg::{FFTSettings, PolyRecover, DAS};
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::ScalarLegacy;
 
 /// Erasure coding abstraction.
 ///
@@ -37,7 +37,7 @@ impl ErasureCoding {
     /// Extend sources using erasure coding.
     ///
     /// Returns parity data.
-    pub fn extend(&self, source: &[Scalar]) -> Result<Vec<Scalar>, String> {
+    pub fn extend(&self, source: &[ScalarLegacy]) -> Result<Vec<ScalarLegacy>, String> {
         // TODO: Once our scalars are based on `blst_from_scratch` we can use a bit of transmute to
         //  avoid allocation here
         // TODO: das_fft_extension modifies buffer internally, it needs to change to use
@@ -55,7 +55,7 @@ impl ErasureCoding {
             .into_iter()
             .map(|scalar| {
                 // This is fine, scalar is guaranteed to be correct here
-                Scalar::from(scalar.to_scalar())
+                ScalarLegacy::from(scalar.to_scalar())
             })
             .collect();
 
@@ -66,7 +66,7 @@ impl ErasureCoding {
     ///
     /// Both in input and output source shards are interleaved with parity shards:
     /// source, parity, source, parity, ....
-    pub fn recover(&self, shards: &[Option<Scalar>]) -> Result<Vec<Scalar>, String> {
+    pub fn recover(&self, shards: &[Option<ScalarLegacy>]) -> Result<Vec<ScalarLegacy>, String> {
         // TODO This is only necessary because upstream silently doesn't recover anything:
         //  https://github.com/sifraitech/rust-kzg/issues/195
         if shards.iter().filter(|scalar| scalar.is_some()).count() < self.fft_settings.max_width / 2
@@ -96,7 +96,7 @@ impl ErasureCoding {
             .iter()
             .map(|scalar| {
                 // This is fine, scalar is guaranteed to be correct here
-                Scalar::from(scalar.to_scalar())
+                ScalarLegacy::from(scalar.to_scalar())
             })
             .collect())
     }

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::ScalarLegacy;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let data = {
@@ -8,7 +8,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mut data = rand::random::<[u8; 256]>();
 
         // We can only store 254 bits, set last byte to zero because of that
-        data.chunks_exact_mut(Scalar::FULL_BYTES)
+        data.chunks_exact_mut(ScalarLegacy::FULL_BYTES)
             .flat_map(|chunk| chunk.iter_mut().last())
             .for_each(|last_byte| *last_byte = 0);
 
@@ -44,7 +44,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let commitment = kzg.commit(&polynomial).unwrap();
         let index = 0;
         let witness = kzg.create_witness(&polynomial, index).unwrap();
-        let values = data.chunks_exact(Scalar::FULL_BYTES);
+        let values = data.chunks_exact(ScalarLegacy::FULL_BYTES);
         let num_values = values.len();
         let value = values.into_iter().next().unwrap();
 

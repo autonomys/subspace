@@ -65,11 +65,12 @@ pub fn blake2b_256_hash_list(data: &[&[u8]]) -> Blake2b256Hash {
         .expect("Initialized with correct length; qed")
 }
 
+// TODO: Remove once not used
 /// Representation of a single BLS12-381 scalar value.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
-pub struct Scalar(pub(crate) Fr);
+pub struct ScalarLegacy(pub(crate) Fr);
 
-impl Encode for Scalar {
+impl Encode for ScalarLegacy {
     fn size_hint(&self) -> usize {
         Self::FULL_BYTES
     }
@@ -83,9 +84,9 @@ impl Encode for Scalar {
     }
 }
 
-impl EncodeLike for Scalar {}
+impl EncodeLike for ScalarLegacy {}
 
-impl Decode for Scalar {
+impl Decode for ScalarLegacy {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
         Ok(Self::from(&<[u8; Self::FULL_BYTES]>::decode(input)?))
     }
@@ -95,7 +96,7 @@ impl Decode for Scalar {
     }
 }
 
-impl TypeInfo for Scalar {
+impl TypeInfo for ScalarLegacy {
     type Identity = Self;
 
     fn type_info() -> Type {
@@ -111,14 +112,14 @@ impl TypeInfo for Scalar {
 }
 
 #[cfg(feature = "serde")]
-mod scalar_serde {
+mod scalar_legacy_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     // Custom wrapper so we don't have to write serialization/deserialization code manually
     #[derive(Serialize, Deserialize)]
-    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::Scalar::FULL_BYTES]);
+    struct Scalar(#[serde(with = "hex::serde")] pub(super) [u8; super::ScalarLegacy::FULL_BYTES]);
 
-    impl Serialize for super::Scalar {
+    impl Serialize for super::ScalarLegacy {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
@@ -127,7 +128,7 @@ mod scalar_serde {
         }
     }
 
-    impl<'de> Deserialize<'de> for super::Scalar {
+    impl<'de> Deserialize<'de> for super::ScalarLegacy {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
             D: Deserializer<'de>,
@@ -138,45 +139,45 @@ mod scalar_serde {
     }
 }
 
-impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
+impl From<&[u8; Self::SAFE_BYTES]> for ScalarLegacy {
     fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
-        Scalar(Fr::from_le_bytes_mod_order(value))
+        ScalarLegacy(Fr::from_le_bytes_mod_order(value))
     }
 }
 
-impl From<[u8; Self::SAFE_BYTES]> for Scalar {
+impl From<[u8; Self::SAFE_BYTES]> for ScalarLegacy {
     fn from(value: [u8; Self::SAFE_BYTES]) -> Self {
         Self::from(&value)
     }
 }
 
-impl From<&[u8; Self::FULL_BYTES]> for Scalar {
+impl From<&[u8; Self::FULL_BYTES]> for ScalarLegacy {
     fn from(value: &[u8; Self::FULL_BYTES]) -> Self {
-        Scalar(Fr::from_le_bytes_mod_order(value))
+        ScalarLegacy(Fr::from_le_bytes_mod_order(value))
     }
 }
 
-impl From<[u8; Self::FULL_BYTES]> for Scalar {
+impl From<[u8; Self::FULL_BYTES]> for ScalarLegacy {
     fn from(value: [u8; Self::FULL_BYTES]) -> Self {
         Self::from(&value)
     }
 }
 
-impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: &Scalar) -> Self {
+impl From<&ScalarLegacy> for [u8; ScalarLegacy::FULL_BYTES] {
+    fn from(value: &ScalarLegacy) -> Self {
         let mut bytes = Self::default();
         value.write_to_bytes(&mut bytes);
         bytes
     }
 }
 
-impl From<Scalar> for [u8; Scalar::FULL_BYTES] {
-    fn from(value: Scalar) -> Self {
+impl From<ScalarLegacy> for [u8; ScalarLegacy::FULL_BYTES] {
+    fn from(value: ScalarLegacy) -> Self {
         Self::from(&value)
     }
 }
 
-impl Scalar {
+impl ScalarLegacy {
     /// How many full bytes can be stored in BLS12-381 scalar (for instance before encoding). It is
     /// actually 254 bits, but bits are mut harder to work with and likely not worth it.
     ///
@@ -188,7 +189,7 @@ impl Scalar {
     pub const FULL_BYTES: usize = 32;
 
     /// Convert scalar into bytes
-    pub fn to_bytes(&self) -> [u8; Scalar::FULL_BYTES] {
+    pub fn to_bytes(&self) -> [u8; ScalarLegacy::FULL_BYTES] {
         self.into()
     }
 
