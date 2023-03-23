@@ -1,16 +1,15 @@
+#[cfg(feature = "serde")]
+mod serde;
+
+#[cfg(feature = "serde")]
+use ::serde::{Deserialize, Serialize};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 use derive_more::{AsMut, AsRef, Deref, DerefMut};
-#[cfg(feature = "serde")]
-use hex::{decode_to_slice, FromHex, FromHexError};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
-#[cfg(feature = "serde")]
-use serde::{de, Deserializer, Serializer};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 /// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
 /// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
@@ -287,108 +286,6 @@ impl FlatPieces {
 impl From<PieceArray> for FlatPieces {
     fn from(value: PieceArray) -> Self {
         Self(vec![value])
-    }
-}
-
-#[cfg(feature = "serde")]
-impl FromHex for FlatPieces {
-    type Error = FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        let hex = hex.as_ref();
-        if hex.len() % 2 != 0 {
-            return Err(FromHexError::OddLength);
-        }
-        if hex.len() % (2 * PIECE_SIZE) != 0 {
-            return Err(FromHexError::InvalidStringLength);
-        }
-
-        let mut out = FlatPieces::new(hex.len() / 2 / PIECE_SIZE);
-
-        hex.chunks_exact(2 * PIECE_SIZE)
-            .zip(out.iter_mut())
-            .try_for_each(|(bytes, piece)| decode_to_slice(bytes, piece.as_mut()))?;
-
-        Ok(out)
-    }
-}
-
-#[cfg(feature = "serde")]
-impl Serialize for FlatPieces {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        Serializer::serialize_newtype_struct(serializer, "FlatPieces", {
-            struct SerializeWith<'a> {
-                values: &'a [u8],
-            }
-            impl<'a> Serialize for SerializeWith<'a> {
-                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                where
-                    S: Serializer,
-                {
-                    hex::serde::serialize(self.values, serializer)
-                }
-            }
-            &SerializeWith {
-                values: self.as_ref(),
-            }
-        })
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> Deserialize<'de> for FlatPieces {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Visitor;
-
-        impl<'de> de::Visitor<'de> for Visitor {
-            type Value = FlatPieces;
-
-            fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                formatter.write_str("tuple struct FlatPieces")
-            }
-
-            #[inline]
-            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                hex::serde::deserialize(deserializer)
-            }
-
-            #[inline]
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: de::SeqAccess<'de>,
-            {
-                struct DeserializeWith {
-                    value: FlatPieces,
-                }
-                impl<'de> Deserialize<'de> for DeserializeWith {
-                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-                    where
-                        D: Deserializer<'de>,
-                    {
-                        Ok(DeserializeWith {
-                            value: hex::serde::deserialize(deserializer)?,
-                        })
-                    }
-                }
-
-                de::SeqAccess::next_element::<DeserializeWith>(&mut seq)?
-                    .map(|wrap| wrap.value)
-                    .ok_or(de::Error::invalid_length(
-                        0usize,
-                        &"tuple struct FlatPieces with 1 element",
-                    ))
-            }
-        }
-        Deserializer::deserialize_newtype_struct(deserializer, "FlatPieces", Visitor)
     }
 }
 
