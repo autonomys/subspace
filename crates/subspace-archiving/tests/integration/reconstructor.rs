@@ -1,13 +1,14 @@
+use rand::{thread_rng, Rng};
 use std::assert_matches::assert_matches;
 use std::iter;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::reconstructor::{
     Reconstructor, ReconstructorError, ReconstructorInstantiationError,
 };
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, PIECE_SIZE, RECORD_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RECORD_SIZE,
 };
 
 // This is data + parity shards
@@ -16,10 +17,7 @@ const PIECES_IN_SEGMENT: u32 = 8;
 const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces
-        .as_pieces()
-        .map(|piece| piece.try_into().unwrap())
-        .collect()
+    pieces.as_pieces().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
@@ -28,7 +26,7 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 
 #[test]
 fn basic() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
@@ -228,7 +226,7 @@ fn basic() {
 
 #[test]
 fn partial_data() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
@@ -304,7 +302,7 @@ fn partial_data() {
 
 #[test]
 fn invalid_usage() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     assert_matches!(
         Reconstructor::new(10, 9),
         Err(ReconstructorInstantiationError::SegmentSizeTooSmall),
@@ -349,9 +347,13 @@ fn invalid_usage() {
         let result = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
             .unwrap()
             .add_segment(
-                &iter::repeat_with(|| Some(rand::random::<[u8; PIECE_SIZE]>().into()))
-                    .take(PIECES_IN_SEGMENT as usize)
-                    .collect::<Vec<_>>(),
+                &iter::repeat_with(|| {
+                    let mut piece = Piece::default();
+                    thread_rng().fill(*piece.as_mut());
+                    Some(piece)
+                })
+                .take(PIECES_IN_SEGMENT as usize)
+                .collect::<Vec<_>>(),
             );
 
         assert_matches!(result, Err(ReconstructorError::SegmentDecoding(_)));

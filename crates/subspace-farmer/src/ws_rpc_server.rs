@@ -228,7 +228,7 @@ impl RpcServerImpl {
 
         let piece = self.read_and_decode_piece(next_piece_index)?;
         next_piece_index += 1;
-        read_records_data.extend_from_slice(&piece[..self.record_size as usize]);
+        read_records_data.extend_from_slice(&piece.record());
 
         // Let's see how many bytes encode compact length encoding of the data, see
         // https://docs.substrate.io/v3/advanced/scale-codec/#compactgeneral-integers for
@@ -261,7 +261,7 @@ impl RpcServerImpl {
                 // Need the next piece to read the length of data
                 let piece = self.read_and_decode_piece(next_piece_index)?;
                 next_piece_index += 1;
-                read_records_data.extend_from_slice(&piece[..self.record_size as usize]);
+                read_records_data.extend_from_slice(&piece.record());
             }
 
             Compact::<u32>::decode(&mut &read_records_data[offset as usize..])
@@ -395,7 +395,7 @@ impl RpcServerImpl {
 
         for piece_index in (first_piece_in_segment..).take(self.pieces_in_segment as usize / 2) {
             let piece = self.read_and_decode_piece(piece_index)?;
-            segment_bytes.extend_from_slice(&piece[..self.record_size as usize]);
+            segment_bytes.extend_from_slice(&piece.record());
         }
 
         let segment = Segment::decode(&mut segment_bytes.as_slice()).map_err(|error| {

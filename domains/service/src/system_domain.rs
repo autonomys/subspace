@@ -1,8 +1,10 @@
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
-    EssentialExecutorParams, SystemDomainParentChain, SystemExecutor, SystemGossipMessageValidator,
+    EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
+    SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -12,7 +14,7 @@ use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockBackend, BlockchainEvents, StateBackendFor};
+use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
@@ -107,7 +109,6 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
         FullClient<RuntimeApi, Executor>,
         SystemDomainXDMVerifier<
             PClient,
-            FullClient<RuntimeApi, Executor>,
             PBlock,
             Block,
             FullChainVerifier<
@@ -116,6 +117,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
                 FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
                 SkipBundleValidation,
             >,
+            StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
         >,
     >;
 
@@ -132,20 +134,20 @@ type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
 
 /// Constructs a partial system domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor, PBlock, PClient>(
+fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient>(
     config: &ServiceConfiguration,
     primary_chain_client: Arc<PClient>,
 ) -> Result<
     PartialComponents<
-        FullClient<RuntimeApi, Executor>,
+        FullClient<RuntimeApi, ExecutionDispatch>,
         FullBackend,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
-        FullPool<PBlock, PClient, RuntimeApi, Executor>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutionDispatch>>,
+        FullPool<PBlock, PClient, RuntimeApi, ExecutionDispatch>,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
-            NativeElseWasmExecutor<Executor>,
+            NativeElseWasmExecutor<ExecutionDispatch>,
         ),
     >,
     sc_service::Error,
@@ -156,15 +158,17 @@ where
     PBlock::Hash: From<Hash>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
-    RuntimeApi:
-        ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutionDispatch>>
+        + Send
+        + Sync
+        + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
         + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
-    Executor: NativeExecutionDispatch + 'static,
+    ExecutionDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -213,7 +217,7 @@ where
         FullChainVerifier::new(client.clone(), proof_verifier, SkipBundleValidation);
     let system_domain_xdm_verifier = SystemDomainXDMVerifier::new(
         primary_chain_client,
-        client.clone(),
+        StateRootExtractorWithSystemDomainClient::new(client.clone()),
         system_domain_fraud_proof_verifier,
     );
 
@@ -247,15 +251,12 @@ where
 /// Start a node with the given system domain `Configuration` and consensus chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-#[allow(clippy::too_many_arguments)]
-pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
+pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut system_domain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     select_chain: &SC,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
-    block_import_throttling_buffer_size: u32,
+    executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFullSystem<
@@ -282,6 +283,7 @@ where
     PClient::Api: ExecutorApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -388,9 +390,7 @@ where
             keystore: params.keystore_container.sync_keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
-            block_import_throttling_buffer_size,
-            imported_block_notification_stream,
-            new_slot_notification_stream,
+            executor_streams,
         },
     )
     .await?;

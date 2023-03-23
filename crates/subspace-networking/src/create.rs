@@ -39,17 +39,21 @@ use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, PIECE_SIZE};
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
-// The default maximum incoming connection number for the swarm.
+/// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
-// The default maximum incoming connection number for the swarm.
+/// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
+/// The default maximum pending incoming connection number for the swarm.
+const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 50;
+/// The default maximum pending incoming connection number for the swarm.
+const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 50;
 // The default maximum connection number to be maintained for the swarm.
 const SWARM_TARGET_CONNECTION_NUMBER: u32 = 50;
 // Defines an expiration interval for item providers in Kademlia network.
@@ -62,6 +66,9 @@ const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
 const YAMUX_MAX_STREAMS: usize = 256;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(2);
+// TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
+// use-case for gossipsub protocol.
+const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -183,7 +190,7 @@ pub struct Config<ProviderStorage> {
     /// The configuration for the Kademlia behaviour.
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
-    pub gossipsub: GossipsubConfig,
+    pub gossipsub: Option<GossipsubConfig>,
     /// Externally provided implementation of the custom provider storage for Kademlia DHT,
     pub provider_storage: ProviderStorage,
     /// Yamux multiplexing configuration.
@@ -198,10 +205,14 @@ pub struct Config<ProviderStorage> {
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     pub reserved_peers: Vec<Multiaddr>,
-    /// Incoming swarm connection limit.
+    /// Established incoming swarm connection limit.
     pub max_established_incoming_connections: u32,
-    /// Outgoing swarm connection limit.
+    /// Established outgoing swarm connection limit.
     pub max_established_outgoing_connections: u32,
+    /// Pending incoming swarm connection limit.
+    pub max_pending_incoming_connections: u32,
+    /// Pending outgoing swarm connection limit.
+    pub max_pending_outgoing_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained.
     pub target_connections: u32,
     /// How many temporarily banned unreachable peers to keep in memory.
@@ -251,17 +262,19 @@ where
         let mut yamux_config = YamuxConfig::default();
         yamux_config.set_max_num_streams(YAMUX_MAX_STREAMS);
 
-        let gossipsub = GossipsubConfigBuilder::default()
-            .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
-            // TODO: Do we want message signing?
-            .validation_mode(ValidationMode::None)
-            // To content-address message, we can take the hash of message and use it as an ID.
-            .message_id_fn(|message: &GossipsubMessage| {
-                MessageId::from(crypto::blake2b_256_hash(&message.data))
-            })
-            .max_transmit_size(2 * 1024 * 1024) // 2MB
-            .build()
-            .expect("Default config for gossipsub is always correct; qed");
+        let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
+            GossipsubConfigBuilder::default()
+                .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
+                // TODO: Do we want message signing?
+                .validation_mode(ValidationMode::None)
+                // To content-address message, we can take the hash of message and use it as an ID.
+                .message_id_fn(|message: &GossipsubMessage| {
+                    MessageId::from(crypto::blake2b_256_hash(&message.data))
+                })
+                .max_transmit_size(2 * 1024 * 1024) // 2MB
+                .build()
+                .expect("Default config for gossipsub is always correct; qed")
+        });
 
         let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
@@ -294,6 +307,8 @@ where
             reserved_peers: Vec::new(),
             max_established_incoming_connections: SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS,
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+            max_pending_incoming_connections: SWARM_MAX_PENDING_INCOMING_CONNECTIONS,
+            max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
@@ -352,6 +367,8 @@ where
         reserved_peers,
         max_established_incoming_connections,
         max_established_outgoing_connections,
+        max_pending_incoming_connections,
+        max_pending_outgoing_connections,
         target_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
@@ -382,12 +399,18 @@ where
         request_response_protocols,
     });
 
+    let connection_limits = ConnectionLimits::default()
+        .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER)
+        .with_max_pending_incoming(Some(max_pending_incoming_connections))
+        .with_max_pending_outgoing(Some(max_pending_outgoing_connections))
+        .with_max_established_incoming(Some(max_established_incoming_connections))
+        .with_max_established_outgoing(Some(max_established_outgoing_connections));
+
+    debug!(?connection_limits, "DSN connection limits set.");
+
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
         .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
-        .connection_limits(
-            ConnectionLimits::default()
-                .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER),
-        )
+        .connection_limits(connection_limits)
         .build();
 
     // Setup listen_on addresses
@@ -430,8 +453,6 @@ where
         next_random_query_interval: initial_random_query_interval,
         networking_parameters_registry,
         reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-        max_established_incoming_connections,
-        max_established_outgoing_connections,
         target_connections,
         temporary_bans,
         metrics,

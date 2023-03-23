@@ -49,9 +49,6 @@ pub struct PiecesReconstructor {
     data_shards: u32,
     /// Number of parity shards
     parity_shards: u32,
-    /// Configuration parameter defining the size of one record (data in one piece excluding witness
-    /// size)
-    record_size: u32,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
     /// KZG instance
@@ -79,7 +76,6 @@ impl PiecesReconstructor {
         Ok(Self {
             data_shards,
             parity_shards,
-            record_size,
             reed_solomon,
             kzg,
         })
@@ -98,7 +94,7 @@ impl PiecesReconstructor {
             .map(|maybe_piece| {
                 maybe_piece
                     .as_ref()
-                    .map(|piece| utils::slice_to_arrays(&piece[..self.record_size as usize]))
+                    .map(|piece| utils::slice_to_arrays(&piece.record()))
             })
             .collect::<Vec<_>>();
 
@@ -116,11 +112,11 @@ impl PiecesReconstructor {
             .as_pieces_mut()
             .zip(polynomial_data.chunks_exact_mut(BLAKE2B_256_HASH_SIZE))
             .zip(shards)
-            .for_each(|((piece, polynomial_data), record)| {
+            .for_each(|((mut piece, polynomial_data), record)| {
                 let record =
                     record.expect("Reconstruction just happened and all records are present; qed");
                 let record = record.flatten();
-                piece[..self.record_size as usize].copy_from_slice(record);
+                piece.record_mut().as_mut().copy_from_slice(record);
                 polynomial_data.copy_from_slice(&blake2b_256_254_hash(record));
             });
 
@@ -144,8 +140,8 @@ impl PiecesReconstructor {
         pieces
             .as_pieces_mut()
             .enumerate()
-            .for_each(|(position, piece)| {
-                piece[self.record_size as usize..].copy_from_slice(
+            .for_each(|(position, mut piece)| {
+                piece.witness_mut().as_mut().copy_from_slice(
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
@@ -172,17 +168,16 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::try_from(
+        let mut piece = Piece::from(
             reconstructed_records
                 .as_pieces()
                 .nth(piece_position)
                 .expect(
                 "Piece exists at the position within segment after successful reconstruction; qed",
             ),
-        )
-        .expect("Piece in `FlatPieces` always has correct length; qed");
+        );
 
-        piece[self.record_size as usize..].copy_from_slice(
+        piece.witness_mut().as_mut().copy_from_slice(
             &self
                 .kzg
                 .create_witness(&polynomial, piece_position as u32)

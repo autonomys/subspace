@@ -31,7 +31,7 @@ use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
-use schnorrkel::Keypair;
+use schnorrkel::{Keypair, SignatureError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, GlobalRandomnesses, SolutionRanges, Vote,
@@ -628,7 +628,7 @@ fn vote_block_listed() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         BlockList::<Test>::insert(
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
@@ -658,7 +658,7 @@ fn vote_after_genesis() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         // Can't submit vote right after genesis block
         let signed_vote = create_signed_vote(
@@ -683,7 +683,7 @@ fn vote_too_low_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 1, 1);
 
@@ -713,7 +713,7 @@ fn vote_past_future_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 4, 1);
 
@@ -760,7 +760,7 @@ fn vote_wrong_parent() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -787,7 +787,7 @@ fn vote_past_future_slot() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -845,8 +845,7 @@ fn vote_past_future_slot() {
         // in that context it is valid
         {
             let keypair = Keypair::generate();
-            let piece =
-                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+            let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
             let signed_vote = create_signed_vote(
                 &keypair,
@@ -886,8 +885,7 @@ fn vote_same_slot() {
         // Same time slot in the vote as in the block is fine if height is the same (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece =
-                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+            let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
             let signed_vote = create_signed_vote(
                 &keypair,
                 3,
@@ -905,8 +903,7 @@ fn vote_same_slot() {
         // (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece =
-                Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+            let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
             let signed_vote = create_signed_vote(
                 &keypair,
                 2,
@@ -930,7 +927,7 @@ fn vote_bad_reward_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -959,7 +956,7 @@ fn vote_unknown_records_root() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -986,7 +983,7 @@ fn vote_outside_of_solution_range() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1006,10 +1003,10 @@ fn vote_outside_of_solution_range() {
             1,
         );
 
-        assert_matches!(
+        assert_eq!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::OutsideSolutionRange
+                VerificationError::OutsideSolutionRange.to_string()
             ))
         );
     });
@@ -1020,7 +1017,7 @@ fn vote_invalid_solution_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1058,10 +1055,11 @@ fn vote_invalid_solution_signature() {
                 .to_bytes(),
         );
 
-        assert_matches!(
+        assert_eq!(
             super::check_vote::<Test>(&signed_vote, false),
             Err(CheckVoteError::InvalidSolution(
-                VerificationError::InvalidSolutionSignature(_)
+                VerificationError::InvalidSolutionSignature(SignatureError::ScalarFormatError)
+                    .to_string()
             ))
         );
     });
@@ -1072,7 +1070,7 @@ fn vote_correct_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1106,7 +1104,7 @@ fn vote_randomness_update() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         RecordsRoot::<Test>::insert(
             archived_segment.root_block.segment_index(),
@@ -1143,7 +1141,7 @@ fn vote_equivocation_current_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1194,7 +1192,7 @@ fn vote_equivocation_parent_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1254,7 +1252,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 fn vote_equivocation_current_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
@@ -1334,7 +1332,7 @@ fn vote_equivocation_parent_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
-        let piece = Piece::try_from(archived_segment.pieces.as_pieces().next().unwrap()).unwrap();
+        let piece = Piece::from(archived_segment.pieces.as_pieces().next().unwrap());
 
         progress_to_block(&keypair, 2, 1);
 

@@ -4,11 +4,11 @@ use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, RootBlock, BLAKE2B_256_HASH_SIZE,
-    RECORD_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceRef, RootBlock,
+    BLAKE2B_256_HASH_SIZE, RECORD_SIZE,
 };
 
 // This is data + parity shards
@@ -25,12 +25,12 @@ fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
 #[track_caller]
 fn compare_block_objects_to_piece_objects<'a>(
     block_objects: impl Iterator<Item = (&'a [u8], &'a BlockObject)>,
-    piece_objects: impl Iterator<Item = (&'a [u8], &'a PieceObject)>,
+    piece_objects: impl Iterator<Item = (PieceRef<'a>, &'a PieceObject)>,
 ) {
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
             assert_eq!(
-                extract_data(piece, piece_object_mapping.offset()),
+                extract_data(piece.as_ref(), piece_object_mapping.offset()),
                 extract_data(block, block_object_mapping.offset())
             );
         },
@@ -39,7 +39,7 @@ fn compare_block_objects_to_piece_objects<'a>(
 
 #[test]
 fn archiver() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg.clone()).unwrap();
 
     let (block_0, block_0_object_mapping) = {
@@ -147,11 +147,10 @@ fn archiver() {
     for (position, piece) in first_archived_segment.pieces.as_pieces().enumerate() {
         assert!(archiver::is_piece_valid(
             &kzg,
-            PIECES_IN_SEGMENT,
+            PIECES_IN_SEGMENT as usize,
             piece,
             first_archived_segment.root_block.records_root(),
             position as u32,
-            RECORD_SIZE,
         ));
     }
 
@@ -235,11 +234,10 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
                 &kzg,
-                PIECES_IN_SEGMENT,
+                PIECES_IN_SEGMENT as usize,
                 piece,
                 archived_segment.root_block.records_root(),
                 position as u32,
-                RECORD_SIZE,
             ));
         }
 
@@ -281,11 +279,10 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
             assert!(archiver::is_piece_valid(
                 &kzg,
-                PIECES_IN_SEGMENT,
+                PIECES_IN_SEGMENT as usize,
                 piece,
                 archived_segment.root_block.records_root(),
                 position as u32,
-                RECORD_SIZE,
             ));
         }
     }
@@ -293,7 +290,7 @@ fn archiver() {
 
 #[test]
 fn invalid_usage() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     assert_matches!(
         Archiver::new(4, SEGMENT_SIZE, kzg.clone()),
         Err(ArchiverInstantiationError::RecordSizeTooSmall),
@@ -381,7 +378,7 @@ fn invalid_usage() {
 
 #[test]
 fn one_byte_smaller_segment() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
     // but this should already produce archived segment since just enum variant and smallest compact
@@ -413,7 +410,7 @@ fn one_byte_smaller_segment() {
 
 #[test]
 fn spill_over_edge_case() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
 
     // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
@@ -469,7 +466,7 @@ fn spill_over_edge_case() {
 
 #[test]
 fn object_on_the_edge_of_segment() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
     let first_block = vec![0u8; SEGMENT_SIZE as usize];
     let archived_segments = archiver.add_block(first_block.clone(), BlockObjectMapping::default());

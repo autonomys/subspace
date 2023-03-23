@@ -1,3 +1,4 @@
+use crate::state_root_extractor::StateRootExtractor;
 use futures::FutureExt;
 use sc_client_api::BlockBackend;
 use sc_transaction_pool::{ChainApi, FullChainApi};
@@ -85,27 +86,22 @@ where
 /// This is used by the System domain to validate Extrinsics.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub(crate) fn verify_xdm_with_primary_chain_client<PClient, SClient, PBlock, SBlock>(
+pub(crate) fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
     primary_chain_client: &Arc<PClient>,
-    system_domain_client: &Arc<SClient>,
+    state_root_extractor: &SRE,
     extrinsic: &SBlock::Extrinsic,
 ) -> Result<bool, Error>
 where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>,
     SBlock: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<SBlock>>,
     PBlock::Hash: From<SBlock::Hash>,
+    SRE: StateRootExtractor<SBlock>,
 {
-    let system_domain_runtime = system_domain_client.runtime_api();
-    let best_hash = system_domain_client.info().best_hash;
-    if let Ok(Some(state_roots)) =
-        system_domain_runtime.extract_xdm_proof_state_roots(best_hash, extrinsic)
-    {
-        // TODO: Can't above variable be reused here?
+    let at = state_root_extractor.block_hash();
+    if let Ok(state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {
         // verify system domain state root
         let best_hash = primary_chain_client.info().best_hash;
         let primary_runtime = primary_chain_client.runtime_api();
@@ -124,48 +120,49 @@ where
 }
 
 /// A verifier for XDM messages on System domain.
-pub struct SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier> {
+pub struct SystemDomainXDMVerifier<PClient, PBlock, SBlock, Verifier, SRE> {
     _data: PhantomData<(PBlock, SBlock)>,
     primary_chain_client: Arc<PClient>,
-    system_domain_client: Arc<SClient>,
+    state_root_extractor: SRE,
     inner_verifier: Verifier,
 }
 
-impl<PClient, SClient, PBlock, SBlock, Verifier>
-    SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier>
+impl<PClient, PBlock, SBlock, Verifier, SRE>
+    SystemDomainXDMVerifier<PClient, PBlock, SBlock, Verifier, SRE>
 {
     pub fn new(
         primary_chain_client: Arc<PClient>,
-        system_domain_client: Arc<SClient>,
+        state_root_extractor: SRE,
         inner_verifier: Verifier,
     ) -> Self {
         Self {
             _data: Default::default(),
             primary_chain_client,
-            system_domain_client,
+            state_root_extractor,
             inner_verifier,
         }
     }
 }
 
-impl<PClient, SClient, PBlock, SBlock, Verifier> Clone
-    for SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier>
+impl<PClient, PBlock, SBlock, Verifier, SRE> Clone
+    for SystemDomainXDMVerifier<PClient, PBlock, SBlock, Verifier, SRE>
 where
     Verifier: Clone,
+    SRE: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             _data: Default::default(),
             primary_chain_client: self.primary_chain_client.clone(),
-            system_domain_client: self.system_domain_client.clone(),
+            state_root_extractor: self.state_root_extractor.clone(),
             inner_verifier: self.inner_verifier.clone(),
         }
     }
 }
 
-impl<PClient, SClient, PBlock, SBlock, Verifier>
+impl<PClient, SClient, PBlock, SBlock, Verifier, SRE>
     VerifyExtrinsic<SBlock, SClient, FullChainApi<SClient, SBlock>>
-    for SystemDomainXDMVerifier<PClient, SClient, PBlock, SBlock, Verifier>
+    for SystemDomainXDMVerifier<PClient, PBlock, SBlock, Verifier, SRE>
 where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
@@ -177,6 +174,7 @@ where
     NumberFor<PBlock>: From<NumberFor<SBlock>>,
     PBlock::Hash: From<SBlock::Hash>,
     Verifier: VerifyExtrinsic<SBlock, SClient, FullChainApi<SClient, SBlock>>,
+    SRE: StateRootExtractor<SBlock>,
 {
     fn verify_extrinsic(
         &self,
@@ -188,7 +186,7 @@ where
     ) -> ValidationFuture {
         let result = verify_xdm_with_primary_chain_client::<_, _, _, _>(
             &self.primary_chain_client,
-            &self.system_domain_client,
+            &self.state_root_extractor,
             &uxt,
         );
 
@@ -249,7 +247,7 @@ where
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
-        + HeaderMetadata<Block, Error = sp_blockchain::Error>
+        + HeaderMetadata<Block, Error = Error>
         + Send
         + Sync
         + 'static,

@@ -4,17 +4,14 @@ use subspace_archiving::piece_reconstructor::{
     PiecesReconstructor, ReconstructorError, ReconstructorInstantiationError,
 };
 use subspace_core_primitives::crypto::blake2b_256_254_hash;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     FlatPieces, Piece, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces
-        .as_pieces()
-        .map(|piece| piece.try_into().unwrap())
-        .collect()
+    pieces.as_pieces().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
@@ -30,7 +27,7 @@ fn get_random_block() -> Vec<u8> {
 
 #[test]
 fn segment_reconstruction_works() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver =
         Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
 
@@ -58,17 +55,14 @@ fn segment_reconstruction_works() {
 
     let flat_pieces = reconstructor.reconstruct_segment(&maybe_pieces).unwrap();
 
-    let reconstructed_pieces = flat_pieces
-        .as_pieces()
-        .map(|bytes| Piece::try_from(bytes).expect("Piece must have the correct size"))
-        .collect::<Vec<_>>();
+    let reconstructed_pieces = flat_pieces_to_regular(&flat_pieces);
 
     assert_eq!(reconstructed_pieces.len(), PIECES_IN_SEGMENT as usize);
     pieces.iter().zip(reconstructed_pieces.iter()).for_each(
         |(original_piece, reconstructed_piece)| {
             assert_eq!(
-                blake2b_256_254_hash(original_piece.as_ref()),
-                blake2b_256_254_hash(reconstructed_piece.as_ref())
+                blake2b_256_254_hash(original_piece),
+                blake2b_256_254_hash(reconstructed_piece)
             );
         },
     );
@@ -76,7 +70,7 @@ fn segment_reconstruction_works() {
 
 #[test]
 fn piece_reconstruction_works() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver =
         Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
     // Block that fits into the segment fully
@@ -108,14 +102,14 @@ fn piece_reconstruction_works() {
         .unwrap();
 
     assert_eq!(
-        blake2b_256_254_hash(pieces[missing_piece_position].as_ref()),
-        blake2b_256_254_hash(missing_piece.as_ref())
+        blake2b_256_254_hash(&pieces[missing_piece_position]),
+        blake2b_256_254_hash(&missing_piece)
     );
 }
 
 #[test]
 fn piece_reconstructor_creation_fails() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     let reconstructor = PiecesReconstructor::new(10, 1, kzg.clone());
 
@@ -139,7 +133,7 @@ fn piece_reconstructor_creation_fails() {
 
 #[test]
 fn segment_reconstruction_fails() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     let reconstructor =
         PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
@@ -178,7 +172,7 @@ fn segment_reconstruction_fails() {
 
 #[test]
 fn piece_reconstruction_fails() {
-    let kzg = Kzg::random(PIECES_IN_SEGMENT).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
 
     let reconstructor =
         PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();

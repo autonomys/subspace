@@ -20,10 +20,12 @@
 
 pub mod chain_spec;
 
+use domain_client_executor::ExecutorStreams;
 use domain_test_runtime::opaque::Block;
 use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
 use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
 use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
@@ -138,6 +140,8 @@ async fn run_executor(
                     allow_non_global_addresses_in_dht: true,
                     max_out_connections: 50,
                     max_in_connections: 50,
+                    max_pending_out_connections: 150,
+                    max_pending_in_connections: 150,
                     target_connections: 50,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,
@@ -172,8 +176,33 @@ async fn run_executor(
         service_config: system_domain_config,
         maybe_relayer_id: None,
     };
-    let block_import_throttling_buffer_size = 10;
+    let executor_streams = ExecutorStreams {
+        primary_block_import_throttling_buffer_size: 10,
+        subspace_imported_block_notification_stream: primary_chain_full_node
+            .imported_block_notification_stream
+            .subscribe()
+            .then(|imported_block_notification| async move {
+                (
+                    imported_block_notification.block_number,
+                    imported_block_notification.block_import_acknowledgement_sender,
+                )
+            }),
+        client_imported_block_notification_stream: primary_chain_full_node
+            .client
+            .every_import_notification_stream(),
+        new_slot_notification_stream: primary_chain_full_node
+            .new_slot_notification_stream
+            .subscribe()
+            .then(|slot_notification| async move {
+                (
+                    slot_notification.new_slot_info.slot,
+                    slot_notification.new_slot_info.global_challenge,
+                )
+            }),
+        _phantom: Default::default(),
+    };
     let system_domain_node = domain_service::new_full_system::<
+        _,
         _,
         _,
         _,
@@ -186,25 +215,7 @@ async fn run_executor(
         primary_chain_full_node.client.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,
-        primary_chain_full_node
-            .imported_block_notification_stream
-            .subscribe()
-            .then(|imported_block_notification| async move {
-                (
-                    imported_block_notification.block_number,
-                    imported_block_notification.block_import_acknowledgement_sender,
-                )
-            }),
-        primary_chain_full_node
-            .new_slot_notification_stream
-            .subscribe()
-            .then(|slot_notification| async move {
-                (
-                    slot_notification.new_slot_info.slot,
-                    slot_notification.new_slot_info.global_challenge,
-                )
-            }),
-        block_import_throttling_buffer_size,
+        executor_streams,
         gossip_msg_sink,
     )
     .await?;

@@ -7,7 +7,6 @@ use crate::mock::{
     AccountId, Balance, TestExternalities,
 };
 use crate::relayer::RelayerInfo;
-use crate::verification::{StorageProofVerifier, VerificationError};
 use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
     Outbox, OutboxMessageResult, OutboxResponses, U256,
@@ -23,6 +22,7 @@ use sp_messenger::messages::{
     CrossDomainMessage, DomainBlockInfo, ExecutionFee, InitiateChannelParams, Payload, Proof,
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
+use sp_messenger::verification::{StorageProofVerifier, VerificationError};
 use sp_runtime::traits::ValidateUnsigned;
 
 fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {

@@ -19,6 +19,7 @@
 
 pub mod endpoint;
 pub mod messages;
+pub mod verification;
 
 use codec::{Decode, Encode};
 use messages::{
