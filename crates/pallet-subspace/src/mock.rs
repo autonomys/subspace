@@ -43,7 +43,6 @@ use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, Scal
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
     RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
@@ -345,7 +344,7 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
 
 pub fn create_archived_segment() -> ArchivedSegment {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rand::thread_rng().fill(block.as_mut_slice());

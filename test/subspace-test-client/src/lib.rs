@@ -225,12 +225,9 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = subspace_archiving::archiver::Archiver::new(
-        RECORD_SIZE,
-        RECORDED_HISTORY_SEGMENT_SIZE,
-        kzg.clone(),
-    )
-    .expect("Incorrect parameters for archiver");
+    let mut archiver =
+        subspace_archiving::archiver::Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone())
+            .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     let archived_segment = archiver

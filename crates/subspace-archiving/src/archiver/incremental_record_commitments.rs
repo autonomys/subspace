@@ -8,7 +8,7 @@ use blake2::Blake2b;
 use core::mem;
 use parity_scale_codec::{Encode, Output};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::{Blake2b256Hash, RECORD_SIZE};
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
 /// encapsulate tricky logic
@@ -39,11 +39,9 @@ pub(super) fn update_record_commitments(
     incremental_record_commitments: &mut IncrementalRecordCommitmentsState,
     segment: &Segment,
     full: bool,
-    record_size: usize,
 ) {
     segment.encode_to(&mut IncrementalRecordCommitmentsProcessor::new(
         incremental_record_commitments,
-        record_size,
         full,
     ));
 }
@@ -55,8 +53,6 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
     processed_bytes: usize,
     /// Record commitments already created
     incremental_record_commitments: &'a mut IncrementalRecordCommitmentsState,
-    /// Record size
-    record_size: usize,
     /// Whether segment is full or partial
     full: bool,
     /// Intermediate hashing state that computes Blake2-256-254.
@@ -68,11 +64,11 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
 impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
     fn drop(&mut self) {
         if self.full {
-            let record_offset = self.processed_bytes % self.record_size;
+            let record_offset = self.processed_bytes % RECORD_SIZE as usize;
             if record_offset > 0 {
                 // This is fine since we'll have at most a few iterations and allocation is less
                 // desirable than a loop here
-                for _ in 0..(self.record_size - record_offset) {
+                for _ in 0..(RECORD_SIZE as usize - record_offset) {
                     self.update_commitment_state(&[0]);
                 }
                 self.create_commitment();
@@ -85,8 +81,8 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
     fn write(&mut self, mut bytes: &[u8]) {
         // Try to finish last partial record if possible
 
-        let record_offset = self.processed_bytes % self.record_size;
-        let bytes_left_in_record = self.record_size - record_offset;
+        let record_offset = self.processed_bytes % RECORD_SIZE as usize;
+        let bytes_left_in_record = RECORD_SIZE as usize - record_offset;
         if bytes_left_in_record > 0 {
             let remaining_record_bytes;
             (remaining_record_bytes, bytes) =
@@ -106,11 +102,11 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
         // Continue processing records (full and partial) from remaining data, at this point we have
         // processed some number of full records, so can simply chunk the remaining bytes into
         // record sizes
-        bytes.chunks(self.record_size).for_each(|record| {
+        bytes.chunks(RECORD_SIZE as usize).for_each(|record| {
             self.update_commitment_state(record);
 
             // Store hashes of full records
-            if record.len() == self.record_size {
+            if record.len() == RECORD_SIZE as usize {
                 self.create_commitment();
             }
         });
@@ -120,13 +116,11 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
 impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     fn new(
         incremental_record_commitments: &'a mut IncrementalRecordCommitmentsState,
-        record_size: usize,
         full: bool,
     ) -> Self {
         Self {
             processed_bytes: 0,
             incremental_record_commitments,
-            record_size,
             full,
             hashing_state: Blake2b::<U32>::default(),
         }
@@ -146,7 +140,7 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     /// NOTE: This method is called with bytes that either cover part of the record or stop at the
     /// edge of the record.
     fn update_commitment_state(&mut self, bytes: &[u8]) {
-        if self.should_commit_to_record(self.processed_bytes / self.record_size) {
+        if self.should_commit_to_record(self.processed_bytes / RECORD_SIZE as usize) {
             self.hashing_state.update(bytes);
         }
         self.processed_bytes += bytes.len();
@@ -155,7 +149,7 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     /// In case commitment is necessary for currently processed record, internal hashing state will
     /// be finalized and commitment will be stored in shared state.
     fn create_commitment(&mut self) {
-        if self.should_commit_to_record(self.processed_bytes / self.record_size - 1) {
+        if self.should_commit_to_record(self.processed_bytes / RECORD_SIZE as usize - 1) {
             let hashing_state = mem::take(&mut self.hashing_state);
 
             let mut hash = Blake2b256Hash::from(hashing_state.finalize_fixed());

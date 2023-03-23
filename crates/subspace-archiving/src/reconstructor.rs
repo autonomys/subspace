@@ -8,6 +8,7 @@ use parity_scale_codec::Decode;
 use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::{
     ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, SegmentIndex,
+    RECORD_SIZE,
 };
 
 /// Reconstructor-related instantiation error.
@@ -65,11 +66,8 @@ pub struct ReconstructedContents {
 /// Reconstructor helps to retrieve blocks from archived pieces.
 #[derive(Debug, Clone)]
 pub struct Reconstructor {
-    /// Configuration parameter defining the size of one record (data in one piece excluding witness
-    /// size)
-    record_size: u32,
     /// Configuration parameter defining the size of one recorded history segment
-    segment_size: u32,
+    recorded_history_segment_size: u32,
     /// Erasure coding data structure
     reed_solomon: ReedSolomon,
     /// Index of last segment added to reconstructor
@@ -80,24 +78,22 @@ pub struct Reconstructor {
 
 impl Reconstructor {
     pub fn new(
-        record_size: u32,
-        segment_size: u32,
+        recorded_history_segment_size: u32,
     ) -> Result<Self, ReconstructorInstantiationError> {
-        if segment_size <= record_size {
+        if recorded_history_segment_size <= RECORD_SIZE {
             return Err(ReconstructorInstantiationError::SegmentSizeTooSmall);
         }
-        if segment_size % record_size != 0 {
+        if recorded_history_segment_size % RECORD_SIZE != 0 {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = segment_size / record_size;
-        let parity_shards = data_shards;
-        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
+        let source_shards = recorded_history_segment_size / RECORD_SIZE;
+        let parity_shards = source_shards;
+        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
-            record_size,
-            segment_size,
+            recorded_history_segment_size,
             reed_solomon,
             last_segment_index: None,
             partial_block: None,
@@ -115,7 +111,7 @@ impl Reconstructor {
         &mut self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<ReconstructedContents, ReconstructorError> {
-        let mut segment_data = Vec::with_capacity(self.segment_size as usize);
+        let mut segment_data = Vec::with_capacity(self.recorded_history_segment_size as usize);
         if !segment_pieces
             .iter()
             .take(self.reed_solomon.data_shard_count())
@@ -148,7 +144,7 @@ impl Reconstructor {
                         "All data shards are available after successful reconstruction; qed",
                     );
 
-                    for chunk in piece.iter().take(self.record_size as usize / 2) {
+                    for chunk in piece.iter().take(RECORD_SIZE as usize / 2) {
                         segment_data.extend_from_slice(chunk.as_ref());
                     }
                 });

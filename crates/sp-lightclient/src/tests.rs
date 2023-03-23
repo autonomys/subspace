@@ -71,7 +71,7 @@ fn archived_segment(kzg: Kzg) -> ArchivedSegment {
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
     archiver
         .add_block(block, Default::default())
