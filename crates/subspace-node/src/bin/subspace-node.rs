@@ -17,6 +17,7 @@
 //! Subspace node implementation.
 
 use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
+use domain_client_executor::ExecutorStreams;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -544,6 +545,13 @@ fn main() -> Result<(), Error> {
                     let (gossip_msg_sink, gossip_msg_stream) =
                         tracing_unbounded("cross_domain_gossip_messages", 100);
 
+                    let executor_streams = ExecutorStreams {
+                        block_import_throttling_buffer_size,
+                        imported_block_notification_stream: imported_block_notification_stream(),
+                        new_slot_notification_stream: new_slot_notification_stream(),
+                        _phantom: Default::default(),
+                    };
+
                     let system_domain_node = domain_service::new_full_system::<
                         _,
                         _,
@@ -557,9 +565,7 @@ fn main() -> Result<(), Error> {
                         primary_chain_node.client.clone(),
                         primary_chain_node.network.clone(),
                         &primary_chain_node.select_chain,
-                        imported_block_notification_stream(),
-                        new_slot_notification_stream(),
-                        block_import_throttling_buffer_size,
+                        executor_streams,
                         gossip_msg_sink.clone(),
                     )
                     .await?;
@@ -586,6 +592,14 @@ fn main() -> Result<(), Error> {
                                 ))
                             })?;
 
+                        let executor_streams = ExecutorStreams {
+                            block_import_throttling_buffer_size,
+                            imported_block_notification_stream: imported_block_notification_stream(
+                            ),
+                            new_slot_notification_stream: new_slot_notification_stream(),
+                            _phantom: Default::default(),
+                        };
+
                         let core_domain_params = domain_service::CoreDomainParams {
                             domain_id: core_domain_cli.domain_id,
                             core_domain_config,
@@ -594,10 +608,7 @@ fn main() -> Result<(), Error> {
                             primary_chain_client: primary_chain_node.client.clone(),
                             primary_network_sync_oracle: primary_chain_node.network.clone(),
                             select_chain: primary_chain_node.select_chain.clone(),
-                            imported_block_notification_stream: imported_block_notification_stream(
-                            ),
-                            new_slot_notification_stream: new_slot_notification_stream(),
-                            block_import_throttling_buffer_size,
+                            executor_streams,
                             gossip_message_sink: gossip_msg_sink,
                         };
 

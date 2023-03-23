@@ -161,10 +161,8 @@ where
                 params.is_authority,
                 bundle_producer,
                 bundle_processor,
-                params.imported_block_notification_stream,
-                params.new_slot_notification_stream,
+                params.executor_streams,
                 active_leaves,
-                params.block_import_throttling_buffer_size,
             )
             .boxed(),
         );

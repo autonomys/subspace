@@ -3,6 +3,7 @@ use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::xdm_verifier::CoreDomainXDMVerifier;
 use domain_client_executor::{
     CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
+    ExecutorStreams,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -214,9 +215,10 @@ where
     Ok(params)
 }
 
-pub struct CoreDomainParams<SBlock, SClient, PClient, SC, IBNS, NSNS>
+pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>
 where
     SBlock: BlockT,
+    PBlock: BlockT,
 {
     pub domain_id: DomainId,
     pub core_domain_config: DomainConfiguration,
@@ -225,9 +227,7 @@ where
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
-    pub imported_block_notification_stream: IBNS,
-    pub new_slot_notification_stream: NSNS,
-    pub block_import_throttling_buffer_size: u32,
+    pub executor_streams: ExecutorStreams<PBlock, IBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
 }
 
@@ -246,7 +246,7 @@ pub async fn new_full_core<
     RuntimeApi,
     ExecutorDispatch,
 >(
-    core_domain_params: CoreDomainParams<SBlock, SClient, PClient, SC, IBNS, NSNS>,
+    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>,
 ) -> sc_service::error::Result<
     NewFullCore<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -306,9 +306,7 @@ where
         primary_chain_client,
         primary_network_sync_oracle,
         select_chain,
-        imported_block_notification_stream,
-        new_slot_notification_stream,
-        block_import_throttling_buffer_size,
+        executor_streams,
         gossip_message_sink,
     } = core_domain_params;
 
@@ -399,9 +397,7 @@ where
             keystore: params.keystore_container.sync_keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
-            block_import_throttling_buffer_size,
-            imported_block_notification_stream,
-            new_slot_notification_stream,
+            executor_streams,
         },
     )
     .await?;

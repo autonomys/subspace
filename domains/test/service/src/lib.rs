@@ -20,6 +20,7 @@
 
 pub mod chain_spec;
 
+use domain_client_executor::ExecutorStreams;
 use domain_test_runtime::opaque::Block;
 use domain_test_runtime::Hash;
 use futures::StreamExt;
@@ -174,7 +175,28 @@ async fn run_executor(
         service_config: system_domain_config,
         maybe_relayer_id: None,
     };
-    let block_import_throttling_buffer_size = 10;
+    let executor_streams = ExecutorStreams {
+        block_import_throttling_buffer_size: 10,
+        imported_block_notification_stream: primary_chain_full_node
+            .imported_block_notification_stream
+            .subscribe()
+            .then(|imported_block_notification| async move {
+                (
+                    imported_block_notification.block_number,
+                    imported_block_notification.block_import_acknowledgement_sender,
+                )
+            }),
+        new_slot_notification_stream: primary_chain_full_node
+            .new_slot_notification_stream
+            .subscribe()
+            .then(|slot_notification| async move {
+                (
+                    slot_notification.new_slot_info.slot,
+                    slot_notification.new_slot_info.global_challenge,
+                )
+            }),
+        _phantom: Default::default(),
+    };
     let system_domain_node = domain_service::new_full_system::<
         _,
         _,
@@ -188,25 +210,7 @@ async fn run_executor(
         primary_chain_full_node.client.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,
-        primary_chain_full_node
-            .imported_block_notification_stream
-            .subscribe()
-            .then(|imported_block_notification| async move {
-                (
-                    imported_block_notification.block_number,
-                    imported_block_notification.block_import_acknowledgement_sender,
-                )
-            }),
-        primary_chain_full_node
-            .new_slot_notification_stream
-            .subscribe()
-            .then(|slot_notification| async move {
-                (
-                    slot_notification.new_slot_info.slot,
-                    slot_notification.new_slot_info.global_challenge,
-                )
-            }),
-        block_import_throttling_buffer_size,
+        executor_streams,
         gossip_msg_sink,
     )
     .await?;

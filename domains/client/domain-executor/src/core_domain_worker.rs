@@ -19,7 +19,7 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
-use crate::TransactionFor;
+use crate::{ExecutorStreams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
@@ -38,7 +38,6 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
-#[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 pub(super) async fn start_worker<
     Block,
@@ -76,10 +75,8 @@ pub(super) async fn start_worker<
         Backend,
         E,
     >,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
+    executor_streams: ExecutorStreams<PBlock, IBNS, NSNS>,
     active_leaves: Vec<BlockInfo<PBlock>>,
-    block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     SBlock: BlockT,
@@ -118,6 +115,13 @@ pub(super) async fn start_worker<
     E: CodeExecutor,
 {
     let span = tracing::Span::current();
+
+    let ExecutorStreams {
+        block_import_throttling_buffer_size,
+        imported_block_notification_stream,
+        new_slot_notification_stream,
+        _phantom,
+    } = executor_streams;
 
     let handle_block_import_notifications_fut =
         handle_block_import_notifications::<Block, PBlock, _, _, _>(

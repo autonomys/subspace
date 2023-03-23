@@ -9906,6 +9906,7 @@ dependencies = [
  "core-payments-domain-runtime",
  "cross-domain-message-gossip",
  "dirs",
+ "domain-client-executor",
  "domain-runtime-primitives",
  "domain-service",
  "frame-benchmarking",

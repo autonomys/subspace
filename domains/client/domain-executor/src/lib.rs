@@ -122,6 +122,7 @@ use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
+use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
@@ -141,6 +142,13 @@ type BundleSender<Block, PBlock> = TracingUnboundedSender<
         <Block as BlockT>::Hash,
     >,
 >;
+
+pub struct ExecutorStreams<PBlock, IBNS, NSNS> {
+    pub block_import_throttling_buffer_size: u32,
+    pub imported_block_notification_stream: IBNS,
+    pub new_slot_notification_stream: NSNS,
+    pub _phantom: PhantomData<PBlock>,
+}
 
 pub struct EssentialExecutorParams<
     Block,
@@ -168,9 +176,7 @@ pub struct EssentialExecutorParams<
     pub keystore: SyncCryptoStorePtr,
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
     pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
-    pub block_import_throttling_buffer_size: u32,
-    pub imported_block_notification_stream: IBNS,
-    pub new_slot_notification_stream: NSNS,
+    pub executor_streams: ExecutorStreams<PBlock, IBNS, NSNS>,
 }
 
 /// Returns the active leaves the overseer should start with.

@@ -3,7 +3,8 @@ use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
-    EssentialExecutorParams, SystemDomainParentChain, SystemExecutor, SystemGossipMessageValidator,
+    EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
+    SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -250,15 +251,12 @@ where
 /// Start a node with the given system domain `Configuration` and consensus chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-#[allow(clippy::too_many_arguments)]
 pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut system_domain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     select_chain: &SC,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
-    block_import_throttling_buffer_size: u32,
+    executor_streams: ExecutorStreams<PBlock, IBNS, NSNS>,
     gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFullSystem<
@@ -391,9 +389,7 @@ where
             keystore: params.keystore_container.sync_keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
-            block_import_throttling_buffer_size,
-            imported_block_notification_stream,
-            new_slot_notification_stream,
+            executor_streams,
         },
     )
     .await?;
