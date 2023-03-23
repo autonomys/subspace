@@ -13,7 +13,9 @@ use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
+use sc_client_api::{
+    BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider, StateBackendFor,
+};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::{
@@ -215,7 +217,7 @@ where
     Ok(params)
 }
 
-pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>
+pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>
 where
     SBlock: BlockT,
     PBlock: BlockT,
@@ -227,7 +229,7 @@ where
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
-    pub executor_streams: ExecutorStreams<PBlock, IBNS, NSNS>,
+    pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
 }
 
@@ -242,11 +244,12 @@ pub async fn new_full_core<
     PClient,
     SC,
     IBNS,
+    CIBNS,
     NSNS,
     RuntimeApi,
     ExecutorDispatch,
 >(
-    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, NSNS>,
+    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>,
 ) -> sc_service::error::Result<
     NewFullCore<
         Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
@@ -281,6 +284,7 @@ where
     PClient::Api: ExecutorApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send

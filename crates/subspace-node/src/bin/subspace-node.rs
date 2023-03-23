@@ -22,6 +22,7 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
+use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::PartialComponents;
@@ -549,11 +550,15 @@ fn main() -> Result<(), Error> {
                         primary_block_import_throttling_buffer_size,
                         subspace_imported_block_notification_stream:
                             imported_block_notification_stream(),
+                        client_imported_block_notification_stream: primary_chain_node
+                            .client
+                            .every_import_notification_stream(),
                         new_slot_notification_stream: new_slot_notification_stream(),
                         _phantom: Default::default(),
                     };
 
                     let system_domain_node = domain_service::new_full_system::<
+                        _,
                         _,
                         _,
                         _,
@@ -597,6 +602,9 @@ fn main() -> Result<(), Error> {
                             primary_block_import_throttling_buffer_size,
                             subspace_imported_block_notification_stream:
                                 imported_block_notification_stream(),
+                            client_imported_block_notification_stream: primary_chain_node
+                                .client
+                                .every_import_notification_stream(),
                             new_slot_notification_stream: new_slot_notification_stream(),
                             _phantom: Default::default(),
                         };
@@ -617,6 +625,7 @@ fn main() -> Result<(), Error> {
                             DomainId::CORE_PAYMENTS => {
                                 let core_domain_node =
                                     domain_service::new_full_core::<
+                                        _,
                                         _,
                                         _,
                                         _,

@@ -25,6 +25,7 @@ use domain_test_runtime::opaque::Block;
 use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
 use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
 use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
@@ -186,6 +187,9 @@ async fn run_executor(
                     imported_block_notification.block_import_acknowledgement_sender,
                 )
             }),
+        client_imported_block_notification_stream: primary_chain_full_node
+            .client
+            .every_import_notification_stream(),
         new_slot_notification_stream: primary_chain_full_node
             .new_slot_notification_stream
             .subscribe()
@@ -198,6 +202,7 @@ async fn run_executor(
         _phantom: Default::default(),
     };
     let system_domain_node = domain_service::new_full_system::<
+        _,
         _,
         _,
         _,
