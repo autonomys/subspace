@@ -1,5 +1,5 @@
 use crate::crypto::kzg::{embedded_kzg_settings, Kzg};
-use crate::Scalar;
+use crate::crypto::Scalar;
 use blst_from_scratch::consts::{G1_GENERATOR, G2_GENERATOR};
 use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_from_g2_rust};
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
@@ -11,26 +11,17 @@ use rand_core::SeedableRng;
 
 #[test]
 fn basic() {
-    let data = {
-        // Multiple of 32
-        let mut data = rand::random::<[u8; 256]>();
-
-        // We can only store 254 bits, set last byte to zero because of that
-        data.chunks_exact_mut(Scalar::FULL_BYTES)
-            .flat_map(|chunk| chunk.iter_mut().last())
-            .for_each(|last_byte| *last_byte = 0);
-
-        data
-    };
+    let values = (0..8)
+        .map(|_| Scalar::from(rand::random::<[u8; Scalar::SAFE_BYTES]>()))
+        .collect::<Vec<_>>();
 
     let kzg = Kzg::new(embedded_kzg_settings());
-    let polynomial = kzg.poly(&data).unwrap();
+    let polynomial = kzg.poly(&values).unwrap();
     let commitment = kzg.commit(&polynomial).unwrap();
 
-    let values = data.chunks_exact(Scalar::FULL_BYTES);
     let num_values = values.len();
 
-    for (index, value) in values.enumerate() {
+    for (index, value) in values.iter().enumerate() {
         let index = index.try_into().unwrap();
 
         let witness = kzg.create_witness(&polynomial, index).unwrap();

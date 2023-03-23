@@ -4,9 +4,9 @@ use crate::utils;
 use alloc::vec;
 use alloc::vec::Vec;
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::{Kzg, Polynomial};
-use subspace_core_primitives::{FlatPieces, Piece, BLAKE2B_256_HASH_SIZE, PIECES_IN_SEGMENT};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::{FlatPieces, Piece, PIECES_IN_SEGMENT};
 
 /// Reconstructor-related instantiation error.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -103,26 +103,26 @@ impl PiecesReconstructor {
             .map_err(ReconstructorError::DataShardsReconstruction)?;
 
         let mut reconstructed_record_shards = FlatPieces::new(shards.len());
-        let mut polynomial_data =
-            vec![0u8; (self.data_shards + self.parity_shards) as usize * BLAKE2B_256_HASH_SIZE];
+        let mut record_commitments =
+            vec![Scalar::default(); (self.data_shards + self.parity_shards) as usize];
         //TODO: Parity hashes will be erasure coded instead in the future
         //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
         // we already have
         reconstructed_record_shards
             .as_pieces_mut()
-            .zip(polynomial_data.chunks_exact_mut(BLAKE2B_256_HASH_SIZE))
+            .zip(record_commitments.iter_mut())
             .zip(shards)
             .for_each(|((mut piece, polynomial_data), record)| {
                 let record =
                     record.expect("Reconstruction just happened and all records are present; qed");
                 let record = record.flatten();
                 piece.record_mut().as_mut().copy_from_slice(record);
-                polynomial_data.copy_from_slice(&blake2b_256_254_hash(record));
+                *polynomial_data = blake2b_256_254_hash_to_scalar(record);
             });
 
         let polynomial = self
             .kzg
-            .poly(&polynomial_data)
+            .poly(&record_commitments)
             .expect("Internally produced values must never fail; qed");
 
         Ok((reconstructed_record_shards, polynomial))
