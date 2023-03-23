@@ -104,8 +104,8 @@ pub(super) async fn start_worker<
     let span = tracing::Span::current();
 
     let ExecutorStreams {
-        block_import_throttling_buffer_size,
-        imported_block_notification_stream,
+        primary_block_import_throttling_buffer_size,
+        subspace_imported_block_notification_stream,
         new_slot_notification_stream,
         _phantom,
     } = executor_streams;
@@ -135,8 +135,8 @@ pub(super) async fn start_worker<
                      }| (hash, number),
                 )
                 .collect(),
-            Box::pin(imported_block_notification_stream),
-            block_import_throttling_buffer_size,
+            Box::pin(subspace_imported_block_notification_stream),
+            primary_block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),

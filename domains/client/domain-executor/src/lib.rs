@@ -143,9 +143,16 @@ type BundleSender<Block, PBlock> = TracingUnboundedSender<
     >,
 >;
 
+/// Notification streams from the primary chain driving the executor.
 pub struct ExecutorStreams<PBlock, IBNS, NSNS> {
-    pub block_import_throttling_buffer_size: u32,
-    pub imported_block_notification_stream: IBNS,
+    /// Pause the primary block import when the primary chain client
+    /// runs much faster than the domain client.
+    pub primary_block_import_throttling_buffer_size: u32,
+    /// Primary block import notification from `sc-consensus-subspace`.
+    ///
+    /// Fired before the completion of entire block import pipeline.
+    pub subspace_imported_block_notification_stream: IBNS,
+    /// New slot arrives.
     pub new_slot_notification_stream: NSNS,
     pub _phantom: PhantomData<PBlock>,
 }

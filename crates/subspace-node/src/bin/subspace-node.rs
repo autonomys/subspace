@@ -373,7 +373,7 @@ fn main() -> Result<(), Error> {
                     .cloned();
 
                 // TODO: proper value
-                let block_import_throttling_buffer_size = 10;
+                let primary_block_import_throttling_buffer_size = 10;
 
                 let mut primary_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
@@ -546,8 +546,9 @@ fn main() -> Result<(), Error> {
                         tracing_unbounded("cross_domain_gossip_messages", 100);
 
                     let executor_streams = ExecutorStreams {
-                        block_import_throttling_buffer_size,
-                        imported_block_notification_stream: imported_block_notification_stream(),
+                        primary_block_import_throttling_buffer_size,
+                        subspace_imported_block_notification_stream:
+                            imported_block_notification_stream(),
                         new_slot_notification_stream: new_slot_notification_stream(),
                         _phantom: Default::default(),
                     };
@@ -593,9 +594,9 @@ fn main() -> Result<(), Error> {
                             })?;
 
                         let executor_streams = ExecutorStreams {
-                            block_import_throttling_buffer_size,
-                            imported_block_notification_stream: imported_block_notification_stream(
-                            ),
+                            primary_block_import_throttling_buffer_size,
+                            subspace_imported_block_notification_stream:
+                                imported_block_notification_stream(),
                             new_slot_notification_stream: new_slot_notification_stream(),
                             _phantom: Default::default(),
                         };

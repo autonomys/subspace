@@ -176,8 +176,8 @@ async fn run_executor(
         maybe_relayer_id: None,
     };
     let executor_streams = ExecutorStreams {
-        block_import_throttling_buffer_size: 10,
-        imported_block_notification_stream: primary_chain_full_node
+        primary_block_import_throttling_buffer_size: 10,
+        subspace_imported_block_notification_stream: primary_chain_full_node
             .imported_block_notification_stream
             .subscribe()
             .then(|imported_block_notification| async move {

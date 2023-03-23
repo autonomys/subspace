@@ -58,7 +58,7 @@ pub(crate) async fn handle_block_import_notifications<
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
     mut block_imports: BlockImports,
-    block_import_throttling_buffer_size: u32,
+    primary_block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -97,7 +97,7 @@ pub(crate) async fn handle_block_import_notifications<
     // consumed by the domain processor, the other from `sc-consensus-subspace` is used to discontinue
     // the primary block import in case the primary chain runs much faster than the domain.).
     let (mut block_info_sender, mut block_info_receiver) =
-        mpsc::channel(block_import_throttling_buffer_size as usize);
+        mpsc::channel(primary_block_import_throttling_buffer_size as usize);
 
     let mut client_block_import = primary_chain_client.every_import_notification_stream();
 
