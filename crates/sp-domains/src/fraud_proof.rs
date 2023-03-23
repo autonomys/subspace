@@ -158,10 +158,11 @@ pub struct InvalidStateTransitionProof {
     pub bad_receipt_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
-    /// Parent hash of the block at which the invalid execution occurred.
+    /// Hash of the primary block corresponding to `parent_number`.
     ///
-    /// Runtime code for this block's execution is retrieved on top of the parent block.
-    pub parent_hash: H256,
+    /// Runtime code for the execution of the domain block that is being challenged
+    /// is retrieved on top of the primary parent block from the primary chain.
+    pub primary_parent_hash: H256,
     /// State root before the fraudulent transaction.
     pub pre_state_root: H256,
     /// State root after the fraudulent transaction.

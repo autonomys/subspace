@@ -29,20 +29,22 @@ pub enum FraudProofError {
     RuntimeApi(#[from] sp_api::ApiError),
 }
 
-pub struct FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+pub struct FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E> {
     client: Arc<Client>,
+    primary_chain_client: Arc<PClient>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     backend: Arc<Backend>,
     code_executor: Arc<E>,
     _phantom: PhantomData<(Block, PBlock)>,
 }
 
-impl<Block, PBlock, Client, Backend, E> Clone
-    for FraudProofGenerator<Block, PBlock, Client, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E> Clone
+    for FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
+            primary_chain_client: self.primary_chain_client.clone(),
             spawner: self.spawner.clone(),
             backend: self.backend.clone(),
             code_executor: self.code_executor.clone(),
@@ -51,7 +53,8 @@ impl<Block, PBlock, Client, Backend, E> Clone
     }
 }
 
-impl<Block, PBlock, Client, Backend, E> FraudProofGenerator<Block, PBlock, Client, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E>
+    FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -59,18 +62,21 @@ where
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    PClient: HeaderBackend<PBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     pub fn new(
         client: Arc<Client>,
+        primary_chain_client: Arc<PClient>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         backend: Arc<Backend>,
         code_executor: Arc<E>,
     ) -> Self {
         Self {
             client,
+            primary_chain_client,
             spawner,
             backend,
             code_executor,
@@ -115,6 +121,22 @@ where
             },
         )?;
 
+        let primary_parent_hash = H256::decode(
+            &mut self
+                .primary_chain_client
+                .header(local_receipt.primary_hash)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Header not found for primary {:?}",
+                        local_receipt.primary_hash
+                    ))
+                })?
+                .parent_hash()
+                .encode()
+                .as_slice(),
+        )
+        .map_err(|_| FraudProofError::InvalidStateRootType)?;
+
         // TODO: abstract the execution proof impl to be reusable in the test.
         let invalid_state_transition_proof = if local_trace_index == 0 {
             // `initialize_block` execution proof.
@@ -142,7 +164,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                parent_hash: as_h256(&parent_header.hash())?,
+                primary_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -183,7 +205,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                parent_hash: as_h256(&parent_header.hash())?,
+                primary_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -206,7 +228,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                parent_hash: as_h256(&parent_header.hash())?,
+                primary_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
