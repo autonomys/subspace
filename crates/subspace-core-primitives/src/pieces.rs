@@ -3,8 +3,10 @@ mod serde;
 
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::array::TryFromSliceError;
 use core::mem;
 use core::ops::{Deref, DerefMut};
 use derive_more::{AsMut, AsRef, Deref, DerefMut};
@@ -68,42 +70,29 @@ impl AsMut<[u8]> for RecordWitness {
 /// Internally piece contains a record and corresponding witness that together with records root of
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Piece(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
-
-impl Default for Piece {
-    fn default() -> Self {
-        Self(vec![0u8; PIECE_SIZE])
-    }
-}
+pub struct Piece(Box<PieceArray>);
 
 impl From<Piece> for Vec<u8> {
     fn from(piece: Piece) -> Self {
-        piece.0
+        piece.0.to_vec()
     }
 }
-
 impl TryFrom<&[u8]> for Piece {
-    type Error = &'static str;
+    type Error = TryFromSliceError;
+
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        if slice.len() != PIECE_SIZE {
-            Err("Wrong piece size, expected: 32768")
-        } else {
-            Ok(Self(slice.to_vec()))
-        }
+        <[u8; PIECE_SIZE]>::try_from(slice).map(|bytes| Piece(Box::new(PieceArray(bytes))))
     }
 }
 
 impl TryFrom<Vec<u8>> for Piece {
-    type Error = &'static str;
+    type Error = TryFromSliceError;
 
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
-        if vec.len() != PIECE_SIZE {
-            Err("Wrong piece size, expected: 32768")
-        } else {
-            Ok(Self(vec))
-        }
+        // TODO: Maybe possible to transmute boxed slice into boxed array
+        Self::try_from(vec.as_slice())
     }
 }
 
@@ -111,31 +100,25 @@ impl Deref for Piece {
     type Target = PieceArray;
 
     fn deref(&self) -> &Self::Target {
-        let array =
-            <&[u8; PIECE_SIZE]>::try_from(self.0.as_slice()).expect("Piece has correct size; qed");
-        // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        unsafe { mem::transmute(array) }
+        &self.0
     }
 }
 
 impl DerefMut for Piece {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        let array = <&mut [u8; PIECE_SIZE]>::try_from(self.0.as_mut_slice())
-            .expect("Piece has correct size; qed");
-        // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        unsafe { mem::transmute(array) }
+        &mut self.0
     }
 }
 
 impl AsRef<[u8]> for Piece {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.0.as_slice()
     }
 }
 
 impl AsMut<[u8]> for Piece {
     fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
+        self.0.as_mut_slice()
     }
 }
 
@@ -187,13 +170,13 @@ impl AsMut<[u8]> for PieceArray {
 
 impl From<&PieceArray> for Piece {
     fn from(value: &PieceArray) -> Self {
-        Piece(value.0.to_vec())
+        Piece(Box::new(*value))
     }
 }
 
 impl From<PieceArray> for Piece {
     fn from(value: PieceArray) -> Self {
-        Piece(value.0.to_vec())
+        Piece(Box::new(value))
     }
 }
 
