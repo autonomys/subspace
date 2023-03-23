@@ -11,7 +11,7 @@ use subspace_core_primitives::{
 };
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces.as_pieces().map(Piece::from).collect()
+    pieces.iter().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
@@ -59,8 +59,8 @@ fn segment_reconstruction_works() {
     pieces.iter().zip(reconstructed_pieces.iter()).for_each(
         |(original_piece, reconstructed_piece)| {
             assert_eq!(
-                blake2b_256_254_hash(original_piece),
-                blake2b_256_254_hash(reconstructed_piece)
+                blake2b_256_254_hash(original_piece.as_ref()),
+                blake2b_256_254_hash(reconstructed_piece.as_ref())
             );
         },
     );
@@ -98,8 +98,8 @@ fn piece_reconstruction_works() {
         .unwrap();
 
     assert_eq!(
-        blake2b_256_254_hash(&pieces[missing_piece_position]),
-        blake2b_256_254_hash(&missing_piece)
+        blake2b_256_254_hash(pieces[missing_piece_position].as_ref()),
+        blake2b_256_254_hash(missing_piece.as_ref())
     );
 }
 

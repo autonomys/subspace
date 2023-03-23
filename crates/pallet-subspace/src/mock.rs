@@ -41,7 +41,7 @@ use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Randomness, RecordsRoot,
     RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -362,7 +362,7 @@ pub fn create_signed_vote(
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
     global_randomnesses: &Randomness,
-    piece: Piece,
+    piece: &PieceArray,
     reward_address: <Test as frame_system::Config>::AccountId,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
@@ -382,8 +382,8 @@ pub fn create_signed_vote(
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
             piece_offset: 0,
-            piece_record_hash: blake2b_256_254_hash_to_scalar(&piece.record()),
-            piece_witness: Witness::try_from_bytes(&piece.witness()).unwrap(),
+            piece_record_hash: blake2b_256_254_hash_to_scalar(piece.record().as_ref()),
+            piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
             chunk_offset: 0,
             chunk,
             chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),

@@ -35,7 +35,7 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceRef,
+    ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceArray,
     RecordsRoot, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 
@@ -749,7 +749,7 @@ impl Archiver {
         // Combine data and parity records back into flat vector of pieces along with corresponding
         // witnesses (Merkle proofs) created above.
         pieces
-            .as_pieces_mut()
+            .iter_mut()
             .enumerate()
             .zip(
                 record_shards
@@ -757,12 +757,12 @@ impl Archiver {
                     .as_ref()
                     .chunks_exact(RECORD_SIZE as usize),
             )
-            .for_each(|((position, mut piece), shard_chunk)| {
-                let (mut record, mut witness) = piece.split_mut();
+            .for_each(|((position, piece), shard_chunk)| {
+                let (record, witness) = piece.split_mut();
 
-                record.as_mut().copy_from_slice(shard_chunk);
+                record.copy_from_slice(shard_chunk);
                 // TODO: Consider batch witness creation for improved performance
-                witness.as_mut().copy_from_slice(
+                witness.copy_from_slice(
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
@@ -799,18 +799,18 @@ impl Archiver {
 pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
-    piece: PieceRef<'_>,
+    piece: &PieceArray,
     commitment: RecordsRoot,
     position: u32,
 ) -> bool {
     let (record, witness) = piece.split();
-    let witness = match Witness::try_from_bytes(&witness) {
+    let witness = match Witness::try_from_bytes(witness) {
         Ok(witness) => witness,
         _ => {
             return false;
         }
     };
-    let leaf_hash = blake2b_256_254_hash_to_scalar(&record);
+    let leaf_hash = blake2b_256_254_hash_to_scalar(record.as_ref());
 
     kzg.verify(
         &commitment,

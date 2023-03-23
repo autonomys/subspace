@@ -69,7 +69,7 @@ fn basic() {
         .unwrap();
     let piece = piece_res.unwrap();
 
-    assert_eq!(piece_by_kad_key.as_ref(), piece.as_ref());
+    assert_eq!(piece_by_kad_key, piece);
 }
 
 #[test]

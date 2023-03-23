@@ -210,7 +210,7 @@ impl PieceGetter for TestPieceGetter {
         Ok(self
             .archived_segment
             .pieces
-            .as_pieces()
+            .iter()
             .nth(piece_index as usize)
             .map(Piece::from))
     }
@@ -235,7 +235,7 @@ where
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");
-    let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();
+    let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
     let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;

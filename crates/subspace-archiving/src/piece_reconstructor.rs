@@ -105,10 +105,10 @@ impl PiecesReconstructor {
         //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
         // we already have
         reconstructed_record_shards
-            .as_pieces_mut()
+            .iter_mut()
             .zip(record_commitments.iter_mut())
             .zip(shards)
-            .for_each(|((mut piece, polynomial_data), record)| {
+            .for_each(|((piece, polynomial_data), record)| {
                 let record =
                     record.expect("Reconstruction just happened and all records are present; qed");
                 let record = record.flatten();
@@ -133,20 +133,17 @@ impl PiecesReconstructor {
     ) -> Result<FlatPieces, ReconstructorError> {
         let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
-        pieces
-            .as_pieces_mut()
-            .enumerate()
-            .for_each(|(position, mut piece)| {
-                piece.witness_mut().as_mut().copy_from_slice(
-                    &self
-                        .kzg
-                        .create_witness(&polynomial, position as u32)
-                        // TODO: Update this proof here and in other places, we don't use Merkle
-                        //  trees anymore
-                        .expect("We use the same indexes as during Merkle tree creation; qed")
-                        .to_bytes(),
-                );
-            });
+        pieces.iter_mut().enumerate().for_each(|(position, piece)| {
+            piece.witness_mut().as_mut().copy_from_slice(
+                &self
+                    .kzg
+                    .create_witness(&polynomial, position as u32)
+                    // TODO: Update this proof here and in other places, we don't use Merkle
+                    //  trees anymore
+                    .expect("We use the same indexes as during Merkle tree creation; qed")
+                    .to_bytes(),
+            );
+        });
 
         Ok(pieces)
     }
@@ -164,14 +161,7 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::from(
-            reconstructed_records
-                .as_pieces()
-                .nth(piece_position)
-                .expect(
-                "Piece exists at the position within segment after successful reconstruction; qed",
-            ),
-        );
+        let mut piece = Piece::from(reconstructed_records[piece_position]);
 
         piece.witness_mut().as_mut().copy_from_slice(
             &self

@@ -549,7 +549,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
                 .await
                 .unwrap()
                 .iter()
-                .flat_map(|flat_pieces| flat_pieces.as_pieces())
+                .flat_map(|flat_pieces| flat_pieces.iter())
                 .enumerate()
                 .choose(&mut thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::from(piece)))

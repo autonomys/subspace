@@ -115,7 +115,7 @@ impl EligibleSector {
             });
 
         let (record, witness) = piece.split();
-        let piece_witness = match Witness::try_from_bytes(&witness) {
+        let piece_witness = match Witness::try_from_bytes(witness) {
             Ok(piece_witness) => piece_witness,
             Err(error) => {
                 let piece_index = self
@@ -143,7 +143,7 @@ impl EligibleSector {
                 sector_index: self.sector_index,
                 total_pieces: sector_metadata.total_pieces,
                 piece_offset: self.audit_piece_offset,
-                piece_record_hash: blake2b_256_254_hash_to_scalar(&record),
+                piece_record_hash: blake2b_256_254_hash_to_scalar(record.as_ref()),
                 piece_witness,
                 chunk_offset: offset,
                 chunk,
@@ -178,7 +178,7 @@ where
 
     let mut piece = Piece::default();
     sector.seek(SeekFrom::Current(audit_piece_bytes_offset as i64))?;
-    sector.read_exact(&mut piece)?;
+    sector.read_exact(piece.as_mut())?;
 
     let chunks = piece
         .chunks_exact(ScalarLegacy::FULL_BYTES)
