@@ -1,9 +1,14 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::mem;
 use core::ops::{Deref, DerefMut};
-use derive_more::{Deref, DerefMut};
-use parity_scale_codec::{Decode, Encode};
+use derive_more::{AsMut, AsRef, Deref, DerefMut};
+#[cfg(feature = "serde")]
+use hex::{decode_to_slice, FromHex, FromHexError};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
+#[cfg(feature = "serde")]
+use serde::{de, Deserializer, Serializer};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -21,61 +26,47 @@ pub const WITNESS_SIZE: u32 = 48;
 /// Size of a segment record given the global piece size (in bytes).
 pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
 
-/// Reference to record sized slice of memory.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct RecordRef<'a>(&'a [u8]);
+/// Record contained within a piece.
+///
+/// NOTE: This is a stack-allocated data structure and can cause stack overflow!
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[repr(transparent)]
+pub struct Record([u8; RECORD_SIZE as usize]);
 
-impl<'a> AsRef<[u8]> for RecordRef<'a> {
+impl AsRef<[u8]> for Record {
     fn as_ref(&self) -> &[u8] {
-        self.0
+        &self.0
     }
 }
 
-/// Mutable reference to record sized slice of memory.
-#[derive(Debug, Eq, PartialEq, Deref)]
-pub struct RecordRefMut<'a>(&'a mut [u8]);
-
-impl<'a> AsRef<[u8]> for RecordRefMut<'a> {
-    fn as_ref(&self) -> &[u8] {
-        self.0
-    }
-}
-
-impl<'a> AsMut<[u8]> for RecordRefMut<'a> {
+impl AsMut<[u8]> for Record {
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0
+        &mut self.0
     }
 }
 
-/// Reference to witness sized slice of memory.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct WitnessRef<'a>(&'a [u8; WITNESS_SIZE as usize]);
+/// Record witness contained within a piece.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[repr(transparent)]
+pub struct RecordWitness([u8; WITNESS_SIZE as usize]);
 
-impl<'a> AsRef<[u8]> for WitnessRef<'a> {
+impl AsRef<[u8]> for RecordWitness {
     fn as_ref(&self) -> &[u8] {
-        self.0
+        &self.0
     }
 }
 
-/// Mutable reference to witness sized slice of memory.
-#[derive(Debug, Eq, PartialEq, Deref)]
-pub struct WitnessRefMut<'a>(&'a mut [u8; WITNESS_SIZE as usize]);
-
-impl<'a> AsRef<[u8]> for WitnessRefMut<'a> {
-    fn as_ref(&self) -> &[u8] {
-        self.0
-    }
-}
-
-impl<'a> AsMut<[u8]> for WitnessRefMut<'a> {
+impl AsMut<[u8]> for RecordWitness {
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0
+        &mut self.0
     }
 }
 
 /// A piece of archival history in Subspace Network.
 ///
-/// Internally piece contains a record and corresponding witness that together with `RootBlock` of
+/// This version is allocated on the heap, for stack-allocated piece see [`PieceArray`].
+///
+/// Internally piece contains a record and corresponding witness that together with records root of
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
@@ -118,15 +109,22 @@ impl TryFrom<Vec<u8>> for Piece {
 }
 
 impl Deref for Piece {
-    type Target = [u8];
+    type Target = PieceArray;
+
     fn deref(&self) -> &Self::Target {
-        &self.0
+        let array =
+            <&[u8; PIECE_SIZE]>::try_from(self.0.as_slice()).expect("Piece has correct size; qed");
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        unsafe { mem::transmute(array) }
     }
 }
 
 impl DerefMut for Piece {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        let array = <&mut [u8; PIECE_SIZE]>::try_from(self.0.as_mut_slice())
+            .expect("Piece has correct size; qed");
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        unsafe { mem::transmute(array) }
     }
 }
 
@@ -142,299 +140,270 @@ impl AsMut<[u8]> for Piece {
     }
 }
 
-impl Piece {
-    /// Get piece reference.
-    pub fn as_ref(&self) -> PieceRef<'_> {
-        PieceRef(
-            self.0
-                .as_slice()
-                .try_into()
-                .expect("Piece has correct size; qed"),
-        )
-    }
+/// A piece of archival history in Subspace Network.
+///
+/// This version is allocated on the stack, for heap-allocated piece see [`Piece`].
+///
+/// Internally piece contains a record and corresponding witness that together with records root of
+/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
+/// archival history of the blockchain.
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Deref,
+    DerefMut,
+    AsRef,
+    AsMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[repr(transparent)]
+pub struct PieceArray([u8; PIECE_SIZE]);
 
-    /// Get mutable piece reference.
-    pub fn as_mut(&mut self) -> PieceRefMut<'_> {
-        PieceRefMut(
-            self.0
-                .as_mut_slice()
-                .try_into()
-                .expect("Piece has correct size; qed"),
-        )
-    }
-
-    /// Split piece into underlying components.
-    pub fn split(&self) -> (RecordRef<'_>, WitnessRef<'_>) {
-        let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
-        (
-            RecordRef(record),
-            WitnessRef(
-                witness
-                    .try_into()
-                    .expect("Witness withing a piece has correct size; qed"),
-            ),
-        )
-    }
-
-    /// Split piece into underlying mutable components.
-    pub fn split_mut(&mut self) -> (RecordRefMut<'_>, WitnessRefMut<'_>) {
-        let (record, witness) = self.0.split_at_mut(RECORD_SIZE as usize);
-        (
-            RecordRefMut(record),
-            WitnessRefMut(
-                witness
-                    .try_into()
-                    .expect("Witness withing a piece has correct size; qed"),
-            ),
-        )
-    }
-
-    /// Record contained within a piece.
-    pub fn record(&self) -> RecordRef<'_> {
-        self.split().0
-    }
-
-    /// Mutable record contained within a piece.
-    pub fn record_mut(&mut self) -> RecordRefMut<'_> {
-        self.split_mut().0
-    }
-
-    /// Witness contained within a piece.
-    pub fn witness(&self) -> WitnessRef<'_> {
-        self.split().1
-    }
-
-    /// Mutable witness contained within a piece.
-    pub fn witness_mut(&mut self) -> WitnessRefMut<'_> {
-        self.split_mut().1
+impl Default for PieceArray {
+    fn default() -> Self {
+        Self([0u8; PIECE_SIZE])
     }
 }
 
-/// Reference to piece sized slice of memory.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PieceRef<'a>(&'a [u8; PIECE_SIZE]);
-
-impl<'a> AsRef<[u8]> for PieceRef<'a> {
+impl AsRef<[u8]> for PieceArray {
     fn as_ref(&self) -> &[u8] {
-        self.0
+        &self.0
     }
 }
 
-impl<'a> From<&'a Piece> for PieceRef<'a> {
-    fn from(value: &'a Piece) -> Self {
-        PieceRef(
-            value
-                .0
-                .as_slice()
-                .try_into()
-                .expect("Piece has correct size; qed"),
-        )
-    }
-}
-
-impl From<PieceRef<'_>> for Piece {
-    fn from(value: PieceRef<'_>) -> Self {
-        Piece(value.0.to_vec())
-    }
-}
-
-impl<'a> PieceRef<'a> {
-    /// Split piece into underlying components.
-    pub fn split(&'a self) -> (RecordRef<'a>, WitnessRef<'a>) {
-        let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
-        (
-            RecordRef(record),
-            WitnessRef(
-                witness
-                    .try_into()
-                    .expect("Witness withing a piece has correct size; qed"),
-            ),
-        )
-    }
-
-    /// Record contained within a piece.
-    pub fn record(&'a self) -> RecordRef<'a> {
-        self.split().0
-    }
-
-    /// Witness contained within a piece.
-    pub fn witness(&'a self) -> WitnessRef<'a> {
-        self.split().1
-    }
-}
-
-/// Mutable reference to piece sized slice of memory.
-#[derive(Debug, Eq, PartialEq, Deref, DerefMut)]
-pub struct PieceRefMut<'a>(&'a mut [u8; PIECE_SIZE]);
-
-impl<'a> AsRef<[u8]> for PieceRefMut<'a> {
-    fn as_ref(&self) -> &[u8] {
-        self.0
-    }
-}
-
-impl<'a> AsMut<[u8]> for PieceRefMut<'a> {
+impl AsMut<[u8]> for PieceArray {
     fn as_mut(&mut self) -> &mut [u8] {
-        self.0
+        &mut self.0
     }
 }
 
-impl<'a> From<&'a mut Piece> for PieceRefMut<'a> {
-    fn from(value: &'a mut Piece) -> Self {
-        PieceRefMut(
-            value
-                .0
-                .as_mut_slice()
-                .try_into()
-                .expect("Piece has correct size; qed"),
-        )
-    }
-}
-
-impl<'a> From<PieceRefMut<'a>> for PieceRef<'a> {
-    fn from(value: PieceRefMut<'a>) -> Self {
-        PieceRef(value.0)
-    }
-}
-
-impl<'a> From<&'a PieceRefMut<'a>> for PieceRef<'a> {
-    fn from(value: &'a PieceRefMut<'a>) -> Self {
-        PieceRef(value.0)
-    }
-}
-
-impl From<PieceRefMut<'_>> for Piece {
-    fn from(value: PieceRefMut<'_>) -> Self {
+impl From<&PieceArray> for Piece {
+    fn from(value: &PieceArray) -> Self {
         Piece(value.0.to_vec())
     }
 }
 
-impl<'a> PieceRefMut<'a> {
+impl From<PieceArray> for Piece {
+    fn from(value: PieceArray) -> Self {
+        Piece(value.0.to_vec())
+    }
+}
+
+impl PieceArray {
     /// Split piece into underlying components.
-    pub fn split(&'a self) -> (RecordRef<'a>, WitnessRef<'a>) {
+    pub fn split(&self) -> (&Record, &RecordWitness) {
         let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
-        (
-            RecordRef(record),
-            WitnessRef(
-                witness
-                    .try_into()
-                    .expect("Witness withing a piece has correct size; qed"),
-            ),
-        )
+
+        let record = <&[u8; RECORD_SIZE as usize]>::try_from(record)
+            .expect("Slice of memory has correct length; qed");
+        let witness = <&[u8; WITNESS_SIZE as usize]>::try_from(witness)
+            .expect("Slice of memory has correct length; qed");
+
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let record = unsafe { mem::transmute(record) };
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let witness = unsafe { mem::transmute(witness) };
+
+        (record, witness)
     }
 
     /// Split piece into underlying mutable components.
-    pub fn split_mut(&'a mut self) -> (RecordRefMut<'a>, WitnessRefMut<'a>) {
+    pub fn split_mut(&mut self) -> (&mut Record, &mut RecordWitness) {
         let (record, witness) = self.0.split_at_mut(RECORD_SIZE as usize);
-        (
-            RecordRefMut(record),
-            WitnessRefMut(
-                witness
-                    .try_into()
-                    .expect("Witness withing a piece has correct size; qed"),
-            ),
-        )
+
+        let record = <&mut [u8; RECORD_SIZE as usize]>::try_from(record)
+            .expect("Slice of memory has correct length; qed");
+        let witness = <&mut [u8; WITNESS_SIZE as usize]>::try_from(witness)
+            .expect("Slice of memory has correct length; qed");
+
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let record = unsafe { mem::transmute(record) };
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let witness = unsafe { mem::transmute(witness) };
+
+        (record, witness)
     }
 
     /// Record contained within a piece.
-    pub fn record(&'a self) -> RecordRef<'a> {
+    pub fn record(&self) -> &Record {
         self.split().0
     }
 
     /// Mutable record contained within a piece.
-    pub fn record_mut(&'a mut self) -> RecordRefMut<'a> {
+    pub fn record_mut(&mut self) -> &mut Record {
         self.split_mut().0
     }
 
     /// Witness contained within a piece.
-    pub fn witness(&'a self) -> WitnessRef<'a> {
+    pub fn witness(&self) -> &RecordWitness {
         self.split().1
     }
 
     /// Mutable witness contained within a piece.
-    pub fn witness_mut(&'a mut self) -> WitnessRefMut<'a> {
+    pub fn witness_mut(&mut self) -> &mut RecordWitness {
         self.split_mut().1
     }
 }
 
 /// Flat representation of multiple pieces concatenated for higher efficient for processing.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FlatPieces(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Vec<u8>);
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
+    Deref,
+    DerefMut,
+)]
+pub struct FlatPieces(Vec<PieceArray>);
 
-// TODO: Introduce `PieceRef` and `PieceRefMut` that can be converted into `Piece` without
-//  `.expect()` and maybe add convenience methods for accessing record and witness parts of it
 impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
     pub fn new(piece_count: usize) -> Self {
-        Self(vec![0u8; piece_count * PIECE_SIZE])
+        Self(vec![PieceArray::default(); piece_count])
     }
 
-    /// Number of pieces contained.
-    pub fn count(&self) -> usize {
-        self.0.len() / PIECE_SIZE
-    }
-
-    /// Extract internal flat representation of bytes.
-    pub fn into_inner(self) -> Vec<u8> {
+    /// Extract internal representation.
+    pub fn into_inner(self) -> Vec<PieceArray> {
         self.0
-    }
-
-    /// Iterator over individual pieces as byte slices.
-    pub fn as_pieces(&self) -> impl ExactSizeIterator<Item = PieceRef<'_>> {
-        self.0
-            .chunks_exact(PIECE_SIZE)
-            .map(|piece| PieceRef(piece.try_into().expect("Piece has correct size; qed")))
-    }
-
-    /// Iterator over individual pieces as byte slices.
-    pub fn as_pieces_mut(&mut self) -> impl ExactSizeIterator<Item = PieceRefMut<'_>> {
-        self.0
-            .chunks_exact_mut(PIECE_SIZE)
-            .map(|piece| PieceRefMut(piece.try_into().expect("Piece has correct size; qed")))
     }
 }
 
-impl From<Piece> for FlatPieces {
-    fn from(Piece(piece): Piece) -> Self {
-        Self(piece)
+impl From<PieceArray> for FlatPieces {
+    fn from(value: PieceArray) -> Self {
+        Self(vec![value])
     }
 }
 
-impl TryFrom<Vec<u8>> for FlatPieces {
-    type Error = Vec<u8>;
+#[cfg(feature = "serde")]
+impl FromHex for FlatPieces {
+    type Error = FromHexError;
 
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        if value.len() % PIECE_SIZE != 0 {
-            return Err(value);
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let hex = hex.as_ref();
+        if hex.len() % 2 != 0 {
+            return Err(FromHexError::OddLength);
+        }
+        if hex.len() % (2 * PIECE_SIZE) != 0 {
+            return Err(FromHexError::InvalidStringLength);
         }
 
-        Ok(Self(value))
+        let mut out = FlatPieces::new(hex.len() / 2 / PIECE_SIZE);
+
+        hex.chunks_exact(2 * PIECE_SIZE)
+            .zip(out.iter_mut())
+            .try_for_each(|(bytes, piece)| decode_to_slice(bytes, piece.as_mut()))?;
+
+        Ok(out)
     }
 }
 
-impl Deref for FlatPieces {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+#[cfg(feature = "serde")]
+impl Serialize for FlatPieces {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Serializer::serialize_newtype_struct(serializer, "FlatPieces", {
+            struct SerializeWith<'a> {
+                values: &'a [u8],
+            }
+            impl<'a> Serialize for SerializeWith<'a> {
+                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+                where
+                    S: Serializer,
+                {
+                    hex::serde::serialize(self.values, serializer)
+                }
+            }
+            &SerializeWith {
+                values: self.as_ref(),
+            }
+        })
     }
 }
 
-impl DerefMut for FlatPieces {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for FlatPieces {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = FlatPieces;
+
+            fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                formatter.write_str("tuple struct FlatPieces")
+            }
+
+            #[inline]
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                hex::serde::deserialize(deserializer)
+            }
+
+            #[inline]
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                struct DeserializeWith {
+                    value: FlatPieces,
+                }
+                impl<'de> Deserialize<'de> for DeserializeWith {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                    where
+                        D: Deserializer<'de>,
+                    {
+                        Ok(DeserializeWith {
+                            value: hex::serde::deserialize(deserializer)?,
+                        })
+                    }
+                }
+
+                de::SeqAccess::next_element::<DeserializeWith>(&mut seq)?
+                    .map(|wrap| wrap.value)
+                    .ok_or(de::Error::invalid_length(
+                        0usize,
+                        &"tuple struct FlatPieces with 1 element",
+                    ))
+            }
+        }
+        Deserializer::deserialize_newtype_struct(deserializer, "FlatPieces", Visitor)
     }
 }
 
 impl AsRef<[u8]> for FlatPieces {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let pieces: &[[u8; PIECE_SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
+        pieces.flatten()
     }
 }
 
 impl AsMut<[u8]> for FlatPieces {
     fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let pieces: &mut [[u8; PIECE_SIZE]] = unsafe { mem::transmute(self.0.as_mut_slice()) };
+        pieces.flatten_mut()
     }
 }

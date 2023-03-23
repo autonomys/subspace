@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
+#![feature(slice_flatten)]
 
 pub mod crypto;
 pub mod objects;
@@ -37,8 +38,7 @@ use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 pub use pieces::{
-    FlatPieces, Piece, PieceRef, PieceRefMut, RecordRef, RecordRefMut, WitnessRef, WitnessRefMut,
-    PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
+    FlatPieces, Piece, PieceArray, Record, RecordWitness, PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
 };
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]

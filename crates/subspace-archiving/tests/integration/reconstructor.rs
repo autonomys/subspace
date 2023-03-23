@@ -17,7 +17,7 @@ const PIECES_IN_SEGMENT: u32 = 8;
 const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces.as_pieces().map(Piece::from).collect()
+    pieces.iter().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
@@ -341,7 +341,7 @@ fn invalid_usage() {
         let result = Reconstructor::new(SEGMENT_SIZE).unwrap().add_segment(
             &iter::repeat_with(|| {
                 let mut piece = Piece::default();
-                thread_rng().fill(*piece.as_mut());
+                thread_rng().fill(piece.as_mut());
                 Some(piece)
             })
             .take(PIECES_IN_SEGMENT as usize)

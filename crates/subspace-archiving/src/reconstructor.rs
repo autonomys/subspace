@@ -117,7 +117,7 @@ impl Reconstructor {
             .take(self.reed_solomon.data_shard_count())
             .all(|maybe_piece| {
                 if let Some(piece) = maybe_piece {
-                    segment_data.extend_from_slice(&piece.record());
+                    segment_data.extend_from_slice(piece.record().as_ref());
                     true
                 } else {
                     false
