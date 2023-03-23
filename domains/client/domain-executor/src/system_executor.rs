@@ -7,7 +7,10 @@ use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
-use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
+use sc_client_api::{
+    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider,
+    StateBackendFor,
+};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
@@ -90,7 +93,7 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    pub async fn new<SE, SC, IBNS, NSNS>(
+    pub async fn new<SE, SC, IBNS, CIBNS, NSNS>(
         spawn_essential: &SE,
         select_chain: &SC,
         params: EssentialExecutorParams<
@@ -102,6 +105,7 @@ where
             Backend,
             E,
             IBNS,
+            CIBNS,
             NSNS,
         >,
     ) -> Result<Self, sp_consensus::Error>
@@ -109,6 +113,7 @@ where
         SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
         IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+        CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     {
         let active_leaves =
@@ -159,10 +164,8 @@ where
                 params.is_authority,
                 bundle_producer,
                 bundle_processor.clone(),
-                params.imported_block_notification_stream,
-                params.new_slot_notification_stream,
+                params.executor_streams,
                 active_leaves,
-                params.block_import_throttling_buffer_size,
             )
             .boxed(),
         );

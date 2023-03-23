@@ -2,7 +2,7 @@ use crate::utils::{to_number_primitive, BlockInfo, ExecutorSlotInfo};
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
-use sc_client_api::{BlockBackend, BlockchainEvents};
+use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{ExecutorApi, SignedOpaqueBundle};
@@ -51,14 +51,16 @@ pub(crate) async fn handle_block_import_notifications<
     PBlock,
     PClient,
     ProcessorFn,
-    BlockImports,
+    SubspaceBlockImports,
+    ClientBlockImports,
 >(
     primary_chain_client: &PClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-    mut block_imports: BlockImports,
-    block_import_throttling_buffer_size: u32,
+    mut subspace_block_imports: SubspaceBlockImports,
+    mut client_block_imports: ClientBlockImports,
+    primary_block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -72,7 +74,8 @@ pub(crate) async fn handle_block_import_notifications<
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
-    BlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
+    SubspaceBlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
+    ClientBlockImports: Stream<Item = BlockImportNotification<PBlock>> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
@@ -97,13 +100,11 @@ pub(crate) async fn handle_block_import_notifications<
     // consumed by the domain processor, the other from `sc-consensus-subspace` is used to discontinue
     // the primary block import in case the primary chain runs much faster than the domain.).
     let (mut block_info_sender, mut block_info_receiver) =
-        mpsc::channel(block_import_throttling_buffer_size as usize);
-
-    let mut client_block_import = primary_chain_client.every_import_notification_stream();
+        mpsc::channel(primary_block_import_throttling_buffer_size as usize);
 
     loop {
         tokio::select! {
-            maybe_client_block_import = client_block_import.next() => {
+            maybe_client_block_import = client_block_imports.next() => {
                 let notification = match maybe_client_block_import {
                     Some(block_import) => block_import,
                     None => {
@@ -129,7 +130,7 @@ pub(crate) async fn handle_block_import_notifications<
                 };
                 let _ = block_info_sender.feed(Some(block_info)).await;
             }
-            maybe_subspace_block_import = block_imports.next() => {
+            maybe_subspace_block_import = subspace_block_imports.next() => {
                 let (_block_number, mut block_import_acknowledgement_sender) =
                     match maybe_subspace_block_import {
                         Some(block_import) => block_import,

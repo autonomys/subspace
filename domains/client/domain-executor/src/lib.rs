@@ -111,6 +111,7 @@ pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
+use sc_client_api::BlockImportNotification;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -122,6 +123,7 @@ use sp_keystore::SyncCryptoStorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
+use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
@@ -142,6 +144,24 @@ type BundleSender<Block, PBlock> = TracingUnboundedSender<
     >,
 >;
 
+/// Notification streams from the primary chain driving the executor.
+pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
+    /// Pause the primary block import when the primary chain client
+    /// runs much faster than the domain client.
+    pub primary_block_import_throttling_buffer_size: u32,
+    /// Primary block import notification from `sc-consensus-subspace`.
+    ///
+    /// Fired before the completion of entire block import pipeline.
+    pub subspace_imported_block_notification_stream: IBNS,
+    /// Primary block import nofication from the native client.
+    ///
+    /// Fired after the completion of entire block import pipeline.
+    pub client_imported_block_notification_stream: CIBNS,
+    /// New slot arrives.
+    pub new_slot_notification_stream: NSNS,
+    pub _phantom: PhantomData<PBlock>,
+}
+
 pub struct EssentialExecutorParams<
     Block,
     PBlock,
@@ -151,11 +171,13 @@ pub struct EssentialExecutorParams<
     Backend,
     E,
     IBNS,
+    CIBNS,
     NSNS,
 > where
     Block: BlockT,
     PBlock: BlockT,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
 {
     pub primary_chain_client: Arc<PClient>,
@@ -168,9 +190,7 @@ pub struct EssentialExecutorParams<
     pub keystore: SyncCryptoStorePtr,
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
     pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
-    pub block_import_throttling_buffer_size: u32,
-    pub imported_block_notification_stream: IBNS,
-    pub new_slot_notification_stream: NSNS,
+    pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
 }
 
 /// Returns the active leaves the overseer should start with.
