@@ -38,7 +38,8 @@ use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, Record, RecordWitness, PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
+    FlatPieces, Piece, PieceArray, Record, RecordWitness, PIECES_IN_SEGMENT, PIECE_SIZE,
+    RAW_RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
@@ -94,13 +95,6 @@ pub type RecordsRoot = Commitment;
 
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
-
-/// 128 data records and 128 parity records (as a result of erasure coding).
-pub const PIECES_IN_SEGMENT: u32 = 256;
-/// Recorded History Segment Size includes half of the records (just data records) that will later
-/// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
-/// pieces of archival history.
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 /// Randomness context
 pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
@@ -299,7 +293,7 @@ pub enum RootBlock {
     V0 {
         /// Segment index
         segment_index: SegmentIndex,
-        /// Merkle root of the records in a segment.
+        /// Root of commitments of all records in a segment.
         records_root: RecordsRoot,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Blake2b256Hash,

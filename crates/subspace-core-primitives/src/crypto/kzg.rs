@@ -93,21 +93,21 @@ pub fn embedded_kzg_settings() -> FsKZGSettings {
 #[derive(Debug, Clone)]
 pub struct Polynomial(FsPoly);
 
-/// Commitment size in bytes.
-pub const COMMITMENT_SIZE: usize = 48;
-
 /// Commitment to polynomial
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct Commitment(FsG1);
 
 impl Commitment {
+    /// Commitment size in bytes.
+    const SIZE: usize = 48;
+
     /// Convert commitment to raw bytes
-    pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         bytes_from_g1_rust(&self.0)
     }
 
     /// Try to deserialize commitment from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, String> {
+    pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
         Ok(Commitment(bytes_to_g1_rust(bytes)?))
     }
 }
@@ -118,37 +118,37 @@ impl Hash for Commitment {
     }
 }
 
-impl From<Commitment> for [u8; COMMITMENT_SIZE] {
+impl From<Commitment> for [u8; Commitment::SIZE] {
     fn from(commitment: Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
-impl From<&Commitment> for [u8; COMMITMENT_SIZE] {
+impl From<&Commitment> for [u8; Commitment::SIZE] {
     fn from(commitment: &Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
-impl TryFrom<&[u8; COMMITMENT_SIZE]> for Commitment {
+impl TryFrom<&[u8; Self::SIZE]> for Commitment {
     type Error = String;
 
-    fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
 }
 
-impl TryFrom<[u8; COMMITMENT_SIZE]> for Commitment {
+impl TryFrom<[u8; Self::SIZE]> for Commitment {
     type Error = String;
 
-    fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Commitment {
     fn size_hint(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -156,7 +156,7 @@ impl Encode for Commitment {
     }
 
     fn encoded_size(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -164,7 +164,7 @@ impl EncodeLike for Commitment {}
 
 impl MaxEncodedLen for Commitment {
     fn max_encoded_len() -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -177,7 +177,7 @@ impl Decode for Commitment {
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(COMMITMENT_SIZE)
+        Some(Self::SIZE)
     }
 }
 
@@ -192,7 +192,7 @@ impl TypeInfo for Commitment {
             ))
             .docs(&["Commitment to polynomial"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; COMMITMENT_SIZE]>()
+                f.ty::<[u8; Self::SIZE]>()
                     .name(stringify!(inner))
                     .type_name("G1Affine")
             }))
@@ -204,48 +204,51 @@ impl TypeInfo for Commitment {
 pub struct Witness(FsG1);
 
 impl Witness {
+    /// Commitment size in bytes.
+    const SIZE: usize = 48;
+
     /// Convert witness to raw bytes
-    pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         bytes_from_g1_rust(&self.0)
     }
 
     /// Try to deserialize witness from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, String> {
+    pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
         Ok(Witness(bytes_to_g1_rust(bytes)?))
     }
 }
 
-impl From<Witness> for [u8; COMMITMENT_SIZE] {
+impl From<Witness> for [u8; Witness::SIZE] {
     fn from(witness: Witness) -> Self {
         witness.to_bytes()
     }
 }
 
-impl From<&Witness> for [u8; COMMITMENT_SIZE] {
+impl From<&Witness> for [u8; Witness::SIZE] {
     fn from(witness: &Witness) -> Self {
         witness.to_bytes()
     }
 }
 
-impl TryFrom<&[u8; COMMITMENT_SIZE]> for Witness {
+impl TryFrom<&[u8; Self::SIZE]> for Witness {
     type Error = String;
 
-    fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
 }
 
-impl TryFrom<[u8; COMMITMENT_SIZE]> for Witness {
+impl TryFrom<[u8; Self::SIZE]> for Witness {
     type Error = String;
 
-    fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Witness {
     fn size_hint(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -253,7 +256,7 @@ impl Encode for Witness {
     }
 
     fn encoded_size(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -261,7 +264,7 @@ impl EncodeLike for Witness {}
 
 impl MaxEncodedLen for Witness {
     fn max_encoded_len() -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -274,7 +277,7 @@ impl Decode for Witness {
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(COMMITMENT_SIZE)
+        Some(Self::SIZE)
     }
 }
 
@@ -286,7 +289,7 @@ impl TypeInfo for Witness {
             .path(scale_info::Path::new(stringify!(Witness), module_path!()))
             .docs(&["Witness for polynomial evaluation"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; COMMITMENT_SIZE]>()
+                f.ty::<[u8; Self::SIZE]>()
                     .name(stringify!(inner))
                     .type_name("G1Affine")
             }))
@@ -386,6 +389,7 @@ impl Kzg {
     /// Get FFT settings for specified number of values, uses internal cache to avoid derivation
     /// every time.
     pub fn get_fft_settings(&self, num_values: usize) -> Result<Arc<FsFFTSettings>, String> {
+        let num_values = num_values.next_power_of_two();
         Ok(
             match self.inner.fft_settings_cache.lock().entry(num_values) {
                 Entry::Vacant(entry) => {

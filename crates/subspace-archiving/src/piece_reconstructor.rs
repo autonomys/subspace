@@ -112,7 +112,7 @@ impl PiecesReconstructor {
                 let record =
                     record.expect("Reconstruction just happened and all records are present; qed");
                 let record = record.flatten();
-                piece.record_mut().as_mut().copy_from_slice(record);
+                piece.record_mut().copy_from_slice(record);
                 *polynomial_data = blake2b_256_254_hash_to_scalar(record);
             });
 
@@ -134,7 +134,7 @@ impl PiecesReconstructor {
         let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
         pieces.iter_mut().enumerate().for_each(|(position, piece)| {
-            piece.witness_mut().as_mut().copy_from_slice(
+            piece.witness_mut().copy_from_slice(
                 &self
                     .kzg
                     .create_witness(&polynomial, position as u32)
@@ -163,7 +163,7 @@ impl PiecesReconstructor {
 
         let mut piece = Piece::from(reconstructed_records[piece_position]);
 
-        piece.witness_mut().as_mut().copy_from_slice(
+        piece.witness_mut().copy_from_slice(
             &self
                 .kzg
                 .create_witness(&polynomial, piece_position as u32)

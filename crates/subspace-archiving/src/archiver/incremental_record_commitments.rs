@@ -2,13 +2,11 @@ extern crate alloc;
 
 use crate::archiver::Segment;
 use alloc::collections::VecDeque;
-use blake2::digest::typenum::U32;
-use blake2::digest::{FixedOutput, Update};
-use blake2::Blake2b;
-use core::mem;
+use alloc::vec::Vec;
 use parity_scale_codec::{Encode, Output};
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Blake2b256Hash, RECORD_SIZE};
+use subspace_core_primitives::{RAW_RECORD_SIZE, RECORD_SIZE};
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
 /// encapsulate tricky logic
@@ -18,7 +16,7 @@ pub(super) struct IncrementalRecordCommitmentsState {
     ///
     /// NOTE: Until full segment is processed, this will not contain commitment to the first record
     /// since it is not ready yet. This in turn means all commitments will be at `-1` offset.
-    state: VecDeque<Scalar>,
+    state: VecDeque<Commitment>,
 }
 
 impl IncrementalRecordCommitmentsState {
@@ -29,7 +27,7 @@ impl IncrementalRecordCommitmentsState {
         }
     }
 
-    pub(super) fn drain(&mut self) -> impl Iterator<Item = Scalar> + '_ {
+    pub(super) fn drain(&mut self) -> impl Iterator<Item = Commitment> + '_ {
         self.state.drain(..)
     }
 }
@@ -38,10 +36,12 @@ impl IncrementalRecordCommitmentsState {
 pub(super) fn update_record_commitments(
     incremental_record_commitments: &mut IncrementalRecordCommitmentsState,
     segment: &Segment,
+    kzg: &Kzg,
     full: bool,
 ) {
     segment.encode_to(&mut IncrementalRecordCommitmentsProcessor::new(
         incremental_record_commitments,
+        kzg,
         full,
     ));
 }
@@ -51,14 +51,14 @@ pub(super) fn update_record_commitments(
 struct IncrementalRecordCommitmentsProcessor<'a> {
     /// Processed bytes in the segment so far
     processed_bytes: usize,
+    /// Buffer where current (partial) record is written
+    raw_record_buffer: Vec<u8>,
     /// Record commitments already created
     incremental_record_commitments: &'a mut IncrementalRecordCommitmentsState,
+    /// Kzg instance used for commitments creation
+    kzg: &'a Kzg,
     /// Whether segment is full or partial
     full: bool,
-    /// Intermediate hashing state that computes Blake2-256-254.
-    ///
-    /// See [`subspace_core_primitives::crypto::blake2b_256_254_hash_to_scalar`] for details.
-    hashing_state: Blake2b<U32>,
 }
 
 impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
@@ -116,13 +116,16 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
 impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     fn new(
         incremental_record_commitments: &'a mut IncrementalRecordCommitmentsState,
+        kzg: &'a Kzg,
         full: bool,
     ) -> Self {
         Self {
+            // TODO: Remove `processed_bytes`, `raw_record_buffer` should be sufficient
             processed_bytes: 0,
+            raw_record_buffer: Vec::with_capacity(RAW_RECORD_SIZE as usize),
             incremental_record_commitments,
+            kzg,
             full,
-            hashing_state: Blake2b::<U32>::default(),
         }
     }
 
@@ -141,7 +144,7 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     /// edge of the record.
     fn update_commitment_state(&mut self, bytes: &[u8]) {
         if self.should_commit_to_record(self.processed_bytes / RECORD_SIZE as usize) {
-            self.hashing_state.update(bytes);
+            self.raw_record_buffer.extend_from_slice(bytes);
         }
         self.processed_bytes += bytes.len();
     }
@@ -150,17 +153,39 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     /// be finalized and commitment will be stored in shared state.
     fn create_commitment(&mut self) {
         if self.should_commit_to_record(self.processed_bytes / RECORD_SIZE as usize - 1) {
-            let hashing_state = mem::take(&mut self.hashing_state);
+            let scalars = {
+                let record_chunks = self.raw_record_buffer.chunks_exact(Scalar::SAFE_BYTES);
+                let number_of_chunks = record_chunks.len();
+                let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
 
-            let mut hash = Blake2b256Hash::from(hashing_state.finalize_fixed());
-            // Erase last 2 bits to effectively truncate the hash (number is interpreted as
-            // little-endian)
-            hash[31] &= 0b00111111;
+                record_chunks
+                    .map(|scalar_bytes| {
+                        Scalar::from(
+                            <&[u8; Scalar::SAFE_BYTES]>::try_from(scalar_bytes)
+                                .expect("Chunked into correct length; qed"),
+                        )
+                    })
+                    .collect_into(&mut scalars);
 
-            self.incremental_record_commitments.state.push_back(
-                Scalar::try_from(hash)
-                    .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed"),
-            );
+                // Number of scalars for KZG must be a power of two elements
+                scalars.resize(scalars.capacity(), Scalar::default());
+
+                scalars
+            };
+            self.raw_record_buffer.clear();
+
+            let polynomial = self
+                .kzg
+                .poly(&scalars)
+                .expect("KZG instance must be configured to support this many scalars; qed");
+            let commitment = self
+                .kzg
+                .commit(&polynomial)
+                .expect("KZG instance must be configured to support this many scalars; qed");
+
+            self.incremental_record_commitments
+                .state
+                .push_back(commitment);
         }
     }
 }

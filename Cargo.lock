@@ -9949,13 +9949,13 @@ dependencies = [
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
- "blake2",
  "criterion",
  "parity-scale-codec",
  "rand 0.8.5",
  "reed-solomon-erasure",
  "serde",
  "subspace-core-primitives",
+ "subspace-erasure-coding",
  "thiserror",
 ]
 

@@ -8,13 +8,13 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, K
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, RootBlock,
-    BLAKE2B_256_HASH_SIZE, RECORD_SIZE,
+    BLAKE2B_256_HASH_SIZE, RAW_RECORD_SIZE,
 };
 
 // This is data + parity shards
 const PIECES_IN_SEGMENT: u32 = 8;
 // In terms of source data that can be stored in the segment, not the size after archiving
-const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+const SEGMENT_SIZE: u32 = RAW_RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();

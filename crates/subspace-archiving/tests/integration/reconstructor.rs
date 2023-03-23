@@ -8,13 +8,13 @@ use subspace_archiving::reconstructor::{
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RECORD_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RAW_RECORD_SIZE,
 };
 
 // This is data + parity shards
 const PIECES_IN_SEGMENT: u32 = 8;
 // In terms of source data that can be stored in the segment, not the size after archiving
-const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+const SEGMENT_SIZE: u32 = RAW_RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
     pieces.iter().map(Piece::from).collect()

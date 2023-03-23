@@ -1,6 +1,7 @@
 #[cfg(feature = "serde")]
 mod serde;
 
+use crate::crypto::Scalar;
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
@@ -14,6 +15,7 @@ use derive_more::{AsMut, AsRef, Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
 use scale_info::TypeInfo;
 
+// TODO: Redefine records and piece size according to spec
 /// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
 /// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
 /// BLS12-381 scalar safely).
@@ -23,15 +25,24 @@ use scale_info::TypeInfo;
 ///
 /// This can not changed after the network is launched.
 pub const PIECE_SIZE: usize = 31_744;
-/// Size of witness for a segment record (in bytes).
-pub const WITNESS_SIZE: u32 = 48;
-/// Size of a segment record given the global piece size (in bytes).
-pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - WITNESS_SIZE;
+/// Size of the raw record before archiving is applied to the segment (in bytes), is guaranteed to
+/// be multiple of [`Scalar::SAFE_BYTES`].
+pub const RAW_RECORD_SIZE: u32 =
+    RECORD_SIZE / Scalar::FULL_BYTES as u32 * Scalar::SAFE_BYTES as u32;
+/// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
+/// of [`Scalar::FULL_BYTES`].
+pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - RecordWitness::SIZE as u32;
+/// 128 data records and 128 parity records (as a result of erasure coding).
+pub const PIECES_IN_SEGMENT: u32 = 256;
+/// Recorded History Segment Size includes half of the records (just data records) that will later
+/// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
+/// pieces of archival history.
+pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RAW_RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 /// Record contained within a piece.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Record([u8; RECORD_SIZE as usize]);
 
@@ -48,9 +59,9 @@ impl AsMut<[u8]> for Record {
 }
 
 /// Record witness contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
 #[repr(transparent)]
-pub struct RecordWitness([u8; WITNESS_SIZE as usize]);
+pub struct RecordWitness([u8; Self::SIZE]);
 
 impl AsRef<[u8]> for RecordWitness {
     fn as_ref(&self) -> &[u8] {
@@ -62,6 +73,11 @@ impl AsMut<[u8]> for RecordWitness {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
+}
+
+impl RecordWitness {
+    /// Size of record witness in bytes.
+    const SIZE: usize = 48;
 }
 
 /// A piece of archival history in Subspace Network.
@@ -201,7 +217,7 @@ impl PieceArray {
 
         let record = <&[u8; RECORD_SIZE as usize]>::try_from(record)
             .expect("Slice of memory has correct length; qed");
-        let witness = <&[u8; WITNESS_SIZE as usize]>::try_from(witness)
+        let witness = <&[u8; RecordWitness::SIZE]>::try_from(witness)
             .expect("Slice of memory has correct length; qed");
 
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
@@ -218,7 +234,7 @@ impl PieceArray {
 
         let record = <&mut [u8; RECORD_SIZE as usize]>::try_from(record)
             .expect("Slice of memory has correct length; qed");
-        let witness = <&mut [u8; WITNESS_SIZE as usize]>::try_from(witness)
+        let witness = <&mut [u8; RecordWitness::SIZE]>::try_from(witness)
             .expect("Slice of memory has correct length; qed");
 
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
