@@ -1,4 +1,6 @@
+use crate::utils::shuffle_extrinsics;
 use codec::{Decode, Encode};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -6,6 +8,7 @@ use sp_domains::{DomainId, ExecutorApi, OpaqueBundles, SignedOpaqueBundles};
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::borrow::Cow;
+use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 
@@ -126,4 +129,43 @@ where
                 })
             })
             .collect::<Vec<_>>()
+}
+
+pub(crate) fn deduplicate_and_shuffle_extrinsics<Block, Client>(
+    client: &Arc<Client>,
+    parent_hash: Block::Hash,
+    mut extrinsics: Vec<Block::Extrinsic>,
+    shuffling_seed: Randomness,
+) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: DomainCoreApi<Block, AccountId>,
+{
+    let mut seen = Vec::new();
+    extrinsics.retain(|uxt| match seen.contains(uxt) {
+        true => {
+            tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
+            false
+        }
+        false => {
+            seen.push(uxt.clone());
+            true
+        }
+    });
+    drop(seen);
+
+    tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
+
+    let extrinsics: Vec<_> = match client.runtime_api().extract_signer(parent_hash, extrinsics) {
+        Ok(res) => res,
+        Err(e) => {
+            tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
+            return Err(e.into());
+        }
+    };
+
+    let extrinsics = shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+
+    Ok(extrinsics)
 }

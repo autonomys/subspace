@@ -1,5 +1,6 @@
 use crate::domain_block_preprocessor::{
-    compile_own_domain_bundles, preprocess_primary_block, DomainBundles,
+    compile_own_domain_bundles, deduplicate_and_shuffle_extrinsics, preprocess_primary_block,
+    DomainBundles,
 };
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
@@ -242,8 +243,7 @@ where
             DomainBundles::Core(bundles) => bundles,
         };
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
-        self.domain_block_processor
-            .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
+        deduplicate_and_shuffle_extrinsics(&self.client, parent_hash, extrinsics, shuffling_seed)
     }
 
     fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
