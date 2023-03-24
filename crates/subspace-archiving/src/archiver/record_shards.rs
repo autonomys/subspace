@@ -54,7 +54,7 @@ impl RecordShards {
     ///
     /// Panics if shard size is not multiple of 2 or encoded segment doesn't fit into data shards.
     pub(super) fn new(
-        data_shards: u32,
+        source_shards: u32,
         parity_shards: u32,
         shard_size: u32,
         segment: &Segment,
@@ -62,10 +62,11 @@ impl RecordShards {
         assert_eq!(shard_size as usize % GF_16_ELEMENT_BYTES, 0);
 
         let mut writable_shards = WritableShards {
-            data_shards_size: data_shards * shard_size,
+            data_shards_size: source_shards * shard_size,
             shards: vec![
                 Gf16Element::default();
-                ((data_shards + parity_shards) * shard_size) as usize / GF_16_ELEMENT_BYTES
+                ((source_shards + parity_shards) * shard_size) as usize
+                    / GF_16_ELEMENT_BYTES
             ],
             cursor: 0,
         };

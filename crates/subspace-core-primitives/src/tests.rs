@@ -1,4 +1,5 @@
-use crate::{Scalar, PIECE_SIZE, PLOT_SECTOR_SIZE, U256};
+use crate::crypto::Scalar;
+use crate::{PIECE_SIZE, PLOT_SECTOR_SIZE, U256};
 use num_integer::Roots;
 use rand::thread_rng;
 use rand_core::RngCore;
@@ -30,13 +31,12 @@ fn bytes_scalars_conversion() {
         let scalars = bytes
             .chunks_exact(Scalar::SAFE_BYTES)
             .map(|bytes| {
-                Scalar::try_from(
+                Scalar::from(
                     <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
                         .expect("Chunked into correct size; qed"),
                 )
             })
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .collect::<Vec<_>>();
 
         {
             let mut decoded_bytes = vec![0u8; bytes.len()];
@@ -44,9 +44,7 @@ fn bytes_scalars_conversion() {
                 .chunks_exact_mut(Scalar::SAFE_BYTES)
                 .zip(scalars.iter())
                 .for_each(|(bytes, scalar)| {
-                    let mut tmp = [0u8; Scalar::FULL_BYTES];
-                    scalar.write_to_bytes(&mut tmp);
-                    bytes.copy_from_slice(&tmp[..Scalar::SAFE_BYTES]);
+                    bytes.copy_from_slice(&scalar.to_bytes()[..Scalar::SAFE_BYTES]);
                 });
 
             assert_eq!(bytes, decoded_bytes);
@@ -75,12 +73,6 @@ fn bytes_scalars_conversion() {
 
         {
             let scalar = Scalar::try_from(&bytes).unwrap();
-
-            assert_eq!(bytes, scalar.to_bytes());
-        }
-
-        {
-            let scalar = Scalar::from(&bytes);
 
             assert_eq!(bytes, scalar.to_bytes());
         }

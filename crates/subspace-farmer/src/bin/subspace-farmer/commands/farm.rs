@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PieceIndexHash, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
@@ -107,7 +107,7 @@ pub(crate) async fn farm_multi_disk(
         Arc::downgrade(&readers_and_pieces),
     )?;
 
-    let kzg = Kzg::new(test_public_parameters());
+    let kzg = Kzg::new(embedded_kzg_settings());
     // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
     let records_roots_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
     let piece_provider = PieceProvider::new(

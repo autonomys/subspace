@@ -474,7 +474,9 @@ fn submit_fraud_proof_should_work() {
             pre_state_root: H256::random(),
             post_state_root: H256::random(),
             proof: StorageProof::empty(),
-            execution_phase: ExecutionPhase::FinalizeBlock,
+            execution_phase: ExecutionPhase::FinalizeBlock {
+                total_extrinsics: 0,
+            },
         })
     };
 

@@ -274,7 +274,7 @@ pub(crate) async fn publish_pieces(
     segment_index: u64,
     archived_segment: Arc<ArchivedSegment>,
 ) {
-    let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.count());
+    let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.len());
 
     let mut pieces_publishing_futures = pieces_indexes
         .map(|piece_index| announce_single_piece_index_with_backoff(piece_index, node))

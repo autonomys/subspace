@@ -7,7 +7,7 @@ use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_receipts::ReceiptsApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, NumberFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
@@ -45,6 +45,7 @@ where
         &self,
         at: Block::Hash,
         execution_phase: &ExecutionPhase,
+        call_data: &[u8],
         delta_changes: Option<(DB, Block::Hash)>,
     ) -> sp_blockchain::Result<StorageProof> {
         let state = self.backend.state_at(at)?;
@@ -66,7 +67,7 @@ where
                 &*self.executor,
                 self.spawn_handle.clone(),
                 execution_phase.proving_method(),
-                execution_phase.call_data(),
+                call_data,
                 &runtime_code,
                 Default::default(),
             )
@@ -79,7 +80,7 @@ where
                 &*self.executor,
                 self.spawn_handle.clone(),
                 execution_phase.proving_method(),
-                execution_phase.call_data(),
+                call_data,
                 &runtime_code,
                 Default::default(),
             )
@@ -97,6 +98,7 @@ where
         &self,
         at: Block::Hash,
         execution_phase: &ExecutionPhase,
+        call_data: &[u8],
         pre_execution_root: H256,
         proof: StorageProof,
     ) -> sp_blockchain::Result<Vec<u8>> {
@@ -116,7 +118,7 @@ where
             &*self.executor,
             self.spawn_handle.clone(),
             execution_phase.verifying_method(),
-            execution_phase.call_data(),
+            call_data,
             &runtime_code,
         )
         .map_err(Into::into)
@@ -174,49 +176,59 @@ impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
 }
 
 /// Invalid state transition proof verifier.
-pub struct InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier> {
+pub struct InvalidStateTransitionProofVerifier<
+    PBlock,
+    C,
+    Exec,
+    Spawn,
+    Hash,
+    PrePostStateRootVerifier,
+> {
     client: Arc<C>,
     executor: Exec,
     spawn_handle: Spawn,
-    pre_state_root_verifier: PreStateRootVerifier,
+    pre_post_state_root_verifier: PrePostStateRootVerifier,
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PreStateRootVerifier: Clone> Clone
-    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PrePostStateRootVerifier: Clone> Clone
+    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
             executor: self.executor.clone(),
             spawn_handle: self.spawn_handle.clone(),
-            pre_state_root_verifier: self.pre_state_root_verifier.clone(),
+            pre_post_state_root_verifier: self.pre_post_state_root_verifier.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
-/// Verifies the `pre_state_root` in [`InvalidStateTransitionProof`].
-pub trait VerifyPreStateRoot {
-    /// Returns `true` if `pre_state_root` is valid.
+/// Verifies `pre_state_root` and `post_state_root` in [`InvalidStateTransitionProof`].
+pub trait VerifyPrePostStateRoot {
+    /// Verifies whether `pre_state_root` declared in the proof is same as the one recorded on chain.
     fn verify_pre_state_root(
         &self,
-        domain_id: DomainId,
-        receipt_hash: H256,
-        pre_state_root: H256,
-        execution_phase: &ExecutionPhase,
-    ) -> bool;
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError>;
+
+    /// Verifies whether `post_state_root` declared in the proof is different from the one recorded on chain.
+    fn verify_post_state_root(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError>;
 }
 
 /// Verifier of `pre_state_root` in [`InvalidStateTransitionProof`].
 ///
 /// `client` could be either the primary chain client or system domain client.
-pub struct PreStateRootVerifier<Client, Block> {
+pub struct PrePostStateRootVerifier<Client, Block> {
     client: Arc<Client>,
     _phantom: PhantomData<Block>,
 }
 
-impl<Client, Block> Clone for PreStateRootVerifier<Client, Block> {
+impl<Client, Block> Clone for PrePostStateRootVerifier<Client, Block> {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
@@ -225,8 +237,8 @@ impl<Client, Block> Clone for PreStateRootVerifier<Client, Block> {
     }
 }
 
-impl<Client, Block> PreStateRootVerifier<Client, Block> {
-    /// Constructs a new instance of [`PreStateRootVerifier`].
+impl<Client, Block> PrePostStateRootVerifier<Client, Block> {
+    /// Constructs a new instance of [`PrePostStateRootVerifier`].
     pub fn new(client: Arc<Client>) -> Self {
         Self {
             client,
@@ -235,7 +247,7 @@ impl<Client, Block> PreStateRootVerifier<Client, Block> {
     }
 }
 
-impl<Client, Block> VerifyPreStateRoot for PreStateRootVerifier<Client, Block>
+impl<Client, Block> VerifyPrePostStateRoot for PrePostStateRootVerifier<Client, Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
@@ -243,50 +255,109 @@ where
 {
     fn verify_pre_state_root(
         &self,
-        domain_id: DomainId,
-        receipt_hash: H256,
-        pre_state_root: H256,
-        _execution_phase: &ExecutionPhase,
-    ) -> bool {
-        let trace = self
-            .client
-            .runtime_api()
-            .execution_trace(self.client.info().best_hash, domain_id, receipt_hash)
-            .unwrap_or_default();
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        let InvalidStateTransitionProof {
+            domain_id,
+            bad_receipt_hash,
+            parent_number,
+            parent_hash,
+            pre_state_root,
+            execution_phase,
+            ..
+        } = invalid_state_transition_proof;
 
-        // TODO: Get trace index from execution phase
-        let trace_index_of_pre_state_root = 0usize;
+        let pre_state_root_onchain = match execution_phase {
+            ExecutionPhase::InitializeBlock => self.client.runtime_api().state_root(
+                self.client.info().best_hash,
+                *domain_id,
+                NumberFor::<Block>::from(*parent_number),
+                Block::Hash::decode(&mut parent_hash.encode().as_slice())
+                    .expect("Block Hash must be H256; qed"),
+            )?,
+            ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
+            | ExecutionPhase::FinalizeBlock {
+                total_extrinsics: trace_index_of_pre_state_root,
+            } => {
+                let trace = self.client.runtime_api().execution_trace(
+                    self.client.info().best_hash,
+                    *domain_id,
+                    *bad_receipt_hash,
+                )?;
 
-        match trace.get(trace_index_of_pre_state_root) {
-            Some(expected_pre_state_root) if *expected_pre_state_root == pre_state_root => true,
+                trace.get(*trace_index_of_pre_state_root as usize).copied()
+            }
+        };
+
+        match pre_state_root_onchain {
+            Some(expected_pre_state_root) if expected_pre_state_root == *pre_state_root => Ok(()),
             res => {
                 tracing::debug!(
-                    "Invalid `pre_state_root` in InvalidStateTransitionProof for {domain_id:?}, \
-                    trace at index {trace_index_of_pre_state_root} on chain is {res:?}, \
-                    got: {pre_state_root:?}",
+                    "Invalid `pre_state_root` in InvalidStateTransitionProof for {domain_id:?}, expected: {res:?}, got: {pre_state_root:?}",
                 );
-                false
+                Err(VerificationError::InvalidPreStateRoot)
             }
+        }
+    }
+
+    fn verify_post_state_root(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        let InvalidStateTransitionProof {
+            domain_id,
+            bad_receipt_hash,
+            execution_phase,
+            post_state_root,
+            ..
+        } = invalid_state_transition_proof;
+
+        let trace = self.client.runtime_api().execution_trace(
+            self.client.info().best_hash,
+            *domain_id,
+            *bad_receipt_hash,
+        )?;
+
+        let post_state_root_onchain = match execution_phase {
+            ExecutionPhase::InitializeBlock => trace
+                .get(0)
+                .ok_or(VerificationError::PostStateRootNotFound)?,
+            ExecutionPhase::ApplyExtrinsic(trace_index_of_post_state_root)
+            | ExecutionPhase::FinalizeBlock {
+                total_extrinsics: trace_index_of_post_state_root,
+            } => trace
+                .get(*trace_index_of_post_state_root as usize + 1)
+                .ok_or(VerificationError::PostStateRootNotFound)?,
+        };
+
+        if post_state_root_onchain == post_state_root {
+            Err(VerificationError::SamePostStateRoot)
+        } else {
+            Ok(())
         }
     }
 }
 
 pub(crate) struct SkipPreStateRootVerification;
 
-impl VerifyPreStateRoot for SkipPreStateRootVerification {
+impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
     fn verify_pre_state_root(
         &self,
-        _domain_id: DomainId,
-        _receipt_hash: H256,
-        _pre_state_root: H256,
-        _execution_phase: &ExecutionPhase,
-    ) -> bool {
-        true
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        Ok(())
+    }
+
+    fn verify_post_state_root(
+        &self,
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
-    InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PreStateRootVerifier>
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+    InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
 where
     PBlock: BlockT,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
@@ -294,20 +365,20 @@ where
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
-    PreStateRootVerifier: VerifyPreStateRoot,
+    PrePostStateRootVerifier: VerifyPrePostStateRoot,
 {
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
         client: Arc<C>,
         executor: Exec,
         spawn_handle: Spawn,
-        pre_state_root_verifier: PreStateRootVerifier,
+        pre_post_state_root_verifier: PrePostStateRootVerifier,
     ) -> Self {
         Self {
             client,
             executor,
             spawn_handle,
-            pre_state_root_verifier,
+            pre_post_state_root_verifier,
             _phantom: PhantomData::<(PBlock, Hash)>,
         }
     }
@@ -317,25 +388,21 @@ where
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
+        self.pre_post_state_root_verifier
+            .verify_pre_state_root(invalid_state_transition_proof)?;
+
+        self.pre_post_state_root_verifier
+            .verify_post_state_root(invalid_state_transition_proof)?;
+
         let InvalidStateTransitionProof {
             domain_id,
             parent_hash,
-            bad_receipt_hash,
             pre_state_root,
             post_state_root,
             proof,
             execution_phase,
             ..
         } = invalid_state_transition_proof;
-
-        if !self.pre_state_root_verifier.verify_pre_state_root(
-            *domain_id,
-            *bad_receipt_hash,
-            *pre_state_root,
-            execution_phase,
-        ) {
-            return Err(VerificationError::InvalidPreStateRoot);
-        }
 
         let at = PBlock::Hash::decode(&mut parent_hash.encode().as_slice())
             .expect("Block Hash must be H256; qed");
@@ -374,6 +441,8 @@ where
             heap_pages: None,
         };
 
+        let call_data = b"TODO: fetch call_data from the original primary block";
+
         let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
             *pre_state_root,
             proof.clone(),
@@ -381,7 +450,7 @@ where
             &self.executor,
             self.spawn_handle.clone(),
             execution_phase.verifying_method(),
-            execution_phase.call_data(),
+            call_data,
             &runtime_code,
         )
         .map_err(VerificationError::BadProof)?;
