@@ -28,18 +28,9 @@ where
     pub fn new(
         local_peer_id: PeerId,
         readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
-        mut persistent_provider_storage: PersistentProviderStorage,
+        persistent_provider_storage: PersistentProviderStorage,
         piece_cache: LocalPieceCache,
     ) -> Self {
-        // TODO: Transitional upgrade code, should be removed in the future; this is because we no
-        //  longer persist locally provided records
-        for key in persistent_provider_storage
-            .provided()
-            .map(|provided_record| provided_record.key.clone())
-            .collect::<Vec<_>>()
-        {
-            persistent_provider_storage.remove_provider(&key, &local_peer_id);
-        }
         Self {
             local_peer_id,
             readers_and_pieces,
