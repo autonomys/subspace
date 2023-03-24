@@ -1,3 +1,4 @@
+use codec::{Decode, Encode};
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -97,4 +98,32 @@ where
     };
 
     Ok((domain_bundles, shuffling_seed, maybe_new_runtime))
+}
+
+pub(crate) fn compile_own_domain_bundles<Block, PBlock>(
+    bundles: OpaqueBundles<PBlock, Block::Hash>,
+) -> Vec<Block::Extrinsic>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+{
+    bundles
+            .into_iter()
+            .flat_map(|bundle| {
+                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+                    match <<Block as BlockT>::Extrinsic>::decode(
+                        &mut opaque_extrinsic.encode().as_slice(),
+                    ) {
+                        Ok(uxt) => Some(uxt),
+                        Err(e) => {
+                            tracing::error!(
+                                error = ?e,
+                                "Failed to decode the opaque extrisic in bundle, this should not happen"
+                            );
+                            None
+                        },
+                    }
+                })
+            })
+            .collect::<Vec<_>>()
 }

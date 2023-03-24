@@ -1,4 +1,6 @@
-use crate::domain_block_preprocessor::{preprocess_primary_block, DomainBundles};
+use crate::domain_block_preprocessor::{
+    compile_own_domain_bundles, preprocess_primary_block, DomainBundles,
+};
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::translate_number_type;
@@ -237,9 +239,7 @@ where
             }
         };
 
-        let origin_system_extrinsics = self
-            .domain_block_processor
-            .compile_own_domain_bundles(system_bundles);
+        let origin_system_extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
         let extrinsics = self
             .client
             .runtime_api()

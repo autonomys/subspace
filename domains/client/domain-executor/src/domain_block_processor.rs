@@ -14,7 +14,7 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, OpaqueBundles};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::borrow::Cow;
@@ -212,31 +212,6 @@ where
                 }))
             }
         }
-    }
-
-    pub(crate) fn compile_own_domain_bundles(
-        &self,
-        bundles: OpaqueBundles<PBlock, Block::Hash>,
-    ) -> Vec<Block::Extrinsic> {
-        bundles
-            .into_iter()
-            .flat_map(|bundle| {
-                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-                    match <<Block as BlockT>::Extrinsic>::decode(
-                        &mut opaque_extrinsic.encode().as_slice(),
-                    ) {
-                        Ok(uxt) => Some(uxt),
-                        Err(e) => {
-                            tracing::error!(
-                                error = ?e,
-                                "Failed to decode the opaque extrisic in bundle, this should not happen"
-                            );
-                            None
-                        },
-                    }
-                })
-            })
-            .collect::<Vec<_>>()
     }
 
     pub(crate) fn deduplicate_and_shuffle_extrinsics(

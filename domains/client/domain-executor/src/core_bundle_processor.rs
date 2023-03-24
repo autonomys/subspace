@@ -1,4 +1,6 @@
-use crate::domain_block_preprocessor::{preprocess_primary_block, DomainBundles};
+use crate::domain_block_preprocessor::{
+    compile_own_domain_bundles, preprocess_primary_block, DomainBundles,
+};
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::translate_number_type;
@@ -239,9 +241,7 @@ where
             }
             DomainBundles::Core(bundles) => bundles,
         };
-        let extrinsics = self
-            .domain_block_processor
-            .compile_own_domain_bundles(bundles);
+        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
         self.domain_block_processor
             .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
     }
