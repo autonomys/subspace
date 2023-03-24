@@ -10,9 +10,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{
-    Piece, PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE,
-};
+use subspace_core_primitives::{PublicKey, PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE, RECORD_SIZE};
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::FarmerProtocolInfo;
 use utils::BenchPieceGetter;
@@ -27,21 +25,16 @@ fn criterion_benchmark(c: &mut Criterion) {
     let sector_index = 0;
     let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     thread_rng().fill(input.as_mut_slice());
-    let kzg = Kzg::new(kzg::test_public_parameters());
-    let mut archiver =
-        Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
-    let piece = Piece::from(
-        archiver
-            .add_block(input, Default::default())
-            .into_iter()
-            .next()
-            .unwrap()
-            .pieces
-            .as_pieces()
-            .next()
-            .unwrap(),
-    );
+    let piece = archiver
+        .add_block(input, Default::default())
+        .into_iter()
+        .next()
+        .unwrap()
+        .pieces[0]
+        .into();
 
     let farmer_protocol_info = FarmerProtocolInfo {
         record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),

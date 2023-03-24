@@ -13,6 +13,7 @@ use libp2p::gossipsub::{
 use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
 use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
 use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
 
@@ -24,7 +25,7 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     /// The configuration for the [`Kademlia`] behaviour.
     pub(crate) kademlia: KademliaConfig,
     /// The configuration for the [`Gossipsub`] behaviour.
-    pub(crate) gossipsub: GossipsubConfig,
+    pub(crate) gossipsub: Option<GossipsubConfig>,
     /// Externally provided implementation of the custom record store for Kademlia DHT,
     pub(crate) record_store: RecordStore,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
@@ -37,7 +38,7 @@ pub(crate) struct BehaviorConfig<RecordStore> {
 pub(crate) struct Behavior<RecordStore> {
     pub(crate) identify: Identify,
     pub(crate) kademlia: Kademlia<RecordStore>,
-    pub(crate) gossipsub: Gossipsub,
+    pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponsesBehaviour,
 }
@@ -53,12 +54,17 @@ where
             config.kademlia,
         );
 
-        let gossipsub = Gossipsub::new(
-            // TODO: Do we want message signing?
-            MessageAuthenticity::Anonymous,
-            config.gossipsub,
-        )
-        .expect("Correct configuration");
+        let gossipsub = config
+            .gossipsub
+            .map(|gossip_config| {
+                Gossipsub::new(
+                    // TODO: Do we want message signing?
+                    MessageAuthenticity::Anonymous,
+                    gossip_config,
+                )
+                .expect("Correct configuration")
+            })
+            .into();
 
         Self {
             identify: Identify::new(config.identify),

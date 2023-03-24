@@ -159,32 +159,20 @@ where
             })
         };
 
-        let header_number = to_number_primitive(header_number);
-
-        // Ideally, the receipt of current block will be included in the next block, i.e., no
-        // missing receipts.
-        let receipts = if header_number == head_receipt_number + 1 {
-            let block_hash = self.client.hash(header_number.into())?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(
-                    format!("Hash for Block {header_number:?} not found",),
-                )
+        let mut receipts = Vec::new();
+        let mut to_send = head_receipt_number + 1;
+        let max_allowed = (head_receipt_number + max_drift).min(to_number_primitive(header_number));
+        loop {
+            let block_hash = self.client.hash(to_send.into())?.ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!("Hash for Block {to_send:?} not found"))
             })?;
-            vec![load_receipt(block_hash)?]
-        } else {
-            // Receipts for some previous blocks are missing.
-            let max_allowed = (head_receipt_number + max_drift).min(header_number);
+            receipts.push(load_receipt(block_hash)?);
+            to_send += 1;
 
-            let mut to_send = head_receipt_number + 1;
-            let mut receipts = Vec::with_capacity((max_allowed - to_send + 1) as usize);
-            while to_send <= max_allowed {
-                let block_hash = self.client.hash(to_send.into())?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!("Hash for Block {to_send:?} not found"))
-                })?;
-                receipts.push(load_receipt(block_hash)?);
-                to_send += 1;
+            if to_send > max_allowed {
+                break;
             }
-            receipts
-        };
+        }
 
         Ok(receipts)
     }

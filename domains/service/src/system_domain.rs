@@ -3,7 +3,8 @@ use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
-    EssentialExecutorParams, SystemDomainParentChain, SystemExecutor, SystemGossipMessageValidator,
+    EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
+    SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -13,7 +14,7 @@ use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockBackend, BlockchainEvents, StateBackendFor};
+use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
@@ -128,7 +129,7 @@ type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        subspace_fraud_proof::PreStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
     >;
 
 /// Constructs a partial system domain node.
@@ -207,7 +208,7 @@ where
         primary_chain_client.clone(),
         executor.clone(),
         task_manager.spawn_handle(),
-        subspace_fraud_proof::PreStateRootVerifier::new(client.clone()),
+        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
 
     // Skip bundle validation here because for the system domain the bundle is extract from the
@@ -250,15 +251,12 @@ where
 /// Start a node with the given system domain `Configuration` and consensus chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-#[allow(clippy::too_many_arguments)]
-pub async fn new_full_system<PBlock, PClient, SC, IBNS, NSNS, RuntimeApi, ExecutorDispatch>(
+pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut system_domain_config: DomainConfiguration,
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     select_chain: &SC,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
-    block_import_throttling_buffer_size: u32,
+    executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFullSystem<
@@ -285,6 +283,7 @@ where
     PClient::Api: ExecutorApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -391,9 +390,7 @@ where
             keystore: params.keystore_container.sync_keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
-            block_import_throttling_buffer_size,
-            imported_block_notification_stream,
-            new_slot_notification_stream,
+            executor_streams,
         },
     )
     .await?;

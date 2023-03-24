@@ -27,6 +27,7 @@ thiserror = { version = "1.0.38", optional = true }
 [dev-dependencies]
 criterion = "0.4.0"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [features]
 default = ["std"]

@@ -31,7 +31,7 @@ futures = "0.3.26"
 hex = "0.4.3"
 lru = "0.9.0"
 nohash-hasher = "0.2.0"
-parity-db = "0.4.4"
+parity-db = "0.4.6"
 parity-scale-codec = "3.4.0"
 parking_lot = "0.12.1"
 pin-project = "1.0.11"
@@ -49,7 +49,7 @@ unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_code
 [dependencies.libp2p]
 # TODO: change to upstream release when https://github.com/libp2p/rust-libp2p/pull/3287 is released
 git = "https://github.com/subspace/rust-libp2p"
-rev = "2de61da642888e3c4deac9925be90d56cdef1475"
+rev = "917b388b0549810903946664a61c9b313b2e9fad"
 default-features = false
 features = [
     "dns",

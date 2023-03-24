@@ -32,7 +32,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.38"
-tokio = { version = "1.25.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
+tokio = { version = "1.25.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
 tracing = "0.1.37"
 
 [dev-dependencies]

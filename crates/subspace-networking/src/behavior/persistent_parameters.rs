@@ -20,6 +20,8 @@ use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::{debug, trace};
 
+pub type ParityDbError = parity_db::Error;
+
 // Defines optional time for address dial failure
 type FailureTime = Option<DateTime<Utc>>;
 
@@ -162,7 +164,7 @@ impl NetworkingParametersManager {
                     .map(|data| data.to_cache());
 
                 if result.is_ok() {
-                    trace!("Networking parameters loaded from DB");
+                    debug!("Networking parameters loaded from DB");
                 }
 
                 result

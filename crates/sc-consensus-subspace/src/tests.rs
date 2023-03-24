@@ -427,8 +427,8 @@ fn rejects_empty_block() {
 }
 
 fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg)
         .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
@@ -549,7 +549,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
                 .await
                 .unwrap()
                 .iter()
-                .flat_map(|flat_pieces| flat_pieces.as_pieces())
+                .flat_map(|flat_pieces| flat_pieces.iter())
                 .enumerate()
                 .choose(&mut thread_rng())
                 .map(|(piece_index, piece)| (piece_index as u64, Piece::from(piece)))

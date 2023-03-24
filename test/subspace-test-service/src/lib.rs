@@ -56,6 +56,11 @@ use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
 
+/// TODO: Replace `PrimaryTestNode` with `mock::MockPrimaryNode` once all the existing tests
+/// integrated with the new testing framework.
+#[allow(dead_code)]
+pub mod mock;
+
 /// Create a Subspace `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide boot
@@ -207,6 +212,8 @@ pub async fn run_validator_node(
                     allow_non_global_addresses_in_dht: true,
                     max_out_connections: 50,
                     max_in_connections: 50,
+                    max_pending_out_connections: 150,
+                    max_pending_in_connections: 150,
                     target_connections: 50,
                 },
                 piece_cache_size: 1024 * 1024 * 1024,

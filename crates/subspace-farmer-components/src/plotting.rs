@@ -8,11 +8,11 @@ use parity_scale_codec::Encode;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
+use subspace_core_primitives::crypto::{Scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PieceIndexHash, PublicKey, Scalar, SectorId, SectorIndex, PIECE_SIZE,
+    Piece, PieceIndex, PieceIndexHash, PublicKey, SectorId, SectorIndex, PIECE_SIZE,
     PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
@@ -99,7 +99,7 @@ pub enum PlottingError {
     FailedToEncodeSector(#[from] SectorCodecError),
     /// Failed to commit
     #[error("Failed to commit: {0}")]
-    FailedToCommit(#[from] kzg::Error),
+    FailedToCommit(String),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -189,13 +189,20 @@ where
             //  32-byte chunks that have up to 254 bits of data in them and in sector encoding we're
             //  dealing with 31-byte chunks instead. This workaround will not be necessary once we
             //  change `kzg.poly()` API to use 31-byte chunks as well.
-            let mut expanded_piece = Vec::with_capacity(PIECE_SIZE / Scalar::SAFE_BYTES * 32);
-            piece.chunks_exact(Scalar::SAFE_BYTES).for_each(|chunk| {
-                expanded_piece.extend(chunk);
-                expanded_piece.extend([0]);
-            });
-            let polynomial = kzg.poly(&expanded_piece)?;
-            kzg.commit(&polynomial).map_err(Into::into)
+            let expanded_piece = piece
+                .chunks_exact(Scalar::SAFE_BYTES)
+                .map(|bytes| {
+                    Scalar::from(
+                        <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
+                            .expect("Chunked into correctly sized bytes; qed"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let polynomial = kzg
+                .poly(&expanded_piece)
+                .map_err(PlottingError::FailedToCommit)?;
+            kzg.commit(&polynomial)
+                .map_err(PlottingError::FailedToCommit)
         })
         .collect::<Result<Vec<Commitment>, PlottingError>>()?;
 
@@ -216,7 +223,7 @@ where
 }
 
 async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
-    in_memory_sector_scalars: &mut Vec<Scalar>,
+    in_memory_sector_scalars: &mut Vec<ScalarLegacy>,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
@@ -254,7 +261,7 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
         in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
-            Scalar::from(
+            ScalarLegacy::from(
                 <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
                     .expect("Chunked into scalar safe bytes above; qed"),
             )

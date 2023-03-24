@@ -83,7 +83,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, RecordsRoot, RootBlock, SectorId, SegmentIndex, Solution,
-    SolutionRange, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    SolutionRange, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -253,6 +253,9 @@ where
                 }
                 VerificationPrimitiveError::InvalidSolutionSignature(err) => {
                     Error::BadSolutionSignature(slot, err)
+                }
+                VerificationPrimitiveError::MissingKzgInstance => {
+                    unreachable!("Implementation bug");
                 }
             },
         }
@@ -674,14 +677,15 @@ where
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
-                    verify_solution_params: VerifySolutionParams {
-                        global_randomness: &subspace_digest_items.global_randomness,
+                    verify_solution_params: &VerifySolutionParams {
+                        global_randomness: subspace_digest_items.global_randomness,
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
                     reward_signing_context: &self.reward_signing_context,
                 },
                 Some(pre_digest),
+                None,
             )
             .map_err(Error::<Block::Header>::from)?
         };
@@ -915,7 +919,6 @@ where
         let maybe_records_root = if block_number.is_one() {
             let genesis_block_hash = self.client.info().genesis_hash;
             let archived_segments = Archiver::new(
-                RECORD_SIZE,
                 RECORDED_HISTORY_SEGMENT_SIZE,
                 self.subspace_link.kzg.clone(),
             )
@@ -944,7 +947,7 @@ where
         // root block, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
-            PIECES_IN_SEGMENT,
+            PIECES_IN_SEGMENT as usize,
             &records_root,
             position,
             &pre_digest.solution,
@@ -1252,7 +1255,7 @@ where
         .confirmation_depth_k();
 
     // TODO: Probably should have public parameters in chain constants instead
-    let kzg = Kzg::new(kzg::test_public_parameters());
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
 
     let link = SubspaceLink {
         slot_duration,
