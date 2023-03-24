@@ -1,13 +1,8 @@
-use crate::domain_block_preprocessor::{
-    compile_own_domain_bundles, deduplicate_and_shuffle_extrinsics, preprocess_primary_block,
-    DomainBundles,
-};
+use crate::domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::translate_number_type;
-use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use crate::TransactionFor;
-use codec::Decode;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -15,13 +10,12 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::ExecutorApi;
 use sp_keystore::SyncCryptoStorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
@@ -32,6 +26,7 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
+    system_domain_block_preprocessor: SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     state_root_extractor: StateRootExtractorWithSystemDomainClient<Client>,
 }
@@ -47,6 +42,7 @@ where
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
+            system_domain_block_preprocessor: self.system_domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
             state_root_extractor: self.state_root_extractor.clone(),
         }
@@ -89,11 +85,14 @@ where
         keystore: SyncCryptoStorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
+        let system_domain_block_preprocessor =
+            SystemDomainBlockPreprocessor::new(client.clone(), primary_chain_client.clone());
         Self {
             primary_chain_client,
             client: client.clone(),
             backend,
             keystore,
+            system_domain_block_preprocessor,
             domain_block_processor,
             state_root_extractor: StateRootExtractorWithSystemDomainClient::new(client),
         }
@@ -145,12 +144,9 @@ where
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
-        let (bundles, shuffling_seed, maybe_new_runtime) =
-            preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
-
-        let extrinsics = self
-            .bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)
-            .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
+        let (extrinsics, maybe_new_runtime) = self
+            .system_domain_block_preprocessor
+            .preprocess_primary_block(primary_hash, parent_hash)?;
 
         let logs = if primary_number == One::one() {
             // Manually inject the genesis block info.
@@ -223,66 +219,5 @@ where
         }
 
         Ok(built_block_info)
-    }
-
-    fn bundles_to_extrinsics(
-        &self,
-        parent_hash: Block::Hash,
-        bundles: DomainBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
-    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let (system_bundles, core_bundles) = match bundles {
-            DomainBundles::System(system_bundles, core_bundles) => (system_bundles, core_bundles),
-            DomainBundles::Core(_) => {
-                return Err(sp_blockchain::Error::Application(Box::from(
-                    "System bundle processor can not process core bundles.",
-                )));
-            }
-        };
-
-        let origin_system_extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
-        let extrinsics = self
-            .client
-            .runtime_api()
-            .construct_submit_core_bundle_extrinsics(parent_hash, core_bundles)?
-            .into_iter()
-            .filter_map(
-                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                            error = ?e,
-                            "Failed to decode the opaque extrisic in bundle, this should not happen"
-                        );
-                        None
-                    }
-                },
-            )
-            .chain(origin_system_extrinsics)
-            .collect::<Vec<_>>();
-
-        deduplicate_and_shuffle_extrinsics(&self.client, parent_hash, extrinsics, shuffling_seed)
-    }
-
-    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
-        exts.into_iter()
-            .filter(|ext| {
-                match verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, _>(
-                    &self.primary_chain_client,
-                    &self.state_root_extractor,
-                    ext,
-                ) {
-                    Ok(valid) => valid,
-                    Err(err) => {
-                        tracing::error!(
-                            target = "system_domain_xdm_filter",
-                            "failed to verify extrinsic: {}",
-                            err
-                        );
-                        false
-                    }
-                }
-            })
-            .collect()
     }
 }
