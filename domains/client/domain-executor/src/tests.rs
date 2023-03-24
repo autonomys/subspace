@@ -152,7 +152,9 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         parent_header.hash(),
         digest,
     );
-    let execution_phase = ExecutionPhase::InitializeBlock;
+    let execution_phase = ExecutionPhase::InitializeBlock {
+        domain_parent_hash: parent_header.hash(),
+    };
     let initialize_block_call_data = new_header.encode();
 
     let storage_proof = prover

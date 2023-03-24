@@ -9,11 +9,12 @@ use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::AccountId;
 
-/// A phase of a block's execution.
+/// A phase of a block's execution, carrying necessary information needed for verifying the
+/// invalid state transition proof.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
-    InitializeBlock,
+    InitializeBlock { domain_parent_hash: H256 },
     /// Executes some extrinsic.
     ApplyExtrinsic(u32),
     /// Executes the `finalize_block` hook.
@@ -26,7 +27,7 @@ impl ExecutionPhase {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
@@ -39,7 +40,7 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
@@ -51,7 +52,7 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            Self::InitializeBlock | Self::ApplyExtrinsic(_) => {
+            Self::InitializeBlock { .. } | Self::ApplyExtrinsic(_) => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())

@@ -150,7 +150,9 @@ where
                 parent_header.hash(),
                 Default::default(),
             );
-            let execution_phase = ExecutionPhase::InitializeBlock;
+            let execution_phase = ExecutionPhase::InitializeBlock {
+                domain_parent_hash: as_h256(&parent_header.hash())?,
+            };
             let initialize_block_call_data = new_header.encode();
 
             let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(

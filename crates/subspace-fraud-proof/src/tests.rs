@@ -159,7 +159,9 @@ async fn execution_proof_creation_and_verification_should_work() {
         parent_header.hash(),
         Default::default(),
     );
-    let execution_phase = ExecutionPhase::InitializeBlock;
+    let execution_phase = ExecutionPhase::InitializeBlock {
+        domain_parent_hash: parent_header.hash(),
+    };
     let initialize_block_call_data = new_header.encode();
 
     let prover = ExecutionProver::new(

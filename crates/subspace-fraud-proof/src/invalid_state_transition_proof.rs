@@ -7,7 +7,7 @@ use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_receipts::ReceiptsApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, NumberFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
@@ -259,6 +259,7 @@ where
     ) -> Result<(), VerificationError> {
         let InvalidStateTransitionProof {
             domain_id,
+            parent_number,
             bad_receipt_hash,
             pre_state_root,
             execution_phase,
@@ -266,15 +267,14 @@ where
         } = invalid_state_transition_proof;
 
         let pre_state_root_onchain = match execution_phase {
-            ExecutionPhase::InitializeBlock => {
-                todo!("Pass the parent hash of the domain block")
-                // self.client.runtime_api().state_root(
-                // self.client.info().best_hash,
-                // *domain_id,
-                // NumberFor::<Block>::from(*parent_number),
-                // Block::Hash::decode(&mut parent_hash.encode().as_slice())
-                // .expect("Block Hash must be H256; qed"),
-                // )?
+            ExecutionPhase::InitializeBlock { domain_parent_hash } => {
+                self.client.runtime_api().state_root(
+                    self.client.info().best_hash,
+                    *domain_id,
+                    NumberFor::<Block>::from(*parent_number),
+                    Block::Hash::decode(&mut domain_parent_hash.encode().as_slice())
+                        .expect("Block Hash must be H256; qed"),
+                )?
             }
             ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
             | ExecutionPhase::FinalizeBlock {
@@ -320,7 +320,7 @@ where
         )?;
 
         let post_state_root_onchain = match execution_phase {
-            ExecutionPhase::InitializeBlock => trace
+            ExecutionPhase::InitializeBlock { .. } => trace
                 .get(0)
                 .ok_or(VerificationError::PostStateRootNotFound)?,
             ExecutionPhase::ApplyExtrinsic(trace_index_of_post_state_root)
