@@ -1,6 +1,8 @@
 use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::shuffle_extrinsics;
-use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
+use crate::xdm_verifier::{
+    verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
+};
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::BlockBackend;
@@ -288,6 +290,112 @@ where
                     Err(err) => {
                         tracing::error!(
                             target = "system_domain_xdm_filter",
+                            "failed to verify extrinsic: {}",
+                            err
+                        );
+                        false
+                    }
+                }
+            })
+            .collect()
+    }
+}
+
+pub struct CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient> {
+    domain_id: DomainId,
+    client: Arc<Client>,
+    system_domain_client: Arc<SClient>,
+    primary_chain_client: Arc<PClient>,
+    _phantom_data: PhantomData<(Block, PBlock, SBlock)>,
+}
+
+impl<Block, PBlock, SBlock, Client, PClient, SClient> Clone
+    for CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>
+{
+    fn clone(&self) -> Self {
+        Self {
+            domain_id: self.domain_id,
+            client: self.client.clone(),
+            system_domain_client: self.system_domain_client.clone(),
+            primary_chain_client: self.primary_chain_client.clone(),
+            _phantom_data: self._phantom_data,
+        }
+    }
+}
+
+impl<Block, PBlock, SBlock, Client, PClient, SClient>
+    CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+    SBlock: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: DomainCoreApi<Block, AccountId>,
+    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
+{
+    pub fn new(
+        domain_id: DomainId,
+        client: Arc<Client>,
+        primary_chain_client: Arc<PClient>,
+        system_domain_client: Arc<SClient>,
+    ) -> Self {
+        Self {
+            domain_id,
+            client,
+            system_domain_client,
+            primary_chain_client,
+            _phantom_data: Default::default(),
+        }
+    }
+    pub fn preprocess_primary_block(
+        &self,
+        primary_hash: PBlock::Hash,
+        domain_hash: Block::Hash,
+    ) -> sp_blockchain::Result<(Vec<Block::Extrinsic>, MaybeNewRuntime)> {
+        let (bundles, shuffling_seed, maybe_new_runtime) =
+            preprocess_primary_block(self.domain_id, &*self.primary_chain_client, primary_hash)?;
+
+        let extrinsics = self
+            .bundles_to_extrinsics(domain_hash, bundles, shuffling_seed)
+            .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
+
+        Ok((extrinsics, maybe_new_runtime))
+    }
+
+    fn bundles_to_extrinsics(
+        &self,
+        parent_hash: Block::Hash,
+        bundles: DomainBundles<Block, PBlock>,
+        shuffling_seed: Randomness,
+    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
+        let bundles = match bundles {
+            DomainBundles::System(..) => {
+                return Err(sp_blockchain::Error::Application(Box::from(
+                    "Core bundle processor can not process system bundles.",
+                )));
+            }
+            DomainBundles::Core(bundles) => bundles,
+        };
+        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
+        deduplicate_and_shuffle_extrinsics(&self.client, parent_hash, extrinsics, shuffling_seed)
+    }
+
+    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
+        exts.into_iter()
+            .filter(|ext| {
+                match verify_xdm_with_system_domain_client::<_, Block, SBlock, PBlock>(
+                    &self.system_domain_client,
+                    &(ext.clone().into()),
+                ) {
+                    Ok(valid) => valid,
+                    Err(err) => {
+                        tracing::error!(
+                            target = "core_domain_xdm_filter",
                             "failed to verify extrinsic: {}",
                             err
                         );
