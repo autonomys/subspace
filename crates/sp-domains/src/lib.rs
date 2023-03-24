@@ -113,6 +113,8 @@ impl DomainId {
 
     pub const CORE_PAYMENTS: Self = Self::new(1);
 
+    pub const CORE_ETH_RELAY: Self = Self::new(2);
+
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)
