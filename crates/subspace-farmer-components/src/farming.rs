@@ -3,12 +3,12 @@ use parity_scale_codec::{Decode, IoReader};
 use schnorrkel::Keypair;
 use std::io;
 use std::io::SeekFrom;
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::Witness;
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Blake2b256Hash, Piece, PieceIndex, PublicKey, Scalar, SectorId, SectorIndex, Solution,
-    SolutionRange, PIECES_IN_SECTOR, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    Blake2b256Hash, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
+    PIECES_IN_SECTOR, PIECE_SIZE, PLOT_SECTOR_SIZE,
 };
 use subspace_solving::create_chunk_signature;
 use subspace_verification::{derive_audit_chunk, is_within_solution_range};
@@ -39,7 +39,7 @@ pub struct EligibleChunk {
     /// Offset of the chunk within piece
     pub offset: u32,
     /// Chunk itself
-    pub chunk: Scalar,
+    pub chunk: ScalarLegacy,
 }
 
 /// Sector that can be used to create a solution that is within desired solution range
@@ -80,14 +80,14 @@ impl EligibleSector {
             sector.read_exact(&mut sector_bytes)?;
 
             sector_bytes
-                .chunks_exact(Scalar::FULL_BYTES)
+                .chunks_exact(ScalarLegacy::FULL_BYTES)
                 .map(|bytes| {
-                    Scalar::from(
-                        <&[u8; Scalar::FULL_BYTES]>::try_from(bytes)
+                    ScalarLegacy::from(
+                        <&[u8; ScalarLegacy::FULL_BYTES]>::try_from(bytes)
                             .expect("Chunked into scalar full bytes above; qed"),
                     )
                 })
-                .collect::<Vec<Scalar>>()
+                .collect::<Vec<ScalarLegacy>>()
         };
 
         let sector_metadata = SectorMetadata::decode(&mut IoReader(sector_metadata))
@@ -98,9 +98,9 @@ impl EligibleSector {
             .map_err(FarmingError::FailedToDecodeSector)?;
 
         let mut piece = Piece::default();
-        let scalars_in_piece = PIECE_SIZE / Scalar::SAFE_BYTES;
+        let scalars_in_piece = PIECE_SIZE / ScalarLegacy::SAFE_BYTES;
         piece
-            .chunks_exact_mut(Scalar::SAFE_BYTES)
+            .chunks_exact_mut(ScalarLegacy::SAFE_BYTES)
             .zip(
                 sector_scalars
                     .into_iter()
@@ -111,18 +111,18 @@ impl EligibleSector {
                 // After decoding we get piece scalar bytes padded with zero byte, so we can read
                 // the whole thing first and then copy just first `Scalar::SAFE_BYTES` we actually
                 // care about
-                output.copy_from_slice(&input.to_bytes()[..Scalar::SAFE_BYTES]);
+                output.copy_from_slice(&input.to_bytes()[..ScalarLegacy::SAFE_BYTES]);
             });
 
         let (record, witness) = piece.split();
-        let piece_witness = match Witness::try_from_bytes(&witness) {
+        let piece_witness = match Witness::try_from_bytes(witness) {
             Ok(piece_witness) => piece_witness,
             Err(error) => {
                 let piece_index = self
                     .sector_id
                     .derive_piece_index(self.audit_piece_offset, sector_metadata.total_pieces);
                 let audit_piece_bytes_offset = self.audit_piece_offset
-                    * (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
+                    * (PIECE_SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
                 error!(
                     ?error,
                     sector_id = ?self.sector_id,
@@ -143,7 +143,7 @@ impl EligibleSector {
                 sector_index: self.sector_index,
                 total_pieces: sector_metadata.total_pieces,
                 piece_offset: self.audit_piece_offset,
-                piece_record_hash: blake2b_256_254_hash(&record),
+                piece_record_hash: blake2b_256_254_hash_to_scalar(record.as_ref()),
                 piece_witness,
                 chunk_offset: offset,
                 chunk,
@@ -173,15 +173,15 @@ where
     let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
     // Offset of the piece in sector (in bytes, accounts for the fact that encoded piece has its
     // chunks expanded with zero byte padding)
-    let audit_piece_bytes_offset =
-        audit_piece_offset * (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
+    let audit_piece_bytes_offset = audit_piece_offset
+        * (PIECE_SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
 
     let mut piece = Piece::default();
     sector.seek(SeekFrom::Current(audit_piece_bytes_offset as i64))?;
-    sector.read_exact(&mut piece)?;
+    sector.read_exact(piece.as_mut())?;
 
     let chunks = piece
-        .chunks_exact(Scalar::FULL_BYTES)
+        .chunks_exact(ScalarLegacy::FULL_BYTES)
         .enumerate()
         .filter_map(|(offset, chunk_bytes)| {
             let chunk_bytes = chunk_bytes
@@ -195,7 +195,7 @@ where
             )
             .then(|| EligibleChunk {
                 offset: offset as u32,
-                chunk: Scalar::from(&chunk_bytes),
+                chunk: ScalarLegacy::from(&chunk_bytes),
             })
         })
         .collect::<Vec<_>>();

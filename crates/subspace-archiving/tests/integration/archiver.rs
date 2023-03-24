@@ -7,7 +7,7 @@ use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, Segment
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, Kzg};
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceRef, RootBlock,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, RootBlock,
     BLAKE2B_256_HASH_SIZE, RECORD_SIZE,
 };
 
@@ -25,7 +25,7 @@ fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
 #[track_caller]
 fn compare_block_objects_to_piece_objects<'a>(
     block_objects: impl Iterator<Item = (&'a [u8], &'a BlockObject)>,
-    piece_objects: impl Iterator<Item = (PieceRef<'a>, &'a PieceObject)>,
+    piece_objects: impl Iterator<Item = (&'a PieceArray, &'a PieceObject)>,
 ) {
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
@@ -40,7 +40,7 @@ fn compare_block_objects_to_piece_objects<'a>(
 #[test]
 fn archiver() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg.clone()).unwrap();
+    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg.clone()).unwrap();
 
     let (block_0, block_0_object_mapping) = {
         let mut block = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
@@ -110,7 +110,7 @@ fn archiver() {
 
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
     assert_eq!(
-        first_archived_segment.pieces.count(),
+        first_archived_segment.pieces.len(),
         PIECES_IN_SEGMENT as usize
     );
     assert_eq!(first_archived_segment.root_block.segment_index(), 0);
@@ -136,7 +136,7 @@ fn archiver() {
             .chain(iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter()));
         let piece_objects = first_archived_segment
             .pieces
-            .as_pieces()
+            .iter()
             .zip(&first_archived_segment.object_mapping)
             .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
@@ -144,7 +144,7 @@ fn archiver() {
     }
 
     // Check that all pieces are valid
-    for (position, piece) in first_archived_segment.pieces.as_pieces().enumerate() {
+    for (position, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
             &kzg,
             PIECES_IN_SEGMENT as usize,
@@ -163,7 +163,6 @@ fn archiver() {
     // archived segments once last block is added
     {
         let mut archiver_with_initial_state = Archiver::with_initial_state(
-            RECORD_SIZE,
             SEGMENT_SIZE,
             kzg.clone(),
             first_archived_segment.root_block,
@@ -195,7 +194,7 @@ fn archiver() {
             iter::repeat(block_1.as_ref()).zip(block_1_object_mapping.objects.iter().skip(2));
         let piece_objects = archived_segments[0]
             .pieces
-            .as_pieces()
+            .iter()
             .zip(&archived_segments[0].object_mapping)
             .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
@@ -221,7 +220,7 @@ fn archiver() {
     let mut previous_root_block_hash = first_archived_segment.root_block.hash();
     let last_root_block = archived_segments.iter().last().unwrap().root_block;
     for archived_segment in archived_segments {
-        assert_eq!(archived_segment.pieces.count(), PIECES_IN_SEGMENT as usize);
+        assert_eq!(archived_segment.pieces.len(), PIECES_IN_SEGMENT as usize);
         assert_eq!(
             archived_segment.root_block.segment_index(),
             expected_segment_index
@@ -231,7 +230,7 @@ fn archiver() {
             previous_root_block_hash
         );
 
-        for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
+        for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 &kzg,
                 PIECES_IN_SEGMENT as usize,
@@ -254,7 +253,6 @@ fn archiver() {
     // archived segments once last block is added
     {
         let mut archiver_with_initial_state = Archiver::with_initial_state(
-            RECORD_SIZE,
             SEGMENT_SIZE,
             kzg.clone(),
             last_root_block,
@@ -276,7 +274,7 @@ fn archiver() {
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.partial_archived(), None);
 
-        for (position, piece) in archived_segment.pieces.as_pieces().enumerate() {
+        for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 &kzg,
                 PIECES_IN_SEGMENT as usize,
@@ -292,27 +290,17 @@ fn archiver() {
 fn invalid_usage() {
     let kzg = Kzg::new(embedded_kzg_settings());
     assert_matches!(
-        Archiver::new(4, SEGMENT_SIZE, kzg.clone()),
-        Err(ArchiverInstantiationError::RecordSizeTooSmall),
-    );
-
-    assert_matches!(
-        Archiver::new(10, 9, kzg.clone()),
-        Err(ArchiverInstantiationError::SegmentSizeTooSmall),
-    );
-    assert_matches!(
-        Archiver::new(SEGMENT_SIZE, SEGMENT_SIZE, kzg.clone()),
+        Archiver::new(9, kzg.clone()),
         Err(ArchiverInstantiationError::SegmentSizeTooSmall),
     );
 
     assert_matches!(
-        Archiver::new(17, SEGMENT_SIZE, kzg.clone()),
+        Archiver::new(SEGMENT_SIZE + 2, kzg.clone()),
         Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
     {
         let result = Archiver::with_initial_state(
-            RECORD_SIZE,
             SEGMENT_SIZE,
             kzg.clone(),
             RootBlock::V0 {
@@ -340,7 +328,6 @@ fn invalid_usage() {
 
     {
         let result = Archiver::with_initial_state(
-            RECORD_SIZE,
             SEGMENT_SIZE,
             kzg,
             RootBlock::V0 {
@@ -394,7 +381,7 @@ fn one_byte_smaller_segment() {
         // We leave two bytes at the end intentionally
         - 2;
     assert_eq!(
-        Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg.clone())
+        Archiver::new(SEGMENT_SIZE, kzg.clone())
             .unwrap()
             .add_block(vec![0u8; block_size], BlockObjectMapping::default())
             .len(),
@@ -402,7 +389,7 @@ fn one_byte_smaller_segment() {
     );
     // Cutting just one byte more is not sufficient to produce a segment, this is a protection
     // against code regressions
-    assert!(Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg)
+    assert!(Archiver::new(SEGMENT_SIZE, kzg)
         .unwrap()
         .add_block(vec![0u8; block_size - 1], BlockObjectMapping::default())
         .is_empty());
@@ -411,7 +398,7 @@ fn one_byte_smaller_segment() {
 #[test]
 fn spill_over_edge_case() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
 
     // Carefully compute the block size such that there is just 2 bytes left to fill the segment,
     // but this should already produce archived segment since just enum variant and smallest compact
@@ -467,7 +454,7 @@ fn spill_over_edge_case() {
 #[test]
 fn object_on_the_edge_of_segment() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
     let first_block = vec![0u8; SEGMENT_SIZE as usize];
     let archived_segments = archiver.add_block(first_block.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
@@ -572,7 +559,7 @@ fn object_on_the_edge_of_segment() {
 
     // Ensure bytes are mapped correctly
     assert_eq!(
-        &archived_segments[1].pieces
+        &archived_segments[1].pieces.as_ref()
             [archived_segments[1].object_mapping[0].objects[0].offset() as usize..]
             [..mapped_bytes.len()],
         mapped_bytes.as_slice()

@@ -48,7 +48,7 @@ impl PieceValidator for RecordsRootPieceValidator {
             if !is_piece_valid(
                 &self.kzg,
                 PIECES_IN_SEGMENT as usize,
-                piece.as_ref(),
+                &piece,
                 records_root,
                 u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
                     .expect("Always fix into u32; qed"),

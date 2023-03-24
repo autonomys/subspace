@@ -17,7 +17,7 @@ const PIECES_IN_SEGMENT: u32 = 8;
 const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
-    pieces.as_pieces().map(Piece::from).collect()
+    pieces.iter().map(Piece::from).collect()
 }
 
 fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
@@ -27,7 +27,7 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 #[test]
 fn basic() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -49,7 +49,7 @@ fn basic() {
 
     assert_eq!(archived_segments.len(), 5);
 
-    let mut reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+    let mut reconstructor = Reconstructor::new(SEGMENT_SIZE).unwrap();
 
     {
         let contents = reconstructor
@@ -82,7 +82,7 @@ fn basic() {
             }
         );
 
-        let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+        let mut partial_reconstructor = Reconstructor::new(SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
                 &archived_segments[1].pieces,
@@ -121,7 +121,7 @@ fn basic() {
             }
         );
 
-        let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+        let mut partial_reconstructor = Reconstructor::new(SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
                 &archived_segments[2].pieces,
@@ -162,7 +162,7 @@ fn basic() {
     }
 
     {
-        let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+        let mut partial_reconstructor = Reconstructor::new(SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
                 &archived_segments[3].pieces,
@@ -203,7 +203,7 @@ fn basic() {
     }
 
     {
-        let mut partial_reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+        let mut partial_reconstructor = Reconstructor::new(SEGMENT_SIZE).unwrap();
         let contents = partial_reconstructor
             .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(
                 &archived_segments[4].pieces,
@@ -227,7 +227,7 @@ fn basic() {
 #[test]
 fn partial_data() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -245,7 +245,7 @@ fn partial_data() {
 
     {
         // Take just data shards
-        let contents = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
+        let contents = Reconstructor::new(SEGMENT_SIZE)
             .unwrap()
             .add_segment(
                 &pieces
@@ -263,7 +263,7 @@ fn partial_data() {
 
     {
         // Take just parity shards
-        let contents = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
+        let contents = Reconstructor::new(SEGMENT_SIZE)
             .unwrap()
             .add_segment(
                 &iter::repeat(None)
@@ -291,7 +291,7 @@ fn partial_data() {
             .for_each(|piece| {
                 piece.take();
             });
-        let contents = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
+        let contents = Reconstructor::new(SEGMENT_SIZE)
             .unwrap()
             .add_segment(&pieces)
             .unwrap();
@@ -304,20 +304,16 @@ fn partial_data() {
 fn invalid_usage() {
     let kzg = Kzg::new(embedded_kzg_settings());
     assert_matches!(
-        Reconstructor::new(10, 9),
-        Err(ReconstructorInstantiationError::SegmentSizeTooSmall),
-    );
-    assert_matches!(
-        Reconstructor::new(SEGMENT_SIZE, SEGMENT_SIZE),
+        Reconstructor::new(9),
         Err(ReconstructorInstantiationError::SegmentSizeTooSmall),
     );
 
     assert_matches!(
-        Reconstructor::new(17, SEGMENT_SIZE),
+        Reconstructor::new(SEGMENT_SIZE + 1),
         Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
-    let mut archiver = Archiver::new(RECORD_SIZE, SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
     // Block that overflows into the next segments
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize * 4]>().to_vec();
 
@@ -327,40 +323,36 @@ fn invalid_usage() {
 
     {
         // Not enough shards with contents
-        let result = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
-            .unwrap()
-            .add_segment(
-                &flat_pieces_to_regular(&archived_segments[0].pieces)
-                    .iter()
-                    .take(PIECES_IN_SEGMENT as usize / 2 - 1)
-                    .cloned()
-                    .map(Some)
-                    .chain(iter::repeat(None).take(PIECES_IN_SEGMENT as usize / 2 + 1))
-                    .collect::<Vec<_>>(),
-            );
+        let result = Reconstructor::new(SEGMENT_SIZE).unwrap().add_segment(
+            &flat_pieces_to_regular(&archived_segments[0].pieces)
+                .iter()
+                .take(PIECES_IN_SEGMENT as usize / 2 - 1)
+                .cloned()
+                .map(Some)
+                .chain(iter::repeat(None).take(PIECES_IN_SEGMENT as usize / 2 + 1))
+                .collect::<Vec<_>>(),
+        );
 
         assert_matches!(result, Err(ReconstructorError::DataShardsReconstruction(_)));
     }
 
     {
         // Garbage data
-        let result = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE)
-            .unwrap()
-            .add_segment(
-                &iter::repeat_with(|| {
-                    let mut piece = Piece::default();
-                    thread_rng().fill(*piece.as_mut());
-                    Some(piece)
-                })
-                .take(PIECES_IN_SEGMENT as usize)
-                .collect::<Vec<_>>(),
-            );
+        let result = Reconstructor::new(SEGMENT_SIZE).unwrap().add_segment(
+            &iter::repeat_with(|| {
+                let mut piece = Piece::default();
+                thread_rng().fill(piece.as_mut());
+                Some(piece)
+            })
+            .take(PIECES_IN_SEGMENT as usize)
+            .collect::<Vec<_>>(),
+        );
 
         assert_matches!(result, Err(ReconstructorError::SegmentDecoding(_)));
     }
 
     {
-        let mut reconstructor = Reconstructor::new(RECORD_SIZE, SEGMENT_SIZE).unwrap();
+        let mut reconstructor = Reconstructor::new(SEGMENT_SIZE).unwrap();
 
         reconstructor
             .add_segment(&pieces_to_option_of_pieces(&flat_pieces_to_regular(

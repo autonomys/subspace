@@ -83,7 +83,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, RecordsRoot, RootBlock, SectorId, SegmentIndex, Solution,
-    SolutionRange, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    SolutionRange, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -919,7 +919,6 @@ where
         let maybe_records_root = if block_number.is_one() {
             let genesis_block_hash = self.client.info().genesis_hash;
             let archived_segments = Archiver::new(
-                RECORD_SIZE,
                 RECORDED_HISTORY_SEGMENT_SIZE,
                 self.subspace_link.kzg.clone(),
             )
