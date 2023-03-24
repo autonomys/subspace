@@ -328,7 +328,7 @@ parameter_types! {
 
 impl pallet_ethereum_beacon_client::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    // TODO: Replace this with pallet_timestamp once core domains support inherent extrinsics
+    // TODO: Replace this with proper implementation once we can retrieve timestamp in domain runtime
     type TimeProvider = DummyTimeProvider;
     type MaxSyncCommitteeSize = MaxSyncCommitteeSize;
     type MaxProofBranchSize = MaxProofBranchSize;
