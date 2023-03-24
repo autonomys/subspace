@@ -1,3 +1,6 @@
+//! This module provides the feature of extracting the potential new domain runtime and final
+//! list of extrinsics for the domain block from the original primary block.
+
 use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::shuffle_extrinsics;
 use crate::xdm_verifier::{
@@ -8,7 +11,7 @@ use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, ExecutorApi, OpaqueBundles, SignedOpaqueBundles};
+use sp_domains::{DomainId, ExecutorApi, OpaqueBundles};
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -19,30 +22,20 @@ use subspace_core_primitives::Randomness;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 use system_runtime_primitives::SystemDomainApi;
 
-/// Domain-specific bundles extracted from the primary block.
-pub enum DomainBundles<Block, PBlock>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-{
-    System(
-        OpaqueBundles<PBlock, Block::Hash>,
-        SignedOpaqueBundles<PBlock, Block::Hash>,
-    ),
-    Core(OpaqueBundles<PBlock, Block::Hash>),
-}
-
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
 
-pub type DomainBlockElements<Block, PBlock> =
-    (DomainBundles<Block, PBlock>, Randomness, MaybeNewRuntime);
+type DomainBlockElements<PBlock> = (
+    Vec<<PBlock as BlockT>::Extrinsic>,
+    Randomness,
+    MaybeNewRuntime,
+);
 
-/// Extracts the necessary materials for building a new domain block from the primary block.
-pub(crate) fn preprocess_primary_block<Block, PBlock, PClient>(
+/// Extracts the raw materials for building a new domain block from the primary block.
+fn prepare_domain_block_elements<Block, PBlock, PClient>(
     domain_id: DomainId,
     primary_chain_client: &PClient,
     block_hash: PBlock::Hash,
-) -> sp_blockchain::Result<DomainBlockElements<Block, PBlock>>
+) -> sp_blockchain::Result<DomainBlockElements<PBlock>>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -92,24 +85,10 @@ where
         .runtime_api()
         .extrinsics_shuffling_seed(block_hash, header)?;
 
-    let domain_bundles = if domain_id.is_system() {
-        let (system_bundles, core_bundles) = primary_chain_client
-            .runtime_api()
-            .extract_system_bundles(block_hash, extrinsics)?;
-        DomainBundles::System(system_bundles, core_bundles)
-    } else if domain_id.is_core() {
-        let core_bundles = primary_chain_client
-            .runtime_api()
-            .extract_core_bundles(block_hash, extrinsics, domain_id)?;
-        DomainBundles::Core(core_bundles)
-    } else {
-        unreachable!("Open domains are unsupported")
-    };
-
-    Ok((domain_bundles, shuffling_seed, maybe_new_runtime))
+    Ok((extrinsics, shuffling_seed, maybe_new_runtime))
 }
 
-pub(crate) fn compile_own_domain_bundles<Block, PBlock>(
+fn compile_own_domain_bundles<Block, PBlock>(
     bundles: OpaqueBundles<PBlock, Block::Hash>,
 ) -> Vec<Block::Extrinsic>
 where
@@ -137,7 +116,7 @@ where
             .collect::<Vec<_>>()
 }
 
-pub(crate) fn deduplicate_and_shuffle_extrinsics<Block, Client>(
+fn deduplicate_and_shuffle_extrinsics<Block, Client>(
     client: &Arc<Client>,
     parent_hash: Block::Hash,
     mut extrinsics: Vec<Block::Extrinsic>,
@@ -229,36 +208,24 @@ where
         primary_hash: PBlock::Hash,
         domain_hash: Block::Hash,
     ) -> sp_blockchain::Result<(Vec<Block::Extrinsic>, MaybeNewRuntime)> {
-        let (bundles, shuffling_seed, maybe_new_runtime) =
-            preprocess_primary_block(DomainId::SYSTEM, &*self.primary_chain_client, primary_hash)?;
+        let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
+            prepare_domain_block_elements::<Block, PBlock, _>(
+                DomainId::SYSTEM,
+                &*self.primary_chain_client,
+                primary_hash,
+            )?;
 
-        let extrinsics = self
-            .bundles_to_extrinsics(domain_hash, bundles, shuffling_seed)
-            .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
-
-        Ok((extrinsics, maybe_new_runtime))
-    }
-
-    fn bundles_to_extrinsics(
-        &self,
-        parent_hash: Block::Hash,
-        bundles: DomainBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
-    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let (system_bundles, core_bundles) = match bundles {
-            DomainBundles::System(system_bundles, core_bundles) => (system_bundles, core_bundles),
-            DomainBundles::Core(_) => {
-                return Err(sp_blockchain::Error::Application(Box::from(
-                    "System bundle processor can not process core bundles.",
-                )));
-            }
-        };
+        let (system_bundles, core_bundles) = self
+            .primary_chain_client
+            .runtime_api()
+            .extract_system_bundles(primary_hash, primary_extrinsics)?;
 
         let origin_system_extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
+
         let extrinsics = self
             .client
             .runtime_api()
-            .construct_submit_core_bundle_extrinsics(parent_hash, core_bundles)?
+            .construct_submit_core_bundle_extrinsics(domain_hash, core_bundles)?
             .into_iter()
             .filter_map(
                 |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
@@ -275,7 +242,15 @@ where
             .chain(origin_system_extrinsics)
             .collect::<Vec<_>>();
 
-        deduplicate_and_shuffle_extrinsics(&self.client, parent_hash, extrinsics, shuffling_seed)
+        let extrinsics = deduplicate_and_shuffle_extrinsics(
+            &self.client,
+            domain_hash,
+            extrinsics,
+            shuffling_seed,
+        )
+        .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
+
+        Ok((extrinsics, maybe_new_runtime))
     }
 
     fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
@@ -352,37 +327,35 @@ where
             _phantom_data: Default::default(),
         }
     }
+
     pub fn preprocess_primary_block(
         &self,
         primary_hash: PBlock::Hash,
         domain_hash: Block::Hash,
     ) -> sp_blockchain::Result<(Vec<Block::Extrinsic>, MaybeNewRuntime)> {
-        let (bundles, shuffling_seed, maybe_new_runtime) =
-            preprocess_primary_block(self.domain_id, &*self.primary_chain_client, primary_hash)?;
+        let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
+            prepare_domain_block_elements::<Block, PBlock, _>(
+                self.domain_id,
+                &*self.primary_chain_client,
+                primary_hash,
+            )?;
 
-        let extrinsics = self
-            .bundles_to_extrinsics(domain_hash, bundles, shuffling_seed)
-            .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
+        let core_bundles = self
+            .primary_chain_client
+            .runtime_api()
+            .extract_core_bundles(primary_hash, primary_extrinsics, self.domain_id)?;
+
+        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
+
+        let extrinsics = deduplicate_and_shuffle_extrinsics(
+            &self.client,
+            domain_hash,
+            extrinsics,
+            shuffling_seed,
+        )
+        .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
 
         Ok((extrinsics, maybe_new_runtime))
-    }
-
-    fn bundles_to_extrinsics(
-        &self,
-        parent_hash: Block::Hash,
-        bundles: DomainBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
-    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let bundles = match bundles {
-            DomainBundles::System(..) => {
-                return Err(sp_blockchain::Error::Application(Box::from(
-                    "Core bundle processor can not process system bundles.",
-                )));
-            }
-            DomainBundles::Core(bundles) => bundles,
-        };
-        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
-        deduplicate_and_shuffle_extrinsics(&self.client, parent_hash, extrinsics, shuffling_seed)
     }
 
     fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
