@@ -2,12 +2,14 @@
 //! list of extrinsics for the domain block from the original primary block.
 
 use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
-use crate::utils::shuffle_extrinsics;
 use crate::xdm_verifier::{
     verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
 };
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -16,6 +18,8 @@ use sp_messenger::MessengerApi;
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
+use std::collections::{BTreeMap, VecDeque};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -153,6 +157,53 @@ where
     let extrinsics = shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
 
     Ok(extrinsics)
+}
+
+/// Shuffles the extrinsics in a deterministic way.
+///
+/// The extrinsics are grouped by the signer. The extrinsics without a signer, i.e., unsigned
+/// extrinsics, are considered as a special group. The items in different groups are cross shuffled,
+/// while the order of items inside the same group is still maintained.
+fn shuffle_extrinsics<Extrinsic: Debug>(
+    extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
+    shuffling_seed: Randomness,
+) -> Vec<Extrinsic> {
+    let mut rng = ChaCha8Rng::from_seed(shuffling_seed);
+
+    let mut positions = extrinsics
+        .iter()
+        .map(|(maybe_signer, _)| maybe_signer)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // Shuffles the positions using Fisher–Yates algorithm.
+    positions.shuffle(&mut rng);
+
+    let mut grouped_extrinsics: BTreeMap<Option<AccountId>, VecDeque<_>> = extrinsics
+        .into_iter()
+        .fold(BTreeMap::new(), |mut groups, (maybe_signer, tx)| {
+            groups
+                .entry(maybe_signer)
+                .or_insert_with(VecDeque::new)
+                .push_back(tx);
+            groups
+        });
+
+    // The relative ordering for the items in the same group does not change.
+    let shuffled_extrinsics = positions
+        .into_iter()
+        .map(|maybe_signer| {
+            grouped_extrinsics
+                .get_mut(&maybe_signer)
+                .expect("Extrinsics are grouped correctly; qed")
+                .pop_front()
+                .expect("Extrinsic definitely exists as it's correctly grouped above; qed")
+        })
+        .collect::<Vec<_>>();
+
+    tracing::trace!(?shuffled_extrinsics, "Shuffled extrinsics");
+
+    shuffled_extrinsics
 }
 
 pub struct SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient> {
@@ -377,5 +428,40 @@ where
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shuffle_extrinsics;
+    use sp_keyring::sr25519::Keyring;
+    use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+
+    #[test]
+    fn shuffle_extrinsics_should_work() {
+        let alice = Keyring::Alice.to_account_id();
+        let bob = Keyring::Bob.to_account_id();
+        let charlie = Keyring::Charlie.to_account_id();
+
+        let extrinsics = vec![
+            (Some(alice.clone()), 10),
+            (None, 100),
+            (Some(bob.clone()), 1),
+            (Some(bob), 2),
+            (Some(charlie.clone()), 30),
+            (Some(alice.clone()), 11),
+            (Some(charlie), 31),
+            (None, 101),
+            (None, 102),
+            (Some(alice), 12),
+        ];
+
+        let dummy_seed = BlakeTwo256::hash_of(&[1u8; 64]).into();
+        let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_seed);
+
+        assert_eq!(
+            shuffled_extrinsics,
+            vec![100, 30, 10, 1, 11, 101, 31, 12, 102, 2]
+        );
     }
 }
