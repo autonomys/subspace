@@ -1,8 +1,7 @@
-use crate::domain_block_processor::{
-    preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
-};
+use crate::domain_block_preprocessor::{preprocess_primary_block, DomainBundles};
+use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
-use crate::utils::{translate_number_type, DomainBundles};
+use crate::utils::translate_number_type;
 use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use crate::TransactionFor;
 use codec::Decode;
