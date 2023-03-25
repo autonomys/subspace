@@ -40,7 +40,7 @@ use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
     BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend, StateBackendFor,
 };
-use sc_consensus::{BlockImport, DefaultImportQueue};
+use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
@@ -73,6 +73,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use subspace_block_relay::{build_block_relay, init_block_relay_config};
 use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -420,7 +421,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 /// Builds a new service for a full client.
 #[allow(clippy::type_complexity)]
 pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
-    config: SubspaceConfiguration,
+    mut config: SubspaceConfiguration,
     partial_components: PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
         FullBackend,
@@ -481,6 +482,9 @@ where
     } = partial_components;
 
     let root_block_cache = RootBlockCache::new(client.clone());
+    // Enable the alternate block relay implementation if the CLI params request
+    // disabling the default path.
+    let enable_block_relay = !config.base.announce_block;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -638,6 +642,12 @@ where
             })?;
     }
 
+    let block_relay_receiver = if enable_block_relay {
+        Some(init_block_relay_config(&mut config))
+    } else {
+        None
+    };
+    let import_queue_service = import_queue.service();
     let (network, system_rpc_tx, tx_handler_controller, network_starter) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -788,6 +798,19 @@ where
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
     })?;
+
+    if let Some(block_relay_receiver) = block_relay_receiver {
+        let block_relay_runner = build_block_relay(
+            network.clone(),
+            client.clone(),
+            import_queue_service,
+            imported_block_notification_stream.subscribe(),
+            block_relay_receiver,
+        );
+        task_manager
+            .spawn_handle()
+            .spawn("block-relay-runner", None, block_relay_runner.run());
+    }
 
     Ok(NewFull {
         task_manager,
