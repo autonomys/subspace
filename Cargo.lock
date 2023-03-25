@@ -330,12 +330,6 @@ dependencies = [
 
 [[package]]
 name = "ahash"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
-
-[[package]]
-name = "ahash"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcb51a0695d8f838b1ee009b3fbf66bda078cd64590202a864a8f3e8c4315c47"
@@ -380,6 +374,11 @@ checksum = "94fb8275041c72129eb51b7d0322c29b8387a0386127718b096429201a5d6ece"
 dependencies = [
  "alloc-no-stdlib",
 ]
+
+[[package]]
+name = "amcl"
+version = "0.3.0"
+source = "git+https://github.com/Snowfork/milagro_bls#bc2b5b5e8d48b7e2e1bfaa56dc2d93e13cb32095"
 
 [[package]]
 name = "android_system_properties"
@@ -936,7 +935,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blst"
 version = "0.3.10"
-source = "git+https://github.com/supranational/blst.git#a7fd1f584d26b0ae6cdc427976ea1d8980f7e15d"
+source = "git+https://github.com/subspace/blst.git?rev=079887d2d05bb2d61df4ceef3d4c836228ebc6ff#079887d2d05bb2d61df4ceef3d4c836228ebc6ff"
 dependencies = [
  "cc",
  "glob",
@@ -947,7 +946,7 @@ dependencies = [
 [[package]]
 name = "blst_from_scratch"
 version = "0.1.0"
-source = "git+https://github.com/sifraitech/rust-kzg?rev=7eb52ca97576ea1eefe4dd2165f224c916f8c862#7eb52ca97576ea1eefe4dd2165f224c916f8c862"
+source = "git+https://github.com/subspace/rust-kzg?rev=49e7b60ea51d918f04779dd83191ae0e01afcb30#49e7b60ea51d918f04779dd83191ae0e01afcb30"
 dependencies = [
  "blst",
  "kzg",
@@ -1372,6 +1371,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-eth-relay-runtime"
+version = "0.1.0"
+dependencies = [
+ "domain-pallet-executive",
+ "domain-runtime-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-domain-registry",
+ "pallet-executor-registry",
+ "pallet-messenger",
+ "pallet-sudo",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-transporter",
+ "parity-scale-codec",
+ "scale-info",
+ "snowbridge-beacon-primitives",
+ "snowbridge-ethereum-beacon-client",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-messenger",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "subspace-wasm-tools",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1547,7 +1589,7 @@ dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
- "itertools 0.10.5",
+ "itertools",
  "log",
  "smallvec",
  "wasmparser",
@@ -1590,7 +1632,7 @@ dependencies = [
  "ciborium",
  "clap 3.2.23",
  "criterion-plot",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -1611,7 +1653,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools 0.10.5",
+ "itertools",
 ]
 
 [[package]]
@@ -1815,9 +1857,9 @@ dependencies = [
 
 [[package]]
 name = "cxx"
-version = "1.0.93"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9c00419335c41018365ddf7e4d5f1c12ee3659ddcf3e01974650ba1de73d038"
+checksum = "f61f1b6389c3fe1c316bf8a4dccc90a38208354b330925bce1f74a6c4756eb93"
 dependencies = [
  "cc",
  "cxxbridge-flags",
@@ -1827,9 +1869,9 @@ dependencies = [
 
 [[package]]
 name = "cxx-build"
-version = "1.0.93"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb8307ad413a98fff033c8545ecf133e3257747b3bae935e7602aab8aa92d4ca"
+checksum = "12cee708e8962df2aeb38f594aae5d827c022b6460ac71a7a3e2c3c2aae5a07b"
 dependencies = [
  "cc",
  "codespan-reporting",
@@ -1842,15 +1884,15 @@ dependencies = [
 
 [[package]]
 name = "cxxbridge-flags"
-version = "1.0.93"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edc52e2eb08915cb12596d29d55f0b5384f00d697a646dbd269b6ecb0fbd9d31"
+checksum = "7944172ae7e4068c533afbb984114a56c46e9ccddda550499caa222902c7f7bb"
 
 [[package]]
 name = "cxxbridge-macro"
-version = "1.0.93"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "631569015d0d8d54e6c241733f944042623ab6df7bc3be7466874b05fcdb1c5f"
+checksum = "2345488264226bf682893e25de0769f3360aac9957980ec49361b083ddaa5bc5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1962,17 +2004,6 @@ name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "derive-hex"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b6618553c32cd1c1f4fbdb9418cc035f3168422f24406ebb08576f6db5ed6ec"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2458,56 +2489,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65d09067bfacaa79114679b279d7f5885b53295b1e2cfb4e79c8e4bd3d633169"
 
 [[package]]
-name = "dusk-bls12_381"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fc81248ab76f1739dd4241ea2e7037a4d4cb0bd170443a7049e13b0e09acd6"
-dependencies = [
- "byteorder",
- "dusk-bytes",
- "rand_core 0.6.4",
- "rayon",
- "subtle",
-]
-
-[[package]]
-name = "dusk-bytes"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4aae12696d965c95ce5b79bc5612575e8aeac958c9e037b74ffa9e73e1cd8c7"
-dependencies = [
- "derive-hex",
-]
-
-[[package]]
-name = "dusk-jubjub"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c228f2adec5255faf67fe6d106caa093a6c2ef798dca42019b684716528250ff"
-dependencies = [
- "dusk-bls12_381",
- "dusk-bytes",
- "rand_core 0.6.4",
- "subtle",
-]
-
-[[package]]
-name = "dusk-plonk"
-version = "0.12.0"
-source = "git+https://github.com/subspace/plonk?rev=193e68ba3d20f737d730e4b6edc757e4f639e7c3#193e68ba3d20f737d730e4b6edc757e4f639e7c3"
-dependencies = [
- "cfg-if",
- "dusk-bls12_381",
- "dusk-bytes",
- "dusk-jubjub",
- "hashbrown 0.9.1",
- "itertools 0.9.0",
- "merlin 3.0.0",
- "rand_core 0.6.4",
- "rayon",
-]
-
-[[package]]
 name = "dyn-clonable"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2681,6 +2662,46 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
+]
+
+[[package]]
+name = "ethabi-decode"
+version = "1.3.3"
+source = "git+https://github.com/snowfork/ethabi-decode.git?rev=6f63405bb33ef4365a1c62b72d499fa0f448118e#6f63405bb33ef4365a1c62b72d499fa0f448118e"
+dependencies = [
+ "ethereum-types",
+ "tiny-keccak 1.5.0",
+]
+
+[[package]]
+name = "ethbloom"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c22d4b5885b6aa2fe5e8b9329fb8d232bf739e434e6b87347c63bdd00c120f60"
+dependencies = [
+ "crunchy",
+ "fixed-hash",
+ "impl-codec",
+ "impl-rlp",
+ "impl-serde",
+ "scale-info",
+ "tiny-keccak 2.0.2",
+]
+
+[[package]]
+name = "ethereum-types"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d215cbf040552efcbe99a38372fe80ab9d00268e20012b79fcd0f073edd8ee"
+dependencies = [
+ "ethbloom",
+ "fixed-hash",
+ "impl-codec",
+ "impl-rlp",
+ "impl-serde",
+ "primitive-types",
+ "scale-info",
+ "uint",
 ]
 
 [[package]]
@@ -2900,7 +2921,7 @@ dependencies = [
  "frame-system",
  "gethostname",
  "handlebars",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "linked-hash-map",
  "log",
@@ -3002,7 +3023,7 @@ dependencies = [
  "cfg-expr",
  "derive-syn-parse",
  "frame-support-procedural-tools",
- "itertools 0.10.5",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -3469,15 +3490,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
-dependencies = [
- "ahash 0.4.7",
-]
-
-[[package]]
-name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
@@ -3790,6 +3802,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "impl-rlp"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f28220f89297a075ddc7245cd538076ee98b01f2a9c23a53a4f1105d5a322808"
+dependencies = [
+ "rlp",
+]
+
+[[package]]
 name = "impl-serde"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3917,15 +3938,6 @@ dependencies = [
  "io-lifetimes 1.0.9",
  "rustix 0.36.11",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "itertools"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
-dependencies = [
- "either",
 ]
 
 [[package]]
@@ -4186,7 +4198,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/sifraitech/rust-kzg?rev=7eb52ca97576ea1eefe4dd2165f224c916f8c862#7eb52ca97576ea1eefe4dd2165f224c916f8c862"
+source = "git+https://github.com/subspace/rust-kzg?rev=49e7b60ea51d918f04779dd83191ae0e01afcb30#49e7b60ea51d918f04779dd83191ae0e01afcb30"
 
 [[package]]
 name = "language-tags"
@@ -4255,7 +4267,7 @@ dependencies = [
 [[package]]
 name = "libp2p"
 version = "0.51.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "bytes",
  "futures 0.3.27",
@@ -4321,7 +4333,7 @@ dependencies = [
 [[package]]
 name = "libp2p-core"
 version = "0.39.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "asn1_der",
  "bs58",
@@ -4334,14 +4346,14 @@ dependencies = [
  "log",
  "multiaddr 0.17.1",
  "multihash 0.17.0",
- "multistream-select 0.12.1 (git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475)",
+ "multistream-select 0.12.1 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
  "once_cell",
  "parking_lot 0.12.1",
  "pin-project",
  "prost",
  "prost-build",
  "rand 0.8.5",
- "rw-stream-sink 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475)",
+ "rw-stream-sink 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
  "sec1",
  "serde",
  "sha2 0.10.6",
@@ -4397,7 +4409,7 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.39.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "futures 0.3.27",
  "libp2p-core 0.39.0",
@@ -4410,7 +4422,7 @@ dependencies = [
 [[package]]
 name = "libp2p-gossipsub"
 version = "0.44.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "asynchronous-codec",
  "base64 0.20.0",
@@ -4426,7 +4438,7 @@ dependencies = [
  "prometheus-client 0.19.0",
  "prost",
  "prost-build",
- "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475)",
+ "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
  "rand 0.8.5",
  "regex",
  "serde",
@@ -4461,7 +4473,7 @@ dependencies = [
 [[package]]
 name = "libp2p-identify"
 version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "asynchronous-codec",
  "either",
@@ -4473,7 +4485,7 @@ dependencies = [
  "lru 0.9.0",
  "prost",
  "prost-build",
- "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475)",
+ "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
  "smallvec",
  "thiserror",
  "void",
@@ -4528,7 +4540,7 @@ dependencies = [
 [[package]]
 name = "libp2p-kad"
 version = "0.43.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "arrayvec 0.7.2",
  "asynchronous-codec",
@@ -4577,7 +4589,7 @@ dependencies = [
 [[package]]
 name = "libp2p-mdns"
 version = "0.43.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "data-encoding",
  "futures 0.3.27",
@@ -4610,7 +4622,7 @@ dependencies = [
 [[package]]
 name = "libp2p-metrics"
 version = "0.12.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "libp2p-core 0.39.0",
  "libp2p-gossipsub",
@@ -4665,7 +4677,7 @@ dependencies = [
 [[package]]
 name = "libp2p-noise"
 version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "bytes",
  "curve25519-dalek 3.2.0",
@@ -4703,7 +4715,7 @@ dependencies = [
 [[package]]
 name = "libp2p-ping"
 version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "either",
  "futures 0.3.27",
@@ -4740,7 +4752,7 @@ dependencies = [
 [[package]]
 name = "libp2p-quic"
 version = "0.7.0-alpha.2"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "bytes",
  "futures 0.3.27",
@@ -4778,7 +4790,7 @@ dependencies = [
 [[package]]
 name = "libp2p-request-response"
 version = "0.24.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4817,7 +4829,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm"
 version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "either",
  "fnv",
@@ -4849,7 +4861,7 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm-derive"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "heck",
  "quote",
@@ -4875,7 +4887,7 @@ dependencies = [
 [[package]]
 name = "libp2p-tcp"
 version = "0.39.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "futures 0.3.27",
  "futures-timer",
@@ -4890,7 +4902,7 @@ dependencies = [
 [[package]]
 name = "libp2p-tls"
 version = "0.1.0-alpha.2"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "futures 0.3.27",
  "futures-rustls",
@@ -4971,7 +4983,7 @@ dependencies = [
 [[package]]
 name = "libp2p-webrtc"
 version = "0.4.0-alpha.2"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "async-trait",
  "asynchronous-codec",
@@ -4986,7 +4998,7 @@ dependencies = [
  "multihash 0.17.0",
  "prost",
  "prost-build",
- "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475)",
+ "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
  "rand 0.8.5",
  "rcgen 0.9.3",
  "serde",
@@ -5020,7 +5032,7 @@ dependencies = [
 [[package]]
 name = "libp2p-websocket"
 version = "0.41.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "either",
  "futures 0.3.27",
@@ -5029,7 +5041,7 @@ dependencies = [
  "log",
  "parking_lot 0.12.1",
  "quicksink",
- "rw-stream-sink 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475)",
+ "rw-stream-sink 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
  "soketto",
  "url",
  "webpki-roots",
@@ -5052,7 +5064,7 @@ dependencies = [
 [[package]]
 name = "libp2p-yamux"
 version = "0.43.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "futures 0.3.27",
  "libp2p-core 0.39.0",
@@ -5393,14 +5405,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "merlin"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c38e2799fc0978b65dfff8023ec7843e2330bb462f19198840b34b6582397d"
+name = "milagro_bls"
+version = "1.5.0"
+source = "git+https://github.com/Snowfork/milagro_bls#bc2b5b5e8d48b7e2e1bfaa56dc2d93e13cb32095"
 dependencies = [
- "byteorder",
- "keccak",
- "rand_core 0.6.4",
+ "amcl",
+ "hex",
+ "lazy_static",
+ "rand 0.8.5",
  "zeroize",
 ]
 
@@ -5581,7 +5593,7 @@ dependencies = [
 [[package]]
 name = "multistream-select"
 version = "0.12.1"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "bytes",
  "futures 0.3.27",
@@ -6298,6 +6310,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "parity-bytes"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16b56e3a2420138bdb970f84dfb9c774aea80fa0e7371549eedec0d80c209c67"
+
+[[package]]
 name = "parity-db"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6671,7 +6689,7 @@ checksum = "59230a63c37f3e18569bdb90e4a89cbf5bf8b06fea0b84e65ea10cc4df47addd"
 dependencies = [
  "difflib",
  "float-cmp",
- "itertools 0.10.5",
+ "itertools",
  "normalize-line-endings",
  "predicates-core",
  "regex",
@@ -6711,6 +6729,7 @@ checksum = "9f3486ccba82358b11a77516035647c34ba167dfa53312630de83b12bd4f3d66"
 dependencies = [
  "fixed-hash",
  "impl-codec",
+ "impl-rlp",
  "impl-serde",
  "scale-info",
  "uint",
@@ -6837,7 +6856,7 @@ checksum = "2c828f93f5ca4826f97fedcbd3f9a536c16b12cff3dbbb4a007f932bbad95b12"
 dependencies = [
  "bytes",
  "heck",
- "itertools 0.10.5",
+ "itertools",
  "lazy_static",
  "log",
  "multimap",
@@ -6867,7 +6886,7 @@ dependencies = [
 [[package]]
 name = "prost-codec"
 version = "0.3.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "asynchronous-codec",
  "bytes",
@@ -6883,7 +6902,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ea9b0f8cbe5e15a8a042d030bd96668db28ecb567ec37d691971ff5731d2b1b"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
@@ -7241,6 +7260,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlp"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
+dependencies = [
+ "bytes",
+ "rustc-hex",
+]
+
+[[package]]
 name = "rpassword"
 version = "7.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7463,7 +7492,7 @@ dependencies = [
 [[package]]
 name = "rw-stream-sink"
 version = "0.3.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=2de61da642888e3c4deac9925be90d56cdef1475#2de61da642888e3c4deac9925be90d56cdef1475"
+source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
 dependencies = [
  "futures 0.3.27",
  "pin-project",
@@ -8544,7 +8573,7 @@ dependencies = [
  "arrayvec 0.5.2",
  "curve25519-dalek 2.1.3",
  "getrandom 0.1.16",
- "merlin 2.0.1",
+ "merlin",
  "rand 0.7.3",
  "rand_core 0.5.1",
  "sha2 0.8.2",
@@ -8931,6 +8960,89 @@ dependencies = [
 ]
 
 [[package]]
+name = "snowbridge-beacon-primitives"
+version = "0.0.1"
+source = "git+https://github.com/Snowfork/snowbridge?rev=4f5bfd68456afd41f6c7626c53268d726149a972#4f5bfd68456afd41f6c7626c53268d726149a972"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "hex",
+ "parity-scale-codec",
+ "rlp",
+ "scale-info",
+ "serde",
+ "snowbridge-ethereum",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "snowbridge-core"
+version = "0.1.1"
+source = "git+https://github.com/Snowfork/snowbridge?rev=4f5bfd68456afd41f6c7626c53268d726149a972#4f5bfd68456afd41f6c7626c53268d726149a972"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "snowbridge-ethereum",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "snowbridge-ethereum"
+version = "0.1.0"
+source = "git+https://github.com/Snowfork/snowbridge?rev=4f5bfd68456afd41f6c7626c53268d726149a972#4f5bfd68456afd41f6c7626c53268d726149a972"
+dependencies = [
+ "ethabi-decode",
+ "ethbloom",
+ "ethereum-types",
+ "hex-literal",
+ "parity-bytes",
+ "parity-scale-codec",
+ "rlp",
+ "rustc-hex",
+ "scale-info",
+ "serde",
+ "serde-big-array",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "snowbridge-ethereum-beacon-client"
+version = "0.0.1"
+source = "git+https://github.com/Snowfork/snowbridge?rev=4f5bfd68456afd41f6c7626c53268d726149a972#4f5bfd68456afd41f6c7626c53268d726149a972"
+dependencies = [
+ "byte-slice-cast",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "hex-literal",
+ "milagro_bls",
+ "parity-scale-codec",
+ "rlp",
+ "scale-info",
+ "serde",
+ "snowbridge-beacon-primitives",
+ "snowbridge-core",
+ "snowbridge-ethereum",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "ssz-rs",
+ "ssz-rs-derive",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9138,7 +9250,7 @@ dependencies = [
  "lazy_static",
  "libsecp256k1",
  "log",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "primitive-types",
@@ -9222,7 +9334,7 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "rs_merkle",
  "scale-info",
@@ -9320,7 +9432,7 @@ source = "git+https://github.com/subspace/substrate?rev=456cfad45a178617f6886ec4
 dependencies = [
  "async-trait",
  "futures 0.3.27",
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "schnorrkel",
@@ -9416,6 +9528,7 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-domains",
+ "sp-runtime",
  "sp-std",
 ]
 
@@ -9688,6 +9801,9 @@ name = "spin"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5d6e0250b93c8427a177b849d144a96d5acc57006149479403d7861ab721e34"
+dependencies = [
+ "lock_api",
+]
 
 [[package]]
 name = "spki"
@@ -9712,6 +9828,28 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-xid",
+]
+
+[[package]]
+name = "ssz-rs"
+version = "0.8.0"
+source = "git+https://github.com/ralexstokes/ssz-rs?rev=d18af912abacbf84219be37ab3b42a9abcf10d2a#d18af912abacbf84219be37ab3b42a9abcf10d2a"
+dependencies = [
+ "bitvec",
+ "num-bigint",
+ "sha2 0.9.9",
+ "ssz-rs-derive",
+ "thiserror",
+]
+
+[[package]]
+name = "ssz-rs-derive"
+version = "0.8.0"
+source = "git+https://github.com/ralexstokes/ssz-rs?rev=d18af912abacbf84219be37ab3b42a9abcf10d2a#d18af912abacbf84219be37ab3b42a9abcf10d2a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -9858,15 +9996,15 @@ dependencies = [
  "ark-ff",
  "ark-poly",
  "blake2",
+ "blst_from_scratch",
  "criterion",
  "derive_more",
- "dusk-bls12_381",
- "dusk-bytes",
- "dusk-plonk",
  "hex",
+ "kzg",
  "num-integer",
  "num-traits",
  "parity-scale-codec",
+ "parking_lot 0.12.1",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
@@ -9874,7 +10012,10 @@ dependencies = [
  "scale-info",
  "serde",
  "serde_arrays",
+ "spin 0.9.6",
+ "static_assertions",
  "thiserror",
+ "tracing",
  "uint",
 ]
 
@@ -10043,6 +10184,7 @@ dependencies = [
  "core-payments-domain-runtime",
  "cross-domain-message-gossip",
  "dirs",
+ "domain-client-executor",
  "domain-runtime-primitives",
  "domain-service",
  "frame-benchmarking",
@@ -10239,7 +10381,7 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
- "merlin 2.0.1",
+ "merlin",
  "rand 0.8.5",
  "schnorrkel",
  "subspace-core-primitives",
@@ -10326,26 +10468,42 @@ dependencies = [
 name = "subspace-test-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "frame-system",
  "futures 0.3.27",
+ "futures-timer",
  "pallet-balances",
  "pallet-transaction-payment",
  "rand 0.8.5",
+ "sc-block-builder",
  "sc-cli",
  "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-fraud-proof",
  "sc-consensus-slots",
  "sc-executor",
  "sc-network",
  "sc-network-common",
  "sc-service",
  "sc-tracing",
+ "sc-utils",
+ "sp-api",
+ "sp-application-crypto",
  "sp-arithmetic",
  "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-slots",
+ "sp-consensus-subspace",
+ "sp-inherents",
  "sp-keyring",
  "sp-runtime",
+ "sp-timestamp",
+ "subspace-core-primitives",
+ "subspace-fraud-proof",
  "subspace-networking",
  "subspace-runtime-primitives",
  "subspace-service",
+ "subspace-solving",
  "subspace-test-client",
  "subspace-test-runtime",
  "subspace-transaction-pool",
@@ -10353,6 +10511,7 @@ dependencies = [
  "substrate-test-utils",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -10385,7 +10544,7 @@ dependencies = [
 name = "subspace-verification"
 version = "0.1.0"
 dependencies = [
- "merlin 2.0.1",
+ "merlin",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
@@ -10868,6 +11027,24 @@ dependencies = [
  "unicode-normalization",
  "wasm-bindgen",
  "zeroize",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d8a021c69bb74a44ccedb824a046447e2c84a01df9e5c20779750acb38e11b2"
+dependencies = [
+ "crunchy",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+dependencies = [
+ "crunchy",
 ]
 
 [[package]]

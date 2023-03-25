@@ -74,7 +74,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_block_relay::{build_block_relay, init_block_relay_config};
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -136,7 +136,7 @@ pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof
     NativeElseWasmExecutor<ExecutorDispatch>,
     SpawnTaskHandle,
     Hash,
-    subspace_fraud_proof::PreStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
 >;
 
 /// Subspace networking instantiation variant
@@ -273,7 +273,7 @@ where
     client
         .execution_extensions()
         .set_extensions_factory(SubspaceExtensionsFactory {
-            kzg: Kzg::new(test_public_parameters()),
+            kzg: Kzg::new(embedded_kzg_settings()),
         });
 
     let client = Arc::new(client);
@@ -293,7 +293,7 @@ where
         client.clone(),
         executor,
         task_manager.spawn_handle(),
-        subspace_fraud_proof::PreStateRootVerifier::new(client.clone()),
+        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
     let transaction_pool = subspace_transaction_pool::new_full(
         config,

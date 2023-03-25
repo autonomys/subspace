@@ -1,11 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate alloc;
-
-#[cfg(all(test, features = "std"))]
+#[cfg(test)]
 mod tests;
 
-use alloc::format;
+extern crate alloc;
+
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
@@ -13,7 +12,7 @@ use blst_from_scratch::types::fr::FsFr;
 use blst_from_scratch::types::poly::FsPoly;
 use core::num::NonZeroUsize;
 use kzg::{FFTSettings, PolyRecover, DAS};
-use subspace_core_primitives::Scalar;
+use subspace_core_primitives::crypto::Scalar;
 
 /// Erasure coding abstraction.
 ///
@@ -38,28 +37,11 @@ impl ErasureCoding {
     ///
     /// Returns parity data.
     pub fn extend(&self, source: &[Scalar]) -> Result<Vec<Scalar>, String> {
-        // TODO: Once our scalars are based on `blst_from_scratch` we can use a bit of transmute to
-        //  avoid allocation here
         // TODO: das_fft_extension modifies buffer internally, it needs to change to use
         //  pre-allocated buffer instead of allocating a new one
-        let source = source
-            .iter()
-            .map(|scalar| {
-                FsFr::from_scalar(scalar.to_bytes())
-                    .map_err(|error| format!("Failed to convert scalar: {error}"))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        let parity = self
-            .fft_settings
-            .das_fft_extension(&source)?
-            .into_iter()
-            .map(|scalar| {
-                // This is fine, scalar is guaranteed to be correct here
-                Scalar::from(scalar.to_scalar())
-            })
-            .collect();
-
-        Ok(parity)
+        self.fft_settings
+            .das_fft_extension(Scalar::slice_to_repr(source))
+            .map(Scalar::vec_from_repr)
     }
 
     /// Recovery of missing shards from given shards (at least 1/2 should be `Some`).
@@ -73,31 +55,11 @@ impl ErasureCoding {
         {
             return Err("Impossible to recover, too many shards are missing".to_string());
         }
-        // TODO: Once our scalars are based on `blst_from_scratch` we can use a bit of transmute to
-        //  avoid allocation here
-        let shards = shards
-            .iter()
-            .map(|maybe_scalar| {
-                maybe_scalar
-                    .map(|scalar| {
-                        FsFr::from_scalar(scalar.into())
-                            .map_err(|error| format!("Failed to convert scalar: {error}"))
-                    })
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>, _>>()?;
         let poly = <FsPoly as PolyRecover<FsFr, FsPoly, _>>::recover_poly_from_samples(
-            &shards,
+            Scalar::slice_option_to_repr(shards),
             &self.fft_settings,
         )?;
 
-        Ok(poly
-            .coeffs
-            .iter()
-            .map(|scalar| {
-                // This is fine, scalar is guaranteed to be correct here
-                Scalar::from(scalar.to_scalar())
-            })
-            .collect())
+        Ok(Scalar::vec_from_repr(poly.coeffs))
     }
 }

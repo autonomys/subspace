@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Piece, PieceIndex, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -91,7 +91,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
     }
 
-    let archiver = PiecesReconstructor::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg)
+    let archiver = PiecesReconstructor::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg)
         .expect("Internal constructor call must succeed.");
 
     let position = (missing_piece_index - starting_piece_index) as usize;

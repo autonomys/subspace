@@ -19,17 +19,8 @@ where
     pub fn new(
         local_peer_id: PeerId,
         implicit_provider_storage: ImplicitProviderStorage,
-        mut persistent_provider_storage: PersistentProviderStorage,
+        persistent_provider_storage: PersistentProviderStorage,
     ) -> Self {
-        // TODO: Transitional upgrade code, should be removed in the future; this is because we no
-        //  longer persist locally provided records
-        for key in persistent_provider_storage
-            .provided()
-            .map(|provided_record| provided_record.key.clone())
-            .collect::<Vec<_>>()
-        {
-            persistent_provider_storage.remove_provider(&key, &local_peer_id);
-        }
         Self {
             local_peer_id,
             implicit_provider_storage,

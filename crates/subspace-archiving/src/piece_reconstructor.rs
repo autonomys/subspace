@@ -4,9 +4,9 @@ use crate::utils;
 use alloc::vec;
 use alloc::vec::Vec;
 use reed_solomon_erasure::galois_16::ReedSolomon;
-use subspace_core_primitives::crypto::blake2b_256_254_hash;
 use subspace_core_primitives::crypto::kzg::{Kzg, Polynomial};
-use subspace_core_primitives::{FlatPieces, Piece, BLAKE2B_256_HASH_SIZE, PIECES_IN_SEGMENT};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::{FlatPieces, Piece, PIECES_IN_SEGMENT, RECORD_SIZE};
 
 /// Reconstructor-related instantiation error.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -46,7 +46,7 @@ pub enum ReconstructorError {
 #[derive(Debug, Clone)]
 pub struct PiecesReconstructor {
     /// Number of data shards
-    data_shards: u32,
+    source_shards: u32,
     /// Number of parity shards
     parity_shards: u32,
     /// Erasure coding data structure
@@ -56,25 +56,21 @@ pub struct PiecesReconstructor {
 }
 
 impl PiecesReconstructor {
-    pub fn new(
-        record_size: u32,
-        segment_size: u32,
-        kzg: Kzg,
-    ) -> Result<Self, ReconstructorInstantiationError> {
-        if segment_size <= record_size {
+    pub fn new(segment_size: u32, kzg: Kzg) -> Result<Self, ReconstructorInstantiationError> {
+        if segment_size <= RECORD_SIZE {
             return Err(ReconstructorInstantiationError::SegmentSizeTooSmall);
         }
-        if segment_size % record_size != 0 {
+        if segment_size % RECORD_SIZE != 0 {
             return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
         }
 
-        let data_shards = segment_size / record_size;
-        let parity_shards = data_shards;
-        let reed_solomon = ReedSolomon::new(data_shards as usize, parity_shards as usize)
+        let source_shards = segment_size / RECORD_SIZE;
+        let parity_shards = source_shards;
+        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
             .expect("ReedSolomon must always be correctly instantiated");
 
         Ok(Self {
-            data_shards,
+            source_shards,
             parity_shards,
             reed_solomon,
             kzg,
@@ -103,26 +99,26 @@ impl PiecesReconstructor {
             .map_err(ReconstructorError::DataShardsReconstruction)?;
 
         let mut reconstructed_record_shards = FlatPieces::new(shards.len());
-        let mut polynomial_data =
-            vec![0u8; (self.data_shards + self.parity_shards) as usize * BLAKE2B_256_HASH_SIZE];
+        let mut record_commitments =
+            vec![Scalar::default(); (self.source_shards + self.parity_shards) as usize];
         //TODO: Parity hashes will be erasure coded instead in the future
         //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
         // we already have
         reconstructed_record_shards
-            .as_pieces_mut()
-            .zip(polynomial_data.chunks_exact_mut(BLAKE2B_256_HASH_SIZE))
+            .iter_mut()
+            .zip(record_commitments.iter_mut())
             .zip(shards)
-            .for_each(|((mut piece, polynomial_data), record)| {
+            .for_each(|((piece, polynomial_data), record)| {
                 let record =
                     record.expect("Reconstruction just happened and all records are present; qed");
                 let record = record.flatten();
                 piece.record_mut().as_mut().copy_from_slice(record);
-                polynomial_data.copy_from_slice(&blake2b_256_254_hash(record));
+                *polynomial_data = blake2b_256_254_hash_to_scalar(record);
             });
 
         let polynomial = self
             .kzg
-            .poly(&polynomial_data)
+            .poly(&record_commitments)
             .expect("Internally produced values must never fail; qed");
 
         Ok((reconstructed_record_shards, polynomial))
@@ -137,20 +133,17 @@ impl PiecesReconstructor {
     ) -> Result<FlatPieces, ReconstructorError> {
         let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
-        pieces
-            .as_pieces_mut()
-            .enumerate()
-            .for_each(|(position, mut piece)| {
-                piece.witness_mut().as_mut().copy_from_slice(
-                    &self
-                        .kzg
-                        .create_witness(&polynomial, position as u32)
-                        // TODO: Update this proof here and in other places, we don't use Merkle
-                        //  trees anymore
-                        .expect("We use the same indexes as during Merkle tree creation; qed")
-                        .to_bytes(),
-                );
-            });
+        pieces.iter_mut().enumerate().for_each(|(position, piece)| {
+            piece.witness_mut().as_mut().copy_from_slice(
+                &self
+                    .kzg
+                    .create_witness(&polynomial, position as u32)
+                    // TODO: Update this proof here and in other places, we don't use Merkle
+                    //  trees anymore
+                    .expect("We use the same indexes as during Merkle tree creation; qed")
+                    .to_bytes(),
+            );
+        });
 
         Ok(pieces)
     }
@@ -168,14 +161,7 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::from(
-            reconstructed_records
-                .as_pieces()
-                .nth(piece_position)
-                .expect(
-                "Piece exists at the position within segment after successful reconstruction; qed",
-            ),
-        );
+        let mut piece = Piece::from(reconstructed_records[piece_position]);
 
         piece.witness_mut().as_mut().copy_from_slice(
             &self

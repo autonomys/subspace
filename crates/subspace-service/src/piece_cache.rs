@@ -120,9 +120,7 @@ where
             return Ok(());
         }
 
-        let insert_indexes = (first_piece_index..)
-            .take(pieces.count())
-            .collect::<Vec<_>>();
+        let insert_indexes = (first_piece_index..).take(pieces.len()).collect::<Vec<_>>();
 
         let delete_indexes = first_piece_index
             .checked_sub(self.max_pieces_in_cache)
@@ -146,8 +144,8 @@ where
         self.aux_store.insert_aux(
             &insert_keys
                 .iter()
-                .zip(pieces.as_pieces())
-                .map(|(key, piece)| (key.as_slice(), (*piece).as_ref()))
+                .zip(pieces.iter())
+                .map(|(key, piece)| (key.as_slice(), piece.as_ref()))
                 .collect::<Vec<_>>(),
             &delete_keys
                 .iter()

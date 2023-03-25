@@ -19,11 +19,14 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
-use crate::TransactionFor;
+use crate::{ExecutorStreams, TransactionFor};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
-use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents, ProofProvider, StateBackendFor};
+use sc_client_api::{
+    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider,
+    StateBackendFor,
+};
 use sc_consensus::BlockImport;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -38,7 +41,6 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
-#[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 pub(super) async fn start_worker<
     Block,
@@ -50,6 +52,7 @@ pub(super) async fn start_worker<
     TransactionPool,
     Backend,
     IBNS,
+    CIBNS,
     NSNS,
     E,
 >(
@@ -76,10 +79,8 @@ pub(super) async fn start_worker<
         Backend,
         E,
     >,
-    imported_block_notification_stream: IBNS,
-    new_slot_notification_stream: NSNS,
+    executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<PBlock>>,
-    block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     SBlock: BlockT,
@@ -113,14 +114,23 @@ pub(super) async fn start_worker<
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     let span = tracing::Span::current();
 
+    let ExecutorStreams {
+        primary_block_import_throttling_buffer_size,
+        subspace_imported_block_notification_stream,
+        client_imported_block_notification_stream,
+        new_slot_notification_stream,
+        _phantom,
+    } = executor_streams;
+
     let handle_block_import_notifications_fut =
-        handle_block_import_notifications::<Block, PBlock, _, _, _>(
+        handle_block_import_notifications::<Block, PBlock, _, _, _, _>(
             primary_chain_client.as_ref(),
             client.info().best_number,
             {
@@ -144,8 +154,9 @@ pub(super) async fn start_worker<
                      }| (hash, number),
                 )
                 .collect(),
-            Box::pin(imported_block_notification_stream),
-            block_import_throttling_buffer_size,
+            Box::pin(subspace_imported_block_notification_stream),
+            Box::pin(client_imported_block_notification_stream),
+            primary_block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
         primary_chain_client.as_ref(),

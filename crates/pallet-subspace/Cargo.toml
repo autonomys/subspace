@@ -38,6 +38,7 @@ pallet-offences-subspace = { version = "0.1.0", path = "../pallet-offences-subsp
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 
 [features]
 default = ["std"]

@@ -23,8 +23,8 @@
 use merlin::Transcript;
 use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
 use schnorrkel::{Keypair, PublicKey, SignatureResult};
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
-use subspace_core_primitives::{Blake2b256Hash, ChunkSignature, Randomness, Scalar};
+use subspace_core_primitives::crypto::{blake2b_256_hash_list, ScalarLegacy};
+use subspace_core_primitives::{Blake2b256Hash, ChunkSignature, Randomness};
 
 const CHUNK_SIGNATURE_LABEL: &[u8] = b"subspace_chunk_signature";
 
@@ -38,7 +38,9 @@ pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Bla
 }
 
 /// Transcript used for creation and verification of VRF signatures for chunks.
-pub fn create_chunk_signature_transcript(chunk_bytes: &[u8; Scalar::FULL_BYTES]) -> Transcript {
+pub fn create_chunk_signature_transcript(
+    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
+) -> Transcript {
     let mut transcript = Transcript::new(CHUNK_SIGNATURE_LABEL);
     transcript.append_message(b"chunk", chunk_bytes);
     transcript
@@ -47,7 +49,7 @@ pub fn create_chunk_signature_transcript(chunk_bytes: &[u8; Scalar::FULL_BYTES])
 /// Create tag signature using farmer's keypair.
 pub fn create_chunk_signature(
     keypair: &Keypair,
-    chunk_bytes: &[u8; Scalar::FULL_BYTES],
+    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
 ) -> ChunkSignature {
     let (in_out, proof, _) = keypair.vrf_sign(create_chunk_signature_transcript(chunk_bytes));
 
@@ -59,7 +61,7 @@ pub fn create_chunk_signature(
 
 /// Verify that chunk signature was created correctly.
 pub fn verify_chunk_signature(
-    chunk_bytes: &[u8; Scalar::FULL_BYTES],
+    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
     chunk_signature: &ChunkSignature,
     public_key: &PublicKey,
 ) -> SignatureResult<VRFInOut> {

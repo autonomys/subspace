@@ -38,12 +38,11 @@ use sp_runtime::Perbill;
 use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
-use subspace_core_primitives::crypto::kzg::{test_public_parameters, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash, kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, Randomness, RecordsRoot,
-    RootBlock, Scalar, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Randomness, RecordsRoot,
+    RootBlock, SegmentIndex, Solution, SolutionRange, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
@@ -249,7 +248,7 @@ pub fn new_test_ext() -> TestExternalities {
 
     let mut ext = TestExternalities::from(storage);
 
-    ext.register_extension(KzgExtension::new(Kzg::new(test_public_parameters())));
+    ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
 
     ext
 }
@@ -263,12 +262,12 @@ pub fn generate_equivocation_proof(
     let current_slot = CurrentSlot::<Test>::get();
 
     let chunk = {
-        let mut chunk_bytes = [0; Scalar::SAFE_BYTES];
+        let mut chunk_bytes = [0; ScalarLegacy::SAFE_BYTES];
         chunk_bytes.as_mut().iter_mut().for_each(|byte| {
             *byte = (current_block % 8) as u8;
         });
 
-        Scalar::from(&chunk_bytes)
+        ScalarLegacy::from(&chunk_bytes)
     };
 
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
@@ -344,8 +343,8 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
 }
 
 pub fn create_archived_segment() -> ArchivedSegment {
-    let kzg = Kzg::new(kzg::test_public_parameters());
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let kzg = Kzg::new(kzg::embedded_kzg_settings());
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rand::thread_rng().fill(block.as_mut_slice());
@@ -363,7 +362,7 @@ pub fn create_signed_vote(
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
     global_randomnesses: &Randomness,
-    piece: Piece,
+    piece: &PieceArray,
     reward_address: <Test as frame_system::Config>::AccountId,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
@@ -383,8 +382,8 @@ pub fn create_signed_vote(
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
             piece_offset: 0,
-            piece_record_hash: blake2b_256_254_hash(&piece.record()),
-            piece_witness: Witness::try_from_bytes(&piece.witness()).unwrap(),
+            piece_record_hash: blake2b_256_254_hash_to_scalar(piece.record().as_ref()),
+            piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
             chunk_offset: 0,
             chunk,
             chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),

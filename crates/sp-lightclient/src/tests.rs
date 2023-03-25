@@ -71,7 +71,7 @@ fn archived_segment(kzg: Kzg) -> ArchivedSegment {
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver = Archiver::new(RECORD_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
 
     archiver
         .add_block(block, Default::default())
@@ -88,10 +88,10 @@ struct Farmer {
 
 impl Farmer {
     fn new(keypair: &Keypair) -> Self {
-        let kzg = Kzg::new(kzg::test_public_parameters());
+        let kzg = Kzg::new(kzg::embedded_kzg_settings());
         let archived_segment = archived_segment(kzg.clone());
         let root_block = archived_segment.root_block;
-        let total_pieces = NonZeroU64::new(archived_segment.pieces.count() as u64).unwrap();
+        let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
         let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
         let sector_index = 0;
@@ -150,7 +150,7 @@ impl PieceGetter for TestPieceGetter {
         Ok(self
             .archived_segment
             .pieces
-            .as_pieces()
+            .iter()
             .nth(piece_index as usize)
             .map(Piece::from))
     }

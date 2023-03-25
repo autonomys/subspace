@@ -20,10 +20,12 @@
 
 pub mod chain_spec;
 
+use domain_client_executor::ExecutorStreams;
 use domain_test_runtime::opaque::Block;
 use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
+use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
 use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
 use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
@@ -49,6 +51,7 @@ use std::sync::Arc;
 use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_service::{DsnConfig, SubspaceNetworking};
+use subspace_test_service::mock::MockPrimaryNode;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
@@ -102,6 +105,7 @@ pub type Client =
 ///
 /// A primary chain full node and system domain node will be started, similar to the behaviour in
 /// the production.
+/// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
 #[sc_tracing::logging::prefix_logs_with(system_domain_config.network.node_name.as_str())]
 async fn run_executor(
     system_domain_config: ServiceConfiguration,
@@ -174,8 +178,33 @@ async fn run_executor(
         service_config: system_domain_config,
         maybe_relayer_id: None,
     };
-    let block_import_throttling_buffer_size = 10;
+    let executor_streams = ExecutorStreams {
+        primary_block_import_throttling_buffer_size: 10,
+        subspace_imported_block_notification_stream: primary_chain_full_node
+            .imported_block_notification_stream
+            .subscribe()
+            .then(|imported_block_notification| async move {
+                (
+                    imported_block_notification.block_number,
+                    imported_block_notification.block_import_acknowledgement_sender,
+                )
+            }),
+        client_imported_block_notification_stream: primary_chain_full_node
+            .client
+            .every_import_notification_stream(),
+        new_slot_notification_stream: primary_chain_full_node
+            .new_slot_notification_stream
+            .subscribe()
+            .then(|slot_notification| async move {
+                (
+                    slot_notification.new_slot_info.slot,
+                    slot_notification.new_slot_info.global_challenge,
+                )
+            }),
+        _phantom: Default::default(),
+    };
     let system_domain_node = domain_service::new_full_system::<
+        _,
         _,
         _,
         _,
@@ -188,25 +217,7 @@ async fn run_executor(
         primary_chain_full_node.client.clone(),
         primary_chain_full_node.network.clone(),
         &primary_chain_full_node.select_chain,
-        primary_chain_full_node
-            .imported_block_notification_stream
-            .subscribe()
-            .then(|imported_block_notification| async move {
-                (
-                    imported_block_notification.block_number,
-                    imported_block_notification.block_import_acknowledgement_sender,
-                )
-            }),
-        primary_chain_full_node
-            .new_slot_notification_stream
-            .subscribe()
-            .then(|slot_notification| async move {
-                (
-                    slot_notification.new_slot_info.slot,
-                    slot_notification.new_slot_info.global_challenge,
-                )
-            }),
-        block_import_throttling_buffer_size,
+        executor_streams,
         gossip_msg_sink,
     )
     .await?;
@@ -241,6 +252,93 @@ async fn run_executor(
     network_starter.start_network();
 
     primary_chain_full_node.network_starter.start_network();
+
+    Ok((
+        task_manager,
+        client,
+        backend,
+        code_executor,
+        network,
+        rpc_handlers,
+        executor,
+    ))
+}
+
+/// Start an executor with the given system domain `Configuration` and the mock primary node.
+#[sc_tracing::logging::prefix_logs_with(system_domain_config.network.node_name.as_str())]
+async fn run_executor_with_mock_primary_node(
+    system_domain_config: ServiceConfiguration,
+    mock_primary_node: &mut MockPrimaryNode,
+) -> sc_service::error::Result<(
+    TaskManager,
+    Arc<Client>,
+    Arc<Backend>,
+    Arc<CodeExecutor>,
+    Arc<NetworkService<Block, H256>>,
+    RpcHandlers,
+    Executor,
+)> {
+    let (gossip_msg_sink, gossip_msg_stream) =
+        sc_utils::mpsc::tracing_unbounded("cross_domain_gossip_messages", 100);
+    let system_domain_config = DomainConfiguration {
+        service_config: system_domain_config,
+        maybe_relayer_id: None,
+    };
+    let executor_streams = ExecutorStreams {
+        primary_block_import_throttling_buffer_size: 10,
+        subspace_imported_block_notification_stream: mock_primary_node
+            .imported_block_notification_stream(),
+        client_imported_block_notification_stream: mock_primary_node
+            .client
+            .every_import_notification_stream(),
+        new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
+        _phantom: Default::default(),
+    };
+    let system_domain_node = domain_service::new_full_system::<
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        domain_test_runtime::RuntimeApi,
+        RuntimeExecutor,
+    >(
+        system_domain_config,
+        mock_primary_node.client.clone(),
+        MockPrimaryNode::sync_oracle(),
+        &mock_primary_node.select_chain,
+        executor_streams,
+        gossip_msg_sink,
+    )
+    .await?;
+
+    let domain_service::NewFullSystem {
+        task_manager,
+        client,
+        backend,
+        code_executor,
+        network,
+        network_starter,
+        rpc_handlers,
+        executor,
+        tx_pool_sink,
+    } = system_domain_node;
+
+    let mut domain_tx_pool_sinks = BTreeMap::new();
+    domain_tx_pool_sinks.insert(DomainId::SYSTEM, tx_pool_sink);
+    let cross_domain_message_gossip_worker =
+        GossipWorker::<Block>::new(network.clone(), domain_tx_pool_sinks);
+
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "cross-domain-gossip-message-worker",
+            None,
+            Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
+        );
+
+    network_starter.start_network();
 
     Ok((
         task_manager,
@@ -362,6 +460,7 @@ impl SystemDomainNodeBuilder {
     }
 
     /// Build the [`SystemDomainNode`].
+    /// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
     pub async fn build(
         self,
         role: Role,
@@ -394,6 +493,43 @@ impl SystemDomainNodeBuilder {
         let multiaddr = system_domain_config.network.listen_addresses[0].clone();
         let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
             run_executor(system_domain_config, primary_chain_config)
+                .await
+                .expect("could not start system domain node");
+
+        let peer_id = network.local_peer_id();
+        let addr = MultiaddrWithPeerId { multiaddr, peer_id };
+
+        SystemDomainNode {
+            task_manager,
+            client,
+            backend,
+            code_executor,
+            network,
+            addr,
+            rpc_handlers,
+            executor,
+        }
+    }
+
+    /// Build the [`SystemDomainNode`] with `MockPrimaryNode` as the embedded primary node.
+    pub async fn build_with_mock_primary_node(
+        self,
+        role: Role,
+        mock_primary_node: &mut MockPrimaryNode,
+    ) -> SystemDomainNode {
+        let system_domain_config = node_config(
+            self.tokio_handle.clone(),
+            self.key,
+            self.system_domain_nodes,
+            self.system_domain_nodes_exclusive,
+            role,
+            BasePath::new(self.base_path.path().join("system")),
+        )
+        .expect("could not generate system domain node Configuration");
+
+        let multiaddr = system_domain_config.network.listen_addresses[0].clone();
+        let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
+            run_executor_with_mock_primary_node(system_domain_config, mock_primary_node)
                 .await
                 .expect("could not start system domain node");
 
@@ -601,6 +737,7 @@ pub fn construct_extrinsic(
 ///
 /// This is essentially a wrapper around
 /// [`run_validator_node`](subspace_test_service::run_validator_node).
+/// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
 pub async fn run_primary_chain_validator_node(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,

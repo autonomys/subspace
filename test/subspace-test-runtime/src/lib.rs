@@ -139,7 +139,7 @@ pub const MILLISECS_PER_BLOCK: u64 = 2000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 2000;
+pub const SLOT_DURATION: u64 = 2000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
@@ -1131,6 +1131,14 @@ impl_runtime_apis! {
     impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
             Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
+        }
+
+        fn state_root(
+            domain_id: DomainId,
+            domain_block_number: NumberFor<Block>,
+            domain_block_hash: Hash,
+        ) -> Option<domain_runtime_primitives::Hash> {
+            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
         }
     }
 
