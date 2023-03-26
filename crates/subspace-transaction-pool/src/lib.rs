@@ -46,9 +46,9 @@ type ExtrinsicHash<A> = <<A as ChainApi>::Block as BlockT>::Hash;
 type ExtrinsicFor<A> = <<A as ChainApi>::Block as BlockT>::Extrinsic;
 
 /// A transaction pool for a full node.
-pub type FullPool<Block, Client, Verifier, BundleValidator> = BasicPoolWrapper<
+pub type FullPool<Block, Client, TxPreValidator> = BasicPoolWrapper<
     Block,
-    FullChainApiWrapper<Block, Client, FullChainVerifier<Block, Client, Verifier, BundleValidator>>,
+    FullChainApiWrapper<Block, Client, FullChainVerifier<Block, Client, TxPreValidator>>,
 >;
 
 /// A transaction pool with chain verifier.
@@ -125,50 +125,57 @@ pub trait VerifyExtrinsic<Block: BlockT, Client, ChainApi> {
     ) -> ValidationFuture;
 }
 
-/// Verifier to verify the Fraud proofs and receipts.
-pub struct FullChainVerifier<Block, Client, FraudProofVerifier, BundleValidator> {
-    _phantom_data: PhantomData<Block>,
-    client: Arc<Client>,
-    verifier: FraudProofVerifier,
-    bundle_validator: BundleValidator,
+/// This trait allows to perform some extra validation on the extrinsic before
+/// doing the regular `validate_transaction` in the substrate transaction pool.
+#[async_trait::async_trait]
+pub trait PreValidateTransaction {
+    type Block: BlockT;
+    /// Returns `Ok(())` if the extrinsic passes the pre-validation.
+    async fn pre_validate_transaction(
+        &self,
+        at: <Self::Block as BlockT>::Hash,
+        source: TransactionSource,
+        uxt: <Self::Block as BlockT>::Extrinsic,
+    ) -> TxPoolResult<()>;
 }
 
-impl<Block, Client, Verifier, BundleValidator> Clone
-    for FullChainVerifier<Block, Client, Verifier, BundleValidator>
+/// Verifier to verify the Fraud proofs and receipts.
+pub struct FullChainVerifier<Block, Client, TxPreValidator> {
+    _phantom_data: PhantomData<Block>,
+    client: Arc<Client>,
+    tx_pre_validator: TxPreValidator,
+}
+
+impl<Block, Client, TxPreValidator> Clone for FullChainVerifier<Block, Client, TxPreValidator>
 where
     Block: Clone,
-    Verifier: Clone,
-    BundleValidator: Clone,
+    TxPreValidator: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             _phantom_data: Default::default(),
             client: self.client.clone(),
-            verifier: self.verifier.clone(),
-            bundle_validator: self.bundle_validator.clone(),
+            tx_pre_validator: self.tx_pre_validator.clone(),
         }
     }
 }
 
-impl<Block, Client, Verifier, BundleValidator>
-    FullChainVerifier<Block, Client, Verifier, BundleValidator>
+impl<Block, Client, TxPreValidator> FullChainVerifier<Block, Client, TxPreValidator>
 where
     Block: BlockT,
     Client: HeaderBackend<Block>,
 {
-    pub fn new(client: Arc<Client>, verifier: Verifier, bundle_validator: BundleValidator) -> Self {
+    pub fn new(client: Arc<Client>, tx_pre_validator: TxPreValidator) -> Self {
         Self {
             _phantom_data: Default::default(),
-            verifier,
             client,
-            bundle_validator,
+            tx_pre_validator,
         }
     }
 }
 
-impl<Block, Client, Verifier, BundleValidator>
-    VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>>
-    for FullChainVerifier<Block, Client, Verifier, BundleValidator>
+impl<Block, Client, TxPreValidator> VerifyExtrinsic<Block, Client, FullChainApi<Client, Block>>
+    for FullChainVerifier<Block, Client, TxPreValidator>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -181,92 +188,27 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    BundleValidator:
-        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     fn verify_extrinsic(
         &self,
         at: Block::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<Block>,
-        spawner: Box<dyn SpawnNamed>,
+        _spawner: Box<dyn SpawnNamed>,
         chain_api: Arc<FullChainApi<Client, Block>>,
     ) -> ValidationFuture {
-        match self
-            .client
-            .runtime_api()
-            .extract_pre_validation_object(at, uxt.clone())
-        {
-            Ok(pre_validation_object) => {
-                match pre_validation_object {
-                    PreValidationObject::Null => {
-                        // No pre-validation is required.
-                    }
-                    PreValidationObject::Bundle(bundle) => {
-                        if let Err(err) = self
-                            .bundle_validator
-                            .validate_bundle(&BlockId::Hash(at), &bundle)
-                        {
-                            tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
-                            return async move { Err(TxPoolError::ImmediatelyDropped.into()) }
-                                .boxed();
-                        }
-                    }
-                    PreValidationObject::FraudProof(fraud_proof) => {
-                        let inner = chain_api.clone();
-                        let spawner = spawner.clone();
-                        let fraud_proof_verifier = self.verifier.clone();
+        let tx_pre_validator = self.tx_pre_validator.clone();
+        async move {
+            tx_pre_validator
+                .pre_validate_transaction(at, source, uxt.clone())
+                .await?;
 
-                        return async move {
-                            let (verified_result_sender, verified_result_receiver) = oneshot::channel();
-
-                            // Verify the fraud proof in another blocking task as it might be pretty heavy.
-                            spawner.spawn_blocking(
-                                "txpool-fraud-proof-verification",
-                                None,
-                                async move {
-                                    let verified_result =
-                                        fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
-                                    verified_result_sender
-                                        .send(verified_result)
-                                        .expect("Failed to send the verified fraud proof result");
-                                }
-                                    .boxed(),
-                            );
-
-                            match verified_result_receiver.await {
-                                Ok(verified_result) => {
-                                    match verified_result {
-                                        Ok(_) => inner.validate_transaction(&BlockId::Hash(at), source, uxt).await,
-                                        Err(err) => {
-                                            tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
-                                            Err(TxPoolError::InvalidTransaction(
-                                                InvalidTransactionCode::FraudProof.into(),
-                                            )
-                                                .into())
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    tracing::debug!(target: "txpool", error = ?err, "Failed to receive the fraud proof verified result");
-                                    Err(TxPoolError::UnknownTransaction(UnknownTransaction::CannotLookup).into())
-                                }
-                            }
-                        }
-                            .boxed();
-                    }
-                }
-            }
-            Err(err) => {
-                return async move {
-                    Err(sc_transaction_pool::error::Error::Blockchain(err.into()))
-                }
-                    .boxed();
-            }
+            chain_api
+                .validate_transaction(&BlockId::Hash(at), source, uxt)
+                .await
         }
-
-        chain_api.validate_transaction(&BlockId::Hash(at), source, uxt)
+        .boxed()
     }
 }
 
@@ -537,13 +479,142 @@ where
     }
 }
 
-pub fn new_full<Block, Client, BundleValidator, Verifier>(
+pub struct FraudProofVerifierAndBundleValidator<Block, Client, Verifier, BundleValidator> {
+    client: Arc<Client>,
+    spawner: Box<dyn SpawnNamed>,
+    fraud_proof_verifier: Verifier,
+    bundle_validator: BundleValidator,
+    _phantom_data: PhantomData<Block>,
+}
+
+impl<Block, Client, Verifier, BundleValidator> Clone
+    for FraudProofVerifierAndBundleValidator<Block, Client, Verifier, BundleValidator>
+where
+    Verifier: Clone,
+    BundleValidator: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            spawner: self.spawner.clone(),
+            fraud_proof_verifier: self.fraud_proof_verifier.clone(),
+            bundle_validator: self.bundle_validator.clone(),
+            _phantom_data: self._phantom_data,
+        }
+    }
+}
+
+impl<Block, Client, Verifier, BundleValidator>
+    FraudProofVerifierAndBundleValidator<Block, Client, Verifier, BundleValidator>
+{
+    pub fn new(
+        client: Arc<Client>,
+        spawner: Box<dyn SpawnNamed>,
+        fraud_proof_verifier: Verifier,
+        bundle_validator: BundleValidator,
+    ) -> Self {
+        Self {
+            client,
+            spawner,
+            fraud_proof_verifier,
+            bundle_validator,
+            _phantom_data: Default::default(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<Block, Client, Verifier, BundleValidator> PreValidateTransaction
+    for FraudProofVerifierAndBundleValidator<Block, Client, Verifier, BundleValidator>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + Send + Sync,
+    Client::Api: PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    BundleValidator:
+        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
+{
+    type Block = Block;
+    async fn pre_validate_transaction(
+        &self,
+        at: Block::Hash,
+        _source: TransactionSource,
+        uxt: Block::Extrinsic,
+    ) -> TxPoolResult<()> {
+        let pre_validation_object = self
+            .client
+            .runtime_api()
+            .extract_pre_validation_object(at, uxt.clone())
+            .map_err(|err| sc_transaction_pool::error::Error::Blockchain(err.into()))?;
+
+        match pre_validation_object {
+            PreValidationObject::Null => {
+                // No pre-validation is required.
+            }
+            PreValidationObject::Bundle(bundle) => {
+                if let Err(err) = self
+                    .bundle_validator
+                    .validate_bundle(&BlockId::Hash(at), &bundle)
+                {
+                    tracing::trace!(target: "txpool", error = ?err, "Dropped `submit_bundle` extrinsic");
+                    return Err(TxPoolError::ImmediatelyDropped.into());
+                }
+            }
+            PreValidationObject::FraudProof(fraud_proof) => {
+                let spawner = self.spawner.clone();
+                let fraud_proof_verifier = self.fraud_proof_verifier.clone();
+
+                let (verified_result_sender, verified_result_receiver) = oneshot::channel();
+
+                // Verify the fraud proof in another blocking task as it might be pretty heavy.
+                spawner.spawn_blocking(
+                    "txpool-fraud-proof-verification",
+                    None,
+                    async move {
+                        let verified_result = fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
+                        verified_result_sender
+                            .send(verified_result)
+                            .expect("Failed to send the verified fraud proof result");
+                    }
+                    .boxed(),
+                );
+
+                match verified_result_receiver.await {
+                    Ok(verified_result) => {
+                        match verified_result {
+                            Ok(_) => {
+                                // Continue the regular `validate_transaction`
+                            }
+                            Err(err) => {
+                                tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
+                                return Err(TxPoolError::InvalidTransaction(
+                                    InvalidTransactionCode::FraudProof.into(),
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        tracing::debug!(target: "txpool", error = ?err, "Failed to receive the fraud proof verified result");
+                        return Err(TxPoolError::UnknownTransaction(
+                            UnknownTransaction::CannotLookup,
+                        )
+                        .into());
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub fn new_full<Block, Client, TxPreValidator>(
     config: &Configuration,
     task_manager: &TaskManager,
     client: Arc<Client>,
-    verifier: Verifier,
-    bundle_validator: BundleValidator,
-) -> Arc<FullPool<Block, Client, Verifier, BundleValidator>>
+    tx_pre_validator: TxPreValidator,
+) -> Arc<FullPool<Block, Client, TxPreValidator>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -558,16 +629,14 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    BundleValidator:
-        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     let prometheus = config.prometheus_registry();
     let pool_api = Arc::new(FullChainApiWrapper::new(
         client.clone(),
         prometheus,
         task_manager,
-        FullChainVerifier::new(client.clone(), verifier, bundle_validator),
+        FullChainVerifier::new(client.clone(), tx_pre_validator),
     ));
     let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
         config,

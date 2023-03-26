@@ -75,14 +75,15 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::PIECES_IN_SEGMENT;
-use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
-use subspace_transaction_pool::bundle_validator::{BundleValidator, ValidateBundle};
-use subspace_transaction_pool::FullPool;
+use subspace_transaction_pool::bundle_validator::BundleValidator;
+use subspace_transaction_pool::{
+    FraudProofVerifierAndBundleValidator, FullPool, PreValidateTransaction,
+};
 use tracing::{debug, error, info, Instrument};
 
 /// Error type for Subspace service.
@@ -210,8 +211,12 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            FraudProofVerifierAndBundleValidator<
+                Block,
+                FullClient<RuntimeApi, ExecutorDispatch>,
+                FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+                BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            >,
         >,
         (
             impl BlockImport<
@@ -294,12 +299,17 @@ where
         task_manager.spawn_handle(),
         subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
+    let tx_pre_validator = FraudProofVerifierAndBundleValidator::new(
+        client.clone(),
+        Box::new(task_manager.spawn_handle()),
+        proof_verifier.clone(),
+        bundle_validator.clone(),
+    );
     let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
-        proof_verifier.clone(),
-        bundle_validator.clone(),
+        tx_pre_validator,
     );
 
     let fraud_proof_block_import =
@@ -368,7 +378,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, Validator, Verifier>
+pub struct NewFull<Client, TxPreValidator>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -379,9 +389,7 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    Validator:
-        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -408,13 +416,17 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Verifier, Validator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
-    BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-    FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+    FraudProofVerifierAndBundleValidator<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+    >,
 >;
 
 /// Builds a new service for a full client.
@@ -429,8 +441,12 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            FraudProofVerifierAndBundleValidator<
+                Block,
+                FullClient<RuntimeApi, ExecutorDispatch>,
+                FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+                BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            >,
         >,
         (
             I,

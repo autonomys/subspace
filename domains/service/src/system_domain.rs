@@ -41,7 +41,7 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::bundle_validator::SkipBundleValidation;
-use subspace_transaction_pool::FullChainVerifier;
+use subspace_transaction_pool::{FraudProofVerifierAndBundleValidator, FullChainVerifier};
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -114,8 +114,12 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
             FullChainVerifier<
                 Block,
                 FullClient<RuntimeApi, Executor>,
-                FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
-                SkipBundleValidation,
+                FraudProofVerifierAndBundleValidator<
+                    Block,
+                    FullClient<RuntimeApi, Executor>,
+                    FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
+                    SkipBundleValidation,
+                >,
             >,
             StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
         >,
@@ -211,10 +215,17 @@ where
         subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
 
+    let tx_pre_validator = FraudProofVerifierAndBundleValidator::new(
+        client.clone(),
+        Box::new(task_manager.spawn_handle()),
+        proof_verifier,
+        SkipBundleValidation,
+    );
+
     // Skip bundle validation here because for the system domain the bundle is extract from the
     // primary block thus it is already validated and accepted by the consensus chain.
     let system_domain_fraud_proof_verifier =
-        FullChainVerifier::new(client.clone(), proof_verifier, SkipBundleValidation);
+        FullChainVerifier::new(client.clone(), tx_pre_validator);
     let system_domain_xdm_verifier = SystemDomainXDMVerifier::new(
         primary_chain_client,
         StateRootExtractorWithSystemDomainClient::new(client.clone()),
