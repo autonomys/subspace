@@ -41,25 +41,25 @@ pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RawRecord::SIZE as u32 * PIECES_I
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
-pub struct RawRecord([u8; Self::SIZE]);
+pub struct RawRecord([[u8; Scalar::SAFE_BYTES]; Self::SIZE / Scalar::SAFE_BYTES]);
 
 impl Default for RawRecord {
     fn default() -> Self {
-        Self([0; Self::SIZE])
+        Self([Default::default(); Self::SIZE / Scalar::SAFE_BYTES])
     }
 }
 
 impl AsRef<[u8]> for RawRecord {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.0.as_slice().flatten()
     }
 }
 
 impl AsMut<[u8]> for RawRecord {
     fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
+        self.0.as_mut_slice().flatten_mut()
     }
 }
 
@@ -71,7 +71,7 @@ impl RawRecord {
 /// Recorded history segment before archiving is applied.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct RecordedHistorySegment([RawRecord; Self::RAW_RECORDS]);
 
@@ -108,7 +108,7 @@ impl RecordedHistorySegment {
 /// Record contained within a piece.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Record([u8; Self::SIZE]);
 
@@ -181,7 +181,7 @@ impl Record {
 }
 
 /// Record commitment contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct RecordCommitment([u8; Self::SIZE]);
 
@@ -203,7 +203,7 @@ impl RecordCommitment {
 }
 
 /// Record witness contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct RecordWitness([u8; Self::SIZE]);
 

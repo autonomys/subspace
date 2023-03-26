@@ -249,12 +249,6 @@ impl Archiver {
     ///
     /// Note: this is the only way to instantiate object archiver, while block archiver can be
     /// instantiated with `BlockArchiver::with_initial_state()` in case of restarts.
-    ///
-    /// Panics if:
-    /// * record size it smaller that needed to hold any information
-    /// * segment size is not bigger than record size
-    /// * segment size is not a multiple of record size
-    /// * segment size and record size do not make sense together
     pub fn new(kzg: Kzg) -> Result<Self, ArchiverInstantiationError> {
         // TODO: Check if KZG can process number configured number of elements and update proof
         //  message in `.expect()`
@@ -772,6 +766,7 @@ impl Archiver {
                     .collect::<Vec<_>>(),
             )
             .expect("Internally produced values must never fail; qed");
+
         let records_root = self
             .kzg
             .commit(&polynomial)

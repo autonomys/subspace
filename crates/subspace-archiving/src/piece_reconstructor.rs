@@ -1,29 +1,23 @@
 extern crate alloc;
 
-use crate::utils;
-use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
-use reed_solomon_erasure::galois_16::ReedSolomon;
+use core::num::NonZeroUsize;
 use subspace_core_primitives::crypto::kzg::{Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
-use subspace_core_primitives::{FlatPieces, Piece, PIECES_IN_SEGMENT, RECORD_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, RawRecord, PIECES_IN_SEGMENT};
+use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ReconstructorInstantiationError {
-    /// Segment size is not bigger than record size
+    /// Failed to initialize erasure coding
     #[cfg_attr(
         feature = "thiserror",
-        error("Segment size is not bigger than record size")
+        error("Failed to initialize erasure coding: {0}")
     )]
-    SegmentSizeTooSmall,
-    /// Segment size is not a multiple of record size
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Segment size is not a multiple of record size")
-    )]
-    SegmentSizesNotMultipleOfRecordSize,
+    FailedToInitializeErasureCoding(String),
 }
 
 /// Reconstructor-related instantiation error
@@ -35,7 +29,7 @@ pub enum ReconstructorError {
         feature = "thiserror",
         error("Error during data shards reconstruction: {0}")
     )]
-    DataShardsReconstruction(reed_solomon_erasure::Error),
+    DataShardsReconstruction(String),
 
     /// Incorrect piece position provided.
     #[cfg_attr(feature = "thiserror", error("Incorrect piece position provided."))]
@@ -45,34 +39,25 @@ pub enum ReconstructorError {
 /// Reconstructor helps to retrieve blocks from archived pieces.
 #[derive(Debug, Clone)]
 pub struct PiecesReconstructor {
-    /// Number of data shards
-    source_shards: u32,
-    /// Number of parity shards
-    parity_shards: u32,
     /// Erasure coding data structure
-    reed_solomon: ReedSolomon,
+    erasure_coding: ErasureCoding,
     /// KZG instance
     kzg: Kzg,
 }
 
 impl PiecesReconstructor {
-    pub fn new(segment_size: u32, kzg: Kzg) -> Result<Self, ReconstructorInstantiationError> {
-        if segment_size <= RECORD_SIZE {
-            return Err(ReconstructorInstantiationError::SegmentSizeTooSmall);
-        }
-        if segment_size % RECORD_SIZE != 0 {
-            return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
-        }
+    pub fn new(kzg: Kzg) -> Result<Self, ReconstructorInstantiationError> {
+        // TODO: Check if KZG can process number configured number of elements and update proof
+        //  message in `.expect()`
 
-        let source_shards = segment_size / RECORD_SIZE;
-        let parity_shards = source_shards;
-        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
-            .expect("ReedSolomon must always be correctly instantiated");
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(PIECES_IN_SEGMENT.ilog2() as usize)
+                .expect("Recorded history segment contains at very least one record; qed"),
+        )
+        .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
 
         Ok(Self {
-            source_shards,
-            parity_shards,
-            reed_solomon,
+            erasure_coding,
             kzg,
         })
     }
@@ -83,45 +68,129 @@ impl PiecesReconstructor {
         &self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<(FlatPieces, Polynomial), ReconstructorError> {
-        // If not all data pieces are available, need to reconstruct data shards using erasure
-        // coding.
-        let mut shards = segment_pieces
+        let mut reconstructed_pieces = FlatPieces::new(PIECES_IN_SEGMENT as usize);
+
+        if !segment_pieces
             .iter()
-            .map(|maybe_piece| {
-                maybe_piece
-                    .as_ref()
-                    .map(|piece| utils::slice_to_arrays(&piece.record()))
+            // Take each source shards here
+            .step_by(2)
+            .zip(
+                reconstructed_pieces
+                    .iter_mut()
+                    .map(|piece| piece.record_mut().safe_scalar_arrays_mut()),
+            )
+            .all(|(maybe_piece, raw_record)| {
+                if let Some(piece) = maybe_piece {
+                    piece
+                        .record()
+                        .safe_scalar_arrays()
+                        .zip(raw_record)
+                        .for_each(|(source, target)| {
+                            *target = *source;
+                        });
+                    true
+                } else {
+                    false
+                }
             })
-            .collect::<Vec<_>>();
+        {
+            // If not all data pieces are available, need to reconstruct data shards using erasure
+            // coding.
 
-        self.reed_solomon
-            .reconstruct(&mut shards)
-            .map_err(ReconstructorError::DataShardsReconstruction)?;
+            // Scratch buffer to avoid re-allocation
+            let mut tmp_shards_scalars =
+                Vec::<Option<Scalar>>::with_capacity(PIECES_IN_SEGMENT as usize);
+            // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+            for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
+                // Collect chunks of each record at the same offset
+                for maybe_piece in segment_pieces.iter() {
+                    let maybe_scalar = maybe_piece
+                        .as_ref()
+                        .map(|piece| {
+                            piece
+                                .record()
+                                .full_scalar_arrays()
+                                .nth(record_offset)
+                                .expect("Statically guaranteed to exist in a piece; qed")
+                        })
+                        .map(Scalar::try_from)
+                        .transpose()
+                        .map_err(ReconstructorError::DataShardsReconstruction)?;
 
-        let mut reconstructed_record_shards = FlatPieces::new(shards.len());
-        let mut record_commitments =
-            vec![Scalar::default(); (self.source_shards + self.parity_shards) as usize];
-        //TODO: Parity hashes will be erasure coded instead in the future
-        //TODO: reuse already present commitments from segment_pieces, so we don't re-derive what
-        // we already have
-        reconstructed_record_shards
-            .iter_mut()
-            .zip(record_commitments.iter_mut())
-            .zip(shards)
-            .for_each(|((piece, polynomial_data), record)| {
-                let record =
-                    record.expect("Reconstruction just happened and all records are present; qed");
-                let record = record.flatten();
-                piece.record_mut().copy_from_slice(record);
-                *polynomial_data = blake2b_256_254_hash_to_scalar(record);
-            });
+                    tmp_shards_scalars.push(maybe_scalar);
+                }
+
+                self.erasure_coding
+                    .recover(&tmp_shards_scalars)
+                    .map_err(ReconstructorError::DataShardsReconstruction)?
+                    .into_iter()
+                    .zip(reconstructed_pieces.iter_mut().map(|piece| {
+                        piece
+                            .record_mut()
+                            .full_scalar_arrays_mut()
+                            .nth(record_offset)
+                            .expect("Statically guaranteed to exist in a piece; qed")
+                    }))
+                    .for_each(|(source_scalar, segment_data)| {
+                        segment_data.copy_from_slice(&source_scalar.to_bytes());
+                    });
+
+                tmp_shards_scalars.clear();
+            }
+        }
+
+        let mut record_commitment_hashes = Vec::with_capacity(PIECES_IN_SEGMENT as usize);
+        // TODO: Parity hashes will be erasure coded instead in the future
+        for (piece, maybe_input_piece) in reconstructed_pieces.iter_mut().zip(segment_pieces) {
+            if let Some(input_piece) = maybe_input_piece {
+                piece
+                    .commitment_mut()
+                    .copy_from_slice(input_piece.commitment().as_ref());
+                record_commitment_hashes.push(blake2b_256_254_hash_to_scalar(
+                    input_piece.commitment().as_ref(),
+                ));
+            } else {
+                let scalars = {
+                    let record_chunks = piece.record().full_scalar_arrays();
+                    let number_of_chunks = record_chunks.len();
+                    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+
+                    for record_chunk in record_chunks {
+                        scalars.push(
+                            Scalar::try_from(record_chunk)
+                                .map_err(ReconstructorError::DataShardsReconstruction)?,
+                        );
+                    }
+
+                    // Number of scalars for KZG must be a power of two elements
+                    scalars.resize(scalars.capacity(), Scalar::default());
+
+                    scalars
+                };
+
+                let polynomial = self
+                    .kzg
+                    .poly(&scalars)
+                    .expect("KZG instance must be configured to support this many scalars; qed");
+                let commitment = self
+                    .kzg
+                    .commit(&polynomial)
+                    .expect("KZG instance must be configured to support this many scalars; qed");
+
+                piece
+                    .commitment_mut()
+                    .copy_from_slice(&commitment.to_bytes());
+                record_commitment_hashes
+                    .push(blake2b_256_254_hash_to_scalar(&commitment.to_bytes()));
+            }
+        }
 
         let polynomial = self
             .kzg
-            .poly(&record_commitments)
+            .poly(&record_commitment_hashes)
             .expect("Internally produced values must never fail; qed");
 
-        Ok((reconstructed_record_shards, polynomial))
+        Ok((reconstructed_pieces, polynomial))
     }
 
     /// Returns all the pieces for a segment using given set of pieces of a segment of the archived
@@ -153,7 +222,7 @@ impl PiecesReconstructor {
     pub fn reconstruct_piece(
         &self,
         segment_pieces: &[Option<Piece>],
-        piece_position: usize, // piece position within the segment (offset)
+        piece_position: usize,
     ) -> Result<Piece, ReconstructorError> {
         let (reconstructed_records, polynomial) = self.reconstruct_shards(segment_pieces)?;
 

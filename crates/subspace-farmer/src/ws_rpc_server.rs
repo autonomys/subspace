@@ -152,6 +152,8 @@ pub struct RpcServerImpl {
     object_mappings: Arc<Vec<ObjectMappings>>,
 }
 
+// TODO: Reconstruction here is a bit incorrect: it doesn't account for source/parity interleaving
+//  and raw records
 impl RpcServerImpl {
     pub fn new(
         record_size: u32,

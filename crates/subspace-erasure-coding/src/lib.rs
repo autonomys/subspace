@@ -6,6 +6,7 @@ mod tests;
 extern crate alloc;
 
 use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
 use blst_from_scratch::types::fr::FsFr;
@@ -19,7 +20,7 @@ use subspace_core_primitives::crypto::Scalar;
 /// Supports creation of parity records and recovery of missing data.
 #[derive(Debug, Clone)]
 pub struct ErasureCoding {
-    fft_settings: FsFFTSettings,
+    fft_settings: Arc<FsFFTSettings>,
 }
 
 impl ErasureCoding {
@@ -28,7 +29,7 @@ impl ErasureCoding {
     /// Number of shards supported is `2^scale`, half of shards are source data and the other half
     /// are parity.
     pub fn new(scale: NonZeroUsize) -> Result<Self, String> {
-        let fft_settings = FsFFTSettings::new(scale.get())?;
+        let fft_settings = Arc::new(FsFFTSettings::new(scale.get())?);
 
         Ok(Self { fft_settings })
     }
