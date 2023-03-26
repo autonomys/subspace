@@ -8,9 +8,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::array::TryFromSliceError;
 use core::mem;
+use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 use derive_more::{AsMut, AsRef, Deref, DerefMut};
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
 use scale_info::TypeInfo;
 
 /// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
@@ -70,9 +71,22 @@ impl AsMut<[u8]> for RecordWitness {
 /// Internally piece contains a record and corresponding witness that together with records root of
 /// the segment this piece belongs to can be used to verify that a piece belongs to the actual
 /// archival history of the blockchain.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Piece(Box<PieceArray>);
+
+// TODO: Manual implementation due to https://github.com/paritytech/parity-scale-codec/issues/419,
+//  can be replaced with derive once fixed upstream version is released
+impl Decode for Piece {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
+        let piece = parity_scale_codec::decode_vec_with_len::<u8, _>(input, PIECE_SIZE)
+            .map_err(|error| error.chain("Could not decode `Piece.0`"))?;
+        let mut piece = ManuallyDrop::new(piece);
+        // SAFETY: Original memory is not dropped and guaranteed to be allocated
+        let piece = unsafe { Box::from_raw(piece.as_mut_ptr() as *mut PieceArray) };
+        Ok(Piece(piece))
+    }
+}
 
 impl From<Piece> for Vec<u8> {
     fn from(piece: Piece) -> Self {
