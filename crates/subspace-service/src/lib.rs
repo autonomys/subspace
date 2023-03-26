@@ -21,11 +21,13 @@ pub mod dsn;
 pub mod piece_cache;
 pub mod root_blocks;
 pub mod rpc;
+pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::piece_cache::PieceCache;
 use crate::root_blocks::{start_root_block_archiver, RootBlockCache};
+use crate::tx_pre_validator::PrimaryChainTxPreValidator;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -81,9 +83,7 @@ use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::bundle_validator::BundleValidator;
-use subspace_transaction_pool::{
-    FraudProofVerifierAndBundleValidator, FullPool, PreValidateTransaction,
-};
+use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
 
 /// Error type for Subspace service.
@@ -211,7 +211,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifierAndBundleValidator<
+            PrimaryChainTxPreValidator<
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -299,7 +299,7 @@ where
         task_manager.spawn_handle(),
         subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
-    let tx_pre_validator = FraudProofVerifierAndBundleValidator::new(
+    let tx_pre_validator = PrimaryChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier.clone(),
@@ -421,7 +421,7 @@ where
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
-    FraudProofVerifierAndBundleValidator<
+    PrimaryChainTxPreValidator<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
         FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -441,7 +441,7 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifierAndBundleValidator<
+            PrimaryChainTxPreValidator<
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,

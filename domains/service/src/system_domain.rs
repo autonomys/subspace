@@ -1,3 +1,4 @@
+use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
@@ -40,8 +41,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
-use subspace_transaction_pool::bundle_validator::SkipBundleValidation;
-use subspace_transaction_pool::{FraudProofVerifierAndBundleValidator, FullChainVerifier};
+use subspace_transaction_pool::FullChainVerifier;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -114,11 +114,10 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
             FullChainVerifier<
                 Block,
                 FullClient<RuntimeApi, Executor>,
-                FraudProofVerifierAndBundleValidator<
+                SystemDomainTxPreValidator<
                     Block,
                     FullClient<RuntimeApi, Executor>,
                     FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
-                    SkipBundleValidation,
                 >,
             >,
             StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
@@ -215,11 +214,10 @@ where
         subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
 
-    let tx_pre_validator = FraudProofVerifierAndBundleValidator::new(
+    let tx_pre_validator = SystemDomainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier,
-        SkipBundleValidation,
     );
 
     // Skip bundle validation here because for the system domain the bundle is extract from the

@@ -2330,6 +2330,7 @@ dependencies = [
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "clap 4.1.13",
  "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
@@ -2380,6 +2381,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "system-runtime-primitives",
+ "tracing",
 ]
 
 [[package]]
