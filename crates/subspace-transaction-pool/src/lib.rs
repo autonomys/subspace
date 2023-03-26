@@ -16,7 +16,6 @@ use sc_transaction_pool_api::{
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
 use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
-use sp_domains::transaction::PreValidationObjectApi;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConversion};
 use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
@@ -179,8 +178,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block>,
     TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     fn verify_extrinsic(
@@ -490,8 +488,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+    Client::Api: TaggedTransactionQueue<Block>,
     TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     let prometheus = config.prometheus_registry();
