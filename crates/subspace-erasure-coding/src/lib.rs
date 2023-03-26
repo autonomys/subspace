@@ -47,7 +47,7 @@ impl ErasureCoding {
     /// Recovery of missing shards from given shards (at least 1/2 should be `Some`).
     ///
     /// Both in input and output source shards are interleaved with parity shards:
-    /// source, parity, source, parity, ....
+    /// source, parity, source, parity, ...
     pub fn recover(&self, shards: &[Option<Scalar>]) -> Result<Vec<Scalar>, String> {
         // TODO This is only necessary because upstream silently doesn't recover anything:
         //  https://github.com/sifraitech/rust-kzg/issues/195

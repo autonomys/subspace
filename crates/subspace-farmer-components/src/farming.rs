@@ -114,7 +114,7 @@ impl EligibleSector {
                 output.copy_from_slice(&input.to_bytes()[..ScalarLegacy::SAFE_BYTES]);
             });
 
-        let (record, witness) = piece.split();
+        let (record, _commitment, witness) = piece.split();
         let piece_witness = match Witness::try_from_bytes(witness) {
             Ok(piece_witness) => piece_witness,
             Err(error) => {

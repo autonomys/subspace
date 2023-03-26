@@ -494,7 +494,7 @@ impl Archiver {
                     // it into `None` if needed later
                     let archived_bytes = last_archived_block.partial_archived().expect(
                         "Block continuation implies that there are some bytes \
-                                archived already; qed",
+                            archived already; qed",
                     );
                     last_archived_block.set_partial_archived(
                         archived_bytes
@@ -821,10 +821,12 @@ impl Archiver {
             .iter_mut()
             .zip(record_commitments)
             .enumerate()
-            .for_each(|(position, (piece, _commitment))| {
-                // TODO: Store commitment
+            .for_each(|(position, (piece, commitment))| {
+                let commitment_bytes = commitment.to_bytes();
+                let (_record, commitment, witness) = piece.split_mut();
+                commitment.copy_from_slice(&commitment_bytes);
                 // TODO: Consider batch witness creation for improved performance
-                piece.witness_mut().copy_from_slice(
+                witness.copy_from_slice(
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
@@ -862,23 +864,60 @@ pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
     piece: &PieceArray,
-    commitment: RecordsRoot,
+    records_root: &RecordsRoot,
     position: u32,
 ) -> bool {
-    let (record, witness) = piece.split();
+    let (record, commitment, witness) = piece.split();
     let witness = match Witness::try_from_bytes(witness) {
         Ok(witness) => witness,
         _ => {
             return false;
         }
     };
-    let leaf_hash = blake2b_256_254_hash_to_scalar(record.as_ref());
+
+    let record_chunks = record.chunks_exact(Scalar::FULL_BYTES);
+    let number_of_chunks = record_chunks.len();
+    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+
+    for record_chunk in record_chunks {
+        match Scalar::try_from(
+            <[u8; Scalar::FULL_BYTES]>::try_from(record_chunk).expect("Length is correct; qed"),
+        ) {
+            Ok(scalar) => {
+                scalars.push(scalar);
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+
+    // Number of scalars for KZG must be a power of two elements
+    scalars.resize(scalars.capacity(), Scalar::default());
+
+    let polynomial = match kzg.poly(&scalars) {
+        Ok(polynomial) => polynomial,
+        _ => {
+            return false;
+        }
+    };
+
+    if kzg
+        .commit(&polynomial)
+        .map(|commitment| commitment.to_bytes())
+        .as_ref()
+        != Ok(commitment)
+    {
+        return false;
+    }
+
+    let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
-        &commitment,
+        records_root,
         num_pieces_in_segment,
         position,
-        &leaf_hash,
+        &commitment_hash,
         &witness,
     )
 }

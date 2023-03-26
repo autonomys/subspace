@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use parity_scale_codec::{Encode, Output};
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{RAW_RECORD_SIZE, RECORD_SIZE};
+use subspace_core_primitives::RAW_RECORD_SIZE;
 
 /// State of incremental record commitments, encapsulated to hide implementation details and
 /// encapsulate tricky logic
@@ -64,11 +64,11 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
 impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
     fn drop(&mut self) {
         if self.full {
-            let record_offset = self.processed_bytes % RECORD_SIZE as usize;
+            let record_offset = self.processed_bytes % RAW_RECORD_SIZE as usize;
             if record_offset > 0 {
                 // This is fine since we'll have at most a few iterations and allocation is less
                 // desirable than a loop here
-                for _ in 0..(RECORD_SIZE as usize - record_offset) {
+                for _ in 0..(RAW_RECORD_SIZE as usize - record_offset) {
                     self.update_commitment_state(&[0]);
                 }
                 self.create_commitment();
@@ -81,8 +81,8 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
     fn write(&mut self, mut bytes: &[u8]) {
         // Try to finish last partial record if possible
 
-        let record_offset = self.processed_bytes % RECORD_SIZE as usize;
-        let bytes_left_in_record = RECORD_SIZE as usize - record_offset;
+        let record_offset = self.processed_bytes % RAW_RECORD_SIZE as usize;
+        let bytes_left_in_record = RAW_RECORD_SIZE as usize - record_offset;
         if bytes_left_in_record > 0 {
             let remaining_record_bytes;
             (remaining_record_bytes, bytes) =
@@ -102,11 +102,11 @@ impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
         // Continue processing records (full and partial) from remaining data, at this point we have
         // processed some number of full records, so can simply chunk the remaining bytes into
         // record sizes
-        bytes.chunks(RECORD_SIZE as usize).for_each(|record| {
+        bytes.chunks(RAW_RECORD_SIZE as usize).for_each(|record| {
             self.update_commitment_state(record);
 
             // Store hashes of full records
-            if record.len() == RECORD_SIZE as usize {
+            if record.len() == RAW_RECORD_SIZE as usize {
                 self.create_commitment();
             }
         });
@@ -143,7 +143,7 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     /// NOTE: This method is called with bytes that either cover part of the record or stop at the
     /// edge of the record.
     fn update_commitment_state(&mut self, bytes: &[u8]) {
-        if self.should_commit_to_record(self.processed_bytes / RECORD_SIZE as usize) {
+        if self.should_commit_to_record(self.processed_bytes / RAW_RECORD_SIZE as usize) {
             self.raw_record_buffer.extend_from_slice(bytes);
         }
         self.processed_bytes += bytes.len();
@@ -152,7 +152,7 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     /// In case commitment is necessary for currently processed record, internal hashing state will
     /// be finalized and commitment will be stored in shared state.
     fn create_commitment(&mut self) {
-        if self.should_commit_to_record(self.processed_bytes / RECORD_SIZE as usize - 1) {
+        if self.should_commit_to_record(self.processed_bytes / RAW_RECORD_SIZE as usize - 1) {
             let scalars = {
                 let record_chunks = self.raw_record_buffer.chunks_exact(Scalar::SAFE_BYTES);
                 let number_of_chunks = record_chunks.len();

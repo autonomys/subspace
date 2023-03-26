@@ -5,9 +5,10 @@ use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, Kzg};
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, RootBlock,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Record, RootBlock,
     BLAKE2B_256_HASH_SIZE, RAW_RECORD_SIZE,
 };
 
@@ -22,6 +23,31 @@ fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     &data[offset as usize + Compact::compact_len(&size)..][..size as usize]
 }
 
+fn record_to_raw_record_bytes(record: &Record) -> impl Iterator<Item = u8> + '_ {
+    // We have zero byte padding from [`Scalar::SAFE_BYTES`] to [`Scalar::FULL_BYTES`] that we need
+    // to skip
+    record
+        .chunks_exact(Scalar::FULL_BYTES)
+        .flat_map(|bytes| &bytes[..Scalar::SAFE_BYTES])
+        .copied()
+}
+
+fn extract_data_from_source_record<O: Into<u64>>(record: &Record, offset: O) -> Vec<u8> {
+    let offset: u64 = offset.into();
+    let Compact(size) = Compact::<u64>::decode(
+        &mut record_to_raw_record_bytes(record)
+            .skip(offset as usize)
+            .take(8)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )
+    .unwrap();
+    record_to_raw_record_bytes(record)
+        .skip(offset as usize + Compact::compact_len(&size))
+        .take(size as usize)
+        .collect()
+}
+
 #[track_caller]
 fn compare_block_objects_to_piece_objects<'a>(
     block_objects: impl Iterator<Item = (&'a [u8], &'a BlockObject)>,
@@ -30,7 +56,7 @@ fn compare_block_objects_to_piece_objects<'a>(
     block_objects.zip(piece_objects).for_each(
         |((block, block_object_mapping), (piece, piece_object_mapping))| {
             assert_eq!(
-                extract_data(piece.as_ref(), piece_object_mapping.offset()),
+                extract_data_from_source_record(piece.record(), piece_object_mapping.offset()),
                 extract_data(block, block_object_mapping.offset())
             );
         },
@@ -121,7 +147,7 @@ fn archiver() {
     {
         let last_archived_block = first_archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 1);
-        assert_eq!(last_archived_block.partial_archived(), Some(63381));
+        assert_eq!(last_archived_block.partial_archived(), Some(61307));
     }
 
     // 4 objects fit into the first segment
@@ -137,6 +163,7 @@ fn archiver() {
         let piece_objects = first_archived_segment
             .pieces
             .iter()
+            .step_by(2)
             .zip(&first_archived_segment.object_mapping)
             .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
@@ -149,7 +176,7 @@ fn archiver() {
             &kzg,
             PIECES_IN_SEGMENT as usize,
             piece,
-            first_archived_segment.root_block.records_root(),
+            &first_archived_segment.root_block.records_root(),
             position as u32,
         ));
     }
@@ -195,6 +222,7 @@ fn archiver() {
         let piece_objects = archived_segments[0]
             .pieces
             .iter()
+            .step_by(2)
             .zip(&archived_segments[0].object_mapping)
             .flat_map(|(piece, object_mapping)| iter::repeat(piece).zip(&object_mapping.objects));
 
@@ -206,13 +234,13 @@ fn archiver() {
         let archived_segment = archived_segments.get(0).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(105533));
+        assert_eq!(last_archived_block.partial_archived(), Some(102077));
     }
     {
         let archived_segment = archived_segments.get(1).unwrap();
         let last_archived_block = archived_segment.root_block.last_archived_block();
         assert_eq!(last_archived_block.number, 2);
-        assert_eq!(last_archived_block.partial_archived(), Some(232212));
+        assert_eq!(last_archived_block.partial_archived(), Some(224608));
     }
 
     // Check that both archived segments have expected content and valid pieces in them
@@ -235,7 +263,7 @@ fn archiver() {
                 &kzg,
                 PIECES_IN_SEGMENT as usize,
                 piece,
-                archived_segment.root_block.records_root(),
+                &archived_segment.root_block.records_root(),
                 position as u32,
             ));
         }
@@ -245,7 +273,7 @@ fn archiver() {
     }
 
     // Add a block such that it fits in the next segment exactly
-    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 21468]>().to_vec();
+    let block_3 = rand::random::<[u8; SEGMENT_SIZE as usize - 20774]>().to_vec();
     let archived_segments = archiver.add_block(block_3.clone(), BlockObjectMapping::default());
     assert_eq!(archived_segments.len(), 1);
 
@@ -279,7 +307,7 @@ fn archiver() {
                 &kzg,
                 PIECES_IN_SEGMENT as usize,
                 piece,
-                archived_segment.root_block.records_root(),
+                &archived_segment.root_block.records_root(),
                 position as u32,
             ));
         }
@@ -559,9 +587,10 @@ fn object_on_the_edge_of_segment() {
 
     // Ensure bytes are mapped correctly
     assert_eq!(
-        &archived_segments[1].pieces.as_ref()
-            [archived_segments[1].object_mapping[0].objects[0].offset() as usize..]
-            [..mapped_bytes.len()],
-        mapped_bytes.as_slice()
+        record_to_raw_record_bytes(archived_segments[1].pieces[0].record())
+            .skip(archived_segments[1].object_mapping[0].objects[0].offset() as usize)
+            .take(mapped_bytes.len())
+            .collect::<Vec<_>>(),
+        mapped_bytes
     );
 }

@@ -31,7 +31,8 @@ pub const RAW_RECORD_SIZE: u32 =
     RECORD_SIZE / Scalar::FULL_BYTES as u32 * Scalar::SAFE_BYTES as u32;
 /// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
 /// of [`Scalar::FULL_BYTES`].
-pub const RECORD_SIZE: u32 = PIECE_SIZE as u32 - RecordWitness::SIZE as u32;
+pub const RECORD_SIZE: u32 =
+    PIECE_SIZE as u32 - RecordCommitment::SIZE as u32 - RecordWitness::SIZE as u32;
 /// 128 data records and 128 parity records (as a result of erasure coding).
 pub const PIECES_IN_SEGMENT: u32 = 256;
 /// Recorded History Segment Size includes half of the records (just data records) that will later
@@ -56,6 +57,28 @@ impl AsMut<[u8]> for Record {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
+}
+
+/// Record commitment contained within a piece.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[repr(transparent)]
+pub struct RecordCommitment([u8; Self::SIZE]);
+
+impl AsRef<[u8]> for RecordCommitment {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for RecordCommitment {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl RecordCommitment {
+    /// Size of record commitment in bytes.
+    const SIZE: usize = 48;
 }
 
 /// Record witness contained within a piece.
@@ -212,10 +235,13 @@ impl From<PieceArray> for Piece {
 
 impl PieceArray {
     /// Split piece into underlying components.
-    pub fn split(&self) -> (&Record, &RecordWitness) {
-        let (record, witness) = self.0.split_at(RECORD_SIZE as usize);
+    pub fn split(&self) -> (&Record, &RecordCommitment, &RecordWitness) {
+        let (record, extra) = self.0.split_at(RECORD_SIZE as usize);
+        let (commitment, witness) = extra.split_at(RecordCommitment::SIZE);
 
         let record = <&[u8; RECORD_SIZE as usize]>::try_from(record)
+            .expect("Slice of memory has correct length; qed");
+        let commitment = <&[u8; RecordWitness::SIZE]>::try_from(commitment)
             .expect("Slice of memory has correct length; qed");
         let witness = <&[u8; RecordWitness::SIZE]>::try_from(witness)
             .expect("Slice of memory has correct length; qed");
@@ -223,16 +249,21 @@ impl PieceArray {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let record = unsafe { mem::transmute(record) };
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let commitment = unsafe { mem::transmute(commitment) };
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let witness = unsafe { mem::transmute(witness) };
 
-        (record, witness)
+        (record, commitment, witness)
     }
 
     /// Split piece into underlying mutable components.
-    pub fn split_mut(&mut self) -> (&mut Record, &mut RecordWitness) {
-        let (record, witness) = self.0.split_at_mut(RECORD_SIZE as usize);
+    pub fn split_mut(&mut self) -> (&mut Record, &mut RecordCommitment, &mut RecordWitness) {
+        let (record, extra) = self.0.split_at_mut(RECORD_SIZE as usize);
+        let (commitment, witness) = extra.split_at_mut(RecordCommitment::SIZE);
 
         let record = <&mut [u8; RECORD_SIZE as usize]>::try_from(record)
+            .expect("Slice of memory has correct length; qed");
+        let commitment = <&mut [u8; RecordWitness::SIZE]>::try_from(commitment)
             .expect("Slice of memory has correct length; qed");
         let witness = <&mut [u8; RecordWitness::SIZE]>::try_from(witness)
             .expect("Slice of memory has correct length; qed");
@@ -240,9 +271,11 @@ impl PieceArray {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let record = unsafe { mem::transmute(record) };
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let commitment = unsafe { mem::transmute(commitment) };
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let witness = unsafe { mem::transmute(witness) };
 
-        (record, witness)
+        (record, commitment, witness)
     }
 
     /// Record contained within a piece.
@@ -255,14 +288,24 @@ impl PieceArray {
         self.split_mut().0
     }
 
+    /// Commitment contained within a piece.
+    pub fn commitment(&self) -> &RecordCommitment {
+        self.split().1
+    }
+
+    /// Mutable commitment contained within a piece.
+    pub fn commitment_mut(&mut self) -> &mut RecordCommitment {
+        self.split_mut().1
+    }
+
     /// Witness contained within a piece.
     pub fn witness(&self) -> &RecordWitness {
-        self.split().1
+        self.split().2
     }
 
     /// Mutable witness contained within a piece.
     pub fn witness_mut(&mut self) -> &mut RecordWitness {
-        self.split_mut().1
+        self.split_mut().2
     }
 }
 
