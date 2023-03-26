@@ -19,7 +19,7 @@ const SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
     let offset: u64 = offset.into();
     let Compact(size) = Compact::<u64>::decode(&mut &data[offset as usize..]).unwrap();
-    &data[offset as usize..][..size as usize]
+    &data[offset as usize + Compact::compact_len(&size)..][..size as usize]
 }
 
 #[track_caller]
