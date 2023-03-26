@@ -21,6 +21,7 @@ use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
+use subspace_test_service::mock::MockPrimaryNode;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
@@ -35,14 +36,11 @@ async fn test_executor_full_node_catching_up() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
         tokio_handle.clone(),
         Ferdie,
-        vec![],
         BasePath::new(directory.path().join("ferdie")),
-    )
-    .await;
-    ferdie_network_starter.start_network();
+    );
 
     // Run Alice (a system domain authority node)
     let alice = domain_test_service::SystemDomainNodeBuilder::new(
@@ -50,8 +48,7 @@ async fn test_executor_full_node_catching_up() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .connect_to_primary_chain_node(&ferdie)
-    .build(Role::Authority, false, false)
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
     // Run Bob (a system domain full node)
@@ -60,12 +57,17 @@ async fn test_executor_full_node_catching_up() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .connect_to_primary_chain_node(&ferdie)
-    .build(Role::Full, false, false)
+    .build_with_mock_primary_node(Role::Full, &mut ferdie)
     .await;
 
     // Bob is able to sync blocks.
-    futures::future::join(alice.wait_for_blocks(3), bob.wait_for_blocks(3)).await;
+    futures::join!(
+        alice.wait_for_blocks(3),
+        bob.wait_for_blocks(3),
+        ferdie.produce_n_blocks(3),
+    )
+    .2
+    .unwrap();
 
     let alice_block_hash = alice
         .client
