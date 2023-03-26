@@ -143,6 +143,10 @@ where
 {
     /// Block number
     pub block_number: NumberFor<Block>,
+    /// Block hash
+    pub block_hash: Block::Hash,
+    /// Parent block hash
+    pub parent_hash: Block::Hash,
     /// Sender for pausing the block import when executor is not fast enough to process
     /// the primary block.
     pub block_import_acknowledgement_sender: mpsc::Sender<()>,
@@ -1029,6 +1033,7 @@ where
         new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();
+        let parent_hash = *block.header.parent_hash();
         let block_number = *block.header.number();
 
         // Early exit if block already in chain
@@ -1169,6 +1174,8 @@ where
         self.imported_block_notification_sender
             .notify(move || ImportedBlockNotification {
                 block_number,
+                block_hash,
+                parent_hash,
                 block_import_acknowledgement_sender,
             });
 
