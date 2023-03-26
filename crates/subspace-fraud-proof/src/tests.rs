@@ -159,7 +159,9 @@ async fn execution_proof_creation_and_verification_should_work() {
         parent_header.hash(),
         Default::default(),
     );
-    let execution_phase = ExecutionPhase::InitializeBlock;
+    let execution_phase = ExecutionPhase::InitializeBlock {
+        domain_parent_hash: parent_header.hash(),
+    };
     let initialize_block_call_data = new_header.encode();
 
     let prover = ExecutionProver::new(
@@ -208,7 +210,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        parent_hash: parent_hash_alice,
+        primary_parent_hash: parent_hash_alice,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
@@ -266,7 +268,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             domain_id: TEST_DOMAIN_ID,
             bad_receipt_hash: Hash::random(),
             parent_number: parent_number_alice,
-            parent_hash: parent_hash_alice,
+            primary_parent_hash: parent_hash_alice,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
             post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
             proof: storage_proof,
@@ -320,7 +322,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        parent_hash: parent_hash_alice,
+        primary_parent_hash: parent_hash_alice,
         pre_state_root: intermediate_roots.last().unwrap().into(),
         post_state_root: post_execution_root,
         proof: storage_proof,
@@ -498,7 +500,7 @@ async fn invalid_execution_proof_should_not_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        parent_hash: parent_hash_alice,
+        primary_parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof1,
@@ -512,7 +514,7 @@ async fn invalid_execution_proof_should_not_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        parent_hash: parent_hash_alice,
+        primary_parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof0.clone(),
@@ -526,7 +528,7 @@ async fn invalid_execution_proof_should_not_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        parent_hash: parent_hash_alice,
+        primary_parent_hash: parent_hash_alice,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof0,

@@ -45,14 +45,14 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 }
 
 /// Base domain gossip message validator.
-pub struct GossipMessageValidator<Block, PBlock, Client, Backend, E> {
+pub struct GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
-    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
 }
 
-impl<Block, PBlock, Client, Backend, E> Clone
-    for GossipMessageValidator<Block, PBlock, Client, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E> Clone
+    for GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
 {
     fn clone(&self) -> Self {
         Self {
@@ -63,7 +63,8 @@ impl<Block, PBlock, Client, Backend, E> Clone
     }
 }
 
-impl<Block, PBlock, Client, Backend, E> GossipMessageValidator<Block, PBlock, Client, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E>
+    GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -75,6 +76,7 @@ where
         + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    PClient: HeaderBackend<PBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -82,7 +84,7 @@ where
     pub(crate) fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
-        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         Self {
             client,

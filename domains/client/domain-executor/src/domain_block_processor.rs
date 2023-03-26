@@ -40,7 +40,7 @@ where
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     backend: Arc<Backend>,
-    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -105,7 +105,7 @@ where
         primary_chain_client: Arc<PClient>,
         primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
         backend: Arc<Backend>,
-        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         Self {
             domain_id,

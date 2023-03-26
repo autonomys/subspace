@@ -359,11 +359,12 @@ impl<T: Config> Pallet<T> {
             FraudProofError::ExecutionReceiptInFuture
         );
 
-        let parent_hash = T::Hash::decode(&mut fraud_proof.parent_hash.encode().as_slice())
-            .map_err(|_| FraudProofError::WrongHashType)?;
+        let primary_parent_hash =
+            T::Hash::decode(&mut fraud_proof.primary_parent_hash.encode().as_slice())
+                .map_err(|_| FraudProofError::WrongHashType)?;
         let parent_number: T::BlockNumber = fraud_proof.parent_number.into();
         ensure!(
-            Self::primary_hash(fraud_proof.domain_id, parent_number) == Some(parent_hash),
+            Self::primary_hash(fraud_proof.domain_id, parent_number) == Some(primary_parent_hash),
             FraudProofError::UnknownBlock
         );
 
