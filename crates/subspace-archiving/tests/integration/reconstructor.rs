@@ -8,13 +8,13 @@ use subspace_archiving::reconstructor::{
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RAW_RECORD_SIZE,
+    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RawRecord,
 };
 
 // This is data + parity shards
 const PIECES_IN_SEGMENT: u32 = 8;
 // In terms of source data that can be stored in the segment, not the size after archiving
-const SEGMENT_SIZE: u32 = RAW_RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+const SEGMENT_SIZE: u32 = RawRecord::SIZE as u32 * PIECES_IN_SEGMENT / 2;
 
 fn flat_pieces_to_regular(pieces: &FlatPieces) -> Vec<Piece> {
     pieces.iter().map(Piece::from).collect()
@@ -27,7 +27,7 @@ fn pieces_to_option_of_pieces(pieces: &[Piece]) -> Vec<Option<Piece>> {
 #[test]
 fn basic() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -227,7 +227,7 @@ fn basic() {
 #[test]
 fn partial_data() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
     // Block that fits into the segment fully
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize / 2]>().to_vec();
     // Block that overflows into the next segment
@@ -313,7 +313,7 @@ fn invalid_usage() {
         Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize),
     );
 
-    let mut archiver = Archiver::new(SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
     // Block that overflows into the next segments
     let block_0 = rand::random::<[u8; SEGMENT_SIZE as usize * 4]>().to_vec();
 

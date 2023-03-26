@@ -83,7 +83,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, RecordsRoot, RootBlock, SectorId, SegmentIndex, Solution,
-    SolutionRange, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
+    SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -918,18 +918,15 @@ where
         // extrinsics with root blocks are not yet in runtime.
         let maybe_records_root = if block_number.is_one() {
             let genesis_block_hash = self.client.info().genesis_hash;
-            let archived_segments = Archiver::new(
-                RECORDED_HISTORY_SEGMENT_SIZE,
-                self.subspace_link.kzg.clone(),
-            )
-            .expect("Incorrect parameters for archiver")
-            .add_block(
-                self.client
-                    .block(genesis_block_hash)?
-                    .ok_or(Error::GenesisUnavailable)?
-                    .encode(),
-                BlockObjectMapping::default(),
-            );
+            let archived_segments = Archiver::new(self.subspace_link.kzg.clone())
+                .expect("Incorrect parameters for archiver")
+                .add_block(
+                    self.client
+                        .block(genesis_block_hash)?
+                        .ok_or(Error::GenesisUnavailable)?
+                        .encode(),
+                    BlockObjectMapping::default(),
+                );
             archived_segments.into_iter().find_map(|archived_segment| {
                 if archived_segment.root_block.segment_index() == segment_index {
                     Some(archived_segment.root_block.records_root())

@@ -28,7 +28,7 @@ fn get_random_block() -> Vec<u8> {
 #[test]
 fn segment_reconstruction_works() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let mut archiver = Archiver::new(kzg.clone()).unwrap();
 
     let block = get_random_block();
 
@@ -69,7 +69,7 @@ fn segment_reconstruction_works() {
 #[test]
 fn piece_reconstruction_works() {
     let kzg = Kzg::new(embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone()).unwrap();
+    let mut archiver = Archiver::new(kzg.clone()).unwrap();
     // Block that fits into the segment fully
     let block = get_random_block();
 
@@ -146,7 +146,7 @@ fn segment_reconstruction_fails() {
         ));
     }
 
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
     // Block that fits into the segment fully
     let block = get_random_block();
 
@@ -185,7 +185,7 @@ fn piece_reconstruction_fails() {
         ));
     }
 
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
     // Block that fits into the segment fully
     let block = get_random_block();
 

@@ -428,8 +428,7 @@ fn rejects_empty_block() {
 
 fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg)
-        .expect("Incorrect parameters for archiver");
+    let mut archiver = Archiver::new(kzg).expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     archiver

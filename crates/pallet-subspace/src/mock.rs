@@ -344,7 +344,7 @@ pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
 
 pub fn create_archived_segment() -> ArchivedSegment {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
 
     let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
     rand::thread_rng().fill(block.as_mut_slice());

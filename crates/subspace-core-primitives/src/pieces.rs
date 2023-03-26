@@ -25,27 +25,92 @@ use scale_info::TypeInfo;
 ///
 /// This can not changed after the network is launched.
 pub const PIECE_SIZE: usize = 31_744;
-/// Size of the raw record before archiving is applied to the segment (in bytes), is guaranteed to
-/// be multiple of [`Scalar::SAFE_BYTES`].
-pub const RAW_RECORD_SIZE: u32 =
-    RECORD_SIZE / Scalar::FULL_BYTES as u32 * Scalar::SAFE_BYTES as u32;
+// TODO: Switch to `Record::SIZE`
 /// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
 /// of [`Scalar::FULL_BYTES`].
 pub const RECORD_SIZE: u32 =
     PIECE_SIZE as u32 - RecordCommitment::SIZE as u32 - RecordWitness::SIZE as u32;
 /// 128 data records and 128 parity records (as a result of erasure coding).
 pub const PIECES_IN_SEGMENT: u32 = 256;
+// TODO: Switch to `RecordedHistorySegment::SIZE`
 /// Recorded History Segment Size includes half of the records (just data records) that will later
 /// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
 /// pieces of archival history.
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RAW_RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RawRecord::SIZE as u32 * PIECES_IN_SEGMENT / 2;
+
+/// Raw record contained within recorded history segment before archiving is applied.
+///
+/// NOTE: This is a stack-allocated data structure and can cause stack overflow!
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[repr(transparent)]
+pub struct RawRecord([u8; Self::SIZE]);
+
+impl Default for RawRecord {
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
+
+impl AsRef<[u8]> for RawRecord {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for RawRecord {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl RawRecord {
+    /// Size of raw record in bytes, is guaranteed to be multiple of [`Scalar::SAFE_BYTES`].
+    pub const SIZE: usize = RECORD_SIZE as usize / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
+}
+
+/// Recorded history segment before archiving is applied.
+///
+/// NOTE: This is a stack-allocated data structure and can cause stack overflow!
+#[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
+#[repr(transparent)]
+pub struct RecordedHistorySegment([RawRecord; Self::RAW_RECORDS]);
+
+impl Default for RecordedHistorySegment {
+    fn default() -> Self {
+        Self([RawRecord::default(); Self::RAW_RECORDS])
+    }
+}
+
+impl AsRef<[u8]> for RecordedHistorySegment {
+    fn as_ref(&self) -> &[u8] {
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let raw_records: &[[u8; RawRecord::SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
+        raw_records.flatten()
+    }
+}
+
+impl AsMut<[u8]> for RecordedHistorySegment {
+    fn as_mut(&mut self) -> &mut [u8] {
+        // SAFETY: Same memory layout due to `#[repr(transparent)]`
+        let raw_records: &mut [[u8; RawRecord::SIZE]] =
+            unsafe { mem::transmute(self.0.as_mut_slice()) };
+        raw_records.flatten_mut()
+    }
+}
+
+impl RecordedHistorySegment {
+    /// Size of recorded history segment in bytes.
+    pub const SIZE: usize = RECORDED_HISTORY_SEGMENT_SIZE as usize;
+    /// Number of raw records in one segment of recorded history.
+    pub const RAW_RECORDS: usize = Self::SIZE / RawRecord::SIZE;
+}
 
 /// Record contained within a piece.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
 #[derive(Debug, Copy, Clone, Eq, PartialEq, AsRef, AsMut, Deref, DerefMut)]
 #[repr(transparent)]
-pub struct Record([u8; RECORD_SIZE as usize]);
+pub struct Record([u8; Self::SIZE]);
 
 impl AsRef<[u8]> for Record {
     fn as_ref(&self) -> &[u8] {
@@ -56,6 +121,62 @@ impl AsRef<[u8]> for Record {
 impl AsMut<[u8]> for Record {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
+    }
+}
+
+impl Record {
+    /// Size of a segment record given the global piece size (in bytes), is guaranteed to be
+    /// multiple of [`Scalar::FULL_BYTES`].
+    pub const SIZE: usize = RECORD_SIZE as usize;
+
+    /// Get a stream of arrays, each containing safe scalar bytes.
+    ///
+    /// Only useful for source records since only those contain raw record bytes that fit into safe
+    /// scalar bytes and the rest is zero bytes padding.
+    pub fn safe_scalar_arrays(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &'_ [u8; Scalar::SAFE_BYTES]> + '_ {
+        self.full_scalar_arrays().map(|bytes| {
+            bytes
+                .array_chunks::<{ Scalar::SAFE_BYTES }>()
+                .next()
+                .expect(
+                    "Safe bytes are smaller length as safe bytes, hence first element always \
+                    exists; qed",
+                )
+        })
+    }
+
+    /// Get a stream of mutable arrays, each containing safe scalar bytes.
+    ///
+    /// Only useful for source records since only those contain raw record bytes that fit into safe
+    /// scalar bytes and the rest is zero bytes padding.
+    pub fn safe_scalar_arrays_mut(
+        &mut self,
+    ) -> impl ExactSizeIterator<Item = &'_ mut [u8; Scalar::SAFE_BYTES]> + '_ {
+        self.full_scalar_arrays_mut().map(|bytes| {
+            bytes
+                .array_chunks_mut::<{ Scalar::SAFE_BYTES }>()
+                .next()
+                .expect(
+                    "Safe bytes are smaller length as safe bytes, hence first element always \
+                    exists; qed",
+                )
+        })
+    }
+
+    /// Get a stream of arrays, each containing scalar bytes.
+    pub fn full_scalar_arrays(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &'_ [u8; Scalar::FULL_BYTES]> + '_ {
+        self.0.array_chunks::<{ Scalar::FULL_BYTES }>()
+    }
+
+    /// Get a stream of mutable arrays, each containing scalar bytes.
+    pub fn full_scalar_arrays_mut(
+        &mut self,
+    ) -> impl ExactSizeIterator<Item = &'_ mut [u8; Scalar::FULL_BYTES]> + '_ {
+        self.0.array_chunks_mut::<{ Scalar::FULL_BYTES }>()
     }
 }
 
@@ -78,7 +199,7 @@ impl AsMut<[u8]> for RecordCommitment {
 
 impl RecordCommitment {
     /// Size of record commitment in bytes.
-    const SIZE: usize = 48;
+    pub const SIZE: usize = 48;
 }
 
 /// Record witness contained within a piece.
@@ -100,7 +221,7 @@ impl AsMut<[u8]> for RecordWitness {
 
 impl RecordWitness {
     /// Size of record witness in bytes.
-    const SIZE: usize = 48;
+    pub const SIZE: usize = 48;
 }
 
 /// A piece of archival history in Subspace Network.
@@ -336,6 +457,26 @@ impl FlatPieces {
     /// Extract internal representation.
     pub fn into_inner(self) -> Vec<PieceArray> {
         self.0
+    }
+
+    /// Iterator over source pieces (even indices).
+    pub fn source(&self) -> impl ExactSizeIterator<Item = &'_ PieceArray> + '_ {
+        self.0.iter().step_by(2)
+    }
+
+    /// Mutable iterator over source pieces (even indices).
+    pub fn source_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
+        self.0.iter_mut().step_by(2)
+    }
+
+    /// Iterator over parity pieces (odd indices).
+    pub fn parity(&self) -> impl ExactSizeIterator<Item = &'_ PieceArray> + '_ {
+        self.0.iter().skip(1).step_by(2)
+    }
+
+    /// Mutable iterator over parity pieces (odd indices).
+    pub fn parity_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
+        self.0.iter_mut().skip(1).step_by(2)
     }
 }
 

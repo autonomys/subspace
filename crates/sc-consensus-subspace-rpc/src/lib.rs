@@ -40,13 +40,10 @@ use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use std::error::Error;
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{
-    RecordsRoot, RootBlock, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
-};
+use subspace_core_primitives::{RecordsRoot, RootBlock, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -208,11 +205,6 @@ where
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
             let protocol_info = FarmerProtocolInfo {
-                record_size: NonZeroU32::new(RECORD_SIZE).ok_or_else(|| {
-                    error!("Incorrect record_size constant provided.");
-                    ApiError::Application("Incorrect record_size set".to_string().into())
-                })?,
-                recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 total_pieces: runtime_api.total_pieces(best_hash)?,
                 // TODO: Fetch this from the runtime
                 sector_expiration: 100,
