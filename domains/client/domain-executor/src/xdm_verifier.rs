@@ -86,7 +86,7 @@ where
 /// This is used by the System domain to validate Extrinsics.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub(crate) fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
+pub fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
     primary_chain_client: &Arc<PClient>,
     state_root_extractor: &SRE,
     extrinsic: &SBlock::Extrinsic,

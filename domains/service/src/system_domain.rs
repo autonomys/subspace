@@ -2,7 +2,6 @@ use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
-use domain_client_executor::xdm_verifier::SystemDomainXDMVerifier;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
     SystemGossipMessageValidator,
@@ -41,7 +40,6 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
-use subspace_transaction_pool::FullChainVerifier;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -58,6 +56,7 @@ type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Syste
 /// System domain full node along with some other components.
 pub struct NewFullSystem<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
 where
+    Block: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>>,
     PBlock::Hash: From<Hash>,
@@ -103,26 +102,18 @@ where
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
-pub type FullPool<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_transaction_pool::FullPoolWithChainVerifier<
+pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
+    Block,
+    FullClient<RuntimeApi, Executor>,
+    SystemDomainTxPreValidator<
         Block,
+        PBlock,
         FullClient<RuntimeApi, Executor>,
-        SystemDomainXDMVerifier<
-            PClient,
-            PBlock,
-            Block,
-            FullChainVerifier<
-                Block,
-                FullClient<RuntimeApi, Executor>,
-                SystemDomainTxPreValidator<
-                    Block,
-                    FullClient<RuntimeApi, Executor>,
-                    FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
-                >,
-            >,
-            StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
-        >,
-    >;
+        FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
+        PClient,
+        StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
+    >,
+>;
 
 type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
     subspace_fraud_proof::ProofVerifier<
@@ -214,27 +205,19 @@ where
         subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
 
-    let tx_pre_validator = SystemDomainTxPreValidator::new(
+    let system_domain_tx_pre_validator = SystemDomainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier,
-    );
-
-    // Skip bundle validation here because for the system domain the bundle is extract from the
-    // primary block thus it is already validated and accepted by the consensus chain.
-    let system_domain_fraud_proof_verifier =
-        FullChainVerifier::new(client.clone(), tx_pre_validator);
-    let system_domain_xdm_verifier = SystemDomainXDMVerifier::new(
         primary_chain_client,
         StateRootExtractorWithSystemDomainClient::new(client.clone()),
-        system_domain_fraud_proof_verifier,
     );
 
-    let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
+    let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
-        system_domain_xdm_verifier,
+        system_domain_tx_pre_validator,
     );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
