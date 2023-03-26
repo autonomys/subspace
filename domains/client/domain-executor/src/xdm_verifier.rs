@@ -22,7 +22,7 @@ use system_runtime_primitives::SystemDomainApi;
 /// Core domains nodes use this to verify an XDM coming from other domains.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub(crate) fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
+pub fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
     system_domain_client: &Arc<Client>,
     extrinsic: &SBlock::Extrinsic,
 ) -> Result<bool, Error>

@@ -1,6 +1,7 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
 mod core_domain;
+mod core_domain_tx_pre_validator;
 mod rpc;
 mod system_domain;
 mod system_domain_tx_pre_validator;
