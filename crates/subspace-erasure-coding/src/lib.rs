@@ -10,9 +10,11 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
 use blst_from_scratch::types::fr::FsFr;
+use blst_from_scratch::types::g1::FsG1;
 use blst_from_scratch::types::poly::FsPoly;
 use core::num::NonZeroUsize;
-use kzg::{FFTSettings, PolyRecover, DAS};
+use kzg::{FFTSettings, PolyRecover, DAS, FFTG1, G1};
+use subspace_core_primitives::crypto::kzg::Commitment;
 use subspace_core_primitives::crypto::Scalar;
 
 /// Erasure coding abstraction.
@@ -62,5 +64,26 @@ impl ErasureCoding {
         )?;
 
         Ok(Scalar::vec_from_repr(poly.coeffs))
+    }
+
+    /// Extend commitments using erasure coding.
+    ///
+    /// Returns both source and parity commitments interleaved.
+    pub fn extend_commitments(
+        &self,
+        commitments: &[Commitment],
+    ) -> Result<Vec<Commitment>, String> {
+        // Inverse FFT to interpolate polynomial over source commitments
+        let mut coeffs = self
+            .fft_settings
+            .fft_g1(Commitment::slice_to_repr(commitments), true)?;
+
+        // Double the size
+        coeffs.resize(coeffs.len() * 2, FsG1::identity());
+
+        // FFT to get extended commitments
+        self.fft_settings
+            .fft_g1(&coeffs, false)
+            .map(Commitment::vec_from_repr)
     }
 }

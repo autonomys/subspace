@@ -20,6 +20,7 @@ use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
 use core::mem;
+use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use kzg::{FFTFr, FFTSettings, KZGSettings};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 #[cfg(feature = "std")]
@@ -95,7 +96,7 @@ pub fn embedded_kzg_settings() -> FsKZGSettings {
 pub struct Polynomial(FsPoly);
 
 /// Commitment to polynomial
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, From, Into, AsRef, AsMut, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Commitment(FsG1);
 
@@ -326,7 +327,7 @@ impl TypeInfo for Commitment {
 }
 
 /// Witness for polynomial evaluation
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, From, Into, AsRef, AsMut, Deref, DerefMut)]
 #[repr(transparent)]
 pub struct Witness(FsG1);
 
