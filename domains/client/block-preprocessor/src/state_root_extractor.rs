@@ -122,7 +122,7 @@ where
 impl<SBlock: BlockT, Executor> FetchRuntimeCode
     for StateRootExtractorWithSystemDomainRuntime<SBlock, Executor>
 {
-    fn fetch_runtime_code(&self) -> Option<Cow<[u8]>> {
+    fn fetch_runtime_code(&self) -> Option<Cow<'static, [u8]>> {
         Some(self.runtime_code.clone())
     }
 }
@@ -132,6 +132,7 @@ where
     SBlock: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
+    #[allow(unused)]
     pub fn new(
         executor: Arc<Executor>,
         runtime_code: Cow<'static, [u8]>,
@@ -144,7 +145,7 @@ where
         }
     }
 
-    fn runtime_code(&self) -> RuntimeCode {
+    fn runtime_code(&self) -> RuntimeCode<'_> {
         let code_hash = sp_core::Blake2Hasher::hash(&self.runtime_code);
         RuntimeCode {
             code_fetcher: self,

@@ -1,5 +1,5 @@
-use domain_client_executor::state_root_extractor::StateRootExtractor;
-use domain_client_executor::xdm_verifier::verify_xdm_with_primary_chain_client;
+use domain_client_block_preprocessor::state_root_extractor::StateRootExtractor;
+use domain_client_block_preprocessor::xdm_verifier::verify_xdm_with_primary_chain_client;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
