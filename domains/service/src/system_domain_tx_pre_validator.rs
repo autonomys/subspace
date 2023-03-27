@@ -1,7 +1,5 @@
 use domain_client_executor::state_root_extractor::StateRootExtractor;
 use domain_client_executor::xdm_verifier::verify_xdm_with_primary_chain_client;
-use futures::channel::oneshot;
-use futures::future::FutureExt;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
@@ -13,7 +11,6 @@ use sp_domains::transaction::{
 };
 use sp_domains::ExecutorApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use sp_runtime::transaction_validity::UnknownTransaction;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -108,47 +105,16 @@ where
                 // No pre-validation is required.
             }
             PreValidationObject::FraudProof(fraud_proof) => {
-                let spawner = self.spawner.clone();
-                let fraud_proof_verifier = self.fraud_proof_verifier.clone();
-
-                let (verified_result_sender, verified_result_receiver) = oneshot::channel();
-
-                // Verify the fraud proof in another blocking task as it might be pretty heavy.
-                spawner.spawn_blocking(
-                    "txpool-fraud-proof-verification",
-                    None,
-                    async move {
-                        let verified_result = fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
-                        verified_result_sender
-                            .send(verified_result)
-                            .expect("Failed to send the verified fraud proof result");
-                    }
-                    .boxed(),
-                );
-
-                match verified_result_receiver.await {
-                    Ok(verified_result) => {
-                        match verified_result {
-                            Ok(_) => {
-                                // Continue the regular `validate_transaction`
-                            }
-                            Err(err) => {
-                                tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
-                                return Err(TxPoolError::InvalidTransaction(
-                                    InvalidTransactionCode::FraudProof.into(),
-                                )
-                                .into());
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        tracing::debug!(target: "txpool", error = ?err, "Failed to receive the fraud proof verified result");
-                        return Err(TxPoolError::UnknownTransaction(
-                            UnknownTransaction::CannotLookup,
-                        )
-                        .into());
-                    }
-                }
+                subspace_fraud_proof::validate_fraud_proof_in_tx_pool(
+                    &self.spawner,
+                    self.fraud_proof_verifier.clone(),
+                    fraud_proof,
+                )
+                .await
+                .map_err(|err| {
+                    tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
+                    TxPoolError::InvalidTransaction(InvalidTransactionCode::FraudProof.into())
+                })?;
             }
         }
 

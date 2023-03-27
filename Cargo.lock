@@ -10514,7 +10514,6 @@ dependencies = [
  "sp-domains",
  "sp-runtime",
  "sp-transaction-pool",
- "subspace-fraud-proof",
  "substrate-prometheus-endpoint",
  "tracing",
 ]

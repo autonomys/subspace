@@ -27,6 +27,5 @@ sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
-subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
 tracing = "0.1.37"
