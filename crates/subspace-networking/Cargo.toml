@@ -60,6 +60,7 @@ features = [
     "metrics",
     "noise",
     "ping",
+    "quic",
     "request-response",
     "serde",
     "tcp",

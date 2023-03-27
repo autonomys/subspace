@@ -1,11 +1,14 @@
 use crate::create::temporary_bans::TemporaryBans;
 use crate::CreationError;
+use futures::future::Either;
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, ListenerId, TransportError, TransportEvent};
 use libp2p::core::Transport;
 use libp2p::dns::TokioDnsConfig;
 use libp2p::noise::NoiseConfig;
+use libp2p::quic::tokio::Transport as QuicTransport;
+use libp2p::quic::Config as QuicConfig;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
@@ -27,31 +30,51 @@ pub(super) fn build_transport(
     timeout: Duration,
     yamux_config: YamuxConfig,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
-    let transport = {
-        let dns_tcp = TokioDnsConfig::system(CustomTransportWrapper::new(
+    let wrapped_tcp_ws = {
+        let wrapped_tcp = CustomTransportWrapper::new(
             TokioTcpTransport::new(GenTcpConfig::default().nodelay(true)),
             allow_non_global_addresses_in_dht,
             temporary_bans.clone(),
-        ))?;
-        let ws = WsConfig::new(TokioDnsConfig::system(CustomTransportWrapper::new(
+        );
+
+        let wrapped_ws = WsConfig::new(CustomTransportWrapper::new(
             TokioTcpTransport::new(GenTcpConfig::default().nodelay(true)),
             allow_non_global_addresses_in_dht,
-            temporary_bans,
-        ))?);
+            temporary_bans.clone(),
+        ));
 
-        dns_tcp.or_transport(ws).boxed()
+        wrapped_tcp.or_transport(wrapped_ws)
     };
 
-    let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-        .into_authentic(keypair)
-        .expect("Signing libp2p-noise static DH keypair failed.");
+    let tcp_ws_upgraded = {
+        let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
+            .into_authentic(keypair)
+            .expect("Signing libp2p-noise static DH keypair failed.");
 
-    Ok(transport
-        .upgrade(core::upgrade::Version::V1Lazy)
-        .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
-        .multiplex(yamux_config)
-        .timeout(timeout)
-        .boxed())
+        wrapped_tcp_ws
+            .upgrade(core::upgrade::Version::V1Lazy)
+            .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
+            .multiplex(yamux_config)
+            .timeout(timeout)
+            .boxed()
+    };
+
+    let quic = QuicTransport::new(QuicConfig::new(keypair))
+        .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)));
+
+    let wrapped_quic =
+        CustomTransportWrapper::new(quic, allow_non_global_addresses_in_dht, temporary_bans);
+
+    let tcp_ws_quic = tcp_ws_upgraded
+        .or_transport(wrapped_quic)
+        .map(|either, _| match either {
+            Either::Left((peer_id, muxer)) => (peer_id, muxer),
+            Either::Right((peer_id, muxer)) => (peer_id, muxer),
+        });
+
+    let dns_wrapped_upgraded_tcp_ws_quic = TokioDnsConfig::system(tcp_ws_quic)?;
+
+    Ok(dns_wrapped_upgraded_tcp_ws_quic.boxed())
 }
 
 #[derive(Debug, Clone)]
