@@ -68,7 +68,7 @@ where
 
         let new_runtime = match domain_id {
             DomainId::SYSTEM => system_domain_runtime,
-            DomainId::CORE_PAYMENTS => {
+            DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => {
                 read_core_domain_runtime_blob(system_domain_runtime.as_ref(), domain_id)
                     .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?
                     .into()

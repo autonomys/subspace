@@ -23,6 +23,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 bytesize = "1.2.0"
 clap = { version = "4.1.6", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
+core-eth-relay-runtime = { version = "0.1.0", path = "../../domains/runtime/core-eth-relay" }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "4.0.0"
 domain-client-executor = { version = "0.1.0", path = "../../domains/client/domain-executor" }

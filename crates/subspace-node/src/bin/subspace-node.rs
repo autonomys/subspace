@@ -75,6 +75,24 @@ impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
     }
 }
 
+/// Core eth relay domain executor instance.
+pub struct CoreEthRelayDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for CoreEthRelayDomainExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_eth_relay_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_eth_relay_runtime::native_version()
+    }
+}
+
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -635,6 +653,32 @@ fn main() -> Result<(), Error> {
                                         _,
                                         core_payments_domain_runtime::RuntimeApi,
                                         CorePaymentsDomainExecutorDispatch,
+                                    >(core_domain_params)
+                                    .await?;
+
+                                domain_tx_pool_sinks.insert(
+                                    core_domain_cli.domain_id,
+                                    core_domain_node.tx_pool_sink,
+                                );
+                                primary_chain_node
+                                    .task_manager
+                                    .add_child(core_domain_node.task_manager);
+
+                                core_domain_node.network_starter.start_network();
+                            }
+                            DomainId::CORE_ETH_RELAY => {
+                                let core_domain_node =
+                                    domain_service::new_full_core::<
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        core_eth_relay_runtime::RuntimeApi,
+                                        CoreEthRelayDomainExecutorDispatch,
                                     >(core_domain_params)
                                     .await?;
 
