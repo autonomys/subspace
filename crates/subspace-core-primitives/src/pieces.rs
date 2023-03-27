@@ -362,7 +362,7 @@ impl PieceArray {
 
         let record = <&[u8; RECORD_SIZE as usize]>::try_from(record)
             .expect("Slice of memory has correct length; qed");
-        let commitment = <&[u8; RecordWitness::SIZE]>::try_from(commitment)
+        let commitment = <&[u8; RecordCommitment::SIZE]>::try_from(commitment)
             .expect("Slice of memory has correct length; qed");
         let witness = <&[u8; RecordWitness::SIZE]>::try_from(witness)
             .expect("Slice of memory has correct length; qed");
@@ -384,7 +384,7 @@ impl PieceArray {
 
         let record = <&mut [u8; RECORD_SIZE as usize]>::try_from(record)
             .expect("Slice of memory has correct length; qed");
-        let commitment = <&mut [u8; RecordWitness::SIZE]>::try_from(commitment)
+        let commitment = <&mut [u8; RecordCommitment::SIZE]>::try_from(commitment)
             .expect("Slice of memory has correct length; qed");
         let witness = <&mut [u8; RecordWitness::SIZE]>::try_from(witness)
             .expect("Slice of memory has correct length; qed");
