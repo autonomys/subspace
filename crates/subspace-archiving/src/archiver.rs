@@ -726,36 +726,12 @@ impl Archiver {
 
         // Collect hashes to commitments from all records
         let record_commitments = self
-            .incremental_record_commitments
-            .drain()
-            .zip(
-                // TODO: Replace with erasure coding of incrementally created record commitments
-                pieces.parity().map(|piece| {
-                    let record_chunks = piece.record().full_scalar_arrays();
-                    let number_of_chunks = record_chunks.len();
-                    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
-
-                    record_chunks
-                        .map(|bytes| {
-                            Scalar::try_from(bytes).expect(
-                                "Bytes correspond to scalars we have just erasure coded; qed",
-                            )
-                        })
-                        .collect_into(&mut scalars);
-
-                    // Number of scalars for KZG must be a power of two elements
-                    scalars.resize(scalars.capacity(), Scalar::default());
-
-                    let polynomial = self.kzg.poly(&scalars).expect(
-                        "KZG instance must be configured to support this many scalars; qed",
-                    );
-                    self.kzg
-                        .commit(&polynomial)
-                        .expect("KZG instance must be configured to support this many scalars; qed")
-                }),
-            )
-            .flat_map(|(a, b)| [a, b])
-            .collect::<Vec<_>>();
+            .erasure_coding
+            .extend_commitments(&self.incremental_record_commitments)
+            .expect(
+                "Erasure coding instance is deliberately configured to support this input; qed",
+            );
+        self.incremental_record_commitments.clear();
 
         let polynomial = self
             .kzg

@@ -3,9 +3,11 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
-use subspace_core_primitives::crypto::kzg::{Kzg, Polynomial};
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
-use subspace_core_primitives::{FlatPieces, Piece, RawRecord, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{
+    FlatPieces, Piece, RawRecord, RecordedHistorySegment, PIECES_IN_SEGMENT,
+};
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error.
@@ -30,6 +32,10 @@ pub enum ReconstructorError {
         error("Error during data shards reconstruction: {0}")
     )]
     DataShardsReconstruction(String),
+
+    /// Commitment of input piece is invalid.
+    #[cfg_attr(feature = "thiserror", error("Commitment of input piece is invalid."))]
+    InvalidInputPieceCommitment,
 
     /// Incorrect piece position provided.
     #[cfg_attr(feature = "thiserror", error("Incorrect piece position provided."))]
@@ -66,11 +72,11 @@ impl PiecesReconstructor {
     /// necessary witnesses later.
     fn reconstruct_shards(
         &self,
-        segment_pieces: &[Option<Piece>],
+        input_pieces: &[Option<Piece>],
     ) -> Result<(FlatPieces, Polynomial), ReconstructorError> {
         let mut reconstructed_pieces = FlatPieces::new(PIECES_IN_SEGMENT as usize);
 
-        if !segment_pieces
+        if !input_pieces
             .iter()
             // Take each source shards here
             .step_by(2)
@@ -103,7 +109,7 @@ impl PiecesReconstructor {
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
                 // Collect chunks of each record at the same offset
-                for maybe_piece in segment_pieces.iter() {
+                for maybe_piece in input_pieces.iter() {
                     let maybe_scalar = maybe_piece
                         .as_ref()
                         .map(|piece| {
@@ -139,16 +145,15 @@ impl PiecesReconstructor {
             }
         }
 
-        let mut record_commitment_hashes = Vec::with_capacity(PIECES_IN_SEGMENT as usize);
-        // TODO: Parity hashes will be erasure coded instead in the future
-        for (piece, maybe_input_piece) in reconstructed_pieces.iter_mut().zip(segment_pieces) {
+        let mut source_record_commitments = Vec::with_capacity(RecordedHistorySegment::RAW_RECORDS);
+        for (piece, maybe_input_piece) in
+            reconstructed_pieces.iter_mut().zip(input_pieces).step_by(2)
+        {
             if let Some(input_piece) = maybe_input_piece {
-                piece
-                    .commitment_mut()
-                    .copy_from_slice(input_piece.commitment().as_ref());
-                record_commitment_hashes.push(blake2b_256_254_hash_to_scalar(
-                    input_piece.commitment().as_ref(),
-                ));
+                source_record_commitments.push(
+                    Commitment::try_from_bytes(input_piece.commitment())
+                        .map_err(|_error| ReconstructorError::InvalidInputPieceCommitment)?,
+                );
             } else {
                 let scalars = {
                     let record_chunks = piece.record().full_scalar_arrays();
@@ -176,14 +181,28 @@ impl PiecesReconstructor {
                     .kzg
                     .commit(&polynomial)
                     .expect("KZG instance must be configured to support this many scalars; qed");
-
-                piece
-                    .commitment_mut()
-                    .copy_from_slice(&commitment.to_bytes());
-                record_commitment_hashes
-                    .push(blake2b_256_254_hash_to_scalar(&commitment.to_bytes()));
+                source_record_commitments.push(commitment);
             }
         }
+        let record_commitments = self
+            .erasure_coding
+            .extend_commitments(&source_record_commitments)
+            .expect(
+                "Erasure coding instance is deliberately configured to support this input; qed",
+            );
+        drop(source_record_commitments);
+
+        let record_commitment_hashes = reconstructed_pieces
+            .iter_mut()
+            .zip(record_commitments)
+            .map(|(reconstructed_piece, commitment)| {
+                let commitment_bytes = commitment.to_bytes();
+                reconstructed_piece
+                    .commitment_mut()
+                    .copy_from_slice(&commitment_bytes);
+                blake2b_256_254_hash_to_scalar(&commitment_bytes)
+            })
+            .collect::<Vec<_>>();
 
         let polynomial = self
             .kzg
