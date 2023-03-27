@@ -1,14 +1,16 @@
-use crate::runtime_api::{ExtractedStateRoots, StateRootExtractor};
+use crate::runtime_api::{CoreBundleConstructor, ExtractedStateRoots, StateRootExtractor};
 use codec::{Codec, Encode};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::ExecutionContext;
+use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
 use std::sync::Arc;
+use system_runtime_primitives::SystemDomainApi;
 
 /// This is a stateless wrapper around the runtime api.
 /// Note: Dispatch may give invalid output if the invoked function relies on state of the chain.
@@ -126,5 +128,43 @@ where
         .and_then(|maybe_state_roots| {
             maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
         })
+    }
+}
+
+impl<Executor, Block, PNumber, PHash> SystemDomainApi<Block, PNumber, PHash>
+    for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    PNumber: Codec,
+    PHash: Codec,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        _context: ExecutionContext,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
+impl<PBlock, Executor, Block> CoreBundleConstructor<PBlock, Block> for RuntimeApiLight<Executor>
+where
+    PBlock: BlockT,
+    Block: BlockT,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn construct_submit_core_bundle_extrinsics(
+        &self,
+        at: Block::Hash,
+        signed_opaque_bundles: Vec<
+            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        >,
+    ) -> Result<Vec<Vec<u8>>, ApiError> {
+        <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>>::construct_submit_core_bundle_extrinsics(
+            self, at, signed_opaque_bundles,
+        )
     }
 }
