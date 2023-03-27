@@ -407,7 +407,7 @@ where
     .await?;
 
     let gossip_message_validator =
-        CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, _, _, _, _>::new(
+        CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, _, _, _, _, _>::new(
             CoreDomainParentChain::<_, SBlock, PBlock>::new(
                 system_domain_client.clone(),
                 domain_id,

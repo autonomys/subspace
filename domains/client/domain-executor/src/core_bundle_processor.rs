@@ -1,9 +1,7 @@
-use crate::domain_block_processor::{
-    preprocess_primary_block, DomainBlockProcessor, PendingPrimaryBlocks,
-};
+use crate::domain_block_preprocessor::CoreDomainBlockPreprocessor;
+use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
-use crate::utils::{translate_number_type, DomainBundles};
-use crate::xdm_verifier::verify_xdm_with_system_domain_client;
+use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
@@ -17,7 +15,6 @@ use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
 use system_runtime_primitives::SystemDomainApi;
 
 pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
@@ -33,6 +30,8 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
+    core_domain_block_preprocessor:
+        CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
@@ -53,6 +52,7 @@ where
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
+            core_domain_block_preprocessor: self.core_domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -103,6 +103,12 @@ where
             system_domain_client.clone(),
             domain_id,
         );
+        let core_domain_block_preprocessor = CoreDomainBlockPreprocessor::new(
+            domain_id,
+            client.clone(),
+            primary_chain_client.clone(),
+            system_domain_client.clone(),
+        );
         Self {
             domain_id,
             primary_chain_client,
@@ -111,6 +117,7 @@ where
             client,
             backend,
             keystore,
+            core_domain_block_preprocessor,
             domain_block_processor,
             _phantom_data: PhantomData::default(),
         }
@@ -165,12 +172,9 @@ where
             on top of #{parent_number},{parent_hash}"
         );
 
-        let (bundles, shuffling_seed, maybe_new_runtime) =
-            preprocess_primary_block(self.domain_id, &*self.primary_chain_client, primary_hash)?;
-
-        let extrinsics = self
-            .bundles_to_extrinsics(parent_hash, bundles, shuffling_seed)
-            .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
+        let (extrinsics, maybe_new_runtime) = self
+            .core_domain_block_preprocessor
+            .preprocess_primary_block(primary_hash, parent_hash)?;
 
         let domain_block_result = self
             .domain_block_processor
@@ -224,47 +228,5 @@ where
         }
 
         Ok(built_block_info)
-    }
-
-    fn bundles_to_extrinsics(
-        &self,
-        parent_hash: Block::Hash,
-        bundles: DomainBundles<Block, PBlock>,
-        shuffling_seed: Randomness,
-    ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error> {
-        let bundles = match bundles {
-            DomainBundles::System(..) => {
-                return Err(sp_blockchain::Error::Application(Box::from(
-                    "Core bundle processor can not process system bundles.",
-                )));
-            }
-            DomainBundles::Core(bundles) => bundles,
-        };
-        let extrinsics = self
-            .domain_block_processor
-            .compile_own_domain_bundles(bundles);
-        self.domain_block_processor
-            .deduplicate_and_shuffle_extrinsics(parent_hash, extrinsics, shuffling_seed)
-    }
-
-    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
-        exts.into_iter()
-            .filter(|ext| {
-                match verify_xdm_with_system_domain_client::<_, Block, SBlock, PBlock>(
-                    &self.system_domain_client,
-                    &(ext.clone().into()),
-                ) {
-                    Ok(valid) => valid,
-                    Err(err) => {
-                        tracing::error!(
-                            target = "core_domain_xdm_filter",
-                            "failed to verify extrinsic: {}",
-                            err
-                        );
-                        false
-                    }
-                }
-            })
-            .collect()
     }
 }

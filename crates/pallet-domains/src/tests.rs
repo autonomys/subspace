@@ -470,7 +470,7 @@ fn submit_fraud_proof_should_work() {
             domain_id,
             bad_receipt_hash: Hash::random(),
             parent_number: 99,
-            parent_hash: block_hashes[98],
+            primary_parent_hash: block_hashes[98],
             pre_state_root: H256::random(),
             post_state_root: H256::random(),
             proof: StorageProof::empty(),

@@ -154,7 +154,9 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         parent_header.hash(),
         digest,
     );
-    let execution_phase = ExecutionPhase::InitializeBlock;
+    let execution_phase = ExecutionPhase::InitializeBlock {
+        domain_parent_hash: parent_header.hash(),
+    };
     let initialize_block_call_data = new_header.encode();
 
     let storage_proof = prover
@@ -178,7 +180,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         domain_id: DomainId::SYSTEM,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_ferdie,
-        parent_hash: parent_hash_ferdie,
+        primary_parent_hash: parent_hash_ferdie,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,

@@ -31,7 +31,7 @@ pub struct Executor<Block, SBlock, PBlock, Client, SClient, PClient, Transaction
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
-    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, SClient)>,
 }
 
@@ -133,6 +133,7 @@ where
 
         let fraud_proof_generator = FraudProofGenerator::new(
             params.client.clone(),
+            params.primary_chain_client.clone(),
             params.spawner.clone(),
             params.backend.clone(),
             params.code_executor,
@@ -183,7 +184,9 @@ where
         })
     }
 
-    pub fn fraud_proof_generator(&self) -> FraudProofGenerator<Block, PBlock, Client, Backend, E> {
+    pub fn fraud_proof_generator(
+        &self,
+    ) -> FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E> {
         self.fraud_proof_generator.clone()
     }
 }

@@ -19,6 +19,7 @@ pub struct SystemGossipMessageValidator<
     Block,
     PBlock,
     Client,
+    PClient,
     TransactionPool,
     Backend,
     E,
@@ -27,14 +28,15 @@ pub struct SystemGossipMessageValidator<
     parent_chain: ParentChain,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, Backend, E>,
+    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>,
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E, ParentChain> Clone
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain> Clone
     for SystemGossipMessageValidator<
         Block,
         PBlock,
         Client,
+        PClient,
         TransactionPool,
         Backend,
         E,
@@ -53,8 +55,17 @@ where
     }
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E, ParentChain>
-    SystemGossipMessageValidator<Block, PBlock, Client, TransactionPool, Backend, E, ParentChain>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain>
+    SystemGossipMessageValidator<
+        Block,
+        PBlock,
+        Client,
+        PClient,
+        TransactionPool,
+        Backend,
+        E,
+        ParentChain,
+    >
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -67,6 +78,7 @@ where
     Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    PClient: HeaderBackend<PBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -78,7 +90,7 @@ where
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         transaction_pool: Arc<TransactionPool>,
-        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, Backend, E>,
+        fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         let gossip_message_validator =
             GossipMessageValidator::new(client.clone(), spawner, fraud_proof_generator);
@@ -91,12 +103,13 @@ where
     }
 }
 
-impl<Block, PBlock, Client, TransactionPool, Backend, E, ParentChain>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain>
     GossipMessageHandler<PBlock, Block>
     for SystemGossipMessageValidator<
         Block,
         PBlock,
         Client,
+        PClient,
         TransactionPool,
         Backend,
         E,
@@ -115,6 +128,7 @@ where
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     Backend: sc_client_api::Backend<Block> + 'static,
+    PClient: HeaderBackend<PBlock> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
