@@ -19,6 +19,7 @@ use blst_from_scratch::types::g1::FsG1;
 use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
+use core::mem;
 use kzg::{FFTFr, FFTSettings, KZGSettings};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 #[cfg(feature = "std")]
@@ -95,6 +96,7 @@ pub struct Polynomial(FsPoly);
 
 /// Commitment to polynomial
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Commitment(FsG1);
 
 impl Commitment {
@@ -109,6 +111,130 @@ impl Commitment {
     /// Try to deserialize commitment from raw bytes
     pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
         Ok(Commitment(bytes_to_g1_rust(bytes)?))
+    }
+
+    /// Convenient conversion from slice of commitment to underlying representation for efficiency
+    /// purposes.
+    pub fn slice_to_repr(value: &[Self]) -> &[FsG1] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of underlying representation to commitment for efficiency
+    /// purposes.
+    pub fn slice_from_repr(value: &[FsG1]) -> &[Self] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of optional commitment to underlying representation for
+    /// efficiency purposes.
+    pub fn slice_option_to_repr(value: &[Option<Self>]) -> &[Option<FsG1>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of optional underlying representation to commitment for
+    /// efficiency purposes.
+    pub fn slice_option_from_repr(value: &[Option<FsG1>]) -> &[Option<Self>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of commitment to underlying representation for
+    /// efficiency purposes.
+    pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [FsG1] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of underlying representation to commitment for
+    /// efficiency purposes.
+    pub fn slice_mut_from_repr(value: &mut [FsG1]) -> &mut [Self] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from optional mutable slice of commitment to underlying representation
+    /// for efficiency purposes.
+    pub fn slice_option_mut_to_repr(value: &mut [Option<Self>]) -> &mut [Option<FsG1>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from optional mutable slice of underlying representation to commitment
+    /// for efficiency purposes.
+    pub fn slice_option_mut_from_repr(value: &mut [Option<FsG1>]) -> &mut [Option<Self>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from vector of commitment to underlying representation for efficiency
+    /// purposes.
+    pub fn vec_to_repr(value: Vec<Self>) -> Vec<FsG1> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut FsG1,
+                value.len(),
+                value.capacity(),
+            )
+        }
+    }
+
+    /// Convenient conversion from vector of underlying representation to commitment for efficiency
+    /// purposes.
+    pub fn vec_from_repr(value: Vec<FsG1>) -> Vec<Self> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut Self,
+                value.len(),
+                value.capacity(),
+            )
+        }
+    }
+
+    /// Convenient conversion from vector of optional commitment to underlying representation for
+    /// efficiency purposes.
+    pub fn vec_option_to_repr(value: Vec<Option<Self>>) -> Vec<Option<FsG1>> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut Option<FsG1>,
+                value.len(),
+                value.capacity(),
+            )
+        }
+    }
+
+    /// Convenient conversion from vector of optional underlying representation to commitment for
+    /// efficiency purposes.
+    pub fn vec_option_from_repr(value: Vec<Option<FsG1>>) -> Vec<Option<Self>> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut Option<Self>,
+                value.len(),
+                value.capacity(),
+            )
+        }
     }
 }
 
@@ -201,6 +327,7 @@ impl TypeInfo for Commitment {
 
 /// Witness for polynomial evaluation
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Witness(FsG1);
 
 impl Witness {
