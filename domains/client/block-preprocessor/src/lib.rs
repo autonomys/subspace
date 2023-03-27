@@ -3,5 +3,7 @@
 #![warn(rust_2018_idioms)]
 
 pub mod preprocessor;
-pub mod state_root_extractor;
+pub mod runtime_api;
+pub mod runtime_api_full;
+pub mod runtime_api_light;
 pub mod xdm_verifier;

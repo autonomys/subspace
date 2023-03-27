@@ -1,4 +1,4 @@
-use domain_client_block_preprocessor::state_root_extractor::StateRootExtractor;
+use domain_client_block_preprocessor::runtime_api::StateRootExtractor;
 use domain_client_block_preprocessor::xdm_verifier::verify_xdm_with_primary_chain_client;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -88,6 +88,7 @@ where
     ) -> TxPoolResult<()> {
         if !verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, SRE>(
             &self.primary_chain_client,
+            at,
             &self.state_root_extractor,
             &uxt,
         )? {

@@ -1,7 +1,7 @@
 //! This module provides the feature of extracting the potential new domain runtime and final
 //! list of extrinsics for the domain block from the original primary block.
 
-use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
+use crate::runtime_api_full::RuntimeApiFull;
 use crate::xdm_verifier::{
     verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
 };
@@ -100,24 +100,24 @@ where
     PBlock: BlockT,
 {
     bundles
-            .into_iter()
-            .flat_map(|bundle| {
-                bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-                    match <<Block as BlockT>::Extrinsic>::decode(
-                        &mut opaque_extrinsic.encode().as_slice(),
-                    ) {
-                        Ok(uxt) => Some(uxt),
-                        Err(e) => {
-                            tracing::error!(
+        .into_iter()
+        .flat_map(|bundle| {
+            bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
+                match <<Block as BlockT>::Extrinsic>::decode(
+                    &mut opaque_extrinsic.encode().as_slice(),
+                ) {
+                    Ok(uxt) => Some(uxt),
+                    Err(e) => {
+                        tracing::error!(
                                 error = ?e,
                                 "Failed to decode the opaque extrisic in bundle, this should not happen"
                             );
-                            None
-                        },
+                        None
                     }
-                })
+                }
             })
-            .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>()
 }
 
 fn deduplicate_and_shuffle_extrinsics<Block, Client>(
@@ -209,7 +209,7 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
 pub struct SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient> {
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
-    state_root_extractor: StateRootExtractorWithSystemDomainClient<Client>,
+    state_root_extractor: RuntimeApiFull<Client>,
     _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
@@ -245,7 +245,7 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
     pub fn new(client: Arc<Client>, primary_chain_client: Arc<PClient>) -> Self {
-        let state_root_extractor = StateRootExtractorWithSystemDomainClient::new(client.clone());
+        let state_root_extractor = RuntimeApiFull::new(client.clone());
         Self {
             client,
             primary_chain_client,
@@ -299,16 +299,21 @@ where
             extrinsics,
             shuffling_seed,
         )
-        .map(|extrinsincs| self.filter_invalid_xdm_extrinsics(extrinsincs))?;
+        .map(|exts| self.filter_invalid_xdm_extrinsics(domain_hash, exts))?;
 
         Ok((extrinsics, maybe_new_runtime))
     }
 
-    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
+    fn filter_invalid_xdm_extrinsics(
+        &self,
+        at: Block::Hash,
+        exts: Vec<Block::Extrinsic>,
+    ) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
                 match verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, _>(
                     &self.primary_chain_client,
+                    at,
                     &self.state_root_extractor,
                     ext,
                 ) {

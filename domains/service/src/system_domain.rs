@@ -1,7 +1,7 @@
 use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
-use domain_client_block_preprocessor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
+use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
     SystemGossipMessageValidator,
@@ -111,7 +111,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
         FullClient<RuntimeApi, Executor>,
         FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
         PClient,
-        StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
+        RuntimeApiFull<FullClient<RuntimeApi, Executor>>,
     >,
 >;
 
@@ -210,7 +210,7 @@ where
         Box::new(task_manager.spawn_handle()),
         proof_verifier,
         primary_chain_client,
-        StateRootExtractorWithSystemDomainClient::new(client.clone()),
+        RuntimeApiFull::new(client.clone()),
     );
 
     let transaction_pool = subspace_transaction_pool::new_full(
