@@ -26,7 +26,8 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
-    system_domain_block_preprocessor: SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient>,
+    system_domain_block_preprocessor:
+        SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     state_root_extractor: RuntimeApiFull<Client>,
 }
@@ -85,8 +86,10 @@ where
         keystore: SyncCryptoStorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let system_domain_block_preprocessor =
-            SystemDomainBlockPreprocessor::new(client.clone(), primary_chain_client.clone());
+        let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(
+            primary_chain_client.clone(),
+            RuntimeApiFull::new(client.clone()),
+        );
         Self {
             primary_chain_client,
             client: client.clone(),

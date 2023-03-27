@@ -3,6 +3,7 @@ use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_block_preprocessor::preprocessor::CoreDomainBlockPreprocessor;
+use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -30,8 +31,14 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
-    core_domain_block_preprocessor:
-        CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>,
+    core_domain_block_preprocessor: CoreDomainBlockPreprocessor<
+        Block,
+        PBlock,
+        SBlock,
+        PClient,
+        SClient,
+        RuntimeApiFull<Client>,
+    >,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
@@ -105,7 +112,7 @@ where
         );
         let core_domain_block_preprocessor = CoreDomainBlockPreprocessor::new(
             domain_id,
-            client.clone(),
+            RuntimeApiFull::new(client.clone()),
             primary_chain_client.clone(),
             system_domain_client.clone(),
         );

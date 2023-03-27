@@ -1,12 +1,12 @@
 //! This module provides the feature of extracting the potential new domain runtime and final
 //! list of extrinsics for the domain block from the original primary block.
 
-use crate::runtime_api_full::RuntimeApiFull;
+use crate::runtime_api::{CoreBundleConstructor, SignerExtractor, StateRootExtractor};
 use crate::xdm_verifier::{
     verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
 };
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::AccountId;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -120,16 +120,15 @@ where
         .collect::<Vec<_>>()
 }
 
-fn deduplicate_and_shuffle_extrinsics<Block, Client>(
-    client: &Arc<Client>,
+fn deduplicate_and_shuffle_extrinsics<Block, SE>(
     parent_hash: Block::Hash,
+    signer_extractor: &SE,
     mut extrinsics: Vec<Block::Extrinsic>,
     shuffling_seed: Randomness,
 ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
 where
     Block: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    Client::Api: DomainCoreApi<Block, AccountId>,
+    SE: SignerExtractor<Block, AccountId>,
 {
     let mut seen = Vec::new();
     extrinsics.retain(|uxt| match seen.contains(uxt) {
@@ -146,7 +145,7 @@ where
 
     tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
 
-    let extrinsics: Vec<_> = match client.runtime_api().extract_signer(parent_hash, extrinsics) {
+    let extrinsics: Vec<_> = match signer_extractor.extract_signer(parent_hash, extrinsics) {
         Ok(res) => res,
         Err(e) => {
             tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
@@ -206,36 +205,34 @@ fn shuffle_extrinsics<Extrinsic: Debug>(
     shuffled_extrinsics
 }
 
-pub struct SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient> {
-    client: Arc<Client>,
+pub struct SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi> {
     primary_chain_client: Arc<PClient>,
-    state_root_extractor: RuntimeApiFull<Client>,
+    runtime_api: RuntimeApi,
     _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
-impl<Block, PBlock, Client, PClient> Clone
-    for SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient>
+impl<Block, PBlock, PClient, RuntimeApi: Clone> Clone
+    for SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
 {
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
-            state_root_extractor: self.state_root_extractor.clone(),
+            runtime_api: self.runtime_api.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, Client, PClient> SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient>
+impl<Block, PBlock, PClient, RuntimeApi>
+    SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
 where
     Block: BlockT,
     PBlock: BlockT,
     PBlock::Hash: From<Block::Hash>,
     NumberFor<PBlock>: From<NumberFor<Block>>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainCoreApi<Block, AccountId>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
-        + MessengerApi<Block, NumberFor<Block>>,
+    RuntimeApi: CoreBundleConstructor<PBlock, Block>
+        + SignerExtractor<Block, AccountId>
+        + StateRootExtractor<Block>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -244,12 +241,10 @@ where
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
-    pub fn new(client: Arc<Client>, primary_chain_client: Arc<PClient>) -> Self {
-        let state_root_extractor = RuntimeApiFull::new(client.clone());
+    pub fn new(primary_chain_client: Arc<PClient>, runtime_api: RuntimeApi) -> Self {
         Self {
-            client,
             primary_chain_client,
-            state_root_extractor,
+            runtime_api,
             _phantom_data: Default::default(),
         }
     }
@@ -274,8 +269,7 @@ where
         let origin_system_extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
 
         let extrinsics = self
-            .client
-            .runtime_api()
+            .runtime_api
             .construct_submit_core_bundle_extrinsics(domain_hash, core_bundles)?
             .into_iter()
             .filter_map(
@@ -294,8 +288,8 @@ where
             .collect::<Vec<_>>();
 
         let extrinsics = deduplicate_and_shuffle_extrinsics(
-            &self.client,
             domain_hash,
+            &self.runtime_api,
             extrinsics,
             shuffling_seed,
         )
@@ -314,7 +308,7 @@ where
                 match verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, _>(
                     &self.primary_chain_client,
                     at,
-                    &self.state_root_extractor,
+                    &self.runtime_api,
                     ext,
                 ) {
                     Ok(valid) => valid,
@@ -332,21 +326,21 @@ where
     }
 }
 
-pub struct CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient> {
+pub struct CoreDomainBlockPreprocessor<Block, PBlock, SBlock, PClient, SClient, RuntimeApi> {
     domain_id: DomainId,
-    client: Arc<Client>,
+    runtime_api: RuntimeApi,
     system_domain_client: Arc<SClient>,
     primary_chain_client: Arc<PClient>,
     _phantom_data: PhantomData<(Block, PBlock, SBlock)>,
 }
 
-impl<Block, PBlock, SBlock, Client, PClient, SClient> Clone
-    for CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>
+impl<Block, PBlock, SBlock, PClient, SClient, RuntimeApi: Clone> Clone
+    for CoreDomainBlockPreprocessor<Block, PBlock, SBlock, PClient, SClient, RuntimeApi>
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            client: self.client.clone(),
+            runtime_api: self.runtime_api.clone(),
             system_domain_client: self.system_domain_client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
             _phantom_data: self._phantom_data,
@@ -354,14 +348,13 @@ impl<Block, PBlock, SBlock, Client, PClient, SClient> Clone
     }
 }
 
-impl<Block, PBlock, SBlock, Client, PClient, SClient>
-    CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>
+impl<Block, PBlock, SBlock, PClient, SClient, RuntimeApi>
+    CoreDomainBlockPreprocessor<Block, PBlock, SBlock, PClient, SClient, RuntimeApi>
 where
     Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainCoreApi<Block, AccountId>,
+    RuntimeApi: SignerExtractor<Block, AccountId>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
@@ -371,13 +364,13 @@ where
 {
     pub fn new(
         domain_id: DomainId,
-        client: Arc<Client>,
+        runtime_api: RuntimeApi,
         primary_chain_client: Arc<PClient>,
         system_domain_client: Arc<SClient>,
     ) -> Self {
         Self {
             domain_id,
-            client,
+            runtime_api,
             system_domain_client,
             primary_chain_client,
             _phantom_data: Default::default(),
@@ -404,8 +397,8 @@ where
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
 
         let extrinsics = deduplicate_and_shuffle_extrinsics(
-            &self.client,
             domain_hash,
+            &self.runtime_api,
             extrinsics,
             shuffling_seed,
         )
