@@ -30,7 +30,9 @@ const PIECE_SIZE: usize = 31_744;
 /// of [`Scalar::FULL_BYTES`].
 const RECORD_SIZE: usize = Piece::SIZE - RecordCommitment::SIZE - RecordWitness::SIZE;
 /// 128 data records and 128 parity records (as a result of erasure coding).
-pub const PIECES_IN_SEGMENT: u32 = 256;
+pub const PIECES_IN_SEGMENT: u32 = RecordedHistorySegment::RAW_RECORDS as u32
+    * RecordedHistorySegment::ERASURE_CODING_RATE.1 as u32
+    / RecordedHistorySegment::ERASURE_CODING_RATE.0 as u32;
 
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
@@ -58,7 +60,7 @@ impl AsMut<[u8]> for RawRecord {
 }
 
 impl RawRecord {
-    /// Size of raw record in bytes, is guaranteed to be multiple of [`Scalar::SAFE_BYTES`].
+    /// Size of raw record in bytes, is guaranteed to be a multiple of [`Scalar::SAFE_BYTES`].
     pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
 }
 
@@ -93,14 +95,16 @@ impl AsMut<[u8]> for RecordedHistorySegment {
 }
 
 impl RecordedHistorySegment {
+    /// Number of raw records in one segment of recorded history.
+    pub const RAW_RECORDS: usize = 128;
+    /// Erasure coding rate for records during archiving process.
+    pub const ERASURE_CODING_RATE: (usize, usize) = (1, 2);
     /// Size of recorded history segment in bytes.
     ///
     /// It includes half of the records (just source records) that will later be erasure coded and
     /// together with corresponding commitments and witnesses will result in [`PIECES_IN_SEGMENT`]
     /// [`Piece`]s of archival history.
-    pub const SIZE: usize = RawRecord::SIZE * PIECES_IN_SEGMENT as usize / 2;
-    /// Number of raw records in one segment of recorded history.
-    pub const RAW_RECORDS: usize = Self::SIZE / RawRecord::SIZE;
+    pub const SIZE: usize = RawRecord::SIZE * Self::RAW_RECORDS;
 }
 
 /// Record contained within a piece.
@@ -123,8 +127,8 @@ impl AsMut<[u8]> for Record {
 }
 
 impl Record {
-    /// Size of a segment record given the global piece size (in bytes), is guaranteed to be
-    /// multiple of [`Scalar::FULL_BYTES`].
+    /// Size of a segment record given the global piece size (in bytes) after erasure coding
+    /// [`RawRecord`], is guaranteed to be a multiple of [`Scalar::FULL_BYTES`].
     pub const SIZE: usize = RECORD_SIZE;
 
     /// Get a stream of arrays, each containing safe scalar bytes.
@@ -295,7 +299,7 @@ impl AsMut<[u8]> for Piece {
 }
 
 impl Piece {
-    /// Size of a piece.
+    /// Size of a piece (in bytes).
     pub const SIZE: usize = PIECE_SIZE;
 }
 
