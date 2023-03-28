@@ -4,7 +4,7 @@ use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{Piece, PieceIndex, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{Piece, PieceIndex, RecordedHistorySegment};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
@@ -33,7 +33,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
 
     let semaphore = Semaphore::new(PARALLELISM_LEVEL);
     let acquired_pieces_counter = AtomicUsize::default();
-    let required_pieces_number = PIECES_IN_SEGMENT / 2;
+    let required_pieces_number = RecordedHistorySegment::RAW_RECORDS;
 
     // This is so we can move references into the future below
     let semaphore = &semaphore;
@@ -54,7 +54,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
                 }
             };
 
-            if acquired_pieces_counter.load(Ordering::SeqCst) >= required_pieces_number as usize {
+            if acquired_pieces_counter.load(Ordering::SeqCst) >= required_pieces_number {
                 trace!(%piece_index, "Skipped piece acquiring.");
 
                 return None;
@@ -82,7 +82,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
         .collect::<Vec<Option<Piece>>>()
         .await;
 
-    if acquired_pieces_counter.load(Ordering::SeqCst) < required_pieces_number as usize {
+    if acquired_pieces_counter.load(Ordering::SeqCst) < required_pieces_number {
         error!(%missing_piece_index, "Recovering missing piece failed.");
 
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
