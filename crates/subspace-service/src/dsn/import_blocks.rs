@@ -118,18 +118,24 @@ where
     let mut reconstructor =
         Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    // Collection is intentional to make sure downloading starts right away and not lazily
     for segment_index in 0..segments_found {
-        let pieces_indexes =
-            (0..RecordedHistorySegment::RAW_RECORDS as u64).map(|piece_position| {
-                PieceIndex::from(segment_index * SegmentIndex::from(PIECES_IN_SEGMENT))
-                    + PieceIndex::from(piece_position)
-            });
+        let first_piece_in_segment = segment_index * SegmentIndex::from(PIECES_IN_SEGMENT);
+        // We prioritize source pieces over parity pieces here
+        let pieces_indices = (first_piece_in_segment..)
+            .take(PIECES_IN_SEGMENT as usize)
+            .step_by(2)
+            .chain(
+                (first_piece_in_segment..)
+                    .take(PIECES_IN_SEGMENT as usize)
+                    .skip(1)
+                    .step_by(2),
+            )
+            .map(PieceIndex::from);
 
         let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];
         let mut pieces_received = 0;
 
-        for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
+        for (piece_index, piece) in pieces_indices.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
                 .get_piece(piece_index, RetryPolicy::Limited(0))
                 .await
