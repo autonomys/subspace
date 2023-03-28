@@ -57,7 +57,9 @@ pub struct MockPrimaryNode {
     /// The next slot number
     next_slot: u64,
     /// The slot notification subscribers
-    new_slot_notification_subscribers: Vec<TracingUnboundedSender<(Slot, Blake2b256Hash)>>,
+    #[allow(clippy::type_complexity)]
+    new_slot_notification_subscribers:
+        Vec<TracingUnboundedSender<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)>>,
     /// Block import pipeline
     block_import:
         MockBlockImport<BoxBlockImport<Block, TransactionFor<Client, Block>>, Client, Block>,
@@ -152,7 +154,7 @@ impl MockPrimaryNode {
         let slot = Slot::from(self.next_slot);
         self.next_slot += 1;
 
-        let value = (slot, Hash::random().into());
+        let value = (slot, Hash::random().into(), None);
         self.new_slot_notification_subscribers
             .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
 
@@ -162,7 +164,7 @@ impl MockPrimaryNode {
     /// Subscribe the new slot notification
     pub fn new_slot_notification_stream(
         &mut self,
-    ) -> TracingUnboundedReceiver<(Slot, Blake2b256Hash)> {
+    ) -> TracingUnboundedReceiver<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.new_slot_notification_subscribers.push(tx);
         rx

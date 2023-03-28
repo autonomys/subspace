@@ -199,6 +199,7 @@ async fn run_executor(
                 (
                     slot_notification.new_slot_info.slot,
                     slot_notification.new_slot_info.global_challenge,
+                    None,
                 )
             }),
         _phantom: Default::default(),
