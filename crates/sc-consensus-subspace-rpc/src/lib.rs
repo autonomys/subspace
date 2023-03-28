@@ -207,7 +207,7 @@ where
             let protocol_info = FarmerProtocolInfo {
                 total_pieces: runtime_api.total_pieces(best_hash)?,
                 // TODO: Fetch this from the runtime
-                sector_expiration: 100,
+                sector_expiration: SegmentIndex::from(100),
             };
 
             FarmerAppInfo {

@@ -114,11 +114,11 @@ fn auto_cleanup() {
 
     // Store second piece
     store
-        .add_pieces(PieceIndex::from(1), &FlatPieces::new(1))
+        .add_pieces(PieceIndex::ONE, &FlatPieces::new(1))
         .unwrap();
     // It must be stored
     store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::from(1)))
+        .get_piece(PieceIndexHash::from_index(PieceIndex::ONE))
         .unwrap()
         .unwrap();
     // But the first piece is evicted because it exceeds cache size

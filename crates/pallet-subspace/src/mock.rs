@@ -313,8 +313,8 @@ pub fn generate_equivocation_proof(
     };
 
     // generate two headers at the current block
-    let mut h1 = make_header(PieceIndex::from(0), 0);
-    let mut h2 = make_header(PieceIndex::from(1), 1);
+    let mut h1 = make_header(PieceIndex::ZERO, 0);
+    let mut h2 = make_header(PieceIndex::ONE, 1);
 
     seal_header(&mut h1);
     seal_header(&mut h2);

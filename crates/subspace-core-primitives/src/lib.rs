@@ -96,7 +96,71 @@ pub type SolutionRange = u64;
 pub type BlockWeight = u128;
 
 /// Segment index type.
-pub type SegmentIndex = u64;
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct SegmentIndex(u64);
+
+impl const From<u64> for SegmentIndex {
+    fn from(original: u64) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<SegmentIndex> for u64 {
+    fn from(original: SegmentIndex) -> Self {
+        original.0
+    }
+}
+
+impl SegmentIndex {
+    /// Segment index 0.
+    pub const ZERO: SegmentIndex = SegmentIndex(0);
+    /// Segment index 1.
+    pub const ONE: SegmentIndex = SegmentIndex(1);
+
+    /// Get the first piece index in this segment.
+    pub const fn first_piece_index(&self) -> PieceIndex {
+        PieceIndex::from(self.0 * PIECES_IN_SEGMENT as u64)
+    }
+
+    /// Iterator over piece indexes that belong to this segment.
+    pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
+        (u64::from(self.first_piece_index())..)
+            .take(PIECES_IN_SEGMENT as usize)
+            .map(PieceIndex::from)
+    }
+
+    /// Iterator over piece indexes that belong to this segment with source pieces first.
+    pub fn segment_piece_indexes_source_first(&self) -> impl Iterator<Item = PieceIndex> {
+        self.segment_piece_indexes()
+            .step_by(2)
+            .chain(self.segment_piece_indexes().skip(1).step_by(2))
+    }
+}
 
 // TODO: New type
 /// Segment commitment type.
@@ -318,7 +382,7 @@ impl SegmentHeader {
     }
 
     /// Segment index
-    pub fn segment_index(&self) -> u64 {
+    pub fn segment_index(&self) -> SegmentIndex {
         match self {
             Self::V0 { segment_index, .. } => *segment_index,
         }
@@ -396,6 +460,11 @@ impl const From<PieceIndex> for u64 {
 }
 
 impl PieceIndex {
+    /// Piece index 0.
+    pub const ZERO: PieceIndex = PieceIndex(0);
+    /// Piece index 1.
+    pub const ONE: PieceIndex = PieceIndex(1);
+
     /// Convert piece index into bytes.
     pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
         self.0.to_le_bytes()
@@ -403,7 +472,7 @@ impl PieceIndex {
 
     /// Segment index piece index corresponds to
     pub const fn segment_index(&self) -> SegmentIndex {
-        self.0 / SegmentIndex::from(PIECES_IN_SEGMENT)
+        SegmentIndex::from(self.0 / u64::from(PIECES_IN_SEGMENT))
     }
 
     /// Position of a piece in a segment

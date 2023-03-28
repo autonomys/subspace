@@ -63,7 +63,7 @@ async fn main() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let key = {
-        let piece_index = PieceIndex::from(1);
+        let piece_index = PieceIndex::ONE;
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
         piece_index_hash.to_multihash()
     };

@@ -231,7 +231,7 @@ impl RpcServerImpl {
         let mut next_piece_index = piece_index;
 
         let piece = self.read_and_decode_piece(next_piece_index)?;
-        next_piece_index += PieceIndex::from(1);
+        next_piece_index += PieceIndex::ONE;
         read_records_data.extend_from_slice(piece.record().as_ref());
 
         // Let's see how many bytes encode compact length encoding of the data, see
@@ -264,7 +264,7 @@ impl RpcServerImpl {
             if !length_before_record_end {
                 // Need the next piece to read the length of data
                 let piece = self.read_and_decode_piece(next_piece_index)?;
-                next_piece_index += PieceIndex::from(1);
+                next_piece_index += PieceIndex::ONE;
                 read_records_data.extend_from_slice(piece.record().as_ref());
             }
 
@@ -293,7 +293,7 @@ impl RpcServerImpl {
         // Read more pieces until we have enough data
         while data.len() <= data_length as usize {
             let piece = self.read_and_decode_piece(next_piece_index)?;
-            next_piece_index += PieceIndex::from(1);
+            next_piece_index += PieceIndex::ONE;
             data.extend_from_slice(&piece[..self.record_size as usize]);
         }
 
@@ -352,7 +352,10 @@ impl RpcServerImpl {
                 segment_item => {
                     error!(
                         ?segment_item,
-                        offset_in_segment, segment_index, object_id, "Unexpected segment item",
+                        offset_in_segment,
+                        %segment_index,
+                        object_id,
+                        "Unexpected segment item",
                     );
 
                     return Err(Error::Custom(format!(
@@ -367,8 +370,8 @@ impl RpcServerImpl {
             return Ok(data);
         }
 
-        for segment_index in segment_index + 1.. {
-            let Segment::V0 { items } = self.read_segment(segment_index)?;
+        for segment_index in u64::from(segment_index + SegmentIndex::ONE).. {
+            let Segment::V0 { items } = self.read_segment(SegmentIndex::from(segment_index))?;
             for segment_item in items {
                 if let SegmentItem::BlockContinuation { bytes, .. } = segment_item {
                     data.extend_from_slice(&bytes);
@@ -393,7 +396,7 @@ impl RpcServerImpl {
 
     /// Read the whole segment by its index (just records, skipping witnesses)
     fn read_segment(&self, segment_index: SegmentIndex) -> Result<Segment, Error> {
-        let first_piece_in_segment = segment_index * SegmentIndex::from(self.pieces_in_segment);
+        let first_piece_in_segment = u64::from(segment_index.first_piece_index());
         let mut segment_bytes =
             Vec::<u8>::with_capacity((self.pieces_in_segment * self.record_size) as usize);
 
@@ -407,7 +410,7 @@ impl RpcServerImpl {
 
         let segment = Segment::decode(&mut segment_bytes.as_slice()).map_err(|error| {
             error!(
-                index = segment_index,
+                index = %segment_index,
                 %error,
                 "Failed to decode segment of archival history on retrieval",
             );

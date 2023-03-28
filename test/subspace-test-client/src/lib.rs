@@ -38,7 +38,9 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{Piece, PieceIndex, PublicKey, Solution, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{
+    Piece, PieceIndex, PublicKey, SegmentIndex, Solution, PLOT_SECTOR_SIZE,
+};
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
@@ -240,7 +242,7 @@ where
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces,
         // TODO: This constant should come from the chain itself
-        sector_expiration: 100,
+        sector_expiration: SegmentIndex::from(100),
     };
 
     plot_sector(

@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{PieceIndex, SegmentHeader, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_networking::{
@@ -168,9 +168,10 @@ where
                         let max_segment_index = segment_header_cache.max_segment_index();
 
                         // several last segment indexes
-                        (0..=max_segment_index)
+                        (0..=u64::from(max_segment_index))
                             .rev()
                             .take(block_limit as usize)
+                            .map(SegmentIndex::from)
                             .collect::<Vec<_>>()
                     }
                 };
@@ -224,20 +225,20 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
 
     let segment_publish_semaphore = Arc::new(Semaphore::new(segment_publish_concurrency.get()));
 
-    let mut last_published_segment_index: Option<u64> = None;
+    let mut last_published_segment_index: Option<SegmentIndex> = None;
     while let Some(ArchivedSegmentNotification {
         archived_segment, ..
     }) = archived_segment_notification_stream.next().await
     {
         let segment_index = archived_segment.segment_header.segment_index();
-        let first_piece_index = PieceIndex::from(segment_index * u64::from(PIECES_IN_SEGMENT));
+        let first_piece_index = segment_index.first_piece_index();
 
         info!(%segment_index, "Processing a segment.");
 
         // skip repeating publication
         if let Some(last_published_segment_index) = last_published_segment_index {
             if last_published_segment_index == segment_index {
-                info!(?segment_index, "Archived segment skipped.");
+                info!(%segment_index, "Archived segment skipped.");
                 continue;
             }
         }
@@ -278,7 +279,7 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
 pub(crate) async fn publish_pieces(
     node: &Node,
     first_piece_index: PieceIndex,
-    segment_index: u64,
+    segment_index: SegmentIndex,
     archived_segment: Arc<ArchivedSegment>,
 ) {
     let pieces_indexes = (u64::from(first_piece_index)..)

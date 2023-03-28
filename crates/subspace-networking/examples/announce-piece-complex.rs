@@ -80,7 +80,7 @@ async fn main() {
     node.wait_for_connected_peers().await.unwrap();
 
     let key = {
-        let piece_index = PieceIndex::from(1);
+        let piece_index = PieceIndex::ONE;
         let piece_index_hash = PieceIndexHash::from_index(piece_index);
         piece_index_hash.to_multihash()
     };

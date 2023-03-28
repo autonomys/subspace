@@ -58,7 +58,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
     Piece, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader,
-    SolutionRange, PIECES_IN_SEGMENT,
+    SegmentIndex, SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -1474,8 +1474,10 @@ fn check_segment_headers<T: Config>(
     };
 
     // Segment in segment headers should monotonically increase
-    if first_segment_header.segment_index() > 0
-        && !SegmentCommitment::<T>::contains_key(first_segment_header.segment_index() - 1)
+    if first_segment_header.segment_index() > SegmentIndex::ZERO
+        && !SegmentCommitment::<T>::contains_key(
+            first_segment_header.segment_index() - SegmentIndex::ONE,
+        )
     {
         return Err(InvalidTransaction::BadMandatory.into());
     }
@@ -1491,7 +1493,7 @@ fn check_segment_headers<T: Config>(
         let segment_index = segment_header.segment_index();
 
         // Segment in segment headers should monotonically increase
-        if segment_index != last_segment_index + 1 {
+        if segment_index != last_segment_index + SegmentIndex::ONE {
             return Err(InvalidTransaction::BadMandatory.into());
         }
 

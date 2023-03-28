@@ -207,13 +207,13 @@ pub enum Error<Header: HeaderT> {
         "Different segment commitment for segment index {0} was found in storage, likely fork \
         below archiving point"
     )]
-    DifferentSegmentCommitment(u64),
+    DifferentSegmentCommitment(SegmentIndex),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
     #[error("Segment commitment for segment index {0} not found")]
-    SegmentCommitmentNotFound(u64),
+    SegmentCommitmentNotFound(SegmentIndex),
     /// Only root plot public key is allowed
     #[error("Only root plot public key is allowed")]
     OnlyRootPlotPublicKeyAllowed,

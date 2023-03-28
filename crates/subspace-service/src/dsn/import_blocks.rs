@@ -31,7 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
+    Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -98,7 +98,7 @@ where
         .iter()
         .map(SegmentHeader::segment_commitment)
         .collect::<Vec<_>>();
-    let segments_found = segment_commitments.len() as SegmentIndex;
+    let segments_found = segment_commitments.len();
     let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
         Some(SegmentCommitmentPieceValidator::new(
@@ -118,19 +118,8 @@ where
     let mut reconstructor =
         Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    for segment_index in 0..segments_found {
-        let first_piece_in_segment = segment_index * SegmentIndex::from(PIECES_IN_SEGMENT);
-        // We prioritize source pieces over parity pieces here
-        let pieces_indices = (first_piece_in_segment..)
-            .take(PIECES_IN_SEGMENT as usize)
-            .step_by(2)
-            .chain(
-                (first_piece_in_segment..)
-                    .take(PIECES_IN_SEGMENT as usize)
-                    .skip(1)
-                    .step_by(2),
-            )
-            .map(PieceIndex::from);
+    for segment_index in (0..).take(segments_found).map(SegmentIndex::from) {
+        let pieces_indices = segment_index.segment_piece_indexes_source_first();
 
         let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];
         let mut pieces_received = 0;

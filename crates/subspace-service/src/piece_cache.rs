@@ -116,7 +116,7 @@ where
         first_piece_index: PieceIndex,
         pieces: &FlatPieces,
     ) -> Result<(), Box<dyn Error>> {
-        if self.max_pieces_in_cache == PieceIndex::from(0) {
+        if self.max_pieces_in_cache == PieceIndex::ZERO {
             return Ok(());
         }
 

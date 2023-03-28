@@ -4,7 +4,7 @@ use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{Piece, PieceIndex, PIECES_IN_SEGMENT};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
@@ -31,9 +31,6 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
     let segment_index = missing_piece_index.segment_index();
     let position = missing_piece_index.position();
 
-    let starting_piece_index: PieceIndex =
-        PieceIndex::from(segment_index * SegmentIndex::from(PIECES_IN_SEGMENT));
-
     let semaphore = Semaphore::new(PARALLELISM_LEVEL);
     let acquired_pieces_counter = AtomicUsize::default();
     let required_pieces_number = PIECES_IN_SEGMENT / 2;
@@ -42,18 +39,8 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
     let semaphore = &semaphore;
     let acquired_pieces_counter = &acquired_pieces_counter;
 
-    // We prioritize source pieces over parity pieces here
-    let piece_indices = (u64::from(starting_piece_index)..)
-        .take(PIECES_IN_SEGMENT as usize)
-        .step_by(2)
-        .chain(
-            (u64::from(starting_piece_index)..)
-                .take(PIECES_IN_SEGMENT as usize)
-                .skip(1)
-                .step_by(2),
-        )
-        .map(PieceIndex::from);
-    let pieces = piece_indices
+    let pieces = segment_index
+        .segment_piece_indexes_source_first()
         .map(|piece_index| async move {
             let _permit = match semaphore.acquire().await {
                 Ok(permit) => permit,

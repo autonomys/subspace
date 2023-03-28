@@ -12,8 +12,8 @@ use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::{Scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Piece, PieceIndex, PieceIndexHash, PublicKey, SectorId, SectorIndex, PIECES_IN_SEGMENT,
-    PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PieceIndexHash, PublicKey, SectorId, SectorIndex, SegmentIndex,
+    PIECES_IN_SEGMENT, PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
 use tracing::info;
@@ -133,7 +133,7 @@ where
     //  explicitly and, ideally, we need to remove 2x replication
     //  expectation from other places too
     let current_segment_index =
-        farmer_protocol_info.total_pieces.get() / u64::from(PIECES_IN_SEGMENT);
+        SegmentIndex::from(farmer_protocol_info.total_pieces.get() / u64::from(PIECES_IN_SEGMENT));
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (0u64..)

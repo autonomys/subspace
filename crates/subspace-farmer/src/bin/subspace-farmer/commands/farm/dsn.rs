@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::{fs, io, thread};
+use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderRecordProcessor;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
@@ -137,8 +138,10 @@ pub(super) fn configure_dsn(
             match archived_segments_notifications {
                 Ok(mut archived_segments_notifications) => {
                     while let Some(segment) = archived_segments_notifications.next().await {
-                        last_archived_segment_index
-                            .store(segment.segment_header.segment_index(), Ordering::Relaxed);
+                        last_archived_segment_index.store(
+                            u64::from(segment.segment_header.segment_index()),
+                            Ordering::Relaxed,
+                        );
                     }
                 }
                 Err(err) => {
@@ -240,6 +243,7 @@ pub(super) fn configure_dsn(
                             (0..=last_segment_index)
                                 .rev()
                                 .take(segment_header_number as usize)
+                                .map(SegmentIndex::from)
                                 .collect::<Vec<_>>()
                         }
                     };
