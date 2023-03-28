@@ -132,11 +132,13 @@ pub(crate) async fn farm_multi_disk(
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
+        let allocated_plotting_space_with_overhead =
+            get_required_plot_space_with_overhead(disk_farm.allocated_plotting_space);
 
-        if disk_farm.allocated_plotting_space < minimum_plot_size {
+        if allocated_plotting_space_with_overhead < minimum_plot_size {
             return Err(anyhow::anyhow!(
                 "Plot size is too low ({} bytes). Minimum is {}",
-                disk_farm.allocated_plotting_space,
+                allocated_plotting_space_with_overhead,
                 minimum_plot_size
             ));
         }
