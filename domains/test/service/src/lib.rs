@@ -286,6 +286,9 @@ async fn run_executor_with_mock_primary_node(
         maybe_relayer_id: None,
     };
     let executor_streams = ExecutorStreams {
+        // TODO: set `primary_block_import_throttling_buffer_size` to 0 once
+        // https://github.com/subspace/subspace/issues/1316 is resolved, otherwise
+        // the executor may skip a slot due to it is lagging behide the primary chain
         primary_block_import_throttling_buffer_size: 10,
         subspace_imported_block_notification_stream: mock_primary_node
             .imported_block_notification_stream(),
@@ -354,6 +357,8 @@ async fn run_executor_with_mock_primary_node(
 
 /// A Cumulus test node instance used for testing.
 pub struct SystemDomainNode {
+    /// The node's key
+    pub key: Sr25519Keyring,
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -501,6 +506,7 @@ impl SystemDomainNodeBuilder {
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         SystemDomainNode {
+            key: self.key,
             task_manager,
             client,
             backend,
@@ -538,6 +544,7 @@ impl SystemDomainNodeBuilder {
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         SystemDomainNode {
+            key: self.key,
             task_manager,
             client,
             backend,

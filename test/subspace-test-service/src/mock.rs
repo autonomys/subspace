@@ -1,4 +1,5 @@
 use crate::node_config;
+use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use sc_block_builder::BlockBuilderProvider;
@@ -17,6 +18,7 @@ use sp_consensus::{BlockOrigin, CacheKeyId, Error as ConsensusError, NoNetwork, 
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_domains::ExecutorPublicKey;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::Digest;
@@ -33,7 +35,7 @@ use subspace_runtime_primitives::{AccountId, Hash};
 use subspace_service::FullSelectChain;
 use subspace_solving::create_chunk_signature;
 use subspace_test_client::{Backend, Client, FraudProofVerifier, TestExecutorDispatch};
-use subspace_test_runtime::{RuntimeApi, SLOT_DURATION};
+use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
 use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 
@@ -149,14 +151,28 @@ impl MockPrimaryNode {
         self.next_slot
     }
 
-    /// Produce slot
-    pub fn produce_slot(&mut self) -> Slot {
+    /// Produce a slot and wait for the acknowledgement of all the slot notification subscribers
+    pub async fn produce_slot(&mut self) -> Slot {
         let slot = Slot::from(self.next_slot);
         self.next_slot += 1;
 
-        let value = (slot, Hash::random().into(), None);
-        self.new_slot_notification_subscribers
-            .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
+        let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
+
+        // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
+        // will block forever as there is still a sender not closed.
+        {
+            let value = (
+                slot,
+                Hash::random().into(),
+                Some(slot_acknowledgement_sender),
+            );
+            self.new_slot_notification_subscribers
+                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
+        }
+
+        while (slot_acknowledgement_receiver.next().await).is_some() {
+            // Wait for all the acknowledgements to progress.
+        }
 
         slot
     }
@@ -179,6 +195,30 @@ impl MockPrimaryNode {
             .imported_block_notification_subscribers
             .push(tx);
         rx
+    }
+
+    /// Check if a bundle that created by `author_key` at `slot` is present at the transaction pool
+    pub fn is_bundle_present(&self, slot: u64, author_key: Sr25519Keyring) -> bool {
+        let author_key = ExecutorPublicKey::unchecked_from(author_key.public().0);
+        for ready_tx in self.transaction_pool.ready() {
+            let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
+                .expect("should be able to decode");
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle,
+            }) = ext.function
+            {
+                let slot_match = signed_opaque_bundle.bundle.header.slot_number == slot;
+                let author_match = signed_opaque_bundle
+                    .bundle_solution
+                    .proof_of_election()
+                    .executor_public_key
+                    == author_key;
+                if slot_match && author_match {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -289,10 +329,8 @@ impl MockPrimaryNode {
     }
 
     /// Produce block based on the current best block and the extrinsics in pool
-    pub async fn produce_block(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn produce_block(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
         let block_timer = time::Instant::now();
-
-        let slot = self.produce_slot();
 
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
@@ -323,7 +361,8 @@ impl MockPrimaryNode {
     /// Produce `n` number of blocks.
     pub async fn produce_n_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
         for _ in 0..n {
-            self.produce_block().await?;
+            let slot = self.produce_slot().await;
+            self.produce_block(slot).await?;
         }
         Ok(())
     }
