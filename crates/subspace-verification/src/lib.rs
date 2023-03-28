@@ -29,7 +29,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
     BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RewardSignature, SectorId,
-    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
+    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, PIECES_IN_SEGMENT,
+    RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
@@ -118,8 +119,6 @@ pub fn is_within_solution_range(
 pub struct PieceCheckParams {
     /// Segment commitment of segment to which piece belongs
     pub segment_commitment: SegmentCommitment,
-    /// Number of pieces in a segment
-    pub pieces_in_segment: u32,
 }
 
 /// Parameters for solution verification
@@ -181,14 +180,10 @@ where
 
     // TODO: Check if sector already expired once we have such notion
 
-    if let Some(PieceCheckParams {
-        segment_commitment,
-        pieces_in_segment,
-    }) = piece_check_params
-    {
+    if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
         let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
         let piece_index = sector_id.derive_piece_index(audit_piece_offset, solution.total_pieces);
-        let position = u32::try_from(piece_index % u64::from(*pieces_in_segment))
+        let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
             .expect("Position within segment always fits into u32; qed");
 
         // TODO: Check that chunk belongs to the encoded piece
@@ -200,7 +195,7 @@ where
         };
         check_piece(
             kzg,
-            *pieces_in_segment as usize,
+            PIECES_IN_SEGMENT as usize,
             segment_commitment,
             position,
             solution,

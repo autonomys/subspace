@@ -362,10 +362,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&VerifySolutionParams {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
-                piece_check_params: Some(PieceCheckParams {
-                    segment_commitment,
-                    pieces_in_segment: PIECES_IN_SEGMENT,
-                }),
+                piece_check_params: Some(PieceCheckParams { segment_commitment }),
             })
                 .into(),
         )

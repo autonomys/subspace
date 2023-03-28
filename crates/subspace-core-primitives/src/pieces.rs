@@ -15,7 +15,7 @@ use derive_more::{AsMut, AsRef, Deref, DerefMut};
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
 use scale_info::TypeInfo;
 
-// TODO: Redefine records and piece size according to spec
+// TODO: Remove once we redefine it through raw record
 /// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
 /// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
 /// BLS12-381 scalar safely).
@@ -24,19 +24,13 @@ use scale_info::TypeInfo;
 ///  coding implementation, so we might be able to bump it by one field element in size.
 ///
 /// This can not changed after the network is launched.
-pub const PIECE_SIZE: usize = 31_744;
-// TODO: Switch to `Record::SIZE`
+const PIECE_SIZE: usize = 31_744;
+// TODO: Remove once we re-define it through raw record instead
 /// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
 /// of [`Scalar::FULL_BYTES`].
-pub const RECORD_SIZE: u32 =
-    PIECE_SIZE as u32 - RecordCommitment::SIZE as u32 - RecordWitness::SIZE as u32;
+const RECORD_SIZE: usize = Piece::SIZE - RecordCommitment::SIZE - RecordWitness::SIZE;
 /// 128 data records and 128 parity records (as a result of erasure coding).
 pub const PIECES_IN_SEGMENT: u32 = 256;
-// TODO: Switch to `RecordedHistorySegment::SIZE`
-/// Recorded History Segment Size includes half of the records (just data records) that will later
-/// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
-/// pieces of archival history.
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RawRecord::SIZE as u32 * PIECES_IN_SEGMENT / 2;
 
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
@@ -65,7 +59,7 @@ impl AsMut<[u8]> for RawRecord {
 
 impl RawRecord {
     /// Size of raw record in bytes, is guaranteed to be multiple of [`Scalar::SAFE_BYTES`].
-    pub const SIZE: usize = RECORD_SIZE as usize / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
+    pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
 }
 
 /// Recorded history segment before archiving is applied.
@@ -100,7 +94,11 @@ impl AsMut<[u8]> for RecordedHistorySegment {
 
 impl RecordedHistorySegment {
     /// Size of recorded history segment in bytes.
-    pub const SIZE: usize = RECORDED_HISTORY_SEGMENT_SIZE as usize;
+    ///
+    /// It includes half of the records (just source records) that will later be erasure coded and
+    /// together with corresponding commitments and witnesses will result in [`PIECES_IN_SEGMENT`]
+    /// [`Piece`]s of archival history.
+    pub const SIZE: usize = RawRecord::SIZE * PIECES_IN_SEGMENT as usize / 2;
     /// Number of raw records in one segment of recorded history.
     pub const RAW_RECORDS: usize = Self::SIZE / RawRecord::SIZE;
 }
@@ -127,7 +125,7 @@ impl AsMut<[u8]> for Record {
 impl Record {
     /// Size of a segment record given the global piece size (in bytes), is guaranteed to be
     /// multiple of [`Scalar::FULL_BYTES`].
-    pub const SIZE: usize = RECORD_SIZE as usize;
+    pub const SIZE: usize = RECORD_SIZE;
 
     /// Get a stream of arrays, each containing safe scalar bytes.
     ///
@@ -239,7 +237,7 @@ pub struct Piece(Box<PieceArray>);
 //  can be replaced with derive once fixed upstream version is released
 impl Decode for Piece {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        let piece = parity_scale_codec::decode_vec_with_len::<u8, _>(input, PIECE_SIZE)
+        let piece = parity_scale_codec::decode_vec_with_len::<u8, _>(input, Self::SIZE)
             .map_err(|error| error.chain("Could not decode `Piece.0`"))?;
         let mut piece = ManuallyDrop::new(piece);
         // SAFETY: Original memory is not dropped and guaranteed to be allocated
@@ -257,7 +255,7 @@ impl TryFrom<&[u8]> for Piece {
     type Error = TryFromSliceError;
 
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        <[u8; PIECE_SIZE]>::try_from(slice).map(|bytes| Piece(Box::new(PieceArray(bytes))))
+        <[u8; Self::SIZE]>::try_from(slice).map(|bytes| Piece(Box::new(PieceArray(bytes))))
     }
 }
 
@@ -296,6 +294,11 @@ impl AsMut<[u8]> for Piece {
     }
 }
 
+impl Piece {
+    /// Size of a piece.
+    pub const SIZE: usize = PIECE_SIZE;
+}
+
 /// A piece of archival history in Subspace Network.
 ///
 /// This version is allocated on the stack, for heap-allocated piece see [`Piece`].
@@ -322,11 +325,11 @@ impl AsMut<[u8]> for Piece {
     MaxEncodedLen,
 )]
 #[repr(transparent)]
-pub struct PieceArray([u8; PIECE_SIZE]);
+pub struct PieceArray([u8; Piece::SIZE]);
 
 impl Default for PieceArray {
     fn default() -> Self {
-        Self([0u8; PIECE_SIZE])
+        Self([0u8; Piece::SIZE])
     }
 }
 
@@ -357,10 +360,10 @@ impl From<PieceArray> for Piece {
 impl PieceArray {
     /// Split piece into underlying components.
     pub fn split(&self) -> (&Record, &RecordCommitment, &RecordWitness) {
-        let (record, extra) = self.0.split_at(RECORD_SIZE as usize);
+        let (record, extra) = self.0.split_at(Record::SIZE);
         let (commitment, witness) = extra.split_at(RecordCommitment::SIZE);
 
-        let record = <&[u8; RECORD_SIZE as usize]>::try_from(record)
+        let record = <&[u8; Record::SIZE]>::try_from(record)
             .expect("Slice of memory has correct length; qed");
         let commitment = <&[u8; RecordCommitment::SIZE]>::try_from(commitment)
             .expect("Slice of memory has correct length; qed");
@@ -379,10 +382,10 @@ impl PieceArray {
 
     /// Split piece into underlying mutable components.
     pub fn split_mut(&mut self) -> (&mut Record, &mut RecordCommitment, &mut RecordWitness) {
-        let (record, extra) = self.0.split_at_mut(RECORD_SIZE as usize);
+        let (record, extra) = self.0.split_at_mut(Record::SIZE);
         let (commitment, witness) = extra.split_at_mut(RecordCommitment::SIZE);
 
-        let record = <&mut [u8; RECORD_SIZE as usize]>::try_from(record)
+        let record = <&mut [u8; Record::SIZE]>::try_from(record)
             .expect("Slice of memory has correct length; qed");
         let commitment = <&mut [u8; RecordCommitment::SIZE]>::try_from(commitment)
             .expect("Slice of memory has correct length; qed");
@@ -489,7 +492,7 @@ impl From<PieceArray> for FlatPieces {
 impl AsRef<[u8]> for FlatPieces {
     fn as_ref(&self) -> &[u8] {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let pieces: &[[u8; PIECE_SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
+        let pieces: &[[u8; Piece::SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
         pieces.flatten()
     }
 }
@@ -497,7 +500,7 @@ impl AsRef<[u8]> for FlatPieces {
 impl AsMut<[u8]> for FlatPieces {
     fn as_mut(&mut self) -> &mut [u8] {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let pieces: &mut [[u8; PIECE_SIZE]] = unsafe { mem::transmute(self.0.as_mut_slice()) };
+        let pieces: &mut [[u8; Piece::SIZE]] = unsafe { mem::transmute(self.0.as_mut_slice()) };
         pieces.flatten_mut()
     }
 }

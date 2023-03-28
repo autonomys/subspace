@@ -3,7 +3,7 @@ use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 
@@ -46,7 +46,7 @@ impl AuxStore for TestAuxStore {
 fn basic() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        u64::from(PIECES_IN_SEGMENT) * PIECE_SIZE as u64,
+        u64::from(PIECES_IN_SEGMENT) * Piece::SIZE as u64,
         PeerId::random(),
     );
 
@@ -92,7 +92,7 @@ fn cache_nothing() {
 fn auto_cleanup() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        PIECE_SIZE as u64,
+        Piece::SIZE as u64,
         PeerId::random(),
     );
 

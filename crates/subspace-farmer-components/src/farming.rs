@@ -8,7 +8,7 @@ use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, ScalarLeg
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
     Blake2b256Hash, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
-    PIECES_IN_SECTOR, PIECE_SIZE, PLOT_SECTOR_SIZE,
+    PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
 };
 use subspace_solving::create_chunk_signature;
 use subspace_verification::{derive_audit_chunk, is_within_solution_range};
@@ -98,7 +98,7 @@ impl EligibleSector {
             .map_err(FarmingError::FailedToDecodeSector)?;
 
         let mut piece = Piece::default();
-        let scalars_in_piece = PIECE_SIZE / ScalarLegacy::SAFE_BYTES;
+        let scalars_in_piece = Piece::SIZE / ScalarLegacy::SAFE_BYTES;
         piece
             .chunks_exact_mut(ScalarLegacy::SAFE_BYTES)
             .zip(
@@ -122,7 +122,7 @@ impl EligibleSector {
                     .sector_id
                     .derive_piece_index(self.audit_piece_offset, sector_metadata.total_pieces);
                 let audit_piece_bytes_offset = self.audit_piece_offset
-                    * (PIECE_SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
+                    * (Piece::SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
                 error!(
                     ?error,
                     sector_id = ?self.sector_id,
@@ -174,7 +174,7 @@ where
     // Offset of the piece in sector (in bytes, accounts for the fact that encoded piece has its
     // chunks expanded with zero byte padding)
     let audit_piece_bytes_offset = audit_piece_offset
-        * (PIECE_SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
+        * (Piece::SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
 
     let mut piece = Piece::default();
     sector.seek(SeekFrom::Current(audit_piece_bytes_offset as i64))?;

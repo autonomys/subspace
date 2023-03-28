@@ -71,8 +71,7 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
-    PIECE_SIZE,
+    Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -299,12 +298,10 @@ pub struct TotalSpacePledged;
 
 impl Get<u128> for TotalSpacePledged {
     fn get() -> u128 {
-        let piece_size = u128::try_from(PIECE_SIZE)
-            .expect("Piece size is definitely small enough to fit into u128; qed");
         // Operations reordered to avoid data loss, but essentially are:
         // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
         u128::from(u64::MAX)
-            .saturating_mul(piece_size)
+            .saturating_mul(Piece::SIZE as u128)
             .saturating_mul(u128::from(SlotProbability::get().0))
             / u128::from(Subspace::solution_ranges().current)
             / u128::from(SlotProbability::get().1)

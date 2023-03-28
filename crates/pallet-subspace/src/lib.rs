@@ -57,8 +57,8 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader, SegmentIndex,
-    SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader,
+    SegmentIndex, SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -113,7 +113,6 @@ impl EraChangeTrigger for NormalEraChange {
 struct VoteVerificationData {
     global_randomness: Randomness,
     solution_range: SolutionRange,
-    pieces_in_segment: u32,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -1036,13 +1035,8 @@ impl<T: Config> Pallet<T> {
     /// Size of the archived history of the blockchain in bytes
     pub fn archived_history_size() -> u64 {
         let archived_segments = SegmentCommitment::<T>::count();
-        // `*2` because we need to include both data and parity pieces
-        let archived_segment_size = RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE
-            * u32::try_from(PIECE_SIZE)
-                .expect("Piece size is definitely small enough to fit into u32; qed")
-            * 2;
 
-        u64::from(archived_segments) * u64::from(archived_segment_size)
+        u64::from(archived_segments) * u64::from(PIECES_IN_SEGMENT) * Piece::SIZE as u64
     }
 
     pub fn chain_constants() -> ChainConstants {
@@ -1183,7 +1177,6 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .voting_next
                 .unwrap_or(solution_ranges.voting_current)
         },
-        pieces_in_segment: RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2,
         current_slot: Pallet::<T>::current_slot(),
         parent_slot: ParentVoteVerificationData::<T>::get()
             .map(|parent_vote_verification_data| {
@@ -1356,8 +1349,7 @@ fn check_vote<T: Config>(
     let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
     let piece_index = sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
-    let pieces_in_segment = vote_verification_data.pieces_in_segment;
-    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(pieces_in_segment);
+    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
 
     let segment_commitment =
         if let Some(segment_commitment) = Pallet::<T>::segment_commitment(segment_index) {
@@ -1376,10 +1368,7 @@ fn check_vote<T: Config>(
         (&VerifySolutionParams {
             global_randomness: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
-            piece_check_params: Some(PieceCheckParams {
-                segment_commitment,
-                pieces_in_segment,
-            }),
+            piece_check_params: Some(PieceCheckParams { segment_commitment }),
         })
             .into(),
     ) {

@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash};
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
@@ -49,7 +49,7 @@ where
 
     /// Create new instance with specified size (in bytes)
     pub fn new(aux_store: Arc<AS>, cache_size: u64, local_peer_id: PeerId) -> Self {
-        let max_pieces_in_cache: PieceIndex = cache_size / PIECE_SIZE as PieceIndex;
+        let max_pieces_in_cache: PieceIndex = cache_size / Piece::SIZE as PieceIndex;
         let local_provided_keys = Self::get_local_provided_keys(aux_store.clone())
             .expect("DB loading should succeed.")
             .unwrap_or_default();
