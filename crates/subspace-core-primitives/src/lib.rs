@@ -90,8 +90,9 @@ pub type BlockWeight = u128;
 /// Segment index type.
 pub type SegmentIndex = u64;
 
-/// Records root type.
-pub type RecordsRoot = Commitment;
+// TODO: New type
+/// Segment commitment type.
+pub type SegmentCommitment = Commitment;
 
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
@@ -294,7 +295,7 @@ pub enum RootBlock {
         /// Segment index
         segment_index: SegmentIndex,
         /// Root of commitments of all records in a segment.
-        records_root: RecordsRoot,
+        segment_commitment: SegmentCommitment,
         /// Hash of the root block of the previous segment
         prev_root_block_hash: Blake2b256Hash,
         /// Last archived block
@@ -316,9 +317,11 @@ impl RootBlock {
     }
 
     /// Merkle root of the records in a segment.
-    pub fn records_root(&self) -> RecordsRoot {
+    pub fn segment_commitment(&self) -> SegmentCommitment {
         match self {
-            Self::V0 { records_root, .. } => *records_root,
+            Self::V0 {
+                segment_commitment, ..
+            } => *segment_commitment,
         }
     }
 

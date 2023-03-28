@@ -21,7 +21,7 @@ use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_consensus_subspace::ChainConstants;
-use subspace_core_primitives::{BlockWeight, RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{BlockWeight, SegmentCommitment, SegmentIndex};
 
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
 where
@@ -63,30 +63,30 @@ pub(crate) fn load_block_weight<H: Encode, B: AuxStore>(
     load_decode(backend, block_weight_key(block_hash).as_slice())
 }
 
-/// The aux storage key used to store the records root of the given segment.
-fn records_root_key(segment_index: SegmentIndex) -> Vec<u8> {
-    (b"records_root", segment_index).encode()
+/// The aux storage key used to store the segment commitment of the given segment.
+fn segment_commitment_key(segment_index: SegmentIndex) -> Vec<u8> {
+    (b"segment_commitment", segment_index).encode()
 }
 
-/// Write the cumulative records root of a segment to aux storage.
-pub(crate) fn write_records_root<F, R>(
+/// Write the cumulative segment commitment of a segment to aux storage.
+pub(crate) fn write_segment_commitment<F, R>(
     segment_index: SegmentIndex,
-    records_root: &RecordsRoot,
+    segment_commitment: &SegmentCommitment,
     write_aux: F,
 ) -> R
 where
     F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
 {
-    let key = records_root_key(segment_index);
-    records_root.using_encoded(|s| write_aux(&[(key, s)]))
+    let key = segment_commitment_key(segment_index);
+    segment_commitment.using_encoded(|s| write_aux(&[(key, s)]))
 }
 
 /// Load the cumulative chain-weight associated with a block.
-pub(crate) fn load_records_root<B: AuxStore>(
+pub(crate) fn load_segment_commitment<B: AuxStore>(
     backend: &B,
     segment_index: SegmentIndex,
-) -> ClientResult<Option<RecordsRoot>> {
-    load_decode(backend, records_root_key(segment_index).as_slice())
+) -> ClientResult<Option<SegmentCommitment>> {
+    load_decode(backend, segment_commitment_key(segment_index).as_slice())
 }
 
 /// The aux storage key used to store the chain constants.

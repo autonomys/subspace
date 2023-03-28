@@ -17,7 +17,7 @@
 mod piece_validator;
 mod root_blocks;
 
-use crate::dsn::import_blocks::piece_validator::RecordsRootPieceValidator;
+use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
 use crate::dsn::import_blocks::root_blocks::RootBlockHandler;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -90,20 +90,20 @@ where
     IQ: ImportQueue<B> + 'static,
 {
     // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
-    let record_roots = RootBlockHandler::new(node.clone())
+    let segment_commitments = RootBlockHandler::new(node.clone())
         .get_root_blocks()
         .await
         .map_err(|error| sc_service::Error::Other(error.to_string()))?
         .iter()
-        .map(RootBlock::records_root)
+        .map(RootBlock::segment_commitment)
         .collect::<Vec<_>>();
-    let segments_found = record_roots.len() as SegmentIndex;
-    let piece_provider = PieceProvider::<RecordsRootPieceValidator>::new(
+    let segments_found = segment_commitments.len() as SegmentIndex;
+    let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
-        Some(RecordsRootPieceValidator::new(
+        Some(SegmentCommitmentPieceValidator::new(
             node.clone(),
             Kzg::new(embedded_kzg_settings()),
-            record_roots,
+            segment_commitments,
         )),
     );
 

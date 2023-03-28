@@ -43,7 +43,7 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RecordsRoot, RootBlock, SegmentIndex, Solution};
+use subspace_core_primitives::{RootBlock, SegmentCommitment, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -93,10 +93,10 @@ pub trait SubspaceRpcApi {
     fn subscribe_archived_segment(&self);
 
     #[method(name = "subspace_recordsRoots")]
-    async fn records_roots(
+    async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RecordsRoot>>>;
+    ) -> RpcResult<Vec<Option<SegmentCommitment>>>;
 
     #[method(name = "subspace_rootBlocks")]
     async fn root_blocks(
@@ -452,10 +452,10 @@ where
         Ok(())
     }
 
-    async fn records_roots(
+    async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RecordsRoot>>> {
+    ) -> RpcResult<Vec<Option<SegmentCommitment>>> {
         if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
@@ -471,38 +471,38 @@ where
         let best_hash = self.client.info().best_hash;
         let best_block_number = self.client.info().best_number;
 
-        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+        let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
             .map(|segment_index| {
                 let api_result = runtime_api
-                    .records_root(best_hash, segment_index)
+                    .segment_commitment(best_hash, segment_index)
                     .map_err(|_| {
                         JsonRpseeError::Custom(
-                            "Internal error during `records_root` call".to_string(),
+                            "Internal error during `segment_commitment` call".to_string(),
                         )
                     });
 
-                api_result.map(|maybe_records_root| {
+                api_result.map(|maybe_segment_commitment| {
                     // This is not a very nice hack due to the fact that at the time first block is produced
                     // extrinsics with root blocks are not yet in runtime.
-                    if maybe_records_root.is_none() && best_block_number.is_zero() {
+                    if maybe_segment_commitment.is_none() && best_block_number.is_zero() {
                         self.subspace_link
-                            .records_root_by_segment_index(segment_index)
+                            .segment_commitment_by_segment_index(segment_index)
                     } else {
-                        maybe_records_root
+                        maybe_segment_commitment
                     }
                 })
             })
             .collect();
 
-        if let Err(ref err) = records_root_result {
+        if let Err(ref err) = segment_commitment_result {
             error!(
-                "Failed to get data from runtime API (records_root): {}",
+                "Failed to get data from runtime API (segment_commitment): {}",
                 err
             );
         }
 
-        records_root_result
+        segment_commitment_result
     }
 
     async fn root_blocks(
@@ -520,7 +520,7 @@ where
             )));
         };
 
-        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+        let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
             .map(|segment_index| {
                 let api_result = self
@@ -536,10 +536,10 @@ where
             })
             .collect();
 
-        if let Err(err) = &records_root_result {
+        if let Err(err) = &segment_commitment_result {
             error!(?err, "Failed to get root blocks.");
         }
 
-        records_root_result
+        segment_commitment_result
     }
 }

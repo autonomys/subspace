@@ -71,7 +71,7 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    PublicKey, Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
+    PublicKey, Randomness, RootBlock, SegmentCommitment, SegmentIndex, SolutionRange, PIECE_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -1107,8 +1107,8 @@ impl_runtime_apis! {
             Subspace::is_in_block_list(farmer_public_key)
         }
 
-        fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
-            Subspace::records_root(segment_index)
+        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
+            Subspace::segment_commitment(segment_index)
         }
 
         fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {

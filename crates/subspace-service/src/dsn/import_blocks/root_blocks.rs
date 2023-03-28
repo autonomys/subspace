@@ -81,7 +81,7 @@ impl RootBlockHandler {
             trace!(%retry_attempt, "Getting last root block...");
 
             // Get random peers. Some of them could be bootstrap nodes with no support for
-            // request-response protocol for records root.
+            // request-response protocol for segment commitment.
             let get_peers_result = self
                 .dsn_node
                 .get_closest_peers(PeerId::random().into())

@@ -34,7 +34,7 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceArray,
-    RawRecord, RecordedHistorySegment, RecordsRoot, RootBlock, PIECES_IN_SEGMENT,
+    RawRecord, RecordedHistorySegment, RootBlock, SegmentCommitment, PIECES_IN_SEGMENT,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -743,7 +743,7 @@ impl Archiver {
             )
             .expect("Internally produced values must never fail; qed");
 
-        let records_root = self
+        let segment_commitment = self
             .kzg
             .commit(&polynomial)
             .expect("Internally produced values must never fail; qed");
@@ -762,7 +762,7 @@ impl Archiver {
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
-                        .expect("We use the same indexes as during Merkle tree creation; qed")
+                        .expect("Position is statically known to be valid; qed")
                         .to_bytes(),
                 );
             });
@@ -770,7 +770,7 @@ impl Archiver {
         // Now produce root block
         let root_block = RootBlock::V0 {
             segment_index: self.segment_index,
-            records_root,
+            segment_commitment,
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };
@@ -796,7 +796,7 @@ pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
     piece: &PieceArray,
-    records_root: &RecordsRoot,
+    segment_commitment: &SegmentCommitment,
     position: u32,
 ) -> bool {
     let (record, commitment, witness) = piece.split();
@@ -844,7 +844,7 @@ pub fn is_piece_valid(
     let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
-        records_root,
+        segment_commitment,
         num_pieces_in_segment,
         position,
         &commitment_hash,
@@ -857,7 +857,7 @@ pub fn is_piece_record_hash_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
     piece_record_hash: &Scalar,
-    commitment: &RecordsRoot,
+    commitment: &SegmentCommitment,
     witness: &Witness,
     position: u32,
 ) -> bool {

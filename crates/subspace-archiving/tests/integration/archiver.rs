@@ -182,7 +182,7 @@ fn archiver() {
             &kzg,
             PIECES_IN_SEGMENT as usize,
             piece,
-            &first_archived_segment.root_block.records_root(),
+            &first_archived_segment.root_block.segment_commitment(),
             position as u32,
         ));
     }
@@ -285,7 +285,7 @@ fn archiver() {
                 &kzg,
                 PIECES_IN_SEGMENT as usize,
                 piece,
-                &archived_segment.root_block.records_root(),
+                &archived_segment.root_block.segment_commitment(),
                 position as u32,
             ));
         }
@@ -332,7 +332,7 @@ fn archiver() {
                 &kzg,
                 PIECES_IN_SEGMENT as usize,
                 piece,
-                &archived_segment.root_block.records_root(),
+                &archived_segment.root_block.segment_commitment(),
                 position as u32,
             ));
         }
@@ -347,7 +347,7 @@ fn invalid_usage() {
             kzg.clone(),
             RootBlock::V0 {
                 segment_index: 0,
-                records_root: Commitment::default(),
+                segment_commitment: Commitment::default(),
                 prev_root_block_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -373,7 +373,7 @@ fn invalid_usage() {
             kzg,
             RootBlock::V0 {
                 segment_index: 0,
-                records_root: Commitment::default(),
+                segment_commitment: Commitment::default(),
                 prev_root_block_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -518,7 +518,7 @@ fn object_on_the_edge_of_segment() {
             // Root block segment item
             - SegmentItem::RootBlock(RootBlock::V0 {
                 segment_index: 0,
-                records_root: Default::default(),
+                segment_commitment: Default::default(),
                 prev_root_block_hash: Default::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,

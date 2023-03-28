@@ -228,7 +228,7 @@ impl PiecesReconstructor {
                     .create_witness(&polynomial, position as u32)
                     // TODO: Update this proof here and in other places, we don't use Merkle
                     //  trees anymore
-                    .expect("We use the same indexes as during Merkle tree creation; qed")
+                    .expect("Position is statically known to be valid; qed")
                     .to_bytes(),
             );
         });
@@ -255,7 +255,7 @@ impl PiecesReconstructor {
             &self
                 .kzg
                 .create_witness(&polynomial, piece_position as u32)
-                .expect("We use the same indexes as during Merkle tree creation; qed")
+                .expect("Position is verified to be valid above; qed")
                 .to_bytes(),
         );
 

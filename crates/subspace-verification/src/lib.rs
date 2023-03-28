@@ -28,8 +28,8 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
-    BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RecordsRoot, RewardSignature,
-    SectorId, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
+    BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RewardSignature, SectorId,
+    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
@@ -70,11 +70,11 @@ pub fn check_reward_signature(
 
 /// Check piece validity.
 ///
-/// If `records_root` is `None`, piece validity check will be skipped.
+/// If `segment_commitment` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     kzg: &Kzg,
     pieces_in_segment: usize,
-    records_root: &RecordsRoot,
+    segment_commitment: &SegmentCommitment,
     position: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), Error>
@@ -85,7 +85,7 @@ where
         kzg,
         pieces_in_segment,
         &solution.piece_commitment_hash,
-        records_root,
+        segment_commitment,
         &solution.piece_witness,
         position,
     ) {
@@ -116,8 +116,8 @@ pub fn is_within_solution_range(
 /// Parameters for checking piece validity
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct PieceCheckParams {
-    /// Records root of segment to which piece belongs
-    pub records_root: RecordsRoot,
+    /// Segment commitment of segment to which piece belongs
+    pub segment_commitment: SegmentCommitment,
     /// Number of pieces in a segment
     pub pieces_in_segment: u32,
 }
@@ -182,7 +182,7 @@ where
     // TODO: Check if sector already expired once we have such notion
 
     if let Some(PieceCheckParams {
-        records_root,
+        segment_commitment,
         pieces_in_segment,
     }) = piece_check_params
     {
@@ -201,7 +201,7 @@ where
         check_piece(
             kzg,
             *pieces_in_segment as usize,
-            records_root,
+            segment_commitment,
             position,
             solution,
         )?;

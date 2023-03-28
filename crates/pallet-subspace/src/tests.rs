@@ -24,7 +24,7 @@ use crate::mock::{
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, ChunkOffset, Config,
     CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, Error, ParentBlockAuthorInfo,
-    ParentBlockVoters, RecordsRoot, SubspaceEquivocationOffence, WeightInfo,
+    ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence, WeightInfo,
 };
 use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
@@ -788,9 +788,9 @@ fn vote_past_future_slot() {
         let archived_segment = create_archived_segment();
         let piece = &archived_segment.pieces[0];
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -871,9 +871,9 @@ fn vote_same_slot() {
         // Move to the block 3, but time slot 4, but in two time slots
         go_to_block(&block_keypair, 3, 4, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -951,7 +951,7 @@ fn vote_bad_reward_signature() {
 }
 
 #[test]
-fn vote_unknown_records_root() {
+fn vote_unknown_segment_commitment() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
@@ -959,7 +959,7 @@ fn vote_unknown_records_root() {
 
         progress_to_block(&keypair, 2, 1);
 
-        // There must be record root corresponding to the piece used
+        // There must be segment commitment corresponding to the piece used
         let signed_vote = create_signed_vote(
             &keypair,
             2,
@@ -972,7 +972,7 @@ fn vote_unknown_records_root() {
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
-            CheckVoteError::UnknownRecordsRoot
+            CheckVoteError::UnknownSegmentCommitment
         );
     });
 }
@@ -986,9 +986,9 @@ fn vote_outside_of_solution_range() {
 
         progress_to_block(&keypair, 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Solution must be within solution range
@@ -1020,9 +1020,9 @@ fn vote_invalid_solution_signature() {
 
         progress_to_block(&keypair, 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1073,9 +1073,9 @@ fn vote_correct_signature() {
 
         progress_to_block(&keypair, 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1105,9 +1105,9 @@ fn vote_randomness_update() {
         let archived_segment = create_archived_segment();
         let piece = &archived_segment.pieces[0];
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         progress_to_block(&keypair, GlobalRandomnessUpdateInterval::get(), 1);
@@ -1144,9 +1144,9 @@ fn vote_equivocation_current_block_plus_vote() {
 
         progress_to_block(&keypair, 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1195,9 +1195,9 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         progress_to_block(&keypair, 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1255,9 +1255,9 @@ fn vote_equivocation_current_voters_duplicate() {
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1335,9 +1335,9 @@ fn vote_equivocation_parent_voters_duplicate() {
 
         progress_to_block(&keypair, 2, 1);
 
-        RecordsRoot::<Test>::insert(
+        SegmentCommitment::<Test>::insert(
             archived_segment.root_block.segment_index(),
-            archived_segment.root_block.records_root(),
+            archived_segment.root_block.segment_commitment(),
         );
 
         // Reset so that any solution works for votes

@@ -375,11 +375,15 @@ mod pallet {
     #[pallet::storage]
     pub(super) type BlockList<T> = StorageMap<_, Twox64Concat, FarmerPublicKey, ()>;
 
-    /// Mapping from segment index to corresponding merkle tree root of segment records.
+    /// Mapping from segment index to corresponding segment commitment of contained records.
     #[pallet::storage]
-    #[pallet::getter(fn records_root)]
-    pub(super) type RecordsRoot<T> =
-        CountedStorageMap<_, Twox64Concat, SegmentIndex, subspace_core_primitives::RecordsRoot>;
+    #[pallet::getter(fn segment_commitment)]
+    pub(super) type SegmentCommitment<T> = CountedStorageMap<
+        _,
+        Twox64Concat,
+        SegmentIndex,
+        subspace_core_primitives::SegmentCommitment,
+    >;
 
     /// Storage of previous vote verification data, updated on each block during finalization.
     #[pallet::storage]
@@ -669,7 +673,7 @@ impl<T: Config> Pallet<T> {
     /// Total number of pieces in the blockchain
     pub fn total_pieces() -> NonZeroU64 {
         // Chain starts with one segment plotted, even if it is not recorded in the runtime yet
-        let number_of_segments = u64::from(RecordsRoot::<T>::count()).max(1);
+        let number_of_segments = u64::from(SegmentCommitment::<T>::count()).max(1);
         NonZeroU64::new(number_of_segments * u64::from(PIECES_IN_SEGMENT))
             .expect("Neither of multiplied values is zero; qed")
     }
@@ -920,11 +924,14 @@ impl<T: Config> Pallet<T> {
 
     fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
         for root_block in root_blocks {
-            RecordsRoot::<T>::insert(root_block.segment_index(), root_block.records_root());
-            // Deposit global randomness data such that light client can validate blocks later.
-            frame_system::Pallet::<T>::deposit_log(DigestItem::records_root(
+            SegmentCommitment::<T>::insert(
                 root_block.segment_index(),
-                root_block.records_root(),
+                root_block.segment_commitment(),
+            );
+            // Deposit global randomness data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::segment_commitment(
+                root_block.segment_index(),
+                root_block.segment_commitment(),
             ));
             Self::deposit_event(Event::RootBlockStored { root_block });
         }
@@ -1028,7 +1035,7 @@ impl<T: Config> Pallet<T> {
 
     /// Size of the archived history of the blockchain in bytes
     pub fn archived_history_size() -> u64 {
-        let archived_segments = RecordsRoot::<T>::count();
+        let archived_segments = SegmentCommitment::<T>::count();
         // `*2` because we need to include both data and parity pieces
         let archived_segment_size = RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE
             * u32::try_from(PIECE_SIZE)
@@ -1198,7 +1205,7 @@ enum CheckVoteError {
     SlotInTheFuture,
     SlotInThePast,
     BadRewardSignature(SignatureError),
-    UnknownRecordsRoot,
+    UnknownSegmentCommitment,
     InvalidSolution(String),
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
@@ -1215,7 +1222,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::SlotInTheFuture => InvalidTransaction::Future,
             CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
-            CheckVoteError::UnknownRecordsRoot => InvalidTransaction::Call,
+            CheckVoteError::UnknownSegmentCommitment => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
             CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
@@ -1350,15 +1357,16 @@ fn check_vote<T: Config>(
     let pieces_in_segment = vote_verification_data.pieces_in_segment;
     let segment_index: SegmentIndex = piece_index / SegmentIndex::from(pieces_in_segment);
 
-    let records_root = if let Some(records_root) = Pallet::<T>::records_root(segment_index) {
-        records_root
-    } else {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: no records root for segment index {segment_index}"
-        );
-        return Err(CheckVoteError::UnknownRecordsRoot);
-    };
+    let segment_commitment =
+        if let Some(segment_commitment) = Pallet::<T>::segment_commitment(segment_index) {
+            segment_commitment
+        } else {
+            debug!(
+                target: "runtime::subspace",
+                "Vote verification error: no segment commitment for segment index {segment_index}"
+            );
+            return Err(CheckVoteError::UnknownSegmentCommitment);
+        };
 
     if let Err(error) = verify_solution(
         solution.into(),
@@ -1367,7 +1375,7 @@ fn check_vote<T: Config>(
             global_randomness: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
-                records_root,
+                segment_commitment,
                 pieces_in_segment,
             }),
         })
@@ -1473,13 +1481,13 @@ fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), Transac
 
     // Segment in root blocks should monotonically increase
     if first_root_block.segment_index() > 0
-        && !RecordsRoot::<T>::contains_key(first_root_block.segment_index() - 1)
+        && !SegmentCommitment::<T>::contains_key(first_root_block.segment_index() - 1)
     {
         return Err(InvalidTransaction::BadMandatory.into());
     }
 
     // Root blocks should never repeat
-    if RecordsRoot::<T>::contains_key(first_root_block.segment_index()) {
+    if SegmentCommitment::<T>::contains_key(first_root_block.segment_index()) {
         return Err(InvalidTransaction::BadMandatory.into());
     }
 
@@ -1494,7 +1502,7 @@ fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), Transac
         }
 
         // Root blocks should never repeat
-        if RecordsRoot::<T>::contains_key(segment_index) {
+        if SegmentCommitment::<T>::contains_key(segment_index) {
             return Err(InvalidTransaction::BadMandatory.into());
         }
 
