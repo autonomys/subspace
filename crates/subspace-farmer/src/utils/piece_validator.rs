@@ -4,9 +4,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    Piece, PieceIndex, SegmentCommitment, SegmentIndex, PIECES_IN_SEGMENT,
-};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
@@ -96,7 +94,6 @@ where
 
             if !is_piece_valid(
                 &self.kzg,
-                PIECES_IN_SEGMENT as usize,
                 &piece,
                 &segment_commitment,
                 piece_index.position(),

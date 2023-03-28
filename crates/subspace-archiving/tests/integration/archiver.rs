@@ -182,7 +182,6 @@ fn archiver() {
     for (position, piece) in first_archived_segment.pieces.iter().enumerate() {
         assert!(archiver::is_piece_valid(
             &kzg,
-            PIECES_IN_SEGMENT as usize,
             piece,
             &first_archived_segment.segment_header.segment_commitment(),
             position as u32,
@@ -285,7 +284,6 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 &kzg,
-                PIECES_IN_SEGMENT as usize,
                 piece,
                 &archived_segment.segment_header.segment_commitment(),
                 position as u32,
@@ -332,7 +330,6 @@ fn archiver() {
         for (position, piece) in archived_segment.pieces.iter().enumerate() {
             assert!(archiver::is_piece_valid(
                 &kzg,
-                PIECES_IN_SEGMENT as usize,
                 piece,
                 &archived_segment.segment_header.segment_commitment(),
                 position as u32,

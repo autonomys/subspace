@@ -143,7 +143,7 @@ impl EligibleSector {
                 sector_index: self.sector_index,
                 total_pieces: sector_metadata.total_pieces,
                 piece_offset: self.audit_piece_offset,
-                piece_commitment_hash: blake2b_256_254_hash_to_scalar(commitment.as_ref()),
+                record_commitment_hash: blake2b_256_254_hash_to_scalar(commitment.as_ref()),
                 piece_witness,
                 chunk_offset: offset,
                 chunk,

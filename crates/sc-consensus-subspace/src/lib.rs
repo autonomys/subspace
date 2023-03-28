@@ -83,7 +83,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange, PIECES_IN_SEGMENT,
+    Solution, SolutionRange,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -944,7 +944,6 @@ where
         // segment header, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
-            PIECES_IN_SEGMENT as usize,
             &segment_commitment,
             position,
             &pre_digest.solution,

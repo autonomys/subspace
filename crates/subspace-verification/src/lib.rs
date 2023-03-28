@@ -29,8 +29,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
     BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RewardSignature, SectorId,
-    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, PIECES_IN_SEGMENT,
-    RANDOMNESS_CONTEXT,
+    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
@@ -74,7 +73,6 @@ pub fn check_reward_signature(
 /// If `segment_commitment` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     kzg: &Kzg,
-    pieces_in_segment: usize,
     segment_commitment: &SegmentCommitment,
     position: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
@@ -82,10 +80,9 @@ pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
 where
     &'a FarmerPublicKey: Into<PublicKey>,
 {
-    if !archiver::is_piece_record_hash_valid(
+    if !archiver::is_record_commitment_hash_valid(
         kzg,
-        pieces_in_segment,
-        &solution.piece_commitment_hash,
+        &solution.record_commitment_hash,
         segment_commitment,
         &solution.piece_witness,
         position,
@@ -193,13 +190,7 @@ where
                 return Err(Error::MissingKzgInstance);
             }
         };
-        check_piece(
-            kzg,
-            PIECES_IN_SEGMENT as usize,
-            segment_commitment,
-            position,
-            solution,
-        )?;
+        check_piece(kzg, segment_commitment, position, solution)?;
     }
 
     Ok(())
