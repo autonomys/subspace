@@ -235,10 +235,10 @@ where
         new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         // TODO: Here we are hacking around lack of transaction support in test runtime and
-        //  remove known root blocks for current block to make sure block import doesn't fail, this
-        //  should be removed once runtime supports transactions
+        //  remove known segment headers for current block to make sure block import doesn't fail,
+        //  this should be removed once runtime supports transactions
         let block_number = block.header.number;
-        let removed_root_blocks = self.link.root_blocks.lock().pop(&block_number);
+        let removed_segment_headers = self.link.segment_headers.lock().pop(&block_number);
 
         let import_result = self
             .block_import
@@ -246,11 +246,11 @@ where
             .await
             .expect("importing block failed");
 
-        if let Some(removed_root_blocks) = removed_root_blocks {
+        if let Some(removed_segment_headers) = removed_segment_headers {
             self.link
-                .root_blocks
+                .segment_headers
                 .lock()
-                .put(block_number, removed_root_blocks);
+                .put(block_number, removed_segment_headers);
         }
 
         Ok(import_result)
@@ -606,8 +606,8 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
     .await;
 }
 
-// TODO: Un-ignore once `submit_test_store_root_block()` is working or transactions are supported in
-//  test runtime
+// TODO: Un-ignore once `submit_test_store_segment_header()` is working or transactions are
+//  supported in test runtime
 #[tokio::test]
 #[ignore]
 async fn authoring_blocks() {
@@ -834,8 +834,9 @@ fn verify_slots_are_strictly_increasing() {
     );
 }
 
-// TODO: Runtime at the moment doesn't implement transactions support, so root block extrinsic
-//  verification fails in tests (`submit_test_store_root_block()` doesn't submit extrinsic as such).
+// TODO: Runtime at the moment doesn't implement transactions support, so segment header extrinsic
+//  verification fails in tests (`submit_test_store_segment_header()` doesn't submit extrinsic as
+//  such).
 // // Check that block import results in archiving working.
 // #[test]
 // fn archiving_works() {

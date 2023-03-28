@@ -209,25 +209,26 @@ where
             let piece_index =
                 sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
             let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
-            let mut maybe_records_root =
-                runtime_api.records_root(parent_hash, segment_index).ok()?;
+            let mut maybe_segment_commitment = runtime_api
+                .segment_commitment(parent_hash, segment_index)
+                .ok()?;
             // TODO: This will be necessary for verifying sector expiration in the future
             let _total_pieces = runtime_api.total_pieces(parent_hash).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
-            // extrinsics with root blocks are not yet in runtime.
-            if maybe_records_root.is_none() && parent_header.number().is_zero() {
-                maybe_records_root = self
+            // extrinsics with segment headers are not yet in runtime.
+            if maybe_segment_commitment.is_none() && parent_header.number().is_zero() {
+                maybe_segment_commitment = self
                     .subspace_link
-                    .records_root_by_segment_index(segment_index);
+                    .segment_commitment_by_segment_index(segment_index);
             }
 
-            let records_root = match maybe_records_root {
-                Some(records_root) => records_root,
+            let segment_commitment = match maybe_segment_commitment {
+                Some(segment_commitment) => segment_commitment,
                 None => {
                     warn!(
                         target: "subspace",
-                        "Records root for segment index {} not found (slot {})",
+                        "Segment commitment for segment index {} not found (slot {})",
                         segment_index,
                         slot,
                     );
@@ -242,7 +243,7 @@ where
                     global_randomness,
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
-                        records_root,
+                        segment_commitment,
 
                         pieces_in_segment: PIECES_IN_SEGMENT,
                     }),
@@ -268,8 +269,8 @@ where
 
                     maybe_pre_digest.replace(PreDigest { solution, slot });
                 } else if !parent_header.number().is_zero() {
-                    // Not sending vote on top of genesis block since root blocks since piece
-                    // verification wouldn't be possible due to empty records root
+                    // Not sending vote on top of genesis block since segment headers since piece
+                    // verification wouldn't be possible due to missing (for now) segment commitment
                     info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
                     self.create_vote(solution, slot, parent_header, parent_hash)

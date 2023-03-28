@@ -9,9 +9,9 @@ impl pallet_subspace::WeightInfo for WeightInfo {
         Weight::from_ref_time(10_000)
     }
 
-    fn store_root_blocks(root_blocks_count: usize) -> Weight {
+    fn store_segment_headers(segment_headers_count: usize) -> Weight {
         // TODO: Proper value
-        Weight::from_ref_time(10_000 * (root_blocks_count as u64 + 1))
+        Weight::from_ref_time(10_000 * (segment_headers_count as u64 + 1))
     }
 
     fn vote() -> Weight {

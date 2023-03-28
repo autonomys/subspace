@@ -34,19 +34,19 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, RootBlock};
+use subspace_core_primitives::{BlockNumber, SegmentHeader};
 
 fn find_last_archived_block<Block, Client>(
     client: &Client,
     best_block_hash: Block::Hash,
-) -> Option<(RootBlock, SignedBlock<Block>, BlockObjectMapping)>
+) -> Option<(SegmentHeader, SignedBlock<Block>, BlockObjectMapping)>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
 {
     let mut block_to_check = best_block_hash;
-    let last_root_block = 'outer: loop {
+    let last_segment_header = 'outer: loop {
         let block = client
             .block(block_to_check)
             .expect("Older blocks should always exist")
@@ -55,10 +55,10 @@ where
         for extrinsic in block.block.extrinsics() {
             match client
                 .runtime_api()
-                .extract_root_blocks(block_to_check, extrinsic)
+                .extract_segment_headers(block_to_check, extrinsic)
             {
-                Ok(Some(root_blocks)) => {
-                    break 'outer root_blocks.into_iter().last()?;
+                Ok(Some(segment_headers)) => {
+                    break 'outer segment_headers.into_iter().last()?;
                 }
                 Ok(None) => {
                     // Some other extrinsic, ignore
@@ -83,7 +83,7 @@ where
         block_to_check = parent_block_hash;
     };
 
-    let last_archived_block_number = last_root_block.last_archived_block().number;
+    let last_archived_block_number = last_segment_header.last_archived_block().number;
 
     let last_archived_block = loop {
         let block = client
@@ -112,7 +112,11 @@ where
         })
         .unwrap_or_default();
 
-    Some((last_root_block, last_archived_block, block_object_mappings))
+    Some((
+        last_segment_header,
+        last_archived_block,
+        block_object_mappings,
+    ))
 }
 
 struct BlockHashesToArchive<Block>
@@ -193,39 +197,40 @@ where
         .confirmation_depth_k();
 
     let maybe_last_archived_block = find_last_archived_block(client, best_block_hash);
-    let have_last_root_block = maybe_last_archived_block.is_some();
+    let have_last_segment_header = maybe_last_archived_block.is_some();
     let mut best_archived_block = None;
 
-    let mut archiver = if let Some((last_root_block, last_archived_block, block_object_mappings)) =
-        maybe_last_archived_block
-    {
-        // Continuing from existing initial state
-        let last_archived_block_number = last_root_block.last_archived_block().number;
-        info!(
-            target: "subspace",
-            "Last archived block {}",
-            last_archived_block_number,
-        );
+    let mut archiver =
+        if let Some((last_segment_header, last_archived_block, block_object_mappings)) =
+            maybe_last_archived_block
+        {
+            // Continuing from existing initial state
+            let last_archived_block_number = last_segment_header.last_archived_block().number;
+            info!(
+                target: "subspace",
+                "Last archived block {}",
+                last_archived_block_number,
+            );
 
-        // Set initial value, this is needed in case only genesis block was archived and there is
-        // nothing else available
-        best_archived_block.replace((
-            last_archived_block.block.hash(),
-            *last_archived_block.block.header().number(),
-        ));
+            // Set initial value, this is needed in case only genesis block was archived and there
+            // is nothing else available
+            best_archived_block.replace((
+                last_archived_block.block.hash(),
+                *last_archived_block.block.header().number(),
+            ));
 
-        Archiver::with_initial_state(
-            kzg,
-            last_root_block,
-            &last_archived_block.encode(),
-            block_object_mappings,
-        )
-        .expect("Incorrect parameters for archiver")
-    } else {
-        info!(target: "subspace", "Starting archiving from genesis");
+            Archiver::with_initial_state(
+                kzg,
+                last_segment_header,
+                &last_archived_block.encode(),
+                block_object_mappings,
+            )
+            .expect("Incorrect parameters for archiver")
+        } else {
+            info!(target: "subspace", "Starting archiving from genesis");
 
-        Archiver::new(kzg).expect("Incorrect parameters for archiver")
-    };
+            Archiver::new(kzg).expect("Incorrect parameters for archiver")
+        };
 
     let mut older_archived_segments = Vec::new();
 
@@ -244,7 +249,7 @@ where
                 })
                 .checked_sub(confirmation_depth_k)
                 .or({
-                    if have_last_root_block {
+                    if have_last_segment_header {
                         None
                     } else {
                         // If not continuation, archive genesis block
@@ -297,25 +302,25 @@ where
                 );
 
                 let archived_segments = archiver.add_block(encoded_block, block_object_mappings);
-                let new_root_blocks: Vec<RootBlock> = archived_segments
+                let new_segment_headers: Vec<SegmentHeader> = archived_segments
                     .iter()
-                    .map(|archived_segment| archived_segment.root_block)
+                    .map(|archived_segment| archived_segment.segment_header)
                     .collect();
 
                 older_archived_segments.extend(archived_segments);
 
-                if !new_root_blocks.is_empty() {
-                    // Set list of expected root blocks for the block where we expect root block
-                    // extrinsic to be included
-                    subspace_link.root_blocks.lock().put(
+                if !new_segment_headers.is_empty() {
+                    // Set list of expected segment headers for the block where we expect segment
+                    // header extrinsic to be included
+                    subspace_link.segment_headers.lock().put(
                         if block_number_to_archive.is_zero() {
-                            // Special case for genesis block whose root block should be included in
+                            // Special case for genesis block whose segment header should be included in
                             // the first block in order for further validation to work properly.
                             One::one()
                         } else {
                             block_number_to_archive + confirmation_depth_k.into() + One::one()
                         },
-                        new_root_blocks,
+                        new_segment_headers,
                     );
                 }
             }
@@ -367,8 +372,8 @@ fn finalize_block<Block, Backend, Client>(
 }
 
 /// Start an archiver that will listen for imported blocks and archive blocks at `K` depth,
-/// producing pieces and root blocks (root blocks are then added back to the blockchain as
-/// `store_root_block` extrinsic).
+/// producing pieces and segment headers (segment headers are then added back to the blockchain as
+/// `store_segment_header` extrinsic).
 pub fn start_subspace_archiver<Block, Backend, Client>(
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
@@ -413,7 +418,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                 subspace_link.imported_block_notification_stream.subscribe();
             let archived_segment_notification_sender =
                 subspace_link.archived_segment_notification_sender.clone();
-            let root_blocks = Arc::clone(&subspace_link.root_blocks);
+            let segment_headers = Arc::clone(&subspace_link.segment_headers);
 
             async move {
                 // Farmers may have not received all previous segments, send them now.
@@ -501,10 +506,10 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                         encoded_block.len() as f32 / 1024.0
                     );
 
-                    let mut new_root_blocks = Vec::new();
+                    let mut new_segment_headers = Vec::new();
                     for archived_segment in archiver.add_block(encoded_block, block_object_mappings)
                     {
-                        let root_block = archived_segment.root_block;
+                        let segment_header = archived_segment.segment_header;
 
                         send_archived_segment_notification(
                             &archived_segment_notification_sender,
@@ -512,13 +517,13 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                         )
                         .await;
 
-                        new_root_blocks.push(root_block);
+                        new_segment_headers.push(segment_header);
                     }
 
-                    if !new_root_blocks.is_empty() {
-                        root_blocks
+                    if !new_segment_headers.is_empty() {
+                        segment_headers
                             .lock()
-                            .put(block_number + One::one(), new_root_blocks);
+                            .put(block_number + One::one(), new_segment_headers);
                     }
 
                     finalize_block(

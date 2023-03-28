@@ -68,7 +68,7 @@ fn basic() {
 
         // Only first block fits
         assert_eq!(contents.blocks, vec![(0, block_0)]);
-        assert_eq!(contents.root_block, None);
+        assert_eq!(contents.segment_header, None);
     }
 
     {
@@ -78,10 +78,10 @@ fn basic() {
 
         // Second block is finished, but also third is included
         assert_eq!(contents.blocks, vec![(1, block_1), (2, block_2.clone())]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 0);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 0);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
                 archived_progress: ArchivedBlockProgress::Partial(1962165)
@@ -95,10 +95,10 @@ fn basic() {
 
         // Only third block is fully contained
         assert_eq!(contents.blocks, vec![(2, block_2)]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 0);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 0);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
                 archived_progress: ArchivedBlockProgress::Partial(1962165)
@@ -113,10 +113,10 @@ fn basic() {
 
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 1);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 1);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
                 archived_progress: ArchivedBlockProgress::Partial(980962)
@@ -130,10 +130,10 @@ fn basic() {
 
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 1);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 1);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
                 archived_progress: ArchivedBlockProgress::Partial(980962)
@@ -148,10 +148,10 @@ fn basic() {
 
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 2);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 2);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
                 archived_progress: ArchivedBlockProgress::Partial(4905209)
@@ -167,10 +167,10 @@ fn basic() {
 
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 2);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 2);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
                 archived_progress: ArchivedBlockProgress::Partial(4905209)
@@ -185,10 +185,10 @@ fn basic() {
 
         // Enough data to reconstruct fourth block
         assert_eq!(contents.blocks, vec![(3, block_3)]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 3);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 3);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
                 archived_progress: ArchivedBlockProgress::Partial(8829456)
@@ -204,10 +204,10 @@ fn basic() {
 
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
-        assert!(contents.root_block.is_some());
-        assert_eq!(contents.root_block.unwrap().segment_index(), 3);
+        assert!(contents.segment_header.is_some());
+        assert_eq!(contents.segment_header.unwrap().segment_index(), 3);
         assert_eq!(
-            contents.root_block.unwrap().last_archived_block(),
+            contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
                 archived_progress: ArchivedBlockProgress::Partial(8829456)

@@ -28,7 +28,7 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
-use sc_consensus_subspace_rpc::{RootBlockProvider, SubspaceRpc, SubspaceRpcApiServer};
+use sc_consensus_subspace_rpc::{SegmentHeaderProvider, SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
@@ -67,8 +67,8 @@ pub struct FullDeps<C, P, RBP> {
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
     /// SubspaceLink shared state.
     pub subspace_link: SubspaceLink<Block>,
-    /// Root block provider.
-    pub root_blocks_provider: RBP,
+    /// Segment header provider.
+    pub segment_headers_provider: RBP,
 }
 
 /// Instantiate all full RPC extensions.
@@ -88,7 +88,7 @@ where
         + BlockBuilder<Block>
         + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
-    RPB: RootBlockProvider + Send + Sync + 'static,
+    RPB: SegmentHeaderProvider + Send + Sync + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -102,7 +102,7 @@ where
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
         subspace_link,
-        root_blocks_provider,
+        segment_headers_provider,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -122,7 +122,7 @@ where
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
             subspace_link,
-            root_blocks_provider,
+            segment_headers_provider,
         )
         .into_rpc(),
     )?;

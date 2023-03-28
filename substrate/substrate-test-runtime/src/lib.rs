@@ -54,7 +54,7 @@ use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{RecordsRoot, SegmentIndex};
+use subspace_core_primitives::{SegmentCommitment, SegmentIndex};
 
 // Include the WASM binary
 #[cfg(feature = "std")]
@@ -893,13 +893,13 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
 
-                fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
-                    <pallet_subspace::Pallet<Runtime>>::records_root(segment_index)
+                fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
+                    <pallet_subspace::Pallet<Runtime>>::segment_commitment(segment_index)
                 }
 
-                fn extract_root_blocks(
+                fn extract_segment_headers(
                     _ext: &<Block as BlockT>::Extrinsic
-                ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
+                ) -> Option<Vec<subspace_core_primitives::SegmentHeader >> {
                     panic!("Not needed in tests")
                 }
 
@@ -1141,13 +1141,13 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::is_in_block_list(farmer_public_key)
                 }
 
-                fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
-                    <pallet_subspace::Pallet<Runtime>>::records_root(segment_index)
+                fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
+                    <pallet_subspace::Pallet<Runtime>>::segment_commitment(segment_index)
                 }
 
-                fn extract_root_blocks(
+                fn extract_segment_headers(
                     _ext: &<Block as BlockT>::Extrinsic
-                ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
+                ) -> Option<Vec<subspace_core_primitives::SegmentHeader>> {
                     panic!("Not needed in tests")
                 }
 
@@ -1300,11 +1300,12 @@ mod tests {
     use sc_block_builder::BlockBuilderProvider;
     use sp_api::ProvideRuntimeApi;
     use sp_consensus::BlockOrigin;
-    use sp_core::{storage::well_known_keys::HEAP_PAGES, ExecutionContext};
+    use sp_core::storage::well_known_keys::HEAP_PAGES;
+    use sp_core::ExecutionContext;
     use sp_state_machine::ExecutionStrategy;
-    use substrate_test_runtime_client::{
-        prelude::*, runtime::TestAPI, DefaultTestClientBuilderExt, TestClientBuilder,
-    };
+    use substrate_test_runtime_client::prelude::*;
+    use substrate_test_runtime_client::runtime::TestAPI;
+    use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilder};
 
     #[test]
     fn heap_pages_is_respected() {
@@ -1331,7 +1332,9 @@ mod tests {
         // ~2048k of heap memory.
         let (new_at_hash, block) = {
             let mut builder = client.new_block(Default::default()).unwrap();
-            builder.push_storage_change(HEAP_PAGES.to_vec(), Some(32u64.encode())).unwrap();
+            builder
+                .push_storage_change(HEAP_PAGES.to_vec(), Some(32u64.encode()))
+                .unwrap();
             let block = builder.build().unwrap().block;
             let hash = block.header.hash();
             (hash, block)
@@ -1346,8 +1349,9 @@ mod tests {
 
     #[test]
     fn test_storage() {
-        let client =
-            TestClientBuilder::new().set_execution_strategy(ExecutionStrategy::Both).build();
+        let client = TestClientBuilder::new()
+            .set_execution_strategy(ExecutionStrategy::Both)
+            .build();
         let runtime_api = client.runtime_api();
         let best_hash = client.chain_info().best_hash;
 
@@ -1373,8 +1377,9 @@ mod tests {
         let backend =
             sp_state_machine::TrieBackendBuilder::<_, crate::Hashing>::new(db, root).build();
         let proof = sp_state_machine::prove_read(backend, vec![b"value3"]).unwrap();
-        let client =
-            TestClientBuilder::new().set_execution_strategy(ExecutionStrategy::Both).build();
+        let client = TestClientBuilder::new()
+            .set_execution_strategy(ExecutionStrategy::Both)
+            .build();
         let runtime_api = client.runtime_api();
         let best_hash = client.chain_info().best_hash;
 

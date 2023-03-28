@@ -82,8 +82,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, RecordsRoot, RootBlock, SectorId, SegmentIndex, Solution,
-    SolutionRange, PIECES_IN_SEGMENT,
+    Blake2b256Hash, BlockWeight, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
+    Solution, SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -135,7 +135,7 @@ pub struct ArchivedSegmentNotification {
 }
 
 /// Notification with imported block header hash that needs to be archived and sender for
-/// root blocks.
+/// segment headers.
 #[derive(Debug, Clone)]
 pub struct ImportedBlockNotification<Block>
 where
@@ -196,24 +196,24 @@ pub enum Error<Header: HeaderT> {
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
-    /// Invalid set of root blocks
-    #[error("Invalid set of root blocks")]
-    InvalidSetOfRootBlocks,
-    /// Stored root block extrinsic was not found
-    #[error("Stored root block extrinsic was not found: {0:?}")]
-    RootBlocksExtrinsicNotFound(Vec<RootBlock>),
-    /// Duplicated records root
+    /// Invalid set of segment headers
+    #[error("Invalid set of segment headers")]
+    InvalidSetOfSegmentHeaders,
+    /// Stored segment header extrinsic was not found
+    #[error("Stored segment header extrinsic was not found: {0:?}")]
+    SegmentHeadersExtrinsicNotFound(Vec<SegmentHeader>),
+    /// Duplicated segment commitment
     #[error(
-        "Different records root for segment index {0} was found in storage, likely fork below \
-        archiving point"
+        "Different segment commitment for segment index {0} was found in storage, likely fork \
+        below archiving point"
     )]
-    DifferentRecordsRoot(u64),
+    DifferentSegmentCommitment(u64),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
-    #[error("Records Root for segment index {0} not found")]
-    RecordsRootNotFound(u64),
+    #[error("Segment commitment for segment index {0} not found")]
+    SegmentCommitmentNotFound(u64),
     /// Only root plot public key is allowed
     #[error("Only root plot public key is allowed")]
     OnlyRootPlotPublicKeyAllowed,
@@ -448,9 +448,9 @@ pub struct SubspaceLink<Block: BlockT> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
         SubspaceNotificationStream<ImportedBlockNotification<Block>>,
-    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// Segment headers that are expected to appear in the corresponding blocks, used for block
     /// validation
-    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    segment_headers: Arc<Mutex<LruCache<NumberFor<Block>, Vec<SegmentHeader>>>>,
     kzg: Kzg,
 }
 
@@ -488,26 +488,26 @@ impl<Block: BlockT> SubspaceLink<Block> {
     }
 
     /// Get blocks that are expected to be included at specified block number.
-    pub fn root_blocks_for_block(&self, block_number: NumberFor<Block>) -> Vec<RootBlock> {
-        self.root_blocks
+    pub fn segment_headers_for_block(&self, block_number: NumberFor<Block>) -> Vec<SegmentHeader> {
+        self.segment_headers
             .lock()
             .peek(&block_number)
             .cloned()
             .unwrap_or_default()
     }
 
-    /// Get the first found records root by segment index.
-    pub fn records_root_by_segment_index(
+    /// Get the first found segment commitment by segment index.
+    pub fn segment_commitment_by_segment_index(
         &self,
         segment_index: SegmentIndex,
-    ) -> Option<RecordsRoot> {
-        self.root_blocks
+    ) -> Option<SegmentCommitment> {
+        self.segment_headers
             .lock()
             .iter()
-            .find_map(|(_block_number, root_blocks)| {
-                root_blocks.iter().find_map(|root_block| {
-                    if root_block.segment_index() == segment_index {
-                        Some(root_block.records_root())
+            .find_map(|(_block_number, segment_headers)| {
+                segment_headers.iter().find_map(|segment_header| {
+                    if segment_header.segment_index() == segment_index {
+                        Some(segment_header.segment_commitment())
                     } else {
                         None
                     }
@@ -915,8 +915,8 @@ where
         let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
 
         // This is not a very nice hack due to the fact that at the time first block is produced
-        // extrinsics with root blocks are not yet in runtime.
-        let maybe_records_root = if block_number.is_one() {
+        // extrinsics with segment headers are not yet in runtime.
+        let maybe_segment_commitment = if block_number.is_one() {
             let genesis_block_hash = self.client.info().genesis_hash;
             let archived_segments = Archiver::new(self.subspace_link.kzg.clone())
                 .expect("Incorrect parameters for archiver")
@@ -928,24 +928,25 @@ where
                     BlockObjectMapping::default(),
                 );
             archived_segments.into_iter().find_map(|archived_segment| {
-                if archived_segment.root_block.segment_index() == segment_index {
-                    Some(archived_segment.root_block.records_root())
+                if archived_segment.segment_header.segment_index() == segment_index {
+                    Some(archived_segment.segment_header.segment_commitment())
                 } else {
                     None
                 }
             })
         } else {
-            aux_schema::load_records_root(self.client.as_ref(), segment_index)?
+            aux_schema::load_segment_commitment(self.client.as_ref(), segment_index)?
         };
 
-        let records_root = maybe_records_root.ok_or(Error::RecordsRootNotFound(segment_index))?;
+        let segment_commitment =
+            maybe_segment_commitment.ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
 
         // Piece is not checked during initial block verification because it requires access to
-        // root block, check it now.
+        // segment header, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
             PIECES_IN_SEGMENT as usize,
-            &records_root,
+            &segment_commitment,
             position,
             &pre_digest.solution,
         )
@@ -961,7 +962,7 @@ where
         if !skip_runtime_access {
             // If the body is passed through, we need to use the runtime to check that the
             // internally-set timestamp in the inherents actually matches the slot set in the seal
-            // and root blocks in the inherents are set correctly.
+            // and segment headers in the inherents are set correctly.
             if let Some(extrinsics) = extrinsics {
                 let create_inherent_data_providers = self
                     .create_inherent_data_providers
@@ -1113,19 +1114,20 @@ where
                 .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
         });
 
-        for (&segment_index, records_root) in &subspace_digest_items.records_roots {
-            if let Some(found_records_root) =
-                aux_schema::load_records_root(self.client.as_ref(), segment_index)
+        for (&segment_index, segment_commitment) in &subspace_digest_items.segment_commitments {
+            if let Some(found_segment_commitment) =
+                aux_schema::load_segment_commitment(self.client.as_ref(), segment_index)
                     .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
             {
-                if &found_records_root != records_root {
+                if &found_segment_commitment != segment_commitment {
                     return Err(ConsensusError::ClientImport(
-                        Error::<Block::Header>::DifferentRecordsRoot(segment_index).to_string(),
+                        Error::<Block::Header>::DifferentSegmentCommitment(segment_index)
+                            .to_string(),
                     ));
                 }
             }
 
-            aux_schema::write_records_root(segment_index, records_root, |values| {
+            aux_schema::write_segment_commitment(segment_index, segment_commitment, |values| {
                 block
                     .auxiliary
                     .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
@@ -1264,7 +1266,7 @@ where
         archived_segment_notification_stream,
         imported_block_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
-        root_blocks: Arc::new(Mutex::new(LruCache::new(
+        segment_headers: Arc::new(Mutex::new(LruCache::new(
             NonZeroUsize::new(confirmation_depth_k as usize)
                 .expect("Confirmation depth of zero is not supported"),
         ))),
