@@ -34,5 +34,5 @@ pub struct SegmentHeaderResponse {
 
 //TODO: remove attribute on the first usage
 #[allow(dead_code)]
-/// Create a new root-block-by-segment-indexes request handler.
+/// Create a new segment-header-by-segment-indexes request handler.
 pub type SegmentHeaderBySegmentIndexesRequestHandler = GenericRequestHandler<SegmentHeaderRequest>;

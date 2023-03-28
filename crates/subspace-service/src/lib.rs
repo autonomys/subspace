@@ -583,7 +583,7 @@ where
     );
 
     task_manager.spawn_essential_handle().spawn_essential(
-        "root-block-archiver",
+        "segment-header-archiver",
         Some("subspace-networking"),
         Box::pin(segment_header_archiving_fut.in_current_span()),
     );
