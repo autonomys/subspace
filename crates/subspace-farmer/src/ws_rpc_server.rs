@@ -7,7 +7,9 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Segment, SegmentItem};
 use subspace_core_primitives::objects::GlobalObject;
-use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndex, PieceIndexHash, SegmentIndex};
+use subspace_core_primitives::{
+    Blake2b256Hash, Piece, PieceIndex, PieceIndexHash, Record, RecordedHistorySegment, SegmentIndex,
+};
 use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
@@ -125,7 +127,7 @@ impl AsMut<[u8]> for HexBlake2b256Hash {
 #[serde(rename_all = "camelCase")]
 pub struct Object {
     /// Piece index where object is contained (at least its beginning, might not fit fully)
-    piece_index: u64,
+    piece_index: PieceIndex,
     /// Offset of the object
     offset: u32,
     /// The data object contains for convenience
@@ -202,8 +204,8 @@ impl RpcServerImpl {
         // if not we might be able to do very fast object retrieval without assembling and
         // processing the whole segment.
         let last_data_piece_in_segment = {
-            let piece_position_in_segment = piece_index % u64::from(self.pieces_in_segment);
-            let last_piece_position_in_segment = u64::from(self.pieces_in_segment) / 2 - 1;
+            let piece_position_in_segment = piece_index.position();
+            let last_piece_position_in_segment = self.pieces_in_segment / 2 - 1;
 
             piece_position_in_segment >= last_piece_position_in_segment
         };
@@ -211,12 +213,12 @@ impl RpcServerImpl {
         // How much bytes are definitely available starting at `piece_index` and `offset` without
         // crossing segment boundary
         let bytes_available_in_segment = {
-            let data_shards = u64::from(self.pieces_in_segment / 2);
-            let piece_position = piece_index % u64::from(self.pieces_in_segment);
+            let data_shards = RecordedHistorySegment::RAW_RECORDS as u32;
+            let piece_position = piece_index.position();
 
             // `-2` is because last 2 bytes might contain padding if a piece is the last piece in
             // the segment.
-            (data_shards - piece_position) * u64::from(self.record_size) - u64::from(offset) - 2
+            u64::from(data_shards - piece_position) * Record::SIZE as u64 - u64::from(offset) - 2
         };
 
         if last_data_piece_in_segment && !before_last_two_bytes {
@@ -229,7 +231,7 @@ impl RpcServerImpl {
         let mut next_piece_index = piece_index;
 
         let piece = self.read_and_decode_piece(next_piece_index)?;
-        next_piece_index += 1;
+        next_piece_index += PieceIndex::from(1);
         read_records_data.extend_from_slice(piece.record().as_ref());
 
         // Let's see how many bytes encode compact length encoding of the data, see
@@ -262,7 +264,7 @@ impl RpcServerImpl {
             if !length_before_record_end {
                 // Need the next piece to read the length of data
                 let piece = self.read_and_decode_piece(next_piece_index)?;
-                next_piece_index += 1;
+                next_piece_index += PieceIndex::from(1);
                 read_records_data.extend_from_slice(piece.record().as_ref());
             }
 
@@ -291,7 +293,7 @@ impl RpcServerImpl {
         // Read more pieces until we have enough data
         while data.len() <= data_length as usize {
             let piece = self.read_and_decode_piece(next_piece_index)?;
-            next_piece_index += 1;
+            next_piece_index += PieceIndex::from(1);
             data.extend_from_slice(&piece[..self.record_size as usize]);
         }
 
@@ -309,10 +311,10 @@ impl RpcServerImpl {
         offset: u32,
         object_id: &str,
     ) -> Result<Vec<u8>, Error> {
-        let segment_index = piece_index / u64::from(self.pieces_in_segment);
-        let piece_position_in_segment = piece_index % u64::from(self.pieces_in_segment);
+        let segment_index = piece_index.segment_index();
+        let piece_position_in_segment = piece_index.position();
         let offset_in_segment =
-            piece_position_in_segment * u64::from(self.record_size) + u64::from(offset);
+            u64::from(piece_position_in_segment) * Record::SIZE as u64 + u64::from(offset);
 
         let mut data = {
             let Segment::V0 { items } = self.read_segment(segment_index)?;
@@ -395,7 +397,10 @@ impl RpcServerImpl {
         let mut segment_bytes =
             Vec::<u8>::with_capacity((self.pieces_in_segment * self.record_size) as usize);
 
-        for piece_index in (first_piece_in_segment..).take(self.pieces_in_segment as usize / 2) {
+        for piece_index in (first_piece_in_segment..)
+            .take(self.pieces_in_segment as usize / 2)
+            .map(PieceIndex::from)
+        {
             let piece = self.read_and_decode_piece(piece_index)?;
             segment_bytes.extend_from_slice(piece.record().as_ref());
         }

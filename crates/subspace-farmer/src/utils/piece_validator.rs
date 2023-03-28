@@ -47,7 +47,7 @@ where
         piece: Piece,
     ) -> Option<Piece> {
         if source_peer_id != self.dsn_node.id() {
-            let segment_index: SegmentIndex = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
+            let segment_index = piece_index.segment_index();
 
             let maybe_segment_commitment = self
                 .segment_commitment_cache
@@ -99,8 +99,7 @@ where
                 PIECES_IN_SEGMENT as usize,
                 &piece,
                 &segment_commitment,
-                u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
-                    .expect("Always fix into u32; qed"),
+                piece_index.position(),
             ) {
                 error!(
                     %piece_index,

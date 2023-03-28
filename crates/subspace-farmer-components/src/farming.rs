@@ -54,7 +54,7 @@ pub struct EligibleSector {
     /// Chunks at audited piece that are within desired solution range
     pub chunks: Vec<EligibleChunk>,
     /// Offset of the piece in sector
-    pub audit_piece_offset: u64,
+    pub audit_piece_offset: PieceIndex,
 }
 
 impl EligibleSector {
@@ -104,7 +104,7 @@ impl EligibleSector {
             .zip(
                 sector_scalars
                     .into_iter()
-                    .skip(scalars_in_piece * self.audit_piece_offset as usize)
+                    .skip(scalars_in_piece * u64::from(self.audit_piece_offset) as usize)
                     .take(scalars_in_piece),
             )
             .for_each(|(output, input)| {
@@ -170,14 +170,14 @@ where
     let sector_id = SectorId::new(public_key, sector_index);
 
     let local_challenge = sector_id.derive_local_challenge(global_challenge);
-    let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
+    let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);
     // Offset of the piece in sector (in bytes, accounts for the fact that encoded piece has its
     // chunks expanded with zero byte padding)
     let audit_piece_bytes_offset = audit_piece_offset
         * (Piece::SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
 
     let mut piece = Piece::default();
-    sector.seek(SeekFrom::Current(audit_piece_bytes_offset as i64))?;
+    sector.seek(SeekFrom::Current(u64::from(audit_piece_bytes_offset) as i64))?;
     sector.read_exact(piece.as_mut())?;
 
     let chunks = piece

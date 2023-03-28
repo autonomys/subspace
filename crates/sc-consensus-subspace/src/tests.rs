@@ -74,7 +74,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{ChunkSignature, FlatPieces, Piece, Solution};
+use subspace_core_primitives::{ChunkSignature, FlatPieces, Piece, PieceIndex, Solution};
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 use tokio::runtime::{Handle, Runtime};
@@ -681,7 +681,7 @@ pub fn dummy_claim_slot(
                 reward_address: FarmerPublicKey::unchecked_from([0u8; 32]),
                 sector_index: 0,
                 total_pieces: NonZeroU64::new(1).unwrap(),
-                piece_offset: 0,
+                piece_offset: PieceIndex::default(),
                 piece_commitment_hash: Default::default(),
                 piece_witness: Default::default(),
                 chunk_offset: 0,

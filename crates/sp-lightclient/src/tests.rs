@@ -149,7 +149,7 @@ impl PieceGetter for TestPieceGetter {
             .archived_segment
             .pieces
             .iter()
-            .nth(piece_index as usize)
+            .nth(u64::from(piece_index) as usize)
             .map(Piece::from))
     }
 }

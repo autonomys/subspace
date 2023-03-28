@@ -230,7 +230,7 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
     }) = archived_segment_notification_stream.next().await
     {
         let segment_index = archived_segment.segment_header.segment_index();
-        let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
+        let first_piece_index = PieceIndex::from(segment_index * u64::from(PIECES_IN_SEGMENT));
 
         info!(%segment_index, "Processing a segment.");
 
@@ -281,7 +281,9 @@ pub(crate) async fn publish_pieces(
     segment_index: u64,
     archived_segment: Arc<ArchivedSegment>,
 ) {
-    let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.len());
+    let pieces_indexes = (u64::from(first_piece_index)..)
+        .take(archived_segment.pieces.len())
+        .map(PieceIndex::from);
 
     let mut pieces_publishing_futures = pieces_indexes
         .map(|piece_index| announce_single_piece_index_with_backoff(piece_index, node))

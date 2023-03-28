@@ -58,7 +58,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
     Piece, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader,
-    SegmentIndex, SolutionRange, PIECES_IN_SEGMENT,
+    SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -1348,8 +1348,9 @@ fn check_vote<T: Config>(
 
     let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
-    let piece_index = sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
-    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+    let segment_index = sector_id
+        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .segment_index();
 
     let segment_commitment =
         if let Some(segment_commitment) = Pallet::<T>::segment_commitment(segment_index) {

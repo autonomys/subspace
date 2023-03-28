@@ -910,9 +910,8 @@ where
             pre_digest.solution.piece_offset,
             pre_digest.solution.total_pieces,
         );
-        let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
-            .expect("Position within segment always fits into u32; qed");
-        let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+        let position = piece_index.position();
+        let segment_index = piece_index.segment_index();
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with segment headers are not yet in runtime.

@@ -120,12 +120,11 @@ where
 
     // Collection is intentional to make sure downloading starts right away and not lazily
     for segment_index in 0..segments_found {
-        let pieces_indexes = (0..PIECES_IN_SEGMENT / 2).map(|piece_position| {
-            let piece_index: PieceIndex = segment_index * PieceIndex::from(PIECES_IN_SEGMENT)
-                + PieceIndex::from(piece_position);
-
-            piece_index
-        });
+        let pieces_indexes =
+            (0..RecordedHistorySegment::RAW_RECORDS as u64).map(|piece_position| {
+                PieceIndex::from(segment_index * SegmentIndex::from(PIECES_IN_SEGMENT))
+                    + PieceIndex::from(piece_position)
+            });
 
         let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];
         let mut pieces_received = 0;

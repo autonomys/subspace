@@ -28,9 +28,11 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
     missing_piece_index: PieceIndex,
 ) -> Result<Piece, SegmentReconstructionError> {
     info!(%missing_piece_index, "Recovering missing piece...");
-    let segment_index: SegmentIndex = missing_piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+    let segment_index = missing_piece_index.segment_index();
+    let position = missing_piece_index.position();
 
-    let starting_piece_index: PieceIndex = segment_index * SegmentIndex::from(PIECES_IN_SEGMENT);
+    let starting_piece_index: PieceIndex =
+        PieceIndex::from(segment_index * SegmentIndex::from(PIECES_IN_SEGMENT));
 
     let semaphore = Semaphore::new(PARALLELISM_LEVEL);
     let acquired_pieces_counter = AtomicUsize::default();
@@ -41,22 +43,23 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
     let acquired_pieces_counter = &acquired_pieces_counter;
 
     // We prioritize source pieces over parity pieces here
-    let piece_indices = (starting_piece_index..)
+    let piece_indices = (u64::from(starting_piece_index)..)
         .take(PIECES_IN_SEGMENT as usize)
         .step_by(2)
         .chain(
-            (starting_piece_index..)
+            (u64::from(starting_piece_index)..)
                 .take(PIECES_IN_SEGMENT as usize)
                 .skip(1)
                 .step_by(2),
-        );
+        )
+        .map(PieceIndex::from);
     let pieces = piece_indices
         .map(|piece_index| async move {
             let _permit = match semaphore.acquire().await {
                 Ok(permit) => permit,
                 Err(error) => {
                     warn!(
-                        piece_index,
+                        %piece_index,
                         %error,
                         "Semaphore was closed, interrupting piece recover..."
                     );
@@ -65,7 +68,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
             };
 
             if acquired_pieces_counter.load(Ordering::SeqCst) >= required_pieces_number as usize {
-                trace!(piece_index, "Skipped piece acquiring.");
+                trace!(%piece_index, "Skipped piece acquiring.");
 
                 return None;
             }
@@ -83,7 +86,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
                     piece
                 }
                 Err(error) => {
-                    debug!(?error, piece_index, "Failed to get piece");
+                    debug!(?error, %piece_index, "Failed to get piece");
                     None
                 }
             }
@@ -100,9 +103,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
 
     let archiver = PiecesReconstructor::new(kzg).expect("Internal constructor call must succeed.");
 
-    let position = (missing_piece_index - starting_piece_index) as usize;
-
-    let result = archiver.reconstruct_piece(&pieces, position)?;
+    let result = archiver.reconstruct_piece(&pieces, position as usize)?;
 
     info!(%missing_piece_index, "Recovering missing piece succeeded.");
 

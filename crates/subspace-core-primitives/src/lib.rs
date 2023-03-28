@@ -18,7 +18,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
-#![feature(array_chunks, new_uninit, slice_flatten)]
+#![feature(
+    array_chunks,
+    const_num_from_num,
+    const_trait_impl,
+    new_uninit,
+    slice_flatten
+)]
 
 pub mod crypto;
 pub mod objects;
@@ -32,11 +38,13 @@ extern crate alloc;
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
 use core::convert::AsRef;
-use core::fmt;
 use core::num::NonZeroU64;
-use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
+use core::{fmt, mem};
+use derive_more::{
+    Add, AddAssign, Deref, Display, Div, DivAssign, From, Into, Mul, MulAssign, Rem, Sub, SubAssign,
+};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
     FlatPieces, Piece, PieceArray, RawRecord, Record, RecordWitness, RecordedHistorySegment,
     PIECES_IN_SEGMENT,
@@ -347,7 +355,63 @@ impl SegmentHeader {
 }
 
 /// Piece index in consensus
-pub type PieceIndex = u64;
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct PieceIndex(u64);
+
+impl const From<u64> for PieceIndex {
+    fn from(original: u64) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<PieceIndex> for u64 {
+    fn from(original: PieceIndex) -> Self {
+        original.0
+    }
+}
+
+impl PieceIndex {
+    /// Convert piece index into bytes.
+    pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
+        self.0.to_le_bytes()
+    }
+
+    /// Segment index piece index corresponds to
+    pub const fn segment_index(&self) -> SegmentIndex {
+        self.0 / SegmentIndex::from(PIECES_IN_SEGMENT)
+    }
+
+    /// Position of a piece in a segment
+    pub const fn position(&self) -> u32 {
+        // Position is statically guaranteed to fit into u32
+        (self.0 % u64::from(PIECES_IN_SEGMENT)) as u32
+    }
+}
 
 /// Sector index in consensus
 pub type SectorIndex = u64;
@@ -366,7 +430,7 @@ impl AsRef<[u8]> for PieceIndexHash {
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(blake2b_256_hash(&index.to_le_bytes()))
+        Self(blake2b_256_hash(&index.to_bytes()))
     }
 }
 
@@ -447,7 +511,7 @@ where
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
-            piece_offset: 0,
+            piece_offset: PieceIndex::default(),
             piece_commitment_hash: Scalar::default(),
             piece_witness: Witness::default(),
             chunk_offset: 0,
@@ -671,14 +735,13 @@ impl SectorId {
         piece_offset: PieceIndex,
         total_pieces: NonZeroU64,
     ) -> PieceIndex {
-        let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
-            &piece_offset.to_le_bytes(),
-            &self.0,
-        )) % U256::from(total_pieces.get());
+        let piece_index =
+            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0))
+                % U256::from(total_pieces.get());
 
-        piece_index
-            .try_into()
-            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+        PieceIndex::from(u64::try_from(piece_index).expect(
+            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
+        ))
     }
 
     /// Derive local challenge for this sector from provided global challenge

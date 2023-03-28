@@ -3,7 +3,7 @@ use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::Encode;
 use rand::random;
 use subspace_core_primitives::objects::GlobalObject;
-use subspace_core_primitives::{PublicKey, U256};
+use subspace_core_primitives::{PieceIndex, PublicKey, U256};
 use tempfile::TempDir;
 
 fn init() {
@@ -21,7 +21,7 @@ fn basic() {
                 .wrapping_sub(&U256::from(5u64))
                 .to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         ),
@@ -30,14 +30,14 @@ fn basic() {
                 .wrapping_sub(&U256::from(2u64))
                 .to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         ),
         (
             (public_key_as_number).to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         ),
@@ -46,7 +46,7 @@ fn basic() {
                 .wrapping_add(&U256::from(1u64))
                 .to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         ),
@@ -55,7 +55,7 @@ fn basic() {
                 .wrapping_add(&U256::from(20u64))
                 .to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         ),
@@ -109,7 +109,7 @@ fn basic() {
                 .wrapping_add(&U256::from(21u64))
                 .to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         );
@@ -125,7 +125,7 @@ fn basic() {
                 .wrapping_add(&U256::from(2u64))
                 .to_be_bytes(),
             GlobalObject::V0 {
-                piece_index: 0,
+                piece_index: PieceIndex::default(),
                 offset: 0,
             },
         );

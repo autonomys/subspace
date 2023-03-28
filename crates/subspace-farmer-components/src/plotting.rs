@@ -140,7 +140,7 @@ where
         .take(PLOT_SECTOR_SIZE as usize / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
         .map(|piece_offset| {
             sector_id.derive_piece_index(
-                piece_offset as PieceIndex,
+                PieceIndex::from(piece_offset),
                 farmer_protocol_info.total_pieces,
             )
         })
