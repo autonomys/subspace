@@ -89,6 +89,7 @@ pub enum PieceObject {
     V0 {
         /// Object hash
         hash: Blake2b256Hash,
+        // TODO: This is a raw record offset, not a regular one
         /// Offset of the object
         offset: u32,
     },

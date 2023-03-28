@@ -1,22 +1,26 @@
+#![feature(new_uninit)]
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{thread_rng, Rng};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PIECES_IN_SEGMENT, RECORD_SIZE};
-
-// This is helpful for overriding locally for benching different parameters
-const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
+use subspace_core_primitives::RecordedHistorySegment;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let mut input = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
-    thread_rng().fill(input.as_mut_slice());
+    // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+    // SAFETY: Data structure filled with zeroes is a valid invariant
+    let mut input = unsafe { Box::<RecordedHistorySegment>::new_zeroed().assume_init() };
+    thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
 
     c.bench_function("segment-archiving", |b| {
         b.iter(|| {
-            archiver.add_block(input.clone(), Default::default());
+            archiver.add_block(
+                AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
+                Default::default(),
+            );
         })
     });
 }

@@ -23,14 +23,14 @@ use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
 use std::error::Error;
 use std::io::Cursor;
-use std::num::{NonZeroU32, NonZeroU64};
+use std::num::NonZeroU64;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Randomness, RecordsRoot, RootBlock, SectorId, SegmentIndex,
-    Solution, SolutionRange, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment, RecordsRoot, RootBlock,
+    SectorId, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
@@ -68,10 +68,10 @@ fn derive_solution_range(
 fn archived_segment(kzg: Kzg) -> ArchivedSegment {
     // we don't care about the block data
     let mut rng = StdRng::seed_from_u64(0);
-    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
 
     archiver
         .add_block(block, Default::default())
@@ -98,8 +98,6 @@ impl Farmer {
         let piece_getter = TestPieceGetter { archived_segment };
         let public_key = PublicKey::from(keypair.public.to_bytes());
         let farmer_protocol_info = FarmerProtocolInfo {
-            record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
-            recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
             total_pieces,
             sector_expiration: 100,
         };

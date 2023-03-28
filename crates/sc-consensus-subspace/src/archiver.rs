@@ -34,7 +34,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE};
+use subspace_core_primitives::{BlockNumber, RootBlock};
 
 fn find_last_archived_block<Block, Client>(
     client: &Client,
@@ -215,7 +215,6 @@ where
         ));
 
         Archiver::with_initial_state(
-            RECORDED_HISTORY_SEGMENT_SIZE,
             kzg,
             last_root_block,
             &last_archived_block.encode(),
@@ -225,8 +224,7 @@ where
     } else {
         info!(target: "subspace", "Starting archiving from genesis");
 
-        Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg)
-            .expect("Incorrect parameters for archiver")
+        Archiver::new(kzg).expect("Incorrect parameters for archiver")
     };
 
     let mut older_archived_segments = Vec::new();

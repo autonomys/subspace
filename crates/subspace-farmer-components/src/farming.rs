@@ -114,7 +114,7 @@ impl EligibleSector {
                 output.copy_from_slice(&input.to_bytes()[..ScalarLegacy::SAFE_BYTES]);
             });
 
-        let (record, witness) = piece.split();
+        let (_record, commitment, witness) = piece.split();
         let piece_witness = match Witness::try_from_bytes(witness) {
             Ok(piece_witness) => piece_witness,
             Err(error) => {
@@ -143,7 +143,7 @@ impl EligibleSector {
                 sector_index: self.sector_index,
                 total_pieces: sector_metadata.total_pieces,
                 piece_offset: self.audit_piece_offset,
-                piece_record_hash: blake2b_256_254_hash_to_scalar(record.as_ref()),
+                piece_commitment_hash: blake2b_256_254_hash_to_scalar(commitment.as_ref()),
                 piece_witness,
                 chunk_offset: offset,
                 chunk,

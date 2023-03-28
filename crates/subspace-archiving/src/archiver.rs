@@ -14,21 +14,19 @@
 // limitations under the License.
 
 mod incremental_record_commitments;
-mod record_shards;
 
 extern crate alloc;
 
 use crate::archiver::incremental_record_commitments::{
     update_record_commitments, IncrementalRecordCommitmentsState,
 };
-use crate::archiver::record_shards::RecordShards;
-use crate::utils::GF_16_ELEMENT_BYTES;
 use alloc::collections::VecDeque;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
+use core::num::NonZeroUsize;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
-use reed_solomon_erasure::galois_16::ReedSolomon;
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
@@ -36,8 +34,9 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceArray,
-    RecordsRoot, RootBlock, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    RawRecord, RecordedHistorySegment, RecordsRoot, RootBlock, PIECES_IN_SEGMENT,
 };
+use subspace_erasure_coding::ErasureCoding;
 
 const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     number: 0,
@@ -62,7 +61,7 @@ pub enum Segment {
 
 impl Encode for Segment {
     fn size_hint(&self) -> usize {
-        RECORDED_HISTORY_SEGMENT_SIZE as usize
+        RecordedHistorySegment::SIZE
     }
 
     fn encode_to<T: Output + ?Sized>(&self, dest: &mut T) {
@@ -182,29 +181,20 @@ pub struct ArchivedSegment {
     pub pieces: FlatPieces,
     /// Mappings for objects stored in corresponding pieces.
     ///
-    /// NOTE: Only first half (data pieces) will have corresponding mapping item in this `Vec`.
+    /// NOTE: Only half (source pieces) will have corresponding mapping item in this `Vec`.
     pub object_mapping: Vec<PieceObjectMapping>,
 }
 
 /// Archiver instantiation error
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ArchiverInstantiationError {
-    /// Segment size is not bigger than record size
+    /// Failed to initialize erasure coding
     #[cfg_attr(
         feature = "thiserror",
-        error("Segment size is not bigger than record size")
+        error("Failed to initialize erasure coding: {0}")
     )]
-    SegmentSizeTooSmall,
-    /// Segment size must be multiple of two
-    #[cfg_attr(feature = "thiserror", error("Segment size must be multiple of two"))]
-    SegmentSizeNotMultipleOfTwo,
-    /// Segment size is not a multiple of record size
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Segment size is not a multiple of record size")
-    )]
-    SegmentSizesNotMultipleOfRecordSize,
+    FailedToInitializeErasureCoding(String),
     /// Invalid last archived block, its size is the same as encoded block
     #[cfg_attr(
         feature = "thiserror",
@@ -227,10 +217,10 @@ pub enum ArchiverInstantiationError {
 /// Block archiver for Subspace blockchain.
 ///
 /// It takes new confirmed (at `K` depth) blocks and concatenates them into a buffer, buffer is
-/// sliced into segments of `RECORDED_HISTORY_SEGMENT_SIZE` size, segments are sliced into source
-/// records of `RECORD_SIZE`, records are erasure coded, Merkle Tree is built over them, and
-/// with Merkle Proofs appended records become pieces that are returned alongside corresponding root
-/// block header.
+/// sliced into segments of [`RecordedHistorySegment::SIZE`] size, segments are sliced into source
+/// records of [`RawRecord::SIZE`], records are erasure coded, committed to with [`Kzg`], then
+/// commitments with witnesses are appended and records become pieces that are returned alongside
+/// corresponding root block header.
 ///
 /// ## Panics
 /// Panics when operating on blocks, whose length doesn't fit into u32 (should never be the case in
@@ -242,14 +232,8 @@ pub struct Archiver {
     buffer: VecDeque<SegmentItem>,
     /// Intermediate record commitments that are built incrementally as above buffer fills up.
     incremental_record_commitments: IncrementalRecordCommitmentsState,
-    /// Number of data shards
-    source_shards: u32,
-    /// Number of parity shards
-    parity_shards: u32,
-    /// Configuration parameter defining the size of one recorded history segment
-    recorded_history_segment_size: u32,
     /// Erasure coding data structure
-    reed_solomon: ReedSolomon,
+    erasure_coding: ErasureCoding,
     /// KZG instance
     kzg: Kzg,
     /// An index of the current segment
@@ -265,42 +249,22 @@ impl Archiver {
     ///
     /// Note: this is the only way to instantiate object archiver, while block archiver can be
     /// instantiated with `BlockArchiver::with_initial_state()` in case of restarts.
-    ///
-    /// Panics if:
-    /// * record size it smaller that needed to hold any information
-    /// * segment size is not bigger than record size
-    /// * segment size is not a multiple of record size
-    /// * segment size and record size do not make sense together
-    pub fn new(
-        recorded_history_segment_size: u32,
-        kzg: Kzg,
-    ) -> Result<Self, ArchiverInstantiationError> {
-        if recorded_history_segment_size <= RECORD_SIZE {
-            return Err(ArchiverInstantiationError::SegmentSizeTooSmall);
-        }
-        if recorded_history_segment_size as usize % GF_16_ELEMENT_BYTES != 0 {
-            return Err(ArchiverInstantiationError::SegmentSizeNotMultipleOfTwo);
-        }
-        if recorded_history_segment_size % RECORD_SIZE != 0 {
-            return Err(ArchiverInstantiationError::SegmentSizesNotMultipleOfRecordSize);
-        }
+    pub fn new(kzg: Kzg) -> Result<Self, ArchiverInstantiationError> {
+        // TODO: Check if KZG can process number configured number of elements and update proof
+        //  message in `.expect()`
 
-        let source_shards = recorded_history_segment_size / RECORD_SIZE;
-        let parity_shards = source_shards;
-        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
-            .expect("ReedSolomon must always be correctly instantiated");
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(PIECES_IN_SEGMENT.ilog2() as usize)
+                .expect("Recorded history segment contains at very least one record; qed"),
+        )
+        .map_err(ArchiverInstantiationError::FailedToInitializeErasureCoding)?;
 
         Ok(Self {
             buffer: VecDeque::default(),
             incremental_record_commitments: IncrementalRecordCommitmentsState::with_capacity(
-                source_shards as usize,
+                RecordedHistorySegment::RAW_RECORDS,
             ),
-            source_shards,
-            parity_shards,
-            recorded_history_segment_size,
-            reed_solomon,
-            // TODO: Probably should check degree from public parameters against erasure coding
-            //  setup
+            erasure_coding,
             kzg,
             segment_index: 0,
             prev_root_block_hash: Blake2b256Hash::default(),
@@ -312,13 +276,12 @@ impl Archiver {
     ///
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
     pub fn with_initial_state(
-        recorded_history_segment_size: u32,
         kzg: Kzg,
         root_block: RootBlock,
         encoded_block: &[u8],
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
-        let mut archiver = Self::new(recorded_history_segment_size, kzg)?;
+        let mut archiver = Self::new(kzg)?;
 
         archiver.segment_index = root_block.segment_index() + 1;
         archiver.prev_root_block_hash = root_block.hash();
@@ -411,13 +374,14 @@ impl Archiver {
 
         // `-2` because even the smallest segment item will take 2 bytes to encode, so it makes
         // sense to stop earlier here
-        while segment.encoded_size() < (self.recorded_history_segment_size as usize - 2) {
+        while segment.encoded_size() < (RecordedHistorySegment::SIZE - 2) {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
                     update_record_commitments(
                         &mut self.incremental_record_commitments,
                         &segment,
+                        &self.kzg,
                         false,
                     );
 
@@ -439,11 +403,10 @@ impl Archiver {
             let segment_item = segment.pop_item().unwrap();
 
             // Check if there would be enough data collected with above segment item inserted
-            if encoded_segment_length >= self.recorded_history_segment_size as usize {
+            if encoded_segment_length >= RecordedHistorySegment::SIZE {
                 // Check if there is an excess of data that should be spilled over into the next
                 // segment
-                let spill_over =
-                    encoded_segment_length - self.recorded_history_segment_size as usize;
+                let spill_over = encoded_segment_length - RecordedHistorySegment::SIZE;
 
                 // Due to compact vector length encoding in scale codec, spill over might happen to
                 // be the same or even bigger than the inserted segment item bytes, in which case
@@ -494,7 +457,7 @@ impl Archiver {
                     // it into `None` if needed later
                     let archived_bytes = last_archived_block.partial_archived().expect(
                         "Block continuation implies that there are some bytes \
-                                archived already; qed",
+                            archived already; qed",
                     );
                     last_archived_block.set_partial_archived(
                         archived_bytes
@@ -513,7 +476,7 @@ impl Archiver {
         // Check if there is an excess of data that should be spilled over into the next segment
         let segment_encoded_length = segment.encoded_size();
         let spill_over = segment_encoded_length
-            .checked_sub(self.recorded_history_segment_size as usize)
+            .checked_sub(RecordedHistorySegment::SIZE)
             .unwrap_or_default();
 
         if spill_over > 0 {
@@ -635,7 +598,12 @@ impl Archiver {
 
         self.last_archived_block = last_archived_block;
 
-        update_record_commitments(&mut self.incremental_record_commitments, &segment, true);
+        update_record_commitments(
+            &mut self.incremental_record_commitments,
+            &segment,
+            &self.kzg,
+            true,
+        );
 
         Some(segment)
     }
@@ -644,11 +612,8 @@ impl Archiver {
     fn produce_archived_segment(&mut self, segment: Segment) -> ArchivedSegment {
         // Create mappings
         let object_mapping = {
-            let mut corrected_object_mapping = vec![
-                PieceObjectMapping::default();
-                (self.recorded_history_segment_size / RECORD_SIZE)
-                    as usize
-            ];
+            let mut corrected_object_mapping =
+                vec![PieceObjectMapping::default(); RecordedHistorySegment::RAW_RECORDS];
             let Segment::V0 { items } = &segment;
             // `+1` corresponds to enum variant encoding
             let mut base_offset_in_segment = 1;
@@ -677,14 +642,12 @@ impl Archiver {
                                 + 1
                                 + Compact::compact_len(&(bytes.len() as u32))
                                 + block_object.offset() as usize;
-                            let offset = (offset_in_segment % RECORD_SIZE as usize)
-                                .try_into()
-                                .expect(
-                                    "Offset within piece should always fit in 16-bit integer; qed",
-                                );
+                            let offset = (offset_in_segment % RawRecord::SIZE).try_into().expect(
+                                "Offset within piece should always fit in 16-bit integer; qed",
+                            );
 
                             if let Some(piece_object_mapping) = corrected_object_mapping
-                                .get_mut(offset_in_segment / RECORD_SIZE as usize)
+                                .get_mut(offset_in_segment / RawRecord::SIZE)
                             {
                                 piece_object_mapping.objects.push(PieceObject::V0 {
                                     hash: block_object.hash(),
@@ -703,64 +666,121 @@ impl Archiver {
             corrected_object_mapping
         };
 
-        let mut record_shards = RecordShards::new(
-            self.source_shards,
-            self.parity_shards,
-            RECORD_SIZE,
-            &segment,
-        );
+        let mut pieces = {
+            // Serialize segment into concatenation of raw records
+            let mut raw_record_shards = Vec::<u8>::with_capacity(RecordedHistorySegment::SIZE);
+            segment.encode_to(&mut raw_record_shards);
+            // Segment might require some padding (see [`Self::produce_segment`] for details)
+            raw_record_shards.resize(raw_record_shards.capacity(), 0);
 
-        drop(segment);
+            // Segment is quite big and no longer necessary
+            drop(segment);
 
-        let mut record_shards_slices = record_shards.as_mut_slices();
+            let mut pieces = FlatPieces::new(PIECES_IN_SEGMENT as usize);
 
-        // Apply erasure coding to to create parity shards/records
-        self.reed_solomon
-            .encode(&mut record_shards_slices)
-            .expect("Encoding is running with fixed parameters and should never fail; qed");
+            // Scratch buffer to avoid re-allocation
+            let mut tmp_source_shards_scalars =
+                Vec::<Scalar>::with_capacity(RecordedHistorySegment::RAW_RECORDS);
+            // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+            for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
+                // Collect chunks of each record at the same offset
+                raw_record_shards
+                    .array_chunks::<{ RawRecord::SIZE }>()
+                    .map(|record_bytes| {
+                        record_bytes
+                            .array_chunks::<{ Scalar::SAFE_BYTES }>()
+                            .nth(record_offset)
+                            .expect("Statically known to exist in a record; qed")
+                    })
+                    .map(Scalar::from)
+                    .collect_into(&mut tmp_source_shards_scalars);
 
-        let mut pieces = FlatPieces::new(record_shards_slices.len());
-        drop(record_shards_slices);
+                // Extend to obtain corresponding parity shards
+                let parity_shards = self
+                    .erasure_coding
+                    .extend(&tmp_source_shards_scalars)
+                    .expect(
+                        "Erasure coding instance is deliberately configured to support this \
+                        input; qed",
+                    );
 
-        // We take hashes of source records computed incrementally
+                let interleaved_input_chunks = tmp_source_shards_scalars
+                    .drain(..)
+                    .zip(parity_shards)
+                    .flat_map(|(a, b)| [a, b]);
+                let output_chunks = pieces.iter_mut().map(|piece| {
+                    piece
+                        .record_mut()
+                        .full_scalar_arrays_mut()
+                        .nth(record_offset)
+                        .expect("Statically known to exist in a record; qed")
+                });
+
+                interleaved_input_chunks
+                    .zip(output_chunks)
+                    .for_each(|(input, output)| output.copy_from_slice(&input.to_bytes()));
+            }
+
+            pieces
+        };
+
+        // Collect hashes to commitments from all records
         let record_commitments = self
             .incremental_record_commitments
             .drain()
-            .chain(
-                // TODO: Parity hashes will be erasure coded instead in the future
-                record_shards
-                    .as_bytes()
-                    .as_ref()
-                    .chunks_exact(RECORD_SIZE as usize)
-                    .skip(self.source_shards as usize)
-                    .map(blake2b_256_254_hash_to_scalar),
+            .zip(
+                // TODO: Replace with erasure coding of incrementally created record commitments
+                pieces.parity().map(|piece| {
+                    let record_chunks = piece.record().full_scalar_arrays();
+                    let number_of_chunks = record_chunks.len();
+                    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+
+                    record_chunks
+                        .map(|bytes| {
+                            Scalar::try_from(bytes).expect(
+                                "Bytes correspond to scalars we have just erasure coded; qed",
+                            )
+                        })
+                        .collect_into(&mut scalars);
+
+                    // Number of scalars for KZG must be a power of two elements
+                    scalars.resize(scalars.capacity(), Scalar::default());
+
+                    let polynomial = self.kzg.poly(&scalars).expect(
+                        "KZG instance must be configured to support this many scalars; qed",
+                    );
+                    self.kzg
+                        .commit(&polynomial)
+                        .expect("KZG instance must be configured to support this many scalars; qed")
+                }),
             )
+            .flat_map(|(a, b)| [a, b])
             .collect::<Vec<_>>();
 
         let polynomial = self
             .kzg
-            .poly(&record_commitments)
+            .poly(
+                &record_commitments
+                    .iter()
+                    .map(|commitment| blake2b_256_254_hash_to_scalar(&commitment.to_bytes()))
+                    .collect::<Vec<_>>(),
+            )
             .expect("Internally produced values must never fail; qed");
-        let commitment = self
+
+        let records_root = self
             .kzg
             .commit(&polynomial)
             .expect("Internally produced values must never fail; qed");
 
-        // Combine data and parity records back into flat vector of pieces along with corresponding
-        // witnesses (Merkle proofs) created above.
+        // Create witness for every record and write it to corresponding piece.
         pieces
             .iter_mut()
+            .zip(record_commitments)
             .enumerate()
-            .zip(
-                record_shards
-                    .as_bytes()
-                    .as_ref()
-                    .chunks_exact(RECORD_SIZE as usize),
-            )
-            .for_each(|((position, piece), shard_chunk)| {
-                let (record, witness) = piece.split_mut();
-
-                record.copy_from_slice(shard_chunk);
+            .for_each(|(position, (piece, commitment))| {
+                let commitment_bytes = commitment.to_bytes();
+                let (_record, commitment, witness) = piece.split_mut();
+                commitment.copy_from_slice(&commitment_bytes);
                 // TODO: Consider batch witness creation for improved performance
                 witness.copy_from_slice(
                     &self
@@ -774,7 +794,7 @@ impl Archiver {
         // Now produce root block
         let root_block = RootBlock::V0 {
             segment_index: self.segment_index,
-            records_root: commitment,
+            records_root,
             prev_root_block_hash: self.prev_root_block_hash,
             last_archived_block: self.last_archived_block,
         };
@@ -800,23 +820,58 @@ pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
     piece: &PieceArray,
-    commitment: RecordsRoot,
+    records_root: &RecordsRoot,
     position: u32,
 ) -> bool {
-    let (record, witness) = piece.split();
+    let (record, commitment, witness) = piece.split();
     let witness = match Witness::try_from_bytes(witness) {
         Ok(witness) => witness,
         _ => {
             return false;
         }
     };
-    let leaf_hash = blake2b_256_254_hash_to_scalar(record.as_ref());
+
+    let record_chunks = record.full_scalar_arrays();
+    let number_of_chunks = record_chunks.len();
+    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+
+    for record_chunk in record_chunks {
+        match Scalar::try_from(record_chunk) {
+            Ok(scalar) => {
+                scalars.push(scalar);
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+
+    // Number of scalars for KZG must be a power of two elements
+    scalars.resize(scalars.capacity(), Scalar::default());
+
+    let polynomial = match kzg.poly(&scalars) {
+        Ok(polynomial) => polynomial,
+        _ => {
+            return false;
+        }
+    };
+
+    if kzg
+        .commit(&polynomial)
+        .map(|commitment| commitment.to_bytes())
+        .as_ref()
+        != Ok(commitment)
+    {
+        return false;
+    }
+
+    let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
-        &commitment,
+        records_root,
         num_pieces_in_segment,
         position,
-        &leaf_hash,
+        &commitment_hash,
         &witness,
     )
 }
