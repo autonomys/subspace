@@ -22,21 +22,6 @@ use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
 use rayon::prelude::*;
 use scale_info::TypeInfo;
 
-// TODO: Remove once we redefine it through raw record
-/// Byte size of a piece in Subspace Network, ~32KiB (a bit less due to requirement of being a
-/// multiple of 2 bytes for erasure coding as well as multiple of 31 bytes in order to fit into
-/// BLS12-381 scalar safely).
-///
-/// TODO: Requirement of being a multiple of 2 bytes may go away eventually as we switch erasure
-///  coding implementation, so we might be able to bump it by one field element in size.
-///
-/// This can not changed after the network is launched.
-const PIECE_SIZE: usize = 31_744;
-// TODO: Remove once we re-define it through raw record instead
-/// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
-/// of [`Scalar::FULL_BYTES`].
-const RECORD_SIZE: usize = Piece::SIZE - RecordCommitment::SIZE - RecordWitness::SIZE;
-
 /// Piece index in consensus
 #[derive(
     Debug,
@@ -166,9 +151,9 @@ impl AsMut<[u8]> for RawRecord {
 
 impl RawRecord {
     /// Number of chunks (scalars) within one raw record.
-    pub const NUM_CHUNKS: usize = Self::SIZE / Scalar::SAFE_BYTES;
+    pub const NUM_CHUNKS: usize = 2_usize.pow(15);
     /// Size of raw record in bytes, is guaranteed to be a multiple of [`Scalar::SAFE_BYTES`].
-    pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
+    pub const SIZE: usize = Scalar::SAFE_BYTES * Self::NUM_CHUNKS;
 
     /// Create boxed value without hitting stack overflow
     pub fn new_boxed() -> Box<Self> {
@@ -199,10 +184,10 @@ impl AsMut<[u8]> for Record {
 
 impl Record {
     /// Number of chunks (scalars) within one record.
-    const NUM_CHUNKS: usize = RawRecord::NUM_CHUNKS;
+    pub const NUM_CHUNKS: usize = RawRecord::NUM_CHUNKS;
     /// Size of a segment record given the global piece size (in bytes) after erasure coding
     /// [`RawRecord`], is guaranteed to be a multiple of [`Scalar::FULL_BYTES`].
-    pub const SIZE: usize = RECORD_SIZE;
+    pub const SIZE: usize = Scalar::FULL_BYTES * Self::NUM_CHUNKS;
 
     /// Create boxed value without hitting stack overflow
     pub fn new_boxed() -> Box<Self> {
@@ -376,7 +361,7 @@ impl AsMut<[u8]> for Piece {
 
 impl Piece {
     /// Size of a piece (in bytes).
-    pub const SIZE: usize = PIECE_SIZE;
+    pub const SIZE: usize = Record::SIZE + RecordCommitment::SIZE + RecordWitness::SIZE;
 }
 
 /// A piece of archival history in Subspace Network.

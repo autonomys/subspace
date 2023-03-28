@@ -87,7 +87,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(1962165)
+                archived_progress: ArchivedBlockProgress::Partial(65011701)
             }
         );
 
@@ -107,7 +107,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 1,
-                archived_progress: ArchivedBlockProgress::Partial(1962165)
+                archived_progress: ArchivedBlockProgress::Partial(65011701)
             }
         );
     }
@@ -128,7 +128,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(980962)
+                archived_progress: ArchivedBlockProgress::Partial(32505730)
             }
         );
 
@@ -148,7 +148,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(980962)
+                archived_progress: ArchivedBlockProgress::Partial(32505730)
             }
         );
     }
@@ -169,7 +169,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(4905209)
+                archived_progress: ArchivedBlockProgress::Partial(162529049)
             }
         );
     }
@@ -191,7 +191,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(4905209)
+                archived_progress: ArchivedBlockProgress::Partial(162529049)
             }
         );
     }
@@ -212,7 +212,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(8829456)
+                archived_progress: ArchivedBlockProgress::Partial(292552368)
             }
         );
     }
@@ -234,7 +234,7 @@ fn basic() {
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
                 number: 3,
-                archived_progress: ArchivedBlockProgress::Partial(8829456)
+                archived_progress: ArchivedBlockProgress::Partial(292552368)
             }
         );
     }
