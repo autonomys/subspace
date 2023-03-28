@@ -1,8 +1,8 @@
 extern crate alloc;
 
 use crate::archiver::Segment;
-use alloc::collections::VecDeque;
 use alloc::vec::Vec;
+use core::ops::Deref;
 use parity_scale_codec::{Encode, Output};
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -16,19 +16,28 @@ pub(super) struct IncrementalRecordCommitmentsState {
     ///
     /// NOTE: Until full segment is processed, this will not contain commitment to the first record
     /// since it is not ready yet. This in turn means all commitments will be at `-1` offset.
-    state: VecDeque<Commitment>,
+    state: Vec<Commitment>,
+}
+
+impl Deref for IncrementalRecordCommitmentsState {
+    type Target = [Commitment];
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
 }
 
 impl IncrementalRecordCommitmentsState {
     /// Creates an empty state with space for at least capacity records.
     pub(super) fn with_capacity(capacity: usize) -> Self {
         Self {
-            state: VecDeque::with_capacity(capacity),
+            state: Vec::with_capacity(capacity),
         }
     }
 
-    pub(super) fn drain(&mut self) -> impl Iterator<Item = Commitment> + '_ {
-        self.state.drain(..)
+    /// Clears internal state before start of the next segment
+    pub(super) fn clear(&mut self) {
+        self.state.clear();
     }
 }
 
@@ -178,9 +187,7 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
                 .commit(&polynomial)
                 .expect("KZG instance must be configured to support this many scalars; qed");
 
-            self.incremental_record_commitments
-                .state
-                .push_back(commitment);
+            self.incremental_record_commitments.state.push(commitment);
         }
     }
 }
