@@ -3,27 +3,27 @@ pub mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
-use crate::RootBlockCache;
+use crate::SegmentHeaderCache;
 use either::Either;
 use futures::stream::FuturesUnordered;
 use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
-use sc_consensus_subspace_rpc::RootBlockProvider;
+use sc_consensus_subspace_rpc::SegmentHeaderProvider;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{PieceIndex, RootBlock, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{PieceIndex, SegmentHeader, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
     NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
     ParityDbError, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -91,7 +91,7 @@ type DsnProviderStorage<AS> =
 pub(crate) fn create_dsn_instance<Block, AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-    root_block_cache: RootBlockCache<AS>,
+    segment_header_cache: SegmentHeaderCache<AS>,
 ) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
 where
     Block: BlockT,
@@ -147,18 +147,25 @@ where
 
                 async { Some(PieceByHashResponse { piece: result }) }
             }),
-            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |req| {
                 let segment_indexes = match req {
-                    RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
-                    RootBlockRequest::LastRootBlocks { root_block_number } => {
-                        let mut block_limit = *root_block_number;
-                        if *root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
-                            debug!(%root_block_number, "Root block number exceeded the limit.");
+                    SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
+                        segment_indexes.clone()
+                    }
+                    SegmentHeaderRequest::LastSegmentHeaders {
+                        segment_header_number,
+                    } => {
+                        let mut block_limit = *segment_header_number;
+                        if *segment_header_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            debug!(
+                                %segment_header_number,
+                                "Segment header number exceeded the limit."
+                            );
 
                             block_limit = ROOT_BLOCK_NUMBER_LIMIT;
                         }
 
-                        let max_segment_index = root_block_cache.max_segment_index();
+                        let max_segment_index = segment_header_cache.max_segment_index();
 
                         // several last segment indexes
                         (0..=max_segment_index)
@@ -170,18 +177,18 @@ where
 
                 let internal_result = segment_indexes
                     .iter()
-                    .map(|segment_index| root_block_cache.get_root_block(*segment_index))
-                    .collect::<Result<Option<Vec<RootBlock>>, _>>();
+                    .map(|segment_index| segment_header_cache.get_segment_header(*segment_index))
+                    .collect::<Result<Option<Vec<SegmentHeader>>, _>>();
 
                 let result = match internal_result {
-                    Ok(Some(root_blocks)) => Some(RootBlockResponse { root_blocks }),
+                    Ok(Some(segment_headers)) => Some(SegmentHeaderResponse { segment_headers }),
                     Ok(None) => {
-                        error!("Root block collection contained empty root blocks.");
+                        error!("Segment header collection contained empty segment headers.");
 
                         None
                     }
                     Err(error) => {
-                        error!(%error, "Failed to get root blocks from cache");
+                        error!(%error, "Failed to get segment headers from cache");
 
                         None
                     }
@@ -222,7 +229,7 @@ pub(crate) async fn start_dsn_archiver<Spawner>(
         archived_segment, ..
     }) = archived_segment_notification_stream.next().await
     {
-        let segment_index = archived_segment.root_block.segment_index();
+        let segment_index = archived_segment.segment_header.segment_index();
         let first_piece_index = segment_index * u64::from(PIECES_IN_SEGMENT);
 
         info!(%segment_index, "Processing a segment.");

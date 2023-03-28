@@ -22,7 +22,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
     ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, Instrument, Span};
@@ -120,7 +120,8 @@ pub(super) fn configure_dsn(
         piece_cache.clone(),
     );
 
-    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
+    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
+    //  in multiple files)
     let last_archived_segment_index = Arc::new(AtomicU64::default());
     tokio::spawn({
         let last_archived_segment_index = last_archived_segment_index.clone();
@@ -137,7 +138,7 @@ pub(super) fn configure_dsn(
                 Ok(mut archived_segments_notifications) => {
                     while let Some(segment) = archived_segments_notifications.next().await {
                         last_archived_segment_index
-                            .store(segment.root_block.segment_index(), Ordering::Relaxed);
+                            .store(segment.segment_header.segment_index(), Ordering::Relaxed);
                     }
                 }
                 Err(err) => {
@@ -209,8 +210,8 @@ pub(super) fn configure_dsn(
                 }
                 .instrument(Span::current())
             }),
-            RootBlockBySegmentIndexesRequestHandler::create(move |req| {
-                debug!(?req, "Root blocks request received.");
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |req| {
+                debug!(?req, "Segment headers request received.");
 
                 let node_client = node_client.clone();
                 let last_archived_segment_index = last_archived_segment_index.clone();
@@ -218,10 +219,17 @@ pub(super) fn configure_dsn(
 
                 async move {
                     let segment_indexes = match req {
-                        RootBlockRequest::SegmentIndexes { segment_indexes } => segment_indexes.clone(),
-                        RootBlockRequest::LastRootBlocks { root_block_number } => {
-                            if root_block_number > ROOT_BLOCK_NUMBER_LIMIT {
-                                debug!(%root_block_number, "Root block number exceeded the limit.");
+                        SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
+                            segment_indexes.clone()
+                        }
+                        SegmentHeaderRequest::LastSegmentHeaders {
+                            segment_header_number,
+                        } => {
+                            if segment_header_number > ROOT_BLOCK_NUMBER_LIMIT {
+                                debug!(
+                                    %segment_header_number,
+                                    "Segment header number exceeded the limit."
+                                );
                                 return None;
                             }
 
@@ -231,32 +239,31 @@ pub(super) fn configure_dsn(
                             // several last segment indexes available on the node
                             (0..=last_segment_index)
                                 .rev()
-                                .take(root_block_number as usize)
+                                .take(segment_header_number as usize)
                                 .collect::<Vec<_>>()
                         }
                     };
 
-                    debug!(segment_indexes_count = ?segment_indexes.len(), "Root blocks request received.");
+                    debug!(
+                        segment_indexes_count = ?segment_indexes.len(),
+                        "Segment headers request received."
+                    );
 
-                    let internal_result = node_client.root_blocks(segment_indexes).await;
+                    let internal_result = node_client.segment_headers(segment_indexes).await;
 
                     match internal_result {
-                        Ok(root_blocks) => {
-                            root_blocks
-                                .into_iter()
-                                .map(|maybe_root_block| {
-                                    if maybe_root_block.is_none() {
-                                        error!("Received empty optional root block!");
-                                    }
-                                    maybe_root_block
-                                })
-                                .collect::<Option<Vec<_>>>()
-                                .map(|root_blocks| RootBlockResponse {
-                                    root_blocks,
-                                })
-                        }
+                        Ok(segment_headers) => segment_headers
+                            .into_iter()
+                            .map(|maybe_segment_header| {
+                                if maybe_segment_header.is_none() {
+                                    error!("Received empty optional segment header!");
+                                }
+                                maybe_segment_header
+                            })
+                            .collect::<Option<Vec<_>>>()
+                            .map(|segment_headers| SegmentHeaderResponse { segment_headers }),
                         Err(error) => {
-                            error!(%error, "Failed to get root blocks from cache");
+                            error!(%error, "Failed to get segment headers from cache");
 
                             None
                         }

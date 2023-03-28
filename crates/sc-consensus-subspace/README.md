@@ -19,7 +19,7 @@ This crate contains following major components:
 * worker (`sc-consensus-slots`) for claiming slots (block production)
 * block verifier that stateless verification of signature and Proof-of-Space
 * block import that verifies Proof-of-Archival-Storage and triggers archiving of the history
-* archiver worker triggered by block import that ensures history is archived and root blocks are produced at precisely 
+* archiver worker triggered by block import that ensures history is archived and segment headers are produced at precisely 
   the right time before finishing block import
 
 License: GPL-3.0-or-later WITH Classpath-exception-2.0

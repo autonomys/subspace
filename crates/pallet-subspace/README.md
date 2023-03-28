@@ -10,8 +10,8 @@ Pallet maintains crucial state required for Subspace Proof-of-Archival-Storage c
   * conceptually similar to work difficulty in Proof-of-Work consensus
   * is updated every Era
 * inherents for:
-  * storing root blocks and maintaining mapping from segment index to corresponding records root such that validity of
-    piece from solution can be checked later
+  * storing segment headers and maintaining mapping from segment index to corresponding segment commitment such that
+    validity of piece from solution can be checked later
   * handling of farmer equivocation (together with `pallet-offences-subspace`) and maintaining list of blocked farmers
     (effectively burned plots)
 

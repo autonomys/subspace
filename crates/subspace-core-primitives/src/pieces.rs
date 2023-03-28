@@ -228,9 +228,9 @@ impl RecordWitness {
 ///
 /// This version is allocated on the heap, for stack-allocated piece see [`PieceArray`].
 ///
-/// Internally piece contains a record and corresponding witness that together with records root of
-/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
-/// archival history of the blockchain.
+/// Internally piece contains a record and corresponding witness that together with segment
+/// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
+/// the actual archival history of the blockchain.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Piece(Box<PieceArray>);
@@ -300,9 +300,9 @@ impl AsMut<[u8]> for Piece {
 ///
 /// This version is allocated on the stack, for heap-allocated piece see [`Piece`].
 ///
-/// Internally piece contains a record and corresponding witness that together with records root of
-/// the segment this piece belongs to can be used to verify that a piece belongs to the actual
-/// archival history of the blockchain.
+/// Internally piece contains a record and corresponding witness that together with segment
+/// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
+/// the actual archival history of the blockchain.
 #[derive(
     Debug,
     Copy,

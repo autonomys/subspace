@@ -34,7 +34,7 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceArray,
-    RawRecord, RecordedHistorySegment, RecordsRoot, RootBlock, PIECES_IN_SEGMENT,
+    RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, PIECES_IN_SEGMENT,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -43,7 +43,7 @@ const INITIAL_LAST_ARCHIVED_BLOCK: LastArchivedBlock = LastArchivedBlock {
     // Special case for the genesis block.
     //
     // When we start archiving process with pre-genesis objects, we do not yet have any blocks
-    // archived, but `LastArchivedBlock` is required for `RootBlock`s to be produced, so
+    // archived, but `LastArchivedBlock` is required for `SegmentHeader`s to be produced, so
     // `ArchivedBlockProgress::Partial(0)` indicates that we have archived 0 bytes of block `0` (see
     // field above), meaning we did not in fact archive actual blocks yet.
     archived_progress: ArchivedBlockProgress::Partial(0),
@@ -165,18 +165,18 @@ pub enum SegmentItem {
         #[codec(skip)]
         object_mapping: BlockObjectMapping,
     },
-    /// Root block
+    /// Segment header of the parent
     #[codec(index = 4)]
-    RootBlock(RootBlock),
+    ParentSegmentHeader(SegmentHeader),
 }
 
-/// Archived segment as a combination of root block hash, segment index and corresponding pieces
+/// Archived segment as a combination of segment header hash, segment index and corresponding pieces
 #[derive(Debug, Clone, Eq, PartialEq, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct ArchivedSegment {
-    /// Root block of the segment
-    pub root_block: RootBlock,
+    /// Segment header of the segment
+    pub segment_header: SegmentHeader,
     /// Pieces that correspond to this segment
     pub pieces: FlatPieces,
     /// Mappings for objects stored in corresponding pieces.
@@ -220,7 +220,7 @@ pub enum ArchiverInstantiationError {
 /// sliced into segments of [`RecordedHistorySegment::SIZE`] size, segments are sliced into source
 /// records of [`RawRecord::SIZE`], records are erasure coded, committed to with [`Kzg`], then
 /// commitments with witnesses are appended and records become pieces that are returned alongside
-/// corresponding root block header.
+/// corresponding segment header header.
 ///
 /// ## Panics
 /// Panics when operating on blocks, whose length doesn't fit into u32 (should never be the case in
@@ -238,8 +238,8 @@ pub struct Archiver {
     kzg: Kzg,
     /// An index of the current segment
     segment_index: u64,
-    /// Hash of the root block of the previous segment
-    prev_root_block_hash: Blake2b256Hash,
+    /// Hash of the segment header of the previous segment
+    prev_segment_header_hash: Blake2b256Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
 }
@@ -267,7 +267,7 @@ impl Archiver {
             erasure_coding,
             kzg,
             segment_index: 0,
-            prev_root_block_hash: Blake2b256Hash::default(),
+            prev_segment_header_hash: Blake2b256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
     }
@@ -277,20 +277,20 @@ impl Archiver {
     /// `block` corresponds to `last_archived_block` and will be processed accordingly to its state.
     pub fn with_initial_state(
         kzg: Kzg,
-        root_block: RootBlock,
+        segment_header: SegmentHeader,
         encoded_block: &[u8],
         mut object_mapping: BlockObjectMapping,
     ) -> Result<Self, ArchiverInstantiationError> {
         let mut archiver = Self::new(kzg)?;
 
-        archiver.segment_index = root_block.segment_index() + 1;
-        archiver.prev_root_block_hash = root_block.hash();
-        archiver.last_archived_block = root_block.last_archived_block();
+        archiver.segment_index = segment_header.segment_index() + 1;
+        archiver.prev_segment_header_hash = segment_header.hash();
+        archiver.last_archived_block = segment_header.last_archived_block();
 
-        // The first thing in the buffer should be root block
+        // The first thing in the buffer should be segment header
         archiver
             .buffer
-            .push_back(SegmentItem::RootBlock(root_block));
+            .push_back(SegmentItem::ParentSegmentHeader(segment_header));
 
         if let Some(archived_block_bytes) = archiver.last_archived_block.partial_archived() {
             let encoded_block_bytes = u32::try_from(encoded_block.len())
@@ -342,7 +342,7 @@ impl Archiver {
         }
     }
 
-    /// Adds new block to internal buffer, potentially producing pieces and root block headers
+    /// Adds new block to internal buffer, potentially producing pieces and segment header headers
     pub fn add_block(
         &mut self,
         bytes: Vec<u8>,
@@ -421,10 +421,10 @@ impl Archiver {
                         unreachable!("Buffer never contains SegmentItem::BlockStart; qed");
                     }
                     SegmentItem::BlockContinuation { bytes, .. } => bytes.len(),
-                    SegmentItem::RootBlock(_) => {
+                    SegmentItem::ParentSegmentHeader(_) => {
                         unreachable!(
-                            "SegmentItem::RootBlock is always the first element in the buffer and \
-                            fits into the segment; qed",
+                            "SegmentItem::SegmentHeader is always the first element in the buffer \
+                            and fits into the segment; qed",
                         );
                     }
                 };
@@ -465,8 +465,8 @@ impl Archiver {
                                 .expect("Blocks length is never bigger than u32; qed"),
                     );
                 }
-                SegmentItem::RootBlock(_) => {
-                    // We are not interested in root block here
+                SegmentItem::ParentSegmentHeader(_) => {
+                    // We are not interested in segment header here
                 }
             }
 
@@ -580,9 +580,9 @@ impl Archiver {
                         object_mapping,
                     }
                 }
-                SegmentItem::RootBlock(_) => {
+                SegmentItem::ParentSegmentHeader(_) => {
                     unreachable!(
-                        "SegmentItem::RootBlock is always the first element in the buffer and \
+                        "SegmentItem::SegmentHeader is always the first element in the buffer and \
                         fits into the segment; qed",
                     );
                 }
@@ -656,7 +656,7 @@ impl Archiver {
                             }
                         }
                     }
-                    SegmentItem::RootBlock(_) => {
+                    SegmentItem::ParentSegmentHeader(_) => {
                         // Ignore, no objects mappings here
                     }
                 }
@@ -743,7 +743,7 @@ impl Archiver {
             )
             .expect("Internally produced values must never fail; qed");
 
-        let records_root = self
+        let segment_commitment = self
             .kzg
             .commit(&polynomial)
             .expect("Internally produced values must never fail; qed");
@@ -762,29 +762,30 @@ impl Archiver {
                     &self
                         .kzg
                         .create_witness(&polynomial, position as u32)
-                        .expect("We use the same indexes as during Merkle tree creation; qed")
+                        .expect("Position is statically known to be valid; qed")
                         .to_bytes(),
                 );
             });
 
-        // Now produce root block
-        let root_block = RootBlock::V0 {
+        // Now produce segment header
+        let segment_header = SegmentHeader::V0 {
             segment_index: self.segment_index,
-            records_root,
-            prev_root_block_hash: self.prev_root_block_hash,
+            segment_commitment,
+            prev_segment_header_hash: self.prev_segment_header_hash,
             last_archived_block: self.last_archived_block,
         };
 
         // Update state
         self.segment_index += 1;
-        self.prev_root_block_hash = root_block.hash();
+        self.prev_segment_header_hash = segment_header.hash();
 
-        // Add root block to the beginning of the buffer to be the first thing included in the next
-        // segment
-        self.buffer.push_front(SegmentItem::RootBlock(root_block));
+        // Add segment header to the beginning of the buffer to be the first thing included in the
+        //  nextsegment
+        self.buffer
+            .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
         ArchivedSegment {
-            root_block,
+            segment_header,
             pieces,
             object_mapping,
         }
@@ -796,7 +797,7 @@ pub fn is_piece_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
     piece: &PieceArray,
-    records_root: &RecordsRoot,
+    segment_commitment: &SegmentCommitment,
     position: u32,
 ) -> bool {
     let (record, commitment, witness) = piece.split();
@@ -844,7 +845,7 @@ pub fn is_piece_valid(
     let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
-        records_root,
+        segment_commitment,
         num_pieces_in_segment,
         position,
         &commitment_hash,
@@ -857,7 +858,7 @@ pub fn is_piece_record_hash_valid(
     kzg: &Kzg,
     num_pieces_in_segment: usize,
     piece_record_hash: &Scalar,
-    commitment: &RecordsRoot,
+    commitment: &SegmentCommitment,
     witness: &Witness,
     position: u32,
 ) -> bool {

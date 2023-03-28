@@ -46,8 +46,8 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RecordsRoot, RewardSignature, RootBlock, SegmentIndex,
-    Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    BlockNumber, PublicKey, Randomness, RewardSignature, SegmentCommitment, SegmentHeader,
+    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
@@ -109,9 +109,9 @@ enum ConsensusLog {
     /// Solution range for next block/era.
     #[codec(index = 3)]
     NextSolutionRange(SolutionRange),
-    /// Records roots.
+    /// Segment commitments.
     #[codec(index = 4)]
-    RecordsRoot((SegmentIndex, RecordsRoot)),
+    SegmentCommitment((SegmentIndex, SegmentCommitment)),
     /// Enable Solution range adjustment and Override Solution Range.
     #[codec(index = 5)]
     EnableSolutionRangeAdjustmentAndOverride(Option<SolutionRange>),
@@ -452,11 +452,11 @@ sp_api::decl_runtime_apis! {
         /// Total number of pieces in a blockchain
         fn total_pieces() -> NonZeroU64;
 
-        /// Get the merkle tree root of records for specified segment index
-        fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot>;
+        /// Get the segment commitment of records for specified segment index
+        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
 
-        /// Returns `Vec<RootBlock>` if a given extrinsic has them.
-        fn extract_root_blocks(ext: &Block::Extrinsic) -> Option<Vec<RootBlock>>;
+        /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
+        fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
 
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;
