@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RootBlock, SegmentCommitment, SegmentIndex};
+use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -51,9 +51,9 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<Vec<Option<SegmentCommitment>>, Error>;
 
-    /// Get root blocks for the segments
-    async fn root_blocks(
+    /// Get segment headers for the segments
+    async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<RootBlock>>, Error>;
+    ) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }

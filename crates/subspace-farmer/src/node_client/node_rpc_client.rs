@@ -8,7 +8,7 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RootBlock, SegmentCommitment, SegmentIndex};
+use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -134,13 +134,13 @@ impl NodeClient for NodeRpcClient {
             .await?)
     }
 
-    async fn root_blocks(
+    async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<RootBlock>>, RpcError> {
+    ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
         Ok(self
             .client
-            .request("subspace_rootBlocks", rpc_params![&segment_indexes])
+            .request("subspace_SegmentHeaders", rpc_params![&segment_indexes])
             .await?)
     }
 }

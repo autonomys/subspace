@@ -15,10 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 mod piece_validator;
-mod root_blocks;
+mod segment_headers;
 
 use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
-use crate::dsn::import_blocks::root_blocks::RootBlockHandler;
+use crate::dsn::import_blocks::segment_headers::SegmentHeaderHandler;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
@@ -31,7 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordedHistorySegment, RootBlock, SegmentIndex, PIECES_IN_SEGMENT,
+    Piece, PieceIndex, RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -89,13 +89,14 @@ where
     B: BlockT,
     IQ: ImportQueue<B> + 'static,
 {
-    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
-    let segment_commitments = RootBlockHandler::new(node.clone())
-        .get_root_blocks()
+    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
+    //  in multiple files)
+    let segment_commitments = SegmentHeaderHandler::new(node.clone())
+        .get_segment_headers()
         .await
         .map_err(|error| sc_service::Error::Other(error.to_string()))?
         .iter()
-        .map(RootBlock::segment_commitment)
+        .map(SegmentHeader::segment_commitment)
         .collect::<Vec<_>>();
     let segments_found = segment_commitments.len() as SegmentIndex;
     let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(

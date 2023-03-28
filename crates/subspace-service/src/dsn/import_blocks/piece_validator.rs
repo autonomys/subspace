@@ -16,7 +16,7 @@ pub struct SegmentCommitmentPieceValidator {
 }
 
 impl SegmentCommitmentPieceValidator {
-    /// Root blocks must be in order from 0 to the last one that exists
+    /// Segment headers must be in order from 0 to the last one that exists
     pub fn new(dsn_node: Node, kzg: Kzg, segment_commitment_cache: Vec<SegmentCommitment>) -> Self {
         Self {
             dsn_node,

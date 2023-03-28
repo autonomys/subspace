@@ -29,8 +29,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment, RootBlock, SectorId,
-    SegmentCommitment, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
+    Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment, SectorId, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
@@ -81,7 +81,7 @@ fn archived_segment(kzg: Kzg) -> ArchivedSegment {
 }
 
 struct Farmer {
-    root_block: RootBlock,
+    segment_header: SegmentHeader,
     sector: Vec<u8>,
     sector_metadata: Vec<u8>,
 }
@@ -90,7 +90,7 @@ impl Farmer {
     fn new(keypair: &Keypair) -> Self {
         let kzg = Kzg::new(kzg::embedded_kzg_settings());
         let archived_segment = archived_segment(kzg.clone());
-        let root_block = archived_segment.root_block;
+        let segment_header = archived_segment.segment_header;
         let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
         let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
@@ -118,7 +118,7 @@ impl Farmer {
         .unwrap();
 
         Self {
-            root_block,
+            segment_header,
             sector,
             sector_metadata,
         }
@@ -166,8 +166,8 @@ fn valid_header(
         farmer,
     } = params;
 
-    let segment_index = farmer.root_block.segment_index();
-    let segment_commitment = farmer.root_block.segment_commitment();
+    let segment_index = farmer.segment_header.segment_index();
+    let segment_commitment = farmer.segment_header.segment_commitment();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();

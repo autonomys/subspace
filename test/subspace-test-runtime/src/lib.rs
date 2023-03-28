@@ -71,7 +71,8 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    PublicKey, Randomness, RootBlock, SegmentCommitment, SegmentIndex, SolutionRange, PIECE_SIZE,
+    PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    PIECE_SIZE,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -645,10 +646,10 @@ pub type Executive = frame_executive::Executive<
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, SignedExtra>;
 
-fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
+fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {
     match &ext.function {
-        RuntimeCall::Subspace(pallet_subspace::Call::store_root_blocks { root_blocks }) => {
-            Some(root_blocks.clone())
+        RuntimeCall::Subspace(pallet_subspace::Call::store_segment_headers { segment_headers }) => {
+            Some(segment_headers.clone())
         }
         _ => None,
     }
@@ -1111,8 +1112,8 @@ impl_runtime_apis! {
             Subspace::segment_commitment(segment_index)
         }
 
-        fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
-            extract_root_blocks(ext)
+        fn extract_segment_headers(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
+            extract_segment_headers(ext)
         }
 
         fn root_plot_public_key() -> Option<FarmerPublicKey> {

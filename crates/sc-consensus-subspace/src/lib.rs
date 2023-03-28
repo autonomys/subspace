@@ -82,8 +82,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, RootBlock, SectorId, SegmentCommitment, SegmentIndex, Solution,
-    SolutionRange, PIECES_IN_SEGMENT,
+    Blake2b256Hash, BlockWeight, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
+    Solution, SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -135,7 +135,7 @@ pub struct ArchivedSegmentNotification {
 }
 
 /// Notification with imported block header hash that needs to be archived and sender for
-/// root blocks.
+/// segment headers.
 #[derive(Debug, Clone)]
 pub struct ImportedBlockNotification<Block>
 where
@@ -196,12 +196,12 @@ pub enum Error<Header: HeaderT> {
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
-    /// Invalid set of root blocks
-    #[error("Invalid set of root blocks")]
-    InvalidSetOfRootBlocks,
-    /// Stored root block extrinsic was not found
-    #[error("Stored root block extrinsic was not found: {0:?}")]
-    RootBlocksExtrinsicNotFound(Vec<RootBlock>),
+    /// Invalid set of segment headers
+    #[error("Invalid set of segment headers")]
+    InvalidSetOfSegmentHeaders,
+    /// Stored segment header extrinsic was not found
+    #[error("Stored segment header extrinsic was not found: {0:?}")]
+    SegmentHeadersExtrinsicNotFound(Vec<SegmentHeader>),
     /// Duplicated segment commitment
     #[error(
         "Different segment commitment for segment index {0} was found in storage, likely fork \
@@ -448,9 +448,9 @@ pub struct SubspaceLink<Block: BlockT> {
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
     imported_block_notification_stream:
         SubspaceNotificationStream<ImportedBlockNotification<Block>>,
-    /// Root blocks that are expected to appear in the corresponding blocks, used for block
+    /// Segment headers that are expected to appear in the corresponding blocks, used for block
     /// validation
-    root_blocks: Arc<Mutex<LruCache<NumberFor<Block>, Vec<RootBlock>>>>,
+    segment_headers: Arc<Mutex<LruCache<NumberFor<Block>, Vec<SegmentHeader>>>>,
     kzg: Kzg,
 }
 
@@ -488,8 +488,8 @@ impl<Block: BlockT> SubspaceLink<Block> {
     }
 
     /// Get blocks that are expected to be included at specified block number.
-    pub fn root_blocks_for_block(&self, block_number: NumberFor<Block>) -> Vec<RootBlock> {
-        self.root_blocks
+    pub fn segment_headers_for_block(&self, block_number: NumberFor<Block>) -> Vec<SegmentHeader> {
+        self.segment_headers
             .lock()
             .peek(&block_number)
             .cloned()
@@ -501,13 +501,13 @@ impl<Block: BlockT> SubspaceLink<Block> {
         &self,
         segment_index: SegmentIndex,
     ) -> Option<SegmentCommitment> {
-        self.root_blocks
+        self.segment_headers
             .lock()
             .iter()
-            .find_map(|(_block_number, root_blocks)| {
-                root_blocks.iter().find_map(|root_block| {
-                    if root_block.segment_index() == segment_index {
-                        Some(root_block.segment_commitment())
+            .find_map(|(_block_number, segment_headers)| {
+                segment_headers.iter().find_map(|segment_header| {
+                    if segment_header.segment_index() == segment_index {
+                        Some(segment_header.segment_commitment())
                     } else {
                         None
                     }
@@ -915,7 +915,7 @@ where
         let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
 
         // This is not a very nice hack due to the fact that at the time first block is produced
-        // extrinsics with root blocks are not yet in runtime.
+        // extrinsics with segment headers are not yet in runtime.
         let maybe_segment_commitment = if block_number.is_one() {
             let genesis_block_hash = self.client.info().genesis_hash;
             let archived_segments = Archiver::new(self.subspace_link.kzg.clone())
@@ -928,8 +928,8 @@ where
                     BlockObjectMapping::default(),
                 );
             archived_segments.into_iter().find_map(|archived_segment| {
-                if archived_segment.root_block.segment_index() == segment_index {
-                    Some(archived_segment.root_block.segment_commitment())
+                if archived_segment.segment_header.segment_index() == segment_index {
+                    Some(archived_segment.segment_header.segment_commitment())
                 } else {
                     None
                 }
@@ -942,7 +942,7 @@ where
             maybe_segment_commitment.ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
 
         // Piece is not checked during initial block verification because it requires access to
-        // root block, check it now.
+        // segment header, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
             PIECES_IN_SEGMENT as usize,
@@ -962,7 +962,7 @@ where
         if !skip_runtime_access {
             // If the body is passed through, we need to use the runtime to check that the
             // internally-set timestamp in the inherents actually matches the slot set in the seal
-            // and root blocks in the inherents are set correctly.
+            // and segment headers in the inherents are set correctly.
             if let Some(extrinsics) = extrinsics {
                 let create_inherent_data_providers = self
                     .create_inherent_data_providers
@@ -1266,7 +1266,7 @@ where
         archived_segment_notification_stream,
         imported_block_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
-        root_blocks: Arc::new(Mutex::new(LruCache::new(
+        segment_headers: Arc::new(Mutex::new(LruCache::new(
             NonZeroUsize::new(confirmation_depth_k as usize)
                 .expect("Confirmation depth of zero is not supported"),
         ))),

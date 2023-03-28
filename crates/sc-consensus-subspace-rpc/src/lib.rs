@@ -43,7 +43,7 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{RootBlock, SegmentCommitment, SegmentIndex, Solution};
+use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -98,11 +98,11 @@ pub trait SubspaceRpcApi {
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<SegmentCommitment>>>;
 
-    #[method(name = "subspace_rootBlocks")]
-    async fn root_blocks(
+    #[method(name = "subspace_SegmentHeaders")]
+    async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RootBlock>>>;
+    ) -> RpcResult<Vec<Option<SegmentHeader>>>;
 }
 
 #[derive(Default)]
@@ -117,15 +117,15 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
-pub trait RootBlockProvider {
-    fn get_root_block(
+pub trait SegmentHeaderProvider {
+    fn get_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> Result<Option<RootBlock>, Box<dyn Error>>;
+    ) -> Result<Option<SegmentHeader>, Box<dyn Error>>;
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
+pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -135,7 +135,7 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     subspace_link: SubspaceLink<Block>,
-    root_block_provider: RBP,
+    segment_header_provider: RBP,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -145,7 +145,7 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, RBP> {
+impl<Block: BlockT, Client, RBP: SegmentHeaderProvider> SubspaceRpc<Block, Client, RBP> {
     #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
@@ -158,7 +158,7 @@ impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, R
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         subspace_link: SubspaceLink<Block>,
-        root_block_provider: RBP,
+        segment_header_provider: RBP,
     ) -> Self {
         Self {
             client,
@@ -170,7 +170,7 @@ impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, R
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
             subspace_link,
-            root_block_provider,
+            segment_header_provider,
         }
     }
 }
@@ -186,7 +186,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-    RBP: RootBlockProvider + Send + Sync + 'static,
+    RBP: SegmentHeaderProvider + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_hash = self.client.info().best_hash;
@@ -483,8 +483,8 @@ where
                     });
 
                 api_result.map(|maybe_segment_commitment| {
-                    // This is not a very nice hack due to the fact that at the time first block is produced
-                    // extrinsics with root blocks are not yet in runtime.
+                    // This is not a very nice hack due to the fact that at the time first block is
+                    //  producedextrinsics with segment headers are not yet in runtime.
                     if maybe_segment_commitment.is_none() && best_block_number.is_zero() {
                         self.subspace_link
                             .segment_commitment_by_segment_index(segment_index)
@@ -505,10 +505,10 @@ where
         segment_commitment_result
     }
 
-    async fn root_blocks(
+    async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RootBlock>>> {
+    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
         if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
@@ -524,11 +524,11 @@ where
             .into_iter()
             .map(|segment_index| {
                 let api_result = self
-                    .root_block_provider
-                    .get_root_block(segment_index)
+                    .segment_header_provider
+                    .get_segment_header(segment_index)
                     .map_err(|_| {
                         JsonRpseeError::Custom(
-                            "Internal error during `root_blocks` call".to_string(),
+                            "Internal error during `segment_headers` call".to_string(),
                         )
                     });
 
@@ -537,7 +537,7 @@ where
             .collect();
 
         if let Err(err) = &segment_commitment_result {
-            error!(?err, "Failed to get root blocks.");
+            error!(?err, "Failed to get segment headers.");
         }
 
         segment_commitment_result

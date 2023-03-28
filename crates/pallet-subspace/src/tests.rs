@@ -17,9 +17,10 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_archived_segment, create_root_block, create_signed_vote, generate_equivocation_proof,
-    go_to_block, new_test_ext, progress_to_block, GlobalRandomnessUpdateInterval, ReportLongevity,
-    RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    create_archived_segment, create_segment_header, create_signed_vote,
+    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
+    GlobalRandomnessUpdateInterval, ReportLongevity, RuntimeEvent, RuntimeOrigin, Subspace, System,
+    Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, ChunkOffset, Config,
@@ -520,26 +521,26 @@ fn valid_equivocation_reports_dont_pay_fees() {
 }
 
 #[test]
-fn store_root_block_works() {
+fn store_segment_header_works() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
 
-        let root_block = create_root_block(0);
+        let segment_header = create_segment_header(0);
 
-        let call = Call::<Test>::store_root_blocks {
-            root_blocks: vec![root_block],
+        let call = Call::<Test>::store_segment_headers {
+            segment_headers: vec![segment_header],
         };
-        // Root blocks don't require fee
+        // Segment headers don't require fee
         assert_eq!(call.get_dispatch_info().pays_fee, Pays::No);
 
-        Subspace::store_root_blocks(RuntimeOrigin::none(), vec![root_block]).unwrap();
+        Subspace::store_segment_headers(RuntimeOrigin::none(), vec![segment_header]).unwrap();
         assert_eq!(
             System::events(),
             vec![EventRecord {
                 phase: Phase::Initialization,
-                event: RuntimeEvent::Subspace(crate::Event::RootBlockStored { root_block }),
+                event: RuntimeEvent::Subspace(crate::Event::SegmentHeaderStored { segment_header }),
                 topics: vec![],
             }]
         );
@@ -547,16 +548,16 @@ fn store_root_block_works() {
 }
 
 #[test]
-fn store_root_block_validate_unsigned_prevents_duplicates() {
+fn store_segment_header_validate_unsigned_prevents_duplicates() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
 
-        let root_block = create_root_block(0);
+        let segment_header = create_segment_header(0);
 
-        let inner = Call::store_root_blocks {
-            root_blocks: vec![root_block],
+        let inner = Call::store_segment_headers {
+            segment_headers: vec![segment_header],
         };
 
         // Only local/in block reports are allowed
@@ -587,7 +588,7 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
         assert_ok!(<Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(&inner));
 
         // Submit the report
-        Subspace::store_root_blocks(RuntimeOrigin::none(), vec![root_block]).unwrap();
+        Subspace::store_segment_headers(RuntimeOrigin::none(), vec![segment_header]).unwrap();
 
         // The report should now be considered stale and the transaction is invalid.
         // The check for staleness should be done on both `validate_unsigned` and on `pre_dispatch`
@@ -603,11 +604,11 @@ fn store_root_block_validate_unsigned_prevents_duplicates() {
             InvalidTransaction::BadMandatory,
         );
 
-        let inner2 = Call::store_root_blocks {
-            root_blocks: vec![create_root_block(1), create_root_block(1)],
+        let inner2 = Call::store_segment_headers {
+            segment_headers: vec![create_segment_header(1), create_segment_header(1)],
         };
 
-        // Same root block can't be included twice even in the same extrinsic
+        // Same segment header can't be included twice even in the same extrinsic
         assert_err!(
             <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
                 TransactionSource::Local,
@@ -789,8 +790,8 @@ fn vote_past_future_slot() {
         let piece = &archived_segment.pieces[0];
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -872,8 +873,8 @@ fn vote_same_slot() {
         go_to_block(&block_keypair, 3, 4, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -987,8 +988,8 @@ fn vote_outside_of_solution_range() {
         progress_to_block(&keypair, 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Solution must be within solution range
@@ -1021,8 +1022,8 @@ fn vote_invalid_solution_signature() {
         progress_to_block(&keypair, 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1074,8 +1075,8 @@ fn vote_correct_signature() {
         progress_to_block(&keypair, 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1106,8 +1107,8 @@ fn vote_randomness_update() {
         let piece = &archived_segment.pieces[0];
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         progress_to_block(&keypair, GlobalRandomnessUpdateInterval::get(), 1);
@@ -1145,8 +1146,8 @@ fn vote_equivocation_current_block_plus_vote() {
         progress_to_block(&keypair, 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1196,8 +1197,8 @@ fn vote_equivocation_parent_block_plus_vote() {
         progress_to_block(&keypair, 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1256,8 +1257,8 @@ fn vote_equivocation_current_voters_duplicate() {
         progress_to_block(&Keypair::generate(), 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes
@@ -1336,8 +1337,8 @@ fn vote_equivocation_parent_voters_duplicate() {
         progress_to_block(&keypair, 2, 1);
 
         SegmentCommitment::<Test>::insert(
-            archived_segment.root_block.segment_index(),
-            archived_segment.root_block.segment_commitment(),
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
         );
 
         // Reset so that any solution works for votes

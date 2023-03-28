@@ -46,7 +46,7 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RewardSignature, RootBlock, SegmentCommitment,
+    BlockNumber, PublicKey, Randomness, RewardSignature, SegmentCommitment, SegmentHeader,
     SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -455,8 +455,8 @@ sp_api::decl_runtime_apis! {
         /// Get the segment commitment of records for specified segment index
         fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
 
-        /// Returns `Vec<RootBlock>` if a given extrinsic has them.
-        fn extract_root_blocks(ext: &Block::Extrinsic) -> Option<Vec<RootBlock>>;
+        /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
+        fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
 
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;

@@ -57,7 +57,7 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, RootBlock, SectorId, SectorIndex, SegmentIndex,
+    PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader, SegmentIndex,
     SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -68,7 +68,7 @@ use subspace_verification::{
 
 pub trait WeightInfo {
     fn report_equivocation() -> Weight;
-    fn store_root_blocks(root_blocks_count: usize) -> Weight;
+    fn store_segment_headers(segment_headers_count: usize) -> Weight;
     fn vote() -> Weight;
 }
 
@@ -141,7 +141,7 @@ mod pallet {
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
     use subspace_core_primitives::{
-        Randomness, RootBlock, SectorIndex, SegmentIndex, SolutionRange,
+        Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -308,8 +308,8 @@ mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Root block was stored in blockchain history.
-        RootBlockStored { root_block: RootBlock },
+        /// Segment header was stored in blockchain history.
+        SegmentHeaderStored { segment_header: SegmentHeader },
         /// Farmer vote.
         FarmerVote {
             public_key: FarmerPublicKey,
@@ -486,16 +486,16 @@ mod pallet {
             Self::do_report_equivocation(*equivocation_proof)
         }
 
-        /// Submit new root block to the blockchain. This is an inherent extrinsic and part of the
-        /// Subspace consensus logic.
+        /// Submit new segment header to the blockchain. This is an inherent extrinsic and part of
+        /// the Subspace consensus logic.
         #[pallet::call_index(1)]
-        #[pallet::weight((<T as Config>::WeightInfo::store_root_blocks(root_blocks.len()), DispatchClass::Mandatory, Pays::No))]
-        pub fn store_root_blocks(
+        #[pallet::weight((<T as Config>::WeightInfo::store_segment_headers(segment_headers.len()), DispatchClass::Mandatory, Pays::No))]
+        pub fn store_segment_headers(
             origin: OriginFor<T>,
-            root_blocks: Vec<RootBlock>,
+            segment_headers: Vec<SegmentHeader>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::do_store_root_blocks(root_blocks)
+            Self::do_store_segment_headers(segment_headers)
         }
 
         /// Enable solution range adjustment after every era.
@@ -587,11 +587,11 @@ mod pallet {
                 .expect("Subspace inherent data not correctly encoded")
                 .expect("Subspace inherent data must be provided");
 
-            let root_blocks = inherent_data.root_blocks;
-            if root_blocks.is_empty() {
+            let segment_headers = inherent_data.segment_headers;
+            if segment_headers.is_empty() {
                 None
             } else {
-                Some(Call::store_root_blocks { root_blocks })
+                Some(Call::store_segment_headers { segment_headers })
             }
         }
 
@@ -601,24 +601,24 @@ mod pallet {
                 .expect("Subspace inherent data not correctly encoded")
                 .expect("Subspace inherent data must be provided");
 
-            Ok(if inherent_data.root_blocks.is_empty() {
+            Ok(if inherent_data.segment_headers.is_empty() {
                 None
             } else {
-                Some(InherentError::MissingRootBlocksList)
+                Some(InherentError::MissingSegmentHeadersList)
             })
         }
 
         fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
-            if let Call::store_root_blocks { root_blocks } = call {
+            if let Call::store_segment_headers { segment_headers } = call {
                 let inherent_data = data
                     .get_data::<InherentType>(&INHERENT_IDENTIFIER)
                     .expect("Subspace inherent data not correctly encoded")
                     .expect("Subspace inherent data must be provided");
 
-                if root_blocks != &inherent_data.root_blocks {
-                    return Err(InherentError::IncorrectRootBlocksList {
-                        expected: inherent_data.root_blocks,
-                        actual: root_blocks.clone(),
+                if segment_headers != &inherent_data.segment_headers {
+                    return Err(InherentError::IncorrectSegmentHeadersList {
+                        expected: inherent_data.segment_headers,
+                        actual: segment_headers.clone(),
                     });
                 }
             }
@@ -627,7 +627,7 @@ mod pallet {
         }
 
         fn is_inherent(call: &Self::Call) -> bool {
-            matches!(call, Call::store_root_blocks { .. })
+            matches!(call, Call::store_segment_headers { .. })
         }
     }
 
@@ -639,8 +639,8 @@ mod pallet {
                 Call::report_equivocation { equivocation_proof } => {
                     Self::validate_equivocation_report(source, equivocation_proof)
                 }
-                Call::store_root_blocks { root_blocks } => {
-                    Self::validate_root_block(source, root_blocks)
+                Call::store_segment_headers { segment_headers } => {
+                    Self::validate_segment_header(source, segment_headers)
                 }
                 Call::vote { signed_vote } => Self::validate_vote(signed_vote),
                 _ => InvalidTransaction::Call.into(),
@@ -652,8 +652,8 @@ mod pallet {
                 Call::report_equivocation { equivocation_proof } => {
                     Self::pre_dispatch_equivocation_report(equivocation_proof)
                 }
-                Call::store_root_blocks { root_blocks } => {
-                    Self::pre_dispatch_root_block(root_blocks)
+                Call::store_segment_headers { segment_headers } => {
+                    Self::pre_dispatch_segment_header(segment_headers)
                 }
                 Call::vote { signed_vote } => Self::pre_dispatch_vote(signed_vote),
                 _ => Err(InvalidTransaction::Call.into()),
@@ -922,18 +922,18 @@ impl<T: Config> Pallet<T> {
         Ok(Pays::No.into())
     }
 
-    fn do_store_root_blocks(root_blocks: Vec<RootBlock>) -> DispatchResult {
-        for root_block in root_blocks {
+    fn do_store_segment_headers(segment_headers: Vec<SegmentHeader>) -> DispatchResult {
+        for segment_header in segment_headers {
             SegmentCommitment::<T>::insert(
-                root_block.segment_index(),
-                root_block.segment_commitment(),
+                segment_header.segment_index(),
+                segment_header.segment_commitment(),
             );
             // Deposit global randomness data such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::segment_commitment(
-                root_block.segment_index(),
-                root_block.segment_commitment(),
+                segment_header.segment_index(),
+                segment_header.segment_commitment(),
             ));
-            Self::deposit_event(Event::RootBlockStored { root_block });
+            Self::deposit_event(Event::SegmentHeaderStored { segment_header });
         }
         Ok(())
     }
@@ -1084,31 +1084,31 @@ where
 }
 
 /// Methods for the `ValidateUnsigned` implementation:
-/// It restricts calls to `store_root_block` to local calls (i.e. extrinsics generated on this
+/// It restricts calls to `store_segment_header` to local calls (i.e. extrinsics generated on this
 /// node) or that already in a block. This guarantees that only block authors can include root
 /// blocks.
 impl<T: Config> Pallet<T> {
-    fn validate_root_block(
+    fn validate_segment_header(
         source: TransactionSource,
-        root_blocks: &[RootBlock],
+        segment_headers: &[SegmentHeader],
     ) -> TransactionValidity {
-        // Discard root block not coming from the local node
+        // Discard segment header not coming from the local node
         if !matches!(
             source,
             TransactionSource::Local | TransactionSource::InBlock,
         ) {
             warn!(
                 target: "runtime::subspace",
-                "Rejecting root block extrinsic because it is not local/in-block.",
+                "Rejecting segment header extrinsic because it is not local/in-block.",
             );
 
             return InvalidTransaction::Call.into();
         }
 
-        check_root_blocks::<T>(root_blocks)?;
+        check_segment_headers::<T>(segment_headers)?;
 
-        ValidTransaction::with_tag_prefix("SubspaceRootBlock")
-            // We assign the maximum priority for any root block.
+        ValidTransaction::with_tag_prefix("SubspaceSegmentHeader")
+            // We assign the maximum priority for any segment header.
             .priority(TransactionPriority::MAX)
             // Should be included immediately into the current block (this is an inherent
             // extrinsic) with no exceptions.
@@ -1118,8 +1118,10 @@ impl<T: Config> Pallet<T> {
             .build()
     }
 
-    fn pre_dispatch_root_block(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
-        check_root_blocks::<T>(root_blocks)
+    fn pre_dispatch_segment_header(
+        segment_headers: &[SegmentHeader],
+    ) -> Result<(), TransactionValidityError> {
+        check_segment_headers::<T>(segment_headers)
     }
 
     fn validate_vote(
@@ -1468,40 +1470,42 @@ fn check_vote<T: Config>(
     Ok(())
 }
 
-fn check_root_blocks<T: Config>(root_blocks: &[RootBlock]) -> Result<(), TransactionValidityError> {
-    let mut root_blocks_iter = root_blocks.iter();
+fn check_segment_headers<T: Config>(
+    segment_headers: &[SegmentHeader],
+) -> Result<(), TransactionValidityError> {
+    let mut segment_headers_iter = segment_headers.iter();
 
-    // There should be some root blocks
-    let first_root_block = match root_blocks_iter.next() {
-        Some(first_root_block) => first_root_block,
+    // There should be some segment headers
+    let first_segment_header = match segment_headers_iter.next() {
+        Some(first_segment_header) => first_segment_header,
         None => {
             return Err(InvalidTransaction::BadMandatory.into());
         }
     };
 
-    // Segment in root blocks should monotonically increase
-    if first_root_block.segment_index() > 0
-        && !SegmentCommitment::<T>::contains_key(first_root_block.segment_index() - 1)
+    // Segment in segment headers should monotonically increase
+    if first_segment_header.segment_index() > 0
+        && !SegmentCommitment::<T>::contains_key(first_segment_header.segment_index() - 1)
     {
         return Err(InvalidTransaction::BadMandatory.into());
     }
 
-    // Root blocks should never repeat
-    if SegmentCommitment::<T>::contains_key(first_root_block.segment_index()) {
+    // Segment headers should never repeat
+    if SegmentCommitment::<T>::contains_key(first_segment_header.segment_index()) {
         return Err(InvalidTransaction::BadMandatory.into());
     }
 
-    let mut last_segment_index = first_root_block.segment_index();
+    let mut last_segment_index = first_segment_header.segment_index();
 
-    for root_block in root_blocks_iter {
-        let segment_index = root_block.segment_index();
+    for segment_header in segment_headers_iter {
+        let segment_index = segment_header.segment_index();
 
-        // Segment in root blocks should monotonically increase
+        // Segment in segment headers should monotonically increase
         if segment_index != last_segment_index + 1 {
             return Err(InvalidTransaction::BadMandatory.into());
         }
 
-        // Root blocks should never repeat
+        // Segment headers should never repeat
         if SegmentCommitment::<T>::contains_key(segment_index) {
             return Err(InvalidTransaction::BadMandatory.into());
         }

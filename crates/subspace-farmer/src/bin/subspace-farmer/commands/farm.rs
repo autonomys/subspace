@@ -108,7 +108,8 @@ pub(crate) async fn farm_multi_disk(
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
-    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
+    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
+    //  in multiple files)
     let segment_commitments_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
     let piece_provider = PieceProvider::new(
         node.clone(),

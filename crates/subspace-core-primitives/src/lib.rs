@@ -278,17 +278,17 @@ impl LastArchivedBlock {
     }
 }
 
-/// Root block for a specific segment.
+/// Segment header for a specific segment.
 ///
-/// Each segment will have corresponding [`RootBlock`] included as the first item in the next
-/// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
-/// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
-/// the actual archival history of the blockchain.
+/// Each segment will have corresponding [`SegmentHeader`] included as the first item in the next
+/// segment. Each `SegmentHeader` includes hash of the previous one and all together form a chain of
+/// segment headers that is used for quick and efficient verification that some [`Piece`]
+/// corresponds to the actual archival history of the blockchain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum RootBlock {
-    /// V0 of the root block data structure
+pub enum SegmentHeader {
+    /// V0 of the segment header data structure
     #[codec(index = 0)]
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
@@ -296,15 +296,15 @@ pub enum RootBlock {
         segment_index: SegmentIndex,
         /// Root of commitments of all records in a segment.
         segment_commitment: SegmentCommitment,
-        /// Hash of the root block of the previous segment
-        prev_root_block_hash: Blake2b256Hash,
+        /// Hash of the segment header of the previous segment
+        prev_segment_header_hash: Blake2b256Hash,
         /// Last archived block
         last_archived_block: LastArchivedBlock,
     },
 }
 
-impl RootBlock {
-    /// Hash of the whole root block
+impl SegmentHeader {
+    /// Hash of the whole segment header
     pub fn hash(&self) -> Blake2b256Hash {
         blake2b_256_hash(&self.encode())
     }
@@ -325,13 +325,13 @@ impl RootBlock {
         }
     }
 
-    /// Hash of the root block of the previous segment
-    pub fn prev_root_block_hash(&self) -> Blake2b256Hash {
+    /// Hash of the segment header of the previous segment
+    pub fn prev_segment_header_hash(&self) -> Blake2b256Hash {
         match self {
             Self::V0 {
-                prev_root_block_hash,
+                prev_segment_header_hash,
                 ..
-            } => *prev_root_block_hash,
+            } => *prev_segment_header_hash,
         }
     }
 

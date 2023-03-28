@@ -10,7 +10,7 @@ use parity_scale_codec::Decode;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RawRecord,
-    RecordedHistorySegment, RootBlock, SegmentIndex, PIECES_IN_SEGMENT,
+    RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -54,8 +54,8 @@ pub enum ReconstructorError {
 /// information from segments that were added previously)
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ReconstructedContents {
-    /// Root block stored in a segment
-    pub root_block: Option<RootBlock>,
+    /// Segment header stored in a segment
+    pub segment_header: Option<SegmentHeader>,
     /// Reconstructed encoded blocks with their block numbers
     pub blocks: Vec<(BlockNumber, Vec<u8>)>,
 }
@@ -91,7 +91,7 @@ impl Reconstructor {
 
     /// Given a set of pieces of a segment of the archived history (any half of all pieces are
     /// required to be present, the rest will be recovered automatically due to use of erasure
-    /// coding if needed), reconstructs and returns root block and a list of encoded blocks with
+    /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
     /// corresponding block numbers.
     ///
     /// It is possible to start with any segment, but when next segment is pushed, it needs to
@@ -221,8 +221,8 @@ impl Reconstructor {
 
                     partial_block.extend_from_slice(&bytes);
                 }
-                SegmentItem::RootBlock(root_block) => {
-                    let segment_index = root_block.segment_index();
+                SegmentItem::ParentSegmentHeader(segment_header) => {
+                    let segment_index = segment_header.segment_index();
 
                     if let Some(last_segment_index) = self.last_segment_index {
                         if last_segment_index != segment_index {
@@ -238,9 +238,11 @@ impl Reconstructor {
                     let LastArchivedBlock {
                         number,
                         archived_progress,
-                    } = root_block.last_archived_block();
+                    } = segment_header.last_archived_block();
 
-                    reconstructed_contents.root_block.replace(root_block);
+                    reconstructed_contents
+                        .segment_header
+                        .replace(segment_header);
 
                     match archived_progress {
                         ArchivedBlockProgress::Complete => {

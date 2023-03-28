@@ -897,9 +897,9 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::segment_commitment(segment_index)
                 }
 
-                fn extract_root_blocks(
+                fn extract_segment_headers(
                     _ext: &<Block as BlockT>::Extrinsic
-                ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
+                ) -> Option<Vec<subspace_core_primitives::SegmentHeader >> {
                     panic!("Not needed in tests")
                 }
 
@@ -1145,9 +1145,9 @@ cfg_if! {
                     <pallet_subspace::Pallet<Runtime>>::segment_commitment(segment_index)
                 }
 
-                fn extract_root_blocks(
+                fn extract_segment_headers(
                     _ext: &<Block as BlockT>::Extrinsic
-                ) -> Option<Vec<subspace_core_primitives::RootBlock>> {
+                ) -> Option<Vec<subspace_core_primitives::SegmentHeader>> {
                     panic!("Not needed in tests")
                 }
 

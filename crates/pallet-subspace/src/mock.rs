@@ -41,8 +41,8 @@ use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Randomness, RootBlock,
-    SegmentCommitment, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Randomness,
+    SegmentCommitment, SegmentHeader, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
     RECORDED_HISTORY_SEGMENT_SIZE,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -331,11 +331,11 @@ pub fn generate_equivocation_proof(
     }
 }
 
-pub fn create_root_block(segment_index: SegmentIndex) -> RootBlock {
-    RootBlock::V0 {
+pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
+    SegmentHeader::V0 {
         segment_index,
         segment_commitment: SegmentCommitment::default(),
-        prev_root_block_hash: Blake2b256Hash::default(),
+        prev_segment_header_hash: Blake2b256Hash::default(),
         last_archived_block: LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Complete,
