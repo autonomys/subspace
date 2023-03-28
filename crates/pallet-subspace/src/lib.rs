@@ -57,8 +57,8 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader, SegmentIndex,
-    SolutionRange, PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader,
+    SegmentIndex, SolutionRange, PIECES_IN_SEGMENT,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -1035,13 +1035,8 @@ impl<T: Config> Pallet<T> {
     /// Size of the archived history of the blockchain in bytes
     pub fn archived_history_size() -> u64 {
         let archived_segments = SegmentCommitment::<T>::count();
-        // `*2` because we need to include both data and parity pieces
-        let archived_segment_size = RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE
-            * u32::try_from(PIECE_SIZE)
-                .expect("Piece size is definitely small enough to fit into u32; qed")
-            * 2;
 
-        u64::from(archived_segments) * u64::from(archived_segment_size)
+        u64::from(archived_segments) * u64::from(PIECES_IN_SEGMENT) * Piece::SIZE as u64
     }
 
     pub fn chain_constants() -> ChainConstants {

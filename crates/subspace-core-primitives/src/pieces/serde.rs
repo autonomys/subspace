@@ -1,4 +1,4 @@
-use crate::{FlatPieces, PieceArray, PIECE_SIZE};
+use crate::{FlatPieces, Piece, PieceArray};
 use hex::{decode_to_slice, FromHex, FromHexError};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -10,7 +10,7 @@ impl FromHex for PieceArray {
         if hex.len() % 2 != 0 {
             return Err(FromHexError::OddLength);
         }
-        if hex.len() != 2 * PIECE_SIZE {
+        if hex.len() != 2 * Piece::SIZE {
             return Err(FromHexError::InvalidStringLength);
         }
 
@@ -107,13 +107,13 @@ impl FromHex for FlatPieces {
         if hex.len() % 2 != 0 {
             return Err(FromHexError::OddLength);
         }
-        if hex.len() % (2 * PIECE_SIZE) != 0 {
+        if hex.len() % (2 * Piece::SIZE) != 0 {
             return Err(FromHexError::InvalidStringLength);
         }
 
-        let mut out = FlatPieces::new(hex.len() / 2 / PIECE_SIZE);
+        let mut out = FlatPieces::new(hex.len() / 2 / Piece::SIZE);
 
-        hex.chunks_exact(2 * PIECE_SIZE)
+        hex.chunks_exact(2 * Piece::SIZE)
             .zip(out.iter_mut())
             .try_for_each(|(bytes, piece)| decode_to_slice(bytes, piece.as_mut()))?;
 

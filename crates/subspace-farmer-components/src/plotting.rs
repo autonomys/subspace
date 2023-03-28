@@ -13,7 +13,7 @@ use subspace_core_primitives::crypto::{Scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
     Piece, PieceIndex, PieceIndexHash, PublicKey, SectorId, SectorIndex, PIECES_IN_SEGMENT,
-    PIECE_SIZE, PLOT_SECTOR_SIZE,
+    PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
 use tracing::info;
@@ -137,7 +137,7 @@ where
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (0u64..)
-        .take(PLOT_SECTOR_SIZE as usize / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
+        .take(PLOT_SECTOR_SIZE as usize / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
         .map(|piece_offset| {
             sector_id.derive_piece_index(
                 piece_offset as PieceIndex,
@@ -181,7 +181,7 @@ where
         .map_err(PlottingError::Io)?;
 
     let commitments = in_memory_sector
-        .chunks_exact(PIECE_SIZE)
+        .chunks_exact(Piece::SIZE)
         .map(|piece| {
             // TODO: This is a workaround to the fact that `kzg.poly()` expects `data` to be a slice
             //  32-byte chunks that have up to 254 bits of data in them and in sector encoding we're

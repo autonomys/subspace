@@ -39,7 +39,7 @@ use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 pub use pieces::{
     FlatPieces, Piece, PieceArray, RawRecord, Record, RecordWitness, RecordedHistorySegment,
-    PIECES_IN_SEGMENT, PIECE_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    PIECES_IN_SEGMENT,
 };
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
@@ -59,10 +59,10 @@ pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 /// be expanded to [`Scalar::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
 /// and decoding operate on the same amount of data.
 pub const PLOT_SECTOR_SIZE: u64 =
-    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
+    (Piece::SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
 /// How many pieces we have in a sector
 pub const PIECES_IN_SECTOR: u64 =
-    PLOT_SECTOR_SIZE / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
+    PLOT_SECTOR_SIZE / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;

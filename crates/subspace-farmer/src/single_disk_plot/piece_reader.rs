@@ -2,7 +2,7 @@ use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
 use subspace_core_primitives::crypto::ScalarLegacy;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{Piece, SectorIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{Piece, SectorIndex, PLOT_SECTOR_SIZE};
 use tracing::warn;
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ pub(super) fn read_piece(
         return None;
     }
     // Piece must be within sector
-    if piece_offset >= PLOT_SECTOR_SIZE / PIECE_SIZE as u64 {
+    if piece_offset >= PLOT_SECTOR_SIZE / Piece::SIZE as u64 {
         warn!(
             %sector_index,
             %piece_offset,
@@ -106,7 +106,7 @@ pub(super) fn read_piece(
             .collect::<Vec<_>>();
         sector_codec.decode(&mut sector_bytes_scalars).ok()?;
 
-        let scalars_in_piece = PIECE_SIZE / ScalarLegacy::SAFE_BYTES;
+        let scalars_in_piece = Piece::SIZE / ScalarLegacy::SAFE_BYTES;
         let piece_scalars =
             &sector_bytes_scalars[piece_offset as usize * scalars_in_piece..][..scalars_in_piece];
 

@@ -37,7 +37,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
-use subspace_core_primitives::{crypto, PIECE_SIZE};
+use subspace_core_primitives::{crypto, Piece};
 use thiserror::Error;
 use tracing::{debug, error, info};
 
@@ -249,7 +249,7 @@ where
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
             .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
-            .set_max_packet_size(2 * PIECE_SIZE)
+            .set_max_packet_size(2 * Piece::SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
             .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Providers' settings

@@ -3,9 +3,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    FlatPieces, Piece, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
-};
+use subspace_core_primitives::{FlatPieces, Piece, RecordedHistorySegment, PIECES_IN_SEGMENT};
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
     pieces.iter().map(Piece::from).map(Some).collect()
@@ -13,7 +11,7 @@ fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
 
 // Block that fits into the segment fully
 fn get_random_block() -> Vec<u8> {
-    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
     rand::thread_rng().fill(block.as_mut_slice());
     block
 }

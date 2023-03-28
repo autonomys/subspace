@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::num::NonZeroU64;
 use subspace_core_primitives::crypto::kzg::Commitment;
-use subspace_core_primitives::{SegmentIndex, PIECE_SIZE, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{Piece, SegmentIndex, PLOT_SECTOR_SIZE};
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -48,7 +48,7 @@ impl SectorMetadata {
         let default = SectorMetadata {
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
             expires_at: 0,
-            commitments: vec![Commitment::default(); PLOT_SECTOR_SIZE as usize / PIECE_SIZE],
+            commitments: vec![Commitment::default(); PLOT_SECTOR_SIZE as usize / Piece::SIZE],
         };
 
         default.encoded_size()
