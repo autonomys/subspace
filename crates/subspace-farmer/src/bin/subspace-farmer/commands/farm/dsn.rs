@@ -17,6 +17,7 @@ use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::Keypair;
+use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
@@ -269,7 +270,21 @@ pub(super) fn configure_dsn(
     };
 
     create(config)
-        .map(|(node, node_runner)| (node, node_runner, piece_cache))
+        .map(|(node, node_runner)| {
+            node.on_new_listener(Arc::new({
+                let node = node.clone();
+
+                move |address| {
+                    info!(
+                        "DSN listening on {}",
+                        address.clone().with(Protocol::P2p(node.id().into()))
+                    );
+                }
+            }))
+            .detach();
+
+            (node, node_runner, piece_cache)
+        })
         .map_err(Into::into)
 }
 

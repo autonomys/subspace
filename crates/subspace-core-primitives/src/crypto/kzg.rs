@@ -19,6 +19,8 @@ use blst_from_scratch::types::g1::FsG1;
 use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
+use core::mem;
+use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use kzg::{FFTFr, FFTSettings, KZGSettings};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 #[cfg(feature = "std")]
@@ -93,22 +95,147 @@ pub fn embedded_kzg_settings() -> FsKZGSettings {
 #[derive(Debug, Clone)]
 pub struct Polynomial(FsPoly);
 
-/// Commitment size in bytes.
-pub const COMMITMENT_SIZE: usize = 48;
-
 /// Commitment to polynomial
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, From, Into, AsRef, AsMut, Deref, DerefMut)]
+#[repr(transparent)]
 pub struct Commitment(FsG1);
 
 impl Commitment {
+    /// Commitment size in bytes.
+    const SIZE: usize = 48;
+
     /// Convert commitment to raw bytes
-    pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         bytes_from_g1_rust(&self.0)
     }
 
     /// Try to deserialize commitment from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, String> {
+    pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
         Ok(Commitment(bytes_to_g1_rust(bytes)?))
+    }
+
+    /// Convenient conversion from slice of commitment to underlying representation for efficiency
+    /// purposes.
+    pub fn slice_to_repr(value: &[Self]) -> &[FsG1] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of underlying representation to commitment for efficiency
+    /// purposes.
+    pub fn slice_from_repr(value: &[FsG1]) -> &[Self] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of optional commitment to underlying representation for
+    /// efficiency purposes.
+    pub fn slice_option_to_repr(value: &[Option<Self>]) -> &[Option<FsG1>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of optional underlying representation to commitment for
+    /// efficiency purposes.
+    pub fn slice_option_from_repr(value: &[Option<FsG1>]) -> &[Option<Self>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of commitment to underlying representation for
+    /// efficiency purposes.
+    pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [FsG1] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of underlying representation to commitment for
+    /// efficiency purposes.
+    pub fn slice_mut_from_repr(value: &mut [FsG1]) -> &mut [Self] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from optional mutable slice of commitment to underlying representation
+    /// for efficiency purposes.
+    pub fn slice_option_mut_to_repr(value: &mut [Option<Self>]) -> &mut [Option<FsG1>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from optional mutable slice of underlying representation to commitment
+    /// for efficiency purposes.
+    pub fn slice_option_mut_from_repr(value: &mut [Option<FsG1>]) -> &mut [Option<Self>] {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        // layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from vector of commitment to underlying representation for efficiency
+    /// purposes.
+    pub fn vec_to_repr(value: Vec<Self>) -> Vec<FsG1> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut FsG1,
+                value.len(),
+                value.capacity(),
+            )
+        }
+    }
+
+    /// Convenient conversion from vector of underlying representation to commitment for efficiency
+    /// purposes.
+    pub fn vec_from_repr(value: Vec<FsG1>) -> Vec<Self> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut Self,
+                value.len(),
+                value.capacity(),
+            )
+        }
+    }
+
+    /// Convenient conversion from vector of optional commitment to underlying representation for
+    /// efficiency purposes.
+    pub fn vec_option_to_repr(value: Vec<Option<Self>>) -> Vec<Option<FsG1>> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut Option<FsG1>,
+                value.len(),
+                value.capacity(),
+            )
+        }
+    }
+
+    /// Convenient conversion from vector of optional underlying representation to commitment for
+    /// efficiency purposes.
+    pub fn vec_option_from_repr(value: Vec<Option<FsG1>>) -> Vec<Option<Self>> {
+        // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
+        //  layout, original vector is not dropped
+        unsafe {
+            let mut value = mem::ManuallyDrop::new(value);
+            Vec::from_raw_parts(
+                value.as_mut_ptr() as *mut Option<Self>,
+                value.len(),
+                value.capacity(),
+            )
+        }
     }
 }
 
@@ -118,37 +245,37 @@ impl Hash for Commitment {
     }
 }
 
-impl From<Commitment> for [u8; COMMITMENT_SIZE] {
+impl From<Commitment> for [u8; Commitment::SIZE] {
     fn from(commitment: Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
-impl From<&Commitment> for [u8; COMMITMENT_SIZE] {
+impl From<&Commitment> for [u8; Commitment::SIZE] {
     fn from(commitment: &Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
-impl TryFrom<&[u8; COMMITMENT_SIZE]> for Commitment {
+impl TryFrom<&[u8; Self::SIZE]> for Commitment {
     type Error = String;
 
-    fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
 }
 
-impl TryFrom<[u8; COMMITMENT_SIZE]> for Commitment {
+impl TryFrom<[u8; Self::SIZE]> for Commitment {
     type Error = String;
 
-    fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Commitment {
     fn size_hint(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -156,7 +283,7 @@ impl Encode for Commitment {
     }
 
     fn encoded_size(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -164,7 +291,7 @@ impl EncodeLike for Commitment {}
 
 impl MaxEncodedLen for Commitment {
     fn max_encoded_len() -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -177,7 +304,7 @@ impl Decode for Commitment {
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(COMMITMENT_SIZE)
+        Some(Self::SIZE)
     }
 }
 
@@ -192,7 +319,7 @@ impl TypeInfo for Commitment {
             ))
             .docs(&["Commitment to polynomial"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; COMMITMENT_SIZE]>()
+                f.ty::<[u8; Self::SIZE]>()
                     .name(stringify!(inner))
                     .type_name("G1Affine")
             }))
@@ -200,52 +327,56 @@ impl TypeInfo for Commitment {
 }
 
 /// Witness for polynomial evaluation
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, From, Into, AsRef, AsMut, Deref, DerefMut)]
+#[repr(transparent)]
 pub struct Witness(FsG1);
 
 impl Witness {
+    /// Commitment size in bytes.
+    const SIZE: usize = 48;
+
     /// Convert witness to raw bytes
-    pub fn to_bytes(&self) -> [u8; COMMITMENT_SIZE] {
+    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
         bytes_from_g1_rust(&self.0)
     }
 
     /// Try to deserialize witness from raw bytes
-    pub fn try_from_bytes(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, String> {
+    pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
         Ok(Witness(bytes_to_g1_rust(bytes)?))
     }
 }
 
-impl From<Witness> for [u8; COMMITMENT_SIZE] {
+impl From<Witness> for [u8; Witness::SIZE] {
     fn from(witness: Witness) -> Self {
         witness.to_bytes()
     }
 }
 
-impl From<&Witness> for [u8; COMMITMENT_SIZE] {
+impl From<&Witness> for [u8; Witness::SIZE] {
     fn from(witness: &Witness) -> Self {
         witness.to_bytes()
     }
 }
 
-impl TryFrom<&[u8; COMMITMENT_SIZE]> for Witness {
+impl TryFrom<&[u8; Self::SIZE]> for Witness {
     type Error = String;
 
-    fn try_from(bytes: &[u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
 }
 
-impl TryFrom<[u8; COMMITMENT_SIZE]> for Witness {
+impl TryFrom<[u8; Self::SIZE]> for Witness {
     type Error = String;
 
-    fn try_from(bytes: [u8; COMMITMENT_SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Witness {
     fn size_hint(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 
     fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
@@ -253,7 +384,7 @@ impl Encode for Witness {
     }
 
     fn encoded_size(&self) -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -261,7 +392,7 @@ impl EncodeLike for Witness {}
 
 impl MaxEncodedLen for Witness {
     fn max_encoded_len() -> usize {
-        COMMITMENT_SIZE
+        Self::SIZE
     }
 }
 
@@ -274,7 +405,7 @@ impl Decode for Witness {
     }
 
     fn encoded_fixed_size() -> Option<usize> {
-        Some(COMMITMENT_SIZE)
+        Some(Self::SIZE)
     }
 }
 
@@ -286,7 +417,7 @@ impl TypeInfo for Witness {
             .path(scale_info::Path::new(stringify!(Witness), module_path!()))
             .docs(&["Witness for polynomial evaluation"])
             .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; COMMITMENT_SIZE]>()
+                f.ty::<[u8; Self::SIZE]>()
                     .name(stringify!(inner))
                     .type_name("G1Affine")
             }))
@@ -386,6 +517,7 @@ impl Kzg {
     /// Get FFT settings for specified number of values, uses internal cache to avoid derivation
     /// every time.
     pub fn get_fft_settings(&self, num_values: usize) -> Result<Arc<FsFFTSettings>, String> {
+        let num_values = num_values.next_power_of_two();
         Ok(
             match self.inner.fft_settings_cache.lock().entry(num_values) {
                 Entry::Vacant(entry) => {

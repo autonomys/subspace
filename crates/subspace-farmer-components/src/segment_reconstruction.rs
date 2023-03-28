@@ -4,9 +4,7 @@ use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    Piece, PieceIndex, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
-};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex, PIECES_IN_SEGMENT};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
@@ -42,8 +40,17 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
     let semaphore = &semaphore;
     let acquired_pieces_counter = &acquired_pieces_counter;
 
-    let pieces = (starting_piece_index..)
+    // We prioritize source pieces over parity pieces here
+    let piece_indices = (starting_piece_index..)
         .take(PIECES_IN_SEGMENT as usize)
+        .step_by(2)
+        .chain(
+            (starting_piece_index..)
+                .take(PIECES_IN_SEGMENT as usize)
+                .skip(1)
+                .step_by(2),
+        );
+    let pieces = piece_indices
         .map(|piece_index| async move {
             let _permit = match semaphore.acquire().await {
                 Ok(permit) => permit,
@@ -91,8 +98,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
     }
 
-    let archiver = PiecesReconstructor::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg)
-        .expect("Internal constructor call must succeed.");
+    let archiver = PiecesReconstructor::new(kzg).expect("Internal constructor call must succeed.");
 
     let position = (missing_piece_index - starting_piece_index) as usize;
 

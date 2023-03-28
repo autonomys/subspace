@@ -25,7 +25,7 @@ fn test_is_equivocation_proof_valid() {
         sector_index: 0,
         total_pieces: NonZeroU64::new(1).unwrap(),
         piece_offset: 0,
-        piece_record_hash: Default::default(),
+        piece_commitment_hash: Default::default(),
         piece_witness: Default::default(),
         chunk_offset: 0,
         chunk: Default::default(),

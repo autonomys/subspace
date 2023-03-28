@@ -31,17 +31,14 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::error::Error;
 use std::io::Cursor;
-use std::num::{NonZeroU32, NonZeroU64};
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use subspace_archiving::archiver::ArchivedSegment;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Solution, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
-};
+use subspace_core_primitives::{Piece, PieceIndex, PublicKey, Solution, PLOT_SECTOR_SIZE};
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
@@ -227,9 +224,8 @@ where
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver =
-        subspace_archiving::archiver::Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg.clone())
-            .expect("Incorrect parameters for archiver");
+    let mut archiver = subspace_archiving::archiver::Archiver::new(kzg.clone())
+        .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     let archived_segment = archiver
@@ -244,8 +240,6 @@ where
     let piece_getter = TestPieceGetter { archived_segment };
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
-        record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
-        recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
         total_pieces,
         // TODO: This constant should come from the chain itself
         sector_expiration: 100,

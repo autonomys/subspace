@@ -952,6 +952,7 @@ dependencies = [
  "kzg",
  "libc",
  "once_cell",
+ "rand 0.8.5",
  "sha2 0.10.6",
 ]
 
@@ -5223,15 +5224,6 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.7.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e999beba7b6e8345721bd280141ed958096a2e4abdf74f67ff4ce49b4b54e47a"
-dependencies = [
- "hashbrown 0.12.3",
-]
-
-[[package]]
-name = "lru"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6e8aaa3f231bb4bd57b84b2d5dc3ae7f350265df8aa96492e0bc394a1571909"
@@ -7136,21 +7128,6 @@ dependencies = [
  "getrandom 0.2.8",
  "redox_syscall",
  "thiserror",
-]
-
-[[package]]
-name = "reed-solomon-erasure"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7263373d500d4d4f505d43a2a662d475a894aa94503a1ee28e9188b5f3960d4f"
-dependencies = [
- "cc",
- "libc",
- "libm 0.2.6",
- "lru 0.7.8",
- "parking_lot 0.11.2",
- "smallvec",
- "spin 0.9.6",
 ]
 
 [[package]]
@@ -9949,13 +9926,12 @@ dependencies = [
 name = "subspace-archiving"
 version = "0.1.0"
 dependencies = [
- "blake2",
  "criterion",
  "parity-scale-codec",
  "rand 0.8.5",
- "reed-solomon-erasure",
  "serde",
  "subspace-core-primitives",
+ "subspace-erasure-coding",
  "thiserror",
 ]
 

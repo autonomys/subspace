@@ -31,8 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    Piece, PieceIndex, RootBlock, SegmentIndex, PIECES_IN_SEGMENT, RECORDED_HISTORY_SEGMENT_SIZE,
-    RECORD_SIZE,
+    Piece, PieceIndex, RecordedHistorySegment, RootBlock, SegmentIndex, PIECES_IN_SEGMENT,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -115,20 +114,19 @@ where
     let best_block_number = client.info().best_number;
     let mut link = WaitLink::new();
     let mut imported_blocks = 0;
-    let mut reconstructor = Reconstructor::new(RECORDED_HISTORY_SEGMENT_SIZE)
-        .map_err(|error| sc_service::Error::Other(error.to_string()))?;
-
-    let pieces_in_segment = u64::from(RECORDED_HISTORY_SEGMENT_SIZE / RECORD_SIZE * 2);
+    let mut reconstructor =
+        Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
     // Collection is intentional to make sure downloading starts right away and not lazily
     for segment_index in 0..segments_found {
-        let pieces_indexes = (0..pieces_in_segment / 2).map(|piece_position| {
-            let piece_index: PieceIndex = segment_index * pieces_in_segment + piece_position;
+        let pieces_indexes = (0..PIECES_IN_SEGMENT / 2).map(|piece_position| {
+            let piece_index: PieceIndex = segment_index * PieceIndex::from(PIECES_IN_SEGMENT)
+                + PieceIndex::from(piece_position);
 
             piece_index
         });
 
-        let mut pieces = vec![None::<Piece>; pieces_in_segment as usize];
+        let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];
         let mut pieces_received = 0;
 
         for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
@@ -149,7 +147,7 @@ where
                 pieces_received += 1;
             }
 
-            if pieces_received >= PIECES_IN_SEGMENT / 2 {
+            if pieces_received >= RecordedHistorySegment::RAW_RECORDS {
                 trace!(%segment_index, "Received half of the segment.");
                 break;
             }

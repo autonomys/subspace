@@ -84,7 +84,7 @@ where
     if !archiver::is_piece_record_hash_valid(
         kzg,
         pieces_in_segment,
-        &solution.piece_record_hash,
+        &solution.piece_commitment_hash,
         records_root,
         &solution.piece_witness,
         position,

@@ -62,7 +62,6 @@ parking_lot = { opt-level = 3 }
 parking_lot_core = { opt-level = 3 }
 percent-encoding = { opt-level = 3 }
 primitive-types = { opt-level = 3 }
-reed-solomon-erasure = { opt-level = 3 }
 ring = { opt-level = 3 }
 rustls = { opt-level = 3 }
 secp256k1 = { opt-level = 3 }
