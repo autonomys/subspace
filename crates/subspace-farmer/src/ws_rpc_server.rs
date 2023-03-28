@@ -370,8 +370,8 @@ impl RpcServerImpl {
             return Ok(data);
         }
 
-        for segment_index in u64::from(segment_index + SegmentIndex::ONE).. {
-            let Segment::V0 { items } = self.read_segment(SegmentIndex::from(segment_index))?;
+        for segment_index in segment_index + SegmentIndex::ONE.. {
+            let Segment::V0 { items } = self.read_segment(segment_index)?;
             for segment_item in items {
                 if let SegmentItem::BlockContinuation { bytes, .. } = segment_item {
                     data.extend_from_slice(&bytes);
@@ -396,13 +396,11 @@ impl RpcServerImpl {
 
     /// Read the whole segment by its index (just records, skipping witnesses)
     fn read_segment(&self, segment_index: SegmentIndex) -> Result<Segment, Error> {
-        let first_piece_in_segment = u64::from(segment_index.first_piece_index());
         let mut segment_bytes =
             Vec::<u8>::with_capacity((self.pieces_in_segment * self.record_size) as usize);
 
-        for piece_index in (first_piece_in_segment..)
-            .take(self.pieces_in_segment as usize / 2)
-            .map(PieceIndex::from)
+        for piece_index in
+            (segment_index.first_piece_index()..).take(RecordedHistorySegment::RAW_RECORDS)
         {
             let piece = self.read_and_decode_piece(piece_index)?;
             segment_bytes.extend_from_slice(piece.record().as_ref());

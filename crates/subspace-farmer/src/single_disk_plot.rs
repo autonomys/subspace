@@ -1073,9 +1073,8 @@ impl SingleDiskPlot {
                 let sector_metadata = SectorMetadata::decode(&mut sector_metadata)?;
                 let sector_id = SectorId::new(public_key, sector_index);
 
-                let piece_indexes = (0u64..)
+                let piece_indexes = (PieceIndex::ZERO..)
                     .take(PIECES_IN_SECTOR as usize)
-                    .map(PieceIndex::from)
                     .map(|piece_offset| {
                         sector_id.derive_piece_index(piece_offset, sector_metadata.total_pieces)
                     })

@@ -120,17 +120,13 @@ where
             return Ok(());
         }
 
-        let insert_indexes = (u64::from(first_piece_index)..)
-            .take(pieces.len())
-            .map(PieceIndex::from)
-            .collect::<Vec<_>>();
+        let insert_indexes = (first_piece_index..).take(pieces.len()).collect::<Vec<_>>();
 
         let delete_indexes = u64::from(first_piece_index)
             .checked_sub(u64::from(self.max_pieces_in_cache))
+            .map(PieceIndex::from)
             .map(|delete_pieces_from_index| {
-                (delete_pieces_from_index..u64::from(first_piece_index))
-                    .map(PieceIndex::from)
-                    .collect::<Vec<_>>()
+                (delete_pieces_from_index..first_piece_index).collect::<Vec<_>>()
             })
             .unwrap_or_default();
 

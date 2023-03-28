@@ -236,14 +236,14 @@ pub(super) fn configure_dsn(
                                 return None;
                             }
 
-                            let last_segment_index =
-                                last_archived_segment_index.load(Ordering::Relaxed);
+                            let last_segment_index = SegmentIndex::from(
+                                last_archived_segment_index.load(Ordering::Relaxed),
+                            );
 
                             // several last segment indexes available on the node
-                            (0..=last_segment_index)
+                            (SegmentIndex::ZERO..=last_segment_index)
                                 .rev()
                                 .take(segment_header_number as usize)
-                                .map(SegmentIndex::from)
                                 .collect::<Vec<_>>()
                         }
                     };

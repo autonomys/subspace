@@ -23,7 +23,8 @@
     const_num_from_num,
     const_trait_impl,
     new_uninit,
-    slice_flatten
+    slice_flatten,
+    step_trait
 )]
 
 pub mod crypto;
@@ -38,6 +39,7 @@ extern crate alloc;
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
 use core::convert::AsRef;
+use core::iter::Step;
 use core::num::NonZeroU64;
 use core::{fmt, mem};
 use derive_more::{
@@ -124,6 +126,20 @@ pub type BlockWeight = u128;
 #[repr(transparent)]
 pub struct SegmentIndex(u64);
 
+impl Step for SegmentIndex {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u64::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::backward_checked(start.0, count).map(Self)
+    }
+}
+
 impl const From<u64> for SegmentIndex {
     fn from(original: u64) -> Self {
         Self(original)
@@ -149,9 +165,7 @@ impl SegmentIndex {
 
     /// Iterator over piece indexes that belong to this segment.
     pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
-        (u64::from(self.first_piece_index())..)
-            .take(PIECES_IN_SEGMENT as usize)
-            .map(PieceIndex::from)
+        (self.first_piece_index()..).take(PIECES_IN_SEGMENT as usize)
     }
 
     /// Iterator over piece indexes that belong to this segment with source pieces first.
@@ -446,6 +460,20 @@ impl SegmentHeader {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
 pub struct PieceIndex(u64);
+
+impl Step for PieceIndex {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u64::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::backward_checked(start.0, count).map(Self)
+    }
+}
 
 impl const From<u64> for PieceIndex {
     fn from(original: u64) -> Self {

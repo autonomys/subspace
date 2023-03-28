@@ -118,7 +118,7 @@ where
     let mut reconstructor =
         Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    for segment_index in (0..).take(segments_found).map(SegmentIndex::from) {
+    for segment_index in (SegmentIndex::ZERO..).take(segments_found) {
         let pieces_indices = segment_index.segment_piece_indexes_source_first();
 
         let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];

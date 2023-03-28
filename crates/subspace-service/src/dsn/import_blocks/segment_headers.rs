@@ -42,10 +42,9 @@ impl SegmentHeaderHandler {
         all_segment_headers.push(last_segment_header);
 
         while last_segment_header.segment_index() > SegmentIndex::ZERO {
-            let segment_indexes: Vec<_> = (0..u64::from(last_segment_header.segment_index()))
+            let segment_indexes: Vec<_> = (SegmentIndex::ZERO..last_segment_header.segment_index())
                 .rev()
                 .take(ROOT_BLOCK_NUMBER_PER_REQUEST as usize)
-                .map(SegmentIndex::from)
                 .collect();
 
             let (peer_id, segment_headers) = self
@@ -261,10 +260,9 @@ impl SegmentHeaderHandler {
                 // We expect the reverse order
                 let last_segment_index = first_segment_header.segment_index();
 
-                (0..=u64::from(last_segment_index))
+                (SegmentIndex::ZERO..=last_segment_index)
                     .rev()
                     .take(segment_headers.len())
-                    .map(SegmentIndex::from)
                     .collect::<Vec<_>>()
             }
         };

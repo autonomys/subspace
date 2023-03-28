@@ -132,13 +132,10 @@ where
         PieceIndex::from(farmer_protocol_info.total_pieces.get()).segment_index();
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
-    let piece_indexes: Vec<PieceIndex> = (0u64..)
+    let piece_indexes: Vec<PieceIndex> = (PieceIndex::ZERO..)
         .take(PLOT_SECTOR_SIZE as usize / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
         .map(|piece_offset| {
-            sector_id.derive_piece_index(
-                PieceIndex::from(piece_offset),
-                farmer_protocol_info.total_pieces,
-            )
+            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.total_pieces)
         })
         .collect();
 

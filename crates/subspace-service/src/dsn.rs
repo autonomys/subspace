@@ -168,10 +168,9 @@ where
                         let max_segment_index = segment_header_cache.max_segment_index();
 
                         // several last segment indexes
-                        (0..=u64::from(max_segment_index))
+                        (SegmentIndex::ZERO..=max_segment_index)
                             .rev()
                             .take(block_limit as usize)
-                            .map(SegmentIndex::from)
                             .collect::<Vec<_>>()
                     }
                 };
@@ -282,9 +281,7 @@ pub(crate) async fn publish_pieces(
     segment_index: SegmentIndex,
     archived_segment: Arc<ArchivedSegment>,
 ) {
-    let pieces_indexes = (u64::from(first_piece_index)..)
-        .take(archived_segment.pieces.len())
-        .map(PieceIndex::from);
+    let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.len());
 
     let mut pieces_publishing_futures = pieces_indexes
         .map(|piece_index| announce_single_piece_index_with_backoff(piece_index, node))
