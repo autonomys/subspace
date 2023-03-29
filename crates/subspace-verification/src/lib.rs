@@ -73,7 +73,6 @@ pub fn check_reward_signature(
 /// If `segment_commitment` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     kzg: &Kzg,
-    pieces_in_segment: usize,
     segment_commitment: &SegmentCommitment,
     position: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
@@ -81,10 +80,9 @@ pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
 where
     &'a FarmerPublicKey: Into<PublicKey>,
 {
-    if !archiver::is_piece_record_hash_valid(
+    if !archiver::is_record_commitment_hash_valid(
         kzg,
-        pieces_in_segment,
-        &solution.piece_commitment_hash,
+        &solution.record_commitment_hash,
         segment_commitment,
         &solution.piece_witness,
         position,
@@ -118,8 +116,6 @@ pub fn is_within_solution_range(
 pub struct PieceCheckParams {
     /// Segment commitment of segment to which piece belongs
     pub segment_commitment: SegmentCommitment,
-    /// Number of pieces in a segment
-    pub pieces_in_segment: u32,
 }
 
 /// Parameters for solution verification
@@ -181,15 +177,11 @@ where
 
     // TODO: Check if sector already expired once we have such notion
 
-    if let Some(PieceCheckParams {
-        segment_commitment,
-        pieces_in_segment,
-    }) = piece_check_params
-    {
-        let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
-        let piece_index = sector_id.derive_piece_index(audit_piece_offset, solution.total_pieces);
-        let position = u32::try_from(piece_index % u64::from(*pieces_in_segment))
-            .expect("Position within segment always fits into u32; qed");
+    if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
+        let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);
+        let position = sector_id
+            .derive_piece_index(audit_piece_offset, solution.total_pieces)
+            .position();
 
         // TODO: Check that chunk belongs to the encoded piece
         let kzg = match kzg {
@@ -198,13 +190,7 @@ where
                 return Err(Error::MissingKzgInstance);
             }
         };
-        check_piece(
-            kzg,
-            *pieces_in_segment as usize,
-            segment_commitment,
-            position,
-            solution,
-        )?;
+        check_piece(kzg, segment_commitment, position, solution)?;
     }
 
     Ok(())

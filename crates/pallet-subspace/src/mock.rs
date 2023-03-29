@@ -41,9 +41,9 @@ use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Randomness,
-    SegmentCommitment, SegmentHeader, SegmentIndex, Solution, SolutionRange, PIECE_SIZE,
-    RECORDED_HISTORY_SEGMENT_SIZE,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, PieceArray, PieceIndex,
+    Randomness, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
+    SolutionRange,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
@@ -134,7 +134,7 @@ impl pallet_offences_subspace::Config for Test {
 pub const SLOT_PROBABILITY: (u64, u64) = (3, 10);
 
 pub const INITIAL_SOLUTION_RANGE: SolutionRange =
-    u64::MAX / (1024 * 1024 * 1024 / PIECE_SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
+    u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
@@ -144,7 +144,6 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ConfirmationDepthK: u32 = 10;
     pub const RecordSize: u32 = 3840;
-    pub const RecordedHistorySegmentSize: u32 = 3840 * 256 / 2;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
@@ -195,8 +194,8 @@ pub fn go_to_block(
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
-            piece_offset: 0,
-            piece_commitment_hash: Default::default(),
+            piece_offset: PieceIndex::default(),
+            record_commitment_hash: Default::default(),
             piece_witness: Default::default(),
             chunk_offset: 0,
             chunk,
@@ -283,7 +282,7 @@ pub fn generate_equivocation_proof(
                 sector_index: 0,
                 total_pieces: NonZeroU64::new(1).unwrap(),
                 piece_offset,
-                piece_commitment_hash: Default::default(),
+                record_commitment_hash: Default::default(),
                 piece_witness: Default::default(),
                 chunk_offset: 0,
                 chunk,
@@ -314,8 +313,8 @@ pub fn generate_equivocation_proof(
     };
 
     // generate two headers at the current block
-    let mut h1 = make_header(0, 0);
-    let mut h2 = make_header(1, 1);
+    let mut h1 = make_header(PieceIndex::ZERO, 0);
+    let mut h2 = make_header(PieceIndex::ONE, 1);
 
     seal_header(&mut h1);
     seal_header(&mut h2);
@@ -347,7 +346,7 @@ pub fn create_archived_segment() -> ArchivedSegment {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg).unwrap();
 
-    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
     rand::thread_rng().fill(block.as_mut_slice());
     archiver
         .add_block(block, Default::default())
@@ -382,8 +381,8 @@ pub fn create_signed_vote(
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
-            piece_offset: 0,
-            piece_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
+            piece_offset: PieceIndex::default(),
+            record_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
             piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
             chunk_offset: 0,
             chunk,

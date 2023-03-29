@@ -12,7 +12,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{PublicKey, RecordedHistorySegment, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{PublicKey, RecordedHistorySegment, SegmentIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::FarmerProtocolInfo;
 use utils::BenchPieceGetter;
@@ -42,7 +42,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces: NonZeroU64::new(1).unwrap(),
-        sector_expiration: 1,
+        sector_expiration: SegmentIndex::ONE,
     };
     let piece_getter = BenchPieceGetter::new(piece);
 

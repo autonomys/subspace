@@ -3,7 +3,7 @@ use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, PieceIndexHash, PIECES_IN_SEGMENT, PIECE_SIZE};
+use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 
@@ -46,15 +46,18 @@ impl AuxStore for TestAuxStore {
 fn basic() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        u64::from(PIECES_IN_SEGMENT) * PIECE_SIZE as u64,
+        u64::from(PIECES_IN_SEGMENT) * Piece::SIZE as u64,
         PeerId::random(),
     );
 
     store
-        .add_pieces(0, &FlatPieces::new(PIECES_IN_SEGMENT as usize))
+        .add_pieces(
+            PieceIndex::default(),
+            &FlatPieces::new(PIECES_IN_SEGMENT as usize),
+        )
         .unwrap();
 
-    let piece_index = 0u64;
+    let piece_index = PieceIndex::default();
     let piece_by_kad_key = store
         .get_piece_by_index_multihash(
             &PieceIndexHash::from_index(piece_index)
@@ -77,10 +80,13 @@ fn cache_nothing() {
     let mut store = PieceCache::new(Arc::new(TestAuxStore::default()), 0, PeerId::random());
 
     store
-        .add_pieces(0, &FlatPieces::new(PIECES_IN_SEGMENT as usize))
+        .add_pieces(
+            PieceIndex::default(),
+            &FlatPieces::new(PIECES_IN_SEGMENT as usize),
+        )
         .unwrap();
 
-    let piece_index = 0u64;
+    let piece_index = PieceIndex::default();
 
     assert!(store
         .get_piece(PieceIndexHash::from_index(piece_index))
@@ -92,28 +98,32 @@ fn cache_nothing() {
 fn auto_cleanup() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        PIECE_SIZE as u64,
+        Piece::SIZE as u64,
         PeerId::random(),
     );
 
     // Store the first piece
-    store.add_pieces(0, &FlatPieces::new(1)).unwrap();
+    store
+        .add_pieces(PieceIndex::default(), &FlatPieces::new(1))
+        .unwrap();
     // It must be stored
     store
-        .get_piece(PieceIndexHash::from_index(0))
+        .get_piece(PieceIndexHash::from_index(PieceIndex::default()))
         .unwrap()
         .unwrap();
 
     // Store second piece
-    store.add_pieces(1, &FlatPieces::new(1)).unwrap();
+    store
+        .add_pieces(PieceIndex::ONE, &FlatPieces::new(1))
+        .unwrap();
     // It must be stored
     store
-        .get_piece(PieceIndexHash::from_index(1))
+        .get_piece(PieceIndexHash::from_index(PieceIndex::ONE))
         .unwrap()
         .unwrap();
     // But the first piece is evicted because it exceeds cache size
     assert!(store
-        .get_piece(PieceIndexHash::from_index(0))
+        .get_piece(PieceIndexHash::from_index(PieceIndex::default()))
         .unwrap()
         .is_none());
 }

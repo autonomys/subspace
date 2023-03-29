@@ -351,7 +351,7 @@ impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedS
             sector_index: solution.sector_index,
             total_pieces: solution.total_pieces,
             piece_offset: solution.piece_offset,
-            piece_commitment_hash: solution.piece_commitment_hash,
+            record_commitment_hash: solution.record_commitment_hash,
             piece_witness: solution.piece_witness,
             chunk_offset: solution.chunk_offset,
             chunk: solution.chunk,

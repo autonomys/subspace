@@ -31,7 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    Piece, PieceIndex, RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
+    Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -98,7 +98,7 @@ where
         .iter()
         .map(SegmentHeader::segment_commitment)
         .collect::<Vec<_>>();
-    let segments_found = segment_commitments.len() as SegmentIndex;
+    let segments_found = segment_commitments.len();
     let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
         Some(SegmentCommitmentPieceValidator::new(
@@ -118,19 +118,13 @@ where
     let mut reconstructor =
         Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    // Collection is intentional to make sure downloading starts right away and not lazily
-    for segment_index in 0..segments_found {
-        let pieces_indexes = (0..PIECES_IN_SEGMENT / 2).map(|piece_position| {
-            let piece_index: PieceIndex = segment_index * PieceIndex::from(PIECES_IN_SEGMENT)
-                + PieceIndex::from(piece_position);
-
-            piece_index
-        });
+    for segment_index in (SegmentIndex::ZERO..).take(segments_found) {
+        let pieces_indices = segment_index.segment_piece_indexes_source_first();
 
         let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];
         let mut pieces_received = 0;
 
-        for (piece_index, piece) in pieces_indexes.zip(pieces.iter_mut()) {
+        for (piece_index, piece) in pieces_indices.zip(pieces.iter_mut()) {
             let maybe_piece = piece_provider
                 .get_piece(piece_index, RetryPolicy::Limited(0))
                 .await

@@ -99,7 +99,7 @@ impl Farmer {
         let public_key = PublicKey::from(keypair.public.to_bytes());
         let farmer_protocol_info = FarmerProtocolInfo {
             total_pieces,
-            sector_expiration: 100,
+            sector_expiration: SegmentIndex::from(100),
         };
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
 
@@ -149,7 +149,7 @@ impl PieceGetter for TestPieceGetter {
             .archived_segment
             .pieces
             .iter()
-            .nth(piece_index as usize)
+            .nth(u64::from(piece_index) as usize)
             .map(Piece::from))
     }
 }

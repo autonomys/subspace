@@ -227,13 +227,14 @@ impl Reconstructor {
                     if let Some(last_segment_index) = self.last_segment_index {
                         if last_segment_index != segment_index {
                             return Err(ReconstructorError::IncorrectSegmentOrder {
-                                expected_segment_index: last_segment_index + 1,
-                                actual_segment_index: segment_index + 1,
+                                expected_segment_index: last_segment_index + SegmentIndex::ONE,
+                                actual_segment_index: segment_index + SegmentIndex::ONE,
                             });
                         }
                     }
 
-                    self.last_segment_index.replace(segment_index + 1);
+                    self.last_segment_index
+                        .replace(segment_index + SegmentIndex::ONE);
 
                     let LastArchivedBlock {
                         number,
@@ -270,7 +271,7 @@ impl Reconstructor {
         }
 
         if self.last_segment_index.is_none() {
-            self.last_segment_index.replace(0);
+            self.last_segment_index.replace(SegmentIndex::ZERO);
         }
 
         Ok(reconstructed_contents)

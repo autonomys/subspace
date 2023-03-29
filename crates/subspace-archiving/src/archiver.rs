@@ -34,7 +34,8 @@ use subspace_core_primitives::objects::{
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceArray,
-    RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, PIECES_IN_SEGMENT,
+    RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    PIECES_IN_SEGMENT,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -237,7 +238,7 @@ pub struct Archiver {
     /// KZG instance
     kzg: Kzg,
     /// An index of the current segment
-    segment_index: u64,
+    segment_index: SegmentIndex,
     /// Hash of the segment header of the previous segment
     prev_segment_header_hash: Blake2b256Hash,
     /// Last archived block
@@ -266,7 +267,7 @@ impl Archiver {
             ),
             erasure_coding,
             kzg,
-            segment_index: 0,
+            segment_index: SegmentIndex::ZERO,
             prev_segment_header_hash: Blake2b256Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
@@ -283,7 +284,7 @@ impl Archiver {
     ) -> Result<Self, ArchiverInstantiationError> {
         let mut archiver = Self::new(kzg)?;
 
-        archiver.segment_index = segment_header.segment_index() + 1;
+        archiver.segment_index = segment_header.segment_index() + SegmentIndex::ONE;
         archiver.prev_segment_header_hash = segment_header.hash();
         archiver.last_archived_block = segment_header.last_archived_block();
 
@@ -776,7 +777,7 @@ impl Archiver {
         };
 
         // Update state
-        self.segment_index += 1;
+        self.segment_index += SegmentIndex::ONE;
         self.prev_segment_header_hash = segment_header.hash();
 
         // Add segment header to the beginning of the buffer to be the first thing included in the
@@ -795,7 +796,6 @@ impl Archiver {
 /// Validate witness embedded within a piece produced by archiver
 pub fn is_piece_valid(
     kzg: &Kzg,
-    num_pieces_in_segment: usize,
     piece: &PieceArray,
     segment_commitment: &SegmentCommitment,
     position: u32,
@@ -846,27 +846,26 @@ pub fn is_piece_valid(
 
     kzg.verify(
         segment_commitment,
-        num_pieces_in_segment,
+        PIECES_IN_SEGMENT as usize,
         position,
         &commitment_hash,
         &witness,
     )
 }
 
-/// Validate witness for pieces record hash produced by archiver
-pub fn is_piece_record_hash_valid(
+/// Validate witness for piece commitment hash produced by archiver
+pub fn is_record_commitment_hash_valid(
     kzg: &Kzg,
-    num_pieces_in_segment: usize,
-    piece_record_hash: &Scalar,
+    commitment_hash: &Scalar,
     commitment: &SegmentCommitment,
     witness: &Witness,
     position: u32,
 ) -> bool {
     kzg.verify(
         commitment,
-        num_pieces_in_segment,
+        PIECES_IN_SEGMENT as usize,
         position,
-        piece_record_hash,
+        commitment_hash,
         witness,
     )
 }

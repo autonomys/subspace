@@ -35,12 +35,14 @@ impl SegmentHeaderHandler {
             last_segment_header.segment_index()
         );
 
+        // TODO: Needs to statically require 64-bit environment or else u64->usize may cause
+        //  problems in the future
         let mut all_segment_headers =
-            Vec::with_capacity(last_segment_header.segment_index() as usize + 1);
+            Vec::with_capacity(u64::from(last_segment_header.segment_index()) as usize + 1);
         all_segment_headers.push(last_segment_header);
 
-        while last_segment_header.segment_index() > 0 {
-            let segment_indexes: Vec<_> = (0..last_segment_header.segment_index())
+        while last_segment_header.segment_index() > SegmentIndex::ZERO {
+            let segment_indexes: Vec<_> = (SegmentIndex::ZERO..last_segment_header.segment_index())
                 .rev()
                 .take(ROOT_BLOCK_NUMBER_PER_REQUEST as usize)
                 .collect();
@@ -53,7 +55,7 @@ impl SegmentHeaderHandler {
                 if segment_header.hash() != last_segment_header.prev_segment_header_hash() {
                     error!(
                         %peer_id,
-                        segment_index=%last_segment_header.segment_index() - 1,
+                        segment_index=%last_segment_header.segment_index() - SegmentIndex::ONE,
                         actual_hash=?segment_header.hash(),
                         expected_hash=?last_segment_header.prev_segment_header_hash(),
                         "Segment header hash doesn't match expected hash from the last block."
@@ -258,7 +260,7 @@ impl SegmentHeaderHandler {
                 // We expect the reverse order
                 let last_segment_index = first_segment_header.segment_index();
 
-                (0..=last_segment_index)
+                (SegmentIndex::ZERO..=last_segment_index)
                     .rev()
                     .take(segment_headers.len())
                     .collect::<Vec<_>>()

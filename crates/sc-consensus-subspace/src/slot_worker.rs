@@ -39,9 +39,7 @@ use sp_runtime::DigestItem;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{
-    Randomness, RewardSignature, SectorId, SegmentIndex, Solution, PIECES_IN_SEGMENT,
-};
+use subspace_core_primitives::{Randomness, RewardSignature, SectorId, Solution};
 use subspace_solving::derive_global_challenge;
 use subspace_verification::{
     check_reward_signature, derive_audit_chunk, is_within_solution_range, verify_solution,
@@ -206,9 +204,9 @@ where
 
             let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
-            let piece_index =
-                sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
-            let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+            let segment_index = sector_id
+                .derive_piece_index(solution.piece_offset, solution.total_pieces)
+                .segment_index();
             let mut maybe_segment_commitment = runtime_api
                 .segment_commitment(parent_hash, segment_index)
                 .ok()?;
@@ -242,11 +240,7 @@ where
                 &VerifySolutionParams {
                     global_randomness,
                     solution_range: voting_solution_range,
-                    piece_check_params: Some(PieceCheckParams {
-                        segment_commitment,
-
-                        pieces_in_segment: PIECES_IN_SEGMENT,
-                    }),
+                    piece_check_params: Some(PieceCheckParams { segment_commitment }),
                 },
                 Some(&self.subspace_link.kzg),
             );

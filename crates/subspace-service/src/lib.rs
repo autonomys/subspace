@@ -76,7 +76,6 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::PIECES_IN_SEGMENT;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{peer_id, Node};
@@ -528,7 +527,7 @@ where
                                 .segment_header
                                 .segment_index();
                             if let Err(error) = piece_cache.add_pieces(
-                                segment_index * u64::from(PIECES_IN_SEGMENT),
+                                segment_index.first_piece_index(),
                                 &archived_segment_notification.archived_segment.pieces,
                             ) {
                                 error!(

@@ -83,7 +83,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockWeight, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange, PIECES_IN_SEGMENT,
+    Solution, SolutionRange,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -207,13 +207,13 @@ pub enum Error<Header: HeaderT> {
         "Different segment commitment for segment index {0} was found in storage, likely fork \
         below archiving point"
     )]
-    DifferentSegmentCommitment(u64),
+    DifferentSegmentCommitment(SegmentIndex),
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
     /// Merkle Root not found
     #[error("Segment commitment for segment index {0} not found")]
-    SegmentCommitmentNotFound(u64),
+    SegmentCommitmentNotFound(SegmentIndex),
     /// Only root plot public key is allowed
     #[error("Only root plot public key is allowed")]
     OnlyRootPlotPublicKeyAllowed,
@@ -910,9 +910,8 @@ where
             pre_digest.solution.piece_offset,
             pre_digest.solution.total_pieces,
         );
-        let position = u32::try_from(piece_index % u64::from(PIECES_IN_SEGMENT))
-            .expect("Position within segment always fits into u32; qed");
-        let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+        let position = piece_index.position();
+        let segment_index = piece_index.segment_index();
 
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with segment headers are not yet in runtime.
@@ -945,7 +944,6 @@ where
         // segment header, check it now.
         subspace_verification::check_piece(
             &self.subspace_link.kzg,
-            PIECES_IN_SEGMENT as usize,
             &segment_commitment,
             position,
             &pre_digest.solution,

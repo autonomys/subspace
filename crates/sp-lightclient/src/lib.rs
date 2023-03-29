@@ -345,11 +345,12 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             header_digests.pre_digest.solution.sector_index,
         );
 
-        let piece_index = sector_id.derive_piece_index(
-            header_digests.pre_digest.solution.piece_offset,
-            header_digests.pre_digest.solution.total_pieces,
-        );
-        let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+        let segment_index = sector_id
+            .derive_piece_index(
+                header_digests.pre_digest.solution.piece_offset,
+                header_digests.pre_digest.solution.total_pieces,
+            )
+            .segment_index();
 
         let segment_commitment = self.find_segment_commitment_for_segment_index(
             segment_index,
@@ -362,10 +363,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&VerifySolutionParams {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
-                piece_check_params: Some(PieceCheckParams {
-                    segment_commitment,
-                    pieces_in_segment: PIECES_IN_SEGMENT,
-                }),
+                piece_check_params: Some(PieceCheckParams { segment_commitment }),
             })
                 .into(),
         )
