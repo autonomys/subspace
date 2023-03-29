@@ -33,7 +33,7 @@ use std::error::Error;
 use std::io::Cursor;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -198,7 +198,7 @@ async fn start_farming<Client>(
 }
 
 struct TestPieceGetter {
-    archived_segment: ArchivedSegment,
+    archived_segment: NewArchivedSegment,
 }
 
 #[async_trait]

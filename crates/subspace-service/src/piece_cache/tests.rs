@@ -3,7 +3,9 @@ use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{
+    ArchivedHistorySegment, FlatPieces, Piece, PieceIndex, PieceIndexHash,
+};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 
@@ -46,15 +48,12 @@ impl AuxStore for TestAuxStore {
 fn basic() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        u64::from(PIECES_IN_SEGMENT) * Piece::SIZE as u64,
+        ArchivedHistorySegment::SIZE as u64,
         PeerId::random(),
     );
 
     store
-        .add_pieces(
-            PieceIndex::default(),
-            &FlatPieces::new(PIECES_IN_SEGMENT as usize),
-        )
+        .add_pieces(PieceIndex::default(), &ArchivedHistorySegment::default())
         .unwrap();
 
     let piece_index = PieceIndex::default();
@@ -80,10 +79,7 @@ fn cache_nothing() {
     let mut store = PieceCache::new(Arc::new(TestAuxStore::default()), 0, PeerId::random());
 
     store
-        .add_pieces(
-            PieceIndex::default(),
-            &FlatPieces::new(PIECES_IN_SEGMENT as usize),
-        )
+        .add_pieces(PieceIndex::default(), &ArchivedHistorySegment::default())
         .unwrap();
 
     let piece_index = PieceIndex::default();

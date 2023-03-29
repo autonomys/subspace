@@ -3,7 +3,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{FlatPieces, Piece, RecordedHistorySegment, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{ArchivedHistorySegment, FlatPieces, Piece, RecordedHistorySegment};
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
     pieces.iter().map(Piece::from).map(Some).collect()
@@ -29,20 +29,22 @@ fn segment_reconstruction_works() {
 
     let mut maybe_pieces = pieces_to_option_of_pieces(&archived_segments.first().unwrap().pieces);
 
-    assert_eq!(maybe_pieces.len(), PIECES_IN_SEGMENT as usize);
+    assert_eq!(maybe_pieces.len(), ArchivedHistorySegment::NUM_PIECES);
 
     // Remove some pieces from the array
-    for i in 0..PIECES_IN_SEGMENT {
-        if i > 100 && i < 140 {
-            maybe_pieces[i as usize] = None;
-        }
-    }
+    maybe_pieces
+        .iter_mut()
+        .skip(100)
+        .take(30)
+        .for_each(|piece| {
+            piece.take();
+        });
 
     let reconstructor = PiecesReconstructor::new(kzg).unwrap();
 
     let flat_pieces = reconstructor.reconstruct_segment(&maybe_pieces).unwrap();
 
-    assert_eq!(flat_pieces.len(), PIECES_IN_SEGMENT as usize);
+    assert_eq!(flat_pieces.len(), ArchivedHistorySegment::NUM_PIECES);
     archived_segments
         .into_iter()
         .next()
@@ -68,7 +70,7 @@ fn piece_reconstruction_works() {
 
     let mut maybe_pieces = pieces_to_option_of_pieces(&archived_segments.first().unwrap().pieces);
 
-    assert_eq!(maybe_pieces.len(), PIECES_IN_SEGMENT as usize);
+    assert_eq!(maybe_pieces.len(), ArchivedHistorySegment::NUM_PIECES);
 
     // Remove some pieces from the vector
     let missing_pieces = maybe_pieces

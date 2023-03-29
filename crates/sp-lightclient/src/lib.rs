@@ -36,8 +36,8 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use subspace_core_primitives::{
-    BlockWeight, PublicKey, Randomness, RewardSignature, SectorId, SegmentCommitment, SegmentIndex,
-    SolutionRange, PIECES_IN_SEGMENT,
+    ArchivedHistorySegment, BlockWeight, PublicKey, Randomness, RewardSignature, SectorId,
+    SegmentCommitment, SegmentIndex, SolutionRange,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -666,7 +666,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
         }
 
-        Ok(segment_commitments_count * u64::from(PIECES_IN_SEGMENT))
+        Ok(segment_commitments_count * ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
     /// Finds a segment commitment mapped against a segment index in the chain with chain_tip as the

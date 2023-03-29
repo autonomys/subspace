@@ -31,7 +31,7 @@ use std::task::Poll;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
+    ArchivedHistorySegment, Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -121,7 +121,7 @@ where
     for segment_index in (SegmentIndex::ZERO..).take(segments_found) {
         let pieces_indices = segment_index.segment_piece_indexes_source_first();
 
-        let mut pieces = vec![None::<Piece>; PIECES_IN_SEGMENT as usize];
+        let mut pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
         let mut pieces_received = 0;
 
         for (piece_index, piece) in pieces_indices.zip(pieces.iter_mut()) {
@@ -142,7 +142,7 @@ where
                 pieces_received += 1;
             }
 
-            if pieces_received >= RecordedHistorySegment::RAW_RECORDS {
+            if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
                 trace!(%segment_index, "Received half of the segment.");
                 break;
             }

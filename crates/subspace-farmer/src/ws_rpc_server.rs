@@ -213,7 +213,7 @@ impl RpcServerImpl {
         // How much bytes are definitely available starting at `piece_index` and `offset` without
         // crossing segment boundary
         let bytes_available_in_segment = {
-            let data_shards = RecordedHistorySegment::RAW_RECORDS as u32;
+            let data_shards = RecordedHistorySegment::NUM_RAW_RECORDS as u32;
             let piece_position = piece_index.position();
 
             // `-2` is because last 2 bytes might contain padding if a piece is the last piece in
@@ -400,7 +400,7 @@ impl RpcServerImpl {
             Vec::<u8>::with_capacity((self.pieces_in_segment * self.record_size) as usize);
 
         for piece_index in
-            (segment_index.first_piece_index()..).take(RecordedHistorySegment::RAW_RECORDS)
+            (segment_index.first_piece_index()..).take(RecordedHistorySegment::NUM_RAW_RECORDS)
         {
             let piece = self.read_and_decode_piece(piece_index)?;
             segment_bytes.extend_from_slice(piece.record().as_ref());
