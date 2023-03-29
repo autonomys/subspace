@@ -44,13 +44,10 @@ use subspace_networking::libp2p::identity;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
 use subspace_service::{DsnConfig, NewFull, SubspaceConfiguration, SubspaceNetworking};
-use subspace_test_client::{
-    chain_spec, start_farmer, Backend, Client, FraudProofVerifier, TestExecutorDispatch,
-};
+use subspace_test_client::{chain_spec, start_farmer, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{
     BlockHashCount, Runtime, RuntimeApi, SignedExtra, SignedPayload, UncheckedExtrinsic, VERSION,
 };
-use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -284,8 +281,7 @@ pub struct PrimaryTestNode {
     /// `RPCHandlers` to make RPC queries.
     pub rpc_handlers: RpcHandlers,
     /// Transaction pool.
-    pub transaction_pool:
-        Arc<FullPool<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, mock::TxPreValidator>>,
 }
 
 impl PrimaryTestNode {

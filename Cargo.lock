@@ -2236,14 +2236,12 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
- "sp-transaction-pool",
  "sp-trie",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
- "subspace-transaction-pool",
  "subspace-wasm-tools",
  "substrate-test-runtime-client",
  "substrate-test-utils",
@@ -2331,6 +2329,7 @@ dependencies = [
 name = "domain-service"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "clap 4.1.13",
  "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
@@ -2381,6 +2380,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "system-runtime-primitives",
+ "tracing",
 ]
 
 [[package]]
@@ -10472,6 +10472,7 @@ dependencies = [
 name = "subspace-transaction-pool"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "domain-runtime-primitives",
  "futures 0.3.27",
  "jsonrpsee",
@@ -10489,7 +10490,6 @@ dependencies = [
  "sp-domains",
  "sp-runtime",
  "sp-transaction-pool",
- "subspace-fraud-proof",
  "substrate-prometheus-endpoint",
  "tracing",
 ]

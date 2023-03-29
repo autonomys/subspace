@@ -45,6 +45,7 @@ use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_runtime_primitives::opaque::Block;
+use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_transaction_pool::bundle_validator::BundleValidator;
@@ -76,10 +77,11 @@ pub type Backend = sc_service::TFullBackend<Block>;
 pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
+type TxPreValidator =
+    PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+
 /// Run a farmer.
-pub fn start_farmer(
-    new_full: &NewFull<Client, BundleValidator<Block, Client>, FraudProofVerifier>,
-) {
+pub fn start_farmer(new_full: &NewFull<Client, TxPreValidator>) {
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let reward_signing_notification_stream = new_full.reward_signing_notification_stream.clone();

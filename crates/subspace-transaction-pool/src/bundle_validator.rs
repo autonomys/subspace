@@ -307,19 +307,6 @@ pub trait ValidateBundle<Block: BlockT, DomainHash: Encode> {
     ) -> Result<(), BundleError>;
 }
 
-#[derive(Clone)]
-pub struct SkipBundleValidation;
-
-impl<Block: BlockT, DomainHash: Encode> ValidateBundle<Block, DomainHash> for SkipBundleValidation {
-    fn validate_bundle(
-        &self,
-        _at: &BlockId<Block>,
-        _signed_opaque_bundle: &SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
-    ) -> Result<(), BundleError> {
-        Ok(())
-    }
-}
-
 impl<Block, DomainHash, Client> ValidateBundle<Block, DomainHash> for BundleValidator<Block, Client>
 where
     Block: BlockT,
