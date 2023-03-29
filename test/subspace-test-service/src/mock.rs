@@ -152,7 +152,7 @@ impl MockPrimaryNode {
     }
 
     /// Produce a slot and wait for the acknowledgement of all the slot notification subscribers
-    pub async fn produce_slot(&mut self) -> Slot {
+    pub async fn produce_slot_and_wait_for_bundle_submission(&mut self) -> Slot {
         let slot = Slot::from(self.next_slot);
         self.next_slot += 1;
 
@@ -197,9 +197,9 @@ impl MockPrimaryNode {
         rx
     }
 
-    /// Check if a bundle that created by `author_key` at `slot` is present at the transaction pool
-    pub fn is_bundle_present(&self, slot: u64, author_key: Sr25519Keyring) -> bool {
-        let author_key = ExecutorPublicKey::unchecked_from(author_key.public().0);
+    /// Check if a bundle that created by `bundle_author` at `slot` is present at the transaction pool
+    pub fn is_bundle_present_in_tx_pool(&self, slot: u64, bundle_author: Sr25519Keyring) -> bool {
+        let bundle_author = ExecutorPublicKey::unchecked_from(bundle_author.public().0);
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
@@ -212,7 +212,7 @@ impl MockPrimaryNode {
                     .bundle_solution
                     .proof_of_election()
                     .executor_public_key
-                    == author_key;
+                    == bundle_author;
                 if slot_match && author_match {
                     return true;
                 }
@@ -329,7 +329,7 @@ impl MockPrimaryNode {
     }
 
     /// Produce block based on the current best block and the extrinsics in pool
-    pub async fn produce_block(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
+    pub async fn produce_block_with_slot(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
         let block_timer = time::Instant::now();
 
         let parent_hash = self.client.info().best_hash;
@@ -359,10 +359,10 @@ impl MockPrimaryNode {
     }
 
     /// Produce `n` number of blocks.
-    pub async fn produce_n_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
+    pub async fn produce_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
         for _ in 0..n {
-            let slot = self.produce_slot().await;
-            self.produce_block(slot).await?;
+            let slot = self.produce_slot_and_wait_for_bundle_submission().await;
+            self.produce_block_with_slot(slot).await?;
         }
         Ok(())
     }

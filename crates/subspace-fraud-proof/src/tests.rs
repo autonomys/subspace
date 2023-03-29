@@ -373,7 +373,7 @@ async fn invalid_execution_proof_should_not_work() {
     futures::join!(
         alice.wait_for_blocks(1),
         bob.wait_for_blocks(1),
-        ferdie.produce_n_blocks(1),
+        ferdie.produce_blocks(1),
     )
     .2
     .unwrap();
@@ -413,14 +413,17 @@ async fn invalid_execution_proof_should_not_work() {
     }
 
     // Produce a domain bundle to include the above test tx
-    let slot = ferdie.produce_slot().await;
-    assert!(ferdie.is_bundle_present(slot.into(), alice.key));
+    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(ferdie.is_bundle_present_in_tx_pool(slot.into(), alice.key));
 
     // Wait for `alice` to apply these txs
-    futures::future::join(alice.wait_for_blocks(1), ferdie.produce_block(slot))
-        .await
-        .1
-        .unwrap();
+    futures::future::join(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot),
+    )
+    .await
+    .1
+    .unwrap();
 
     let best_hash = alice.client.info().best_hash;
     let header = alice.client.header(best_hash).unwrap().unwrap();
