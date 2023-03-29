@@ -1,17 +1,22 @@
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::crypto::Scalar;
+use crate::crypto::{blake2b_256_hash, Scalar};
+use crate::segments::{ArchivedHistorySegment, SegmentIndex};
+use crate::Blake2b256Hash;
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::array::TryFromSliceError;
+use core::iter::Step;
 use core::mem;
-use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use derive_more::{AsMut, AsRef, Deref, DerefMut};
+use derive_more::{
+    Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
+    MulAssign, Sub, SubAssign,
+};
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
 use scale_info::TypeInfo;
 
@@ -29,6 +34,102 @@ const PIECE_SIZE: usize = 31_744;
 /// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
 /// of [`Scalar::FULL_BYTES`].
 const RECORD_SIZE: usize = Piece::SIZE - RecordCommitment::SIZE - RecordWitness::SIZE;
+
+/// Piece index in consensus
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct PieceIndex(u64);
+
+impl Step for PieceIndex {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u64::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::backward_checked(start.0, count).map(Self)
+    }
+}
+
+impl const From<u64> for PieceIndex {
+    fn from(original: u64) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<PieceIndex> for u64 {
+    fn from(original: PieceIndex) -> Self {
+        original.0
+    }
+}
+
+impl PieceIndex {
+    /// Piece index 0.
+    pub const ZERO: PieceIndex = PieceIndex(0);
+    /// Piece index 1.
+    pub const ONE: PieceIndex = PieceIndex(1);
+
+    /// Convert piece index into bytes.
+    pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
+        self.0.to_le_bytes()
+    }
+
+    /// Segment index piece index corresponds to
+    pub const fn segment_index(&self) -> SegmentIndex {
+        SegmentIndex::from(self.0 / ArchivedHistorySegment::NUM_PIECES as u64)
+    }
+
+    /// Position of a piece in a segment
+    pub const fn position(&self) -> u32 {
+        // Position is statically guaranteed to fit into u32
+        (self.0 % ArchivedHistorySegment::NUM_PIECES as u64) as u32
+    }
+}
+
+/// Hash of `PieceIndex`
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode, From, Into)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PieceIndexHash(Blake2b256Hash);
+
+impl AsRef<[u8]> for PieceIndexHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl PieceIndexHash {
+    /// Constructs `PieceIndexHash` from `PieceIndex`
+    pub fn from_index(index: PieceIndex) -> Self {
+        Self(blake2b_256_hash(&index.to_bytes()))
+    }
+}
 
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
@@ -58,79 +159,6 @@ impl AsMut<[u8]> for RawRecord {
 impl RawRecord {
     /// Size of raw record in bytes, is guaranteed to be a multiple of [`Scalar::SAFE_BYTES`].
     pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
-}
-
-/// Recorded history segment before archiving is applied.
-///
-/// NOTE: This is a stack-allocated data structure and can cause stack overflow!
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
-#[repr(transparent)]
-pub struct RecordedHistorySegment([RawRecord; Self::NUM_RAW_RECORDS]);
-
-impl Default for RecordedHistorySegment {
-    fn default() -> Self {
-        Self([RawRecord::default(); Self::NUM_RAW_RECORDS])
-    }
-}
-
-impl AsRef<[u8]> for RecordedHistorySegment {
-    fn as_ref(&self) -> &[u8] {
-        // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let raw_records: &[[u8; RawRecord::SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
-        raw_records.flatten()
-    }
-}
-
-impl AsMut<[u8]> for RecordedHistorySegment {
-    fn as_mut(&mut self) -> &mut [u8] {
-        // SAFETY: Same memory layout due to `#[repr(transparent)]`
-        let raw_records: &mut [[u8; RawRecord::SIZE]] =
-            unsafe { mem::transmute(self.0.as_mut_slice()) };
-        raw_records.flatten_mut()
-    }
-}
-
-impl RecordedHistorySegment {
-    /// Number of raw records in one segment of recorded history.
-    pub const NUM_RAW_RECORDS: usize = 128;
-    /// Erasure coding rate for records during archiving process.
-    pub const ERASURE_CODING_RATE: (usize, usize) = (1, 2);
-    /// Size of recorded history segment in bytes.
-    ///
-    /// It includes half of the records (just source records) that will later be erasure coded and
-    /// together with corresponding commitments and witnesses will result in
-    /// [`ArchivedHistorySegment::NUM_PIECES`] [`Piece`]s of archival history.
-    pub const SIZE: usize = RawRecord::SIZE * Self::NUM_RAW_RECORDS;
-}
-
-/// Archived history segment after archiving is applied.
-#[derive(Debug, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(transparent)]
-pub struct ArchivedHistorySegment(FlatPieces);
-
-impl Default for ArchivedHistorySegment {
-    fn default() -> Self {
-        Self(FlatPieces::new(Self::NUM_PIECES))
-    }
-}
-
-impl MaxEncodedLen for ArchivedHistorySegment {
-    fn max_encoded_len() -> usize {
-        Self::SIZE
-    }
-}
-
-impl ArchivedHistorySegment {
-    /// Number of pieces in one segment of archived history.
-    pub const NUM_PIECES: usize = RecordedHistorySegment::NUM_RAW_RECORDS
-        * RecordedHistorySegment::ERASURE_CODING_RATE.1
-        / RecordedHistorySegment::ERASURE_CODING_RATE.0;
-    /// Size of archived history segment in bytes.
-    ///
-    /// It includes erasure coded [`PieceArray`]s (both source and parity) that are composed from
-    /// [`Record`]s together with corresponding commitments and witnesses.
-    pub const SIZE: usize = Piece::SIZE * Self::NUM_PIECES;
 }
 
 /// Record contained within a piece.
@@ -269,7 +297,7 @@ impl Decode for Piece {
     fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
         let piece = parity_scale_codec::decode_vec_with_len::<u8, _>(input, Self::SIZE)
             .map_err(|error| error.chain("Could not decode `Piece.0`"))?;
-        let mut piece = ManuallyDrop::new(piece);
+        let mut piece = mem::ManuallyDrop::new(piece);
         // SAFETY: Original memory is not dropped and guaranteed to be allocated
         let piece = unsafe { Box::from_raw(piece.as_mut_ptr() as *mut PieceArray) };
         Ok(Piece(piece))
