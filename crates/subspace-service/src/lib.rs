@@ -176,6 +176,9 @@ pub struct SubspaceConfiguration {
     pub segment_publish_concurrency: NonZeroUsize,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
+    /// Disables the default substrate block relay path. Instead, the alternate block relay
+    /// implementation from subspace will be used.
+    pub enable_subspace_block_relay: bool,
 }
 
 struct SubspaceExtensionsFactory {
@@ -482,10 +485,6 @@ where
     } = partial_components;
 
     let root_block_cache = RootBlockCache::new(client.clone());
-    // Enable the alternate block relay implementation if the CLI params request
-    // disabling the default path.
-    let enable_block_relay = !config.base.announce_block;
-
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
             node,
@@ -642,7 +641,7 @@ where
             })?;
     }
 
-    let block_relay_receiver = if enable_block_relay {
+    let block_relay_receiver = if config.enable_subspace_block_relay {
         Some(init_block_relay_config(&mut config))
     } else {
         None

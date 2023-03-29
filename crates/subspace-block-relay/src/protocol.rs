@@ -1,4 +1,7 @@
-/// Common define for the block relay.
+//! Common defines for the block relay.
+
+use crate::protocol::full_block::{init_full_block_config, FullBlockRelay};
+use crate::runner::BlockRelayRunner;
 use async_trait::async_trait;
 use futures::channel::mpsc::Receiver;
 use parity_scale_codec::{Decode, Encode};
@@ -17,9 +20,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod full_block;
-
-use crate::protocol::full_block::{init_full_block_config, FullBlockRelay};
-use crate::runner::BlockRelayRunner;
 
 pub(crate) type GossipNetworkService<Block> =
     sc_network::NetworkService<Block, <Block as BlockT>::Hash>;

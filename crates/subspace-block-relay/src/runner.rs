@@ -75,7 +75,7 @@ impl<Block: BlockT> BlockRelayRunner<Block> {
                 }
                 _ = poll_protocol.fuse() => {}
                 _ = gossip_engine.fuse() => {
-                    error!(target: LOG_TARGET, "BlockRelayRunner(): gossip engine has terminated.");
+                    error!(target: LOG_TARGET, "Gossip engine has terminated.");
                     return;
                 }
             }

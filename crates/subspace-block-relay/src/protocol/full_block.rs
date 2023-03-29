@@ -191,10 +191,7 @@ where
         if !self.pending_downloads.remove(&request.0) {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::on_block_download_response(): unknown request: \
-                peer = {:?}, request = {}, len = {}",
-                sender,
-                request,
+                "On response: unknown request: {sender}, {request}, {}",
                 bytes.len()
             );
             return;
@@ -206,28 +203,20 @@ where
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "FullBlockRelay::on_block_download_response(): failed to decode response: \
-                    peer = {:?}, request = {}, len = {}, err = {:?}",
-                    sender,
-                    request,
+                    "On response: failed to decode response: {sender}, {request}, {}, {err}",
                     response_len,
-                    err
                 );
                 return;
             }
         };
 
         // Import the downloaded block.
-        let reponse_str = format!("{block_response}");
+        let response_str = format!("{block_response}");
         self.import_block(sender, block_response.0).await;
         trace!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_download_response(): {}, {}. Block downloaded/imported, \
-            response len = {}, elapsed = {:?}",
-            request,
-            reponse_str,
-            response_len,
-            elapsed,
+            "On response:: {request}, {response_str}. Block downloaded/imported, \
+             {response_len} bytes in {elapsed:?}",
         );
     }
 
@@ -270,19 +259,12 @@ where
         if let Err(err) = incoming.pending_response.send(outgoing) {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::send_download_response(): {}, {}, response len = {}, err = {:?}",
-                request,
-                response,
-                encoded_len,
-                err
+                "Send response: Failed to send: {request}, {response}, {encoded_len} bytes, {err:?}",
             );
         } else {
             trace!(
                 target: LOG_TARGET,
-                "FullBlockRelay::send_download_response(): {}, {}, sent response, len = {}",
-                request,
-                response,
-                encoded_len,
+                "Send response: {request}, {response}, {encoded_len} bytes",
             );
         }
     }
@@ -292,9 +274,9 @@ where
         &mut self,
         block_hash: Block::Hash,
     ) -> Result<Option<SignedBlock<Block>>, String> {
-        self.client.block(block_hash).map_err(|err| {
-            format!("FullBlockRelay::get_block(): block lookup failed: {block_hash}, {err}",)
-        })
+        self.client
+            .block(block_hash)
+            .map_err(|err| format!("Backend block lookup failed: {block_hash}, {err}",))
     }
 }
 
@@ -320,10 +302,7 @@ where
         }
         trace!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_import(): notification = {:?}, {}, announced = {}",
-            notification,
-            announcement,
-            should_announce
+            "On block import: {notification:?}, {announcement}, announced = {should_announce}",
         );
     }
 
@@ -338,9 +317,7 @@ where
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "FullBlockRelay::on_block_announcement(): failed to decode {:?}, err = {:?}",
-                    message,
-                    err
+                    "On block announcement: failed to decode {message:?}, {err:?}"
                 );
                 return;
             }
@@ -350,8 +327,7 @@ where
         if let Ok(Some(_)) = self.get_backend_block(announcement.0.block_hash) {
             info!(
                 target: LOG_TARGET,
-                "FullBlockRelay::on_block_announcement(): {}, existing block announced, skipping",
-                announcement,
+                "On block announcement: {announcement}, existing block announced, skipping",
             );
             return;
         }
@@ -360,9 +336,7 @@ where
         self.start_block_download(sender, &announcement);
         trace!(
             target: LOG_TARGET,
-            "FullBlockRelay::on_block_announcement(): {}, {}. Block download initiated",
-            sender,
-            announcement
+            "On block announcement: {sender}, {announcement}. Block download initiated",
         );
     }
 
@@ -372,9 +346,7 @@ where
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "FullBlockRelay::on_protocol_message(): failed to decode {:?}, err = {:?}",
-                    incoming,
-                    err
+                    "On message: Failed to decode: {incoming:?}, {err:?}"
                 );
                 return;
             }
@@ -388,9 +360,7 @@ where
         } else {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::on_protocol_message(): {}, backend fetch failed, ret = {:?}",
-                block_request,
-                ret
+                "On message: backend fetch failed, {block_request}, {ret:?}"
             );
         }
     }
@@ -412,8 +382,7 @@ where
         } else {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelay::poll(): download request failed: sender = {:?}, request = {}, \
-                response = {:?}",
+                "Poll: download request failed: {:?}, {}, {:?}",
                 protocol_response.peer_id,
                 protocol_response.request_id,
                 protocol_response.response
@@ -438,9 +407,7 @@ impl<Block: BlockT> Validator<Block> for FullBlockRelayValidator {
         if let Err(err) = BlockAnnouncement::<Block>::decode(&mut data) {
             warn!(
                 target: LOG_TARGET,
-                "FullBlockRelayValidator::validate(): peer = {:?}, decode failed: {:?}",
-                sender,
-                err
+                "Validate announcement: {sender}, decode failed: {err:?}"
             );
             ValidationResult::Discard
         } else {
@@ -449,36 +416,13 @@ impl<Block: BlockT> Validator<Block> for FullBlockRelayValidator {
     }
 
     fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |topic, data| {
-            trace!(
-                target: LOG_TARGET,
-                "FullBlockRelayValidator::message_expired(): topic = {:?}, data = {:?}",
-                topic,
-                data
-            );
-            !self.pending_announcements.lock().contains(data)
-        })
+        Box::new(move |_, data| !self.pending_announcements.lock().contains(data))
     }
 
     fn message_allowed<'a>(
         &'a self,
     ) -> Box<dyn FnMut(&PeerId, MessageIntent, &Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |peer, intent, topic, data| {
-            let i = match intent {
-                MessageIntent::Broadcast => "Broadcast",
-                MessageIntent::ForcedBroadcast => "ForcedBroadcast",
-                MessageIntent::PeriodicRebroadcast => "PeriodicRebroadcast",
-            };
-            trace!(
-                target: LOG_TARGET,
-                "FullBlockRelayValidator::message_allowed(): topic = {:?}, data = {:?}, \
-                peer = {:?}, intent = {:?}",
-                topic,
-                data,
-                peer,
-                i
-            );
-
+        Box::new(move |_, _, _, data| {
             let mut pending_announcements = self.pending_announcements.lock();
             pending_announcements.remove(data)
         })

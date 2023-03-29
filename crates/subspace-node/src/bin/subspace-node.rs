@@ -461,6 +461,7 @@ fn main() -> Result<(), Error> {
                         },
                         segment_publish_concurrency: cli.segment_publish_concurrency,
                         sync_from_dsn: cli.sync_from_dsn,
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay,
                     };
 
                     let partial_components = subspace_service::new_partial::<
