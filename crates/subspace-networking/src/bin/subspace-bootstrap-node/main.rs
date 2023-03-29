@@ -7,7 +7,8 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
 use libp2p::identity::ed25519::Keypair;
-use libp2p::Multiaddr;
+use libp2p::{Multiaddr, PeerId};
+use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,7 +59,27 @@ enum Command {
         piece_providers_cache_size: ByteSize,
     },
     /// Generate a new keypair
-    GenerateKeypair,
+    GenerateKeypair {
+        /// Produce an output in JSON format when enabled.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+}
+
+/// Helper struct for the `GenerateKeypair` command output.
+#[derive(Debug, Serialize, Deserialize)]
+struct KeypairOutput {
+    keypair: String,
+    peer_id: String,
+}
+
+impl KeypairOutput {
+    fn new(keypair: Keypair) -> Self {
+        Self {
+            keypair: hex::encode(keypair.encode()),
+            peer_id: peer_id_from_keypair(keypair).to_base58(),
+        }
+    }
 }
 
 #[tokio::main]
@@ -89,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
                 NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
 
             let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
-            let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
+            let local_peer_id = peer_id_from_keypair(keypair.clone());
 
             let provider_storage = if let Some(path) = &db_path {
                 let db_path = path.join("subspace_storage_providers_db");
@@ -148,10 +169,22 @@ async fn main() -> anyhow::Result<()> {
 
             node_runner.run().await
         }
-        Command::GenerateKeypair => {
-            println!("{}", hex::encode(Keypair::generate().encode()))
+        Command::GenerateKeypair { json } => {
+            let output = KeypairOutput::new(Keypair::generate());
+
+            if json {
+                let json_output = serde_json::to_string(&output)?;
+
+                println!("{json_output}")
+            } else {
+                println!("{}", output.keypair)
+            }
         }
     }
 
     Ok(())
+}
+
+fn peer_id_from_keypair(keypair: Keypair) -> PeerId {
+    peer_id(&libp2p::identity::Keypair::Ed25519(keypair))
 }
