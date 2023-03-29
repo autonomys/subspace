@@ -91,10 +91,10 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    pub async fn new<SE, SC, IBNS, CIBNS, NSNS>(
+    pub async fn new<SC, IBNS, CIBNS, NSNS>(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
-        spawn_essential: &SE,
+        spawn_essential: Box<dyn SpawnEssentialNamed>,
         select_chain: &SC,
         params: EssentialExecutorParams<
             Block,
@@ -110,7 +110,6 @@ where
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
-        SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
         IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
