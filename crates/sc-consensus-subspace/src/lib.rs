@@ -77,7 +77,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_archiving::archiver::{Archiver, ArchiverSegment};
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -127,7 +127,7 @@ pub struct RewardSigningNotification {
 #[derive(Debug, Clone)]
 pub struct ArchivedSegmentNotification {
     /// Archived segment.
-    pub archived_segment: Arc<ArchiverSegment>,
+    pub archived_segment: Arc<NewArchivedSegment>,
     /// Sender that signified the fact of receiving archived segment by farmer.
     ///
     /// This must be used to send a message or else block import pipeline will get stuck.
@@ -917,7 +917,7 @@ where
         // extrinsics with segment headers are not yet in runtime.
         let maybe_segment_commitment = if block_number.is_one() {
             let genesis_block_hash = self.client.info().genesis_hash;
-            let archiver_segments = Archiver::new(self.subspace_link.kzg.clone())
+            let archived_segments = Archiver::new(self.subspace_link.kzg.clone())
                 .expect("Incorrect parameters for archiver")
                 .add_block(
                     self.client
@@ -926,9 +926,9 @@ where
                         .encode(),
                     BlockObjectMapping::default(),
                 );
-            archiver_segments.into_iter().find_map(|archiver_segment| {
-                if archiver_segment.segment_header.segment_index() == segment_index {
-                    Some(archiver_segment.segment_header.segment_commitment())
+            archived_segments.into_iter().find_map(|archived_segment| {
+                if archived_segment.segment_header.segment_index() == segment_index {
+                    Some(archived_segment.segment_header.segment_commitment())
                 } else {
                     None
                 }

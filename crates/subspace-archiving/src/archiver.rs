@@ -170,12 +170,13 @@ pub enum SegmentItem {
     ParentSegmentHeader(SegmentHeader),
 }
 
-/// Archived segment as a combination of segment header hash, segment index and corresponding pieces
+/// Newly archived segment as a combination of segment header hash, segment index and corresponding
+/// archived history segment containing pieces
 #[derive(Debug, Clone, Eq, PartialEq, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct ArchiverSegment {
-    /// Segment header of the segment
+pub struct NewArchivedSegment {
+    /// Segment header
     pub segment_header: SegmentHeader,
     /// Segment of archived history containing pieces
     pub pieces: ArchivedHistorySegment,
@@ -347,7 +348,7 @@ impl Archiver {
         &mut self,
         bytes: Vec<u8>,
         object_mapping: BlockObjectMapping,
-    ) -> Vec<ArchiverSegment> {
+    ) -> Vec<NewArchivedSegment> {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block {
             bytes,
@@ -609,7 +610,7 @@ impl Archiver {
     }
 
     // Take segment as an input, apply necessary transformations and produce archived segment
-    fn produce_archived_segment(&mut self, segment: Segment) -> ArchiverSegment {
+    fn produce_archived_segment(&mut self, segment: Segment) -> NewArchivedSegment {
         // Create mappings
         let object_mapping = {
             let mut corrected_object_mapping =
@@ -784,7 +785,7 @@ impl Archiver {
         self.buffer
             .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
-        ArchiverSegment {
+        NewArchivedSegment {
             segment_header,
             pieces,
             object_mapping,

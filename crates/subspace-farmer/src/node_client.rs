@@ -3,7 +3,7 @@ pub(crate) mod node_rpc_client;
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
-use subspace_archiving::archiver::ArchiverSegment;
+use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -43,7 +43,7 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
     /// Subscribe to archived segments
     async fn subscribe_archived_segments(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = ArchiverSegment> + Send + 'static>>, Error>;
+    ) -> Result<Pin<Box<dyn Stream<Item = NewArchivedSegment> + Send + 'static>>, Error>;
 
     /// Get segment commitments for the segments
     async fn segment_commitments(

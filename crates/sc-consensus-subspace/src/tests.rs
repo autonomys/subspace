@@ -434,7 +434,7 @@ fn get_archived_segments(client: &TestClient) -> Vec<ArchivedHistorySegment> {
     archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default())
         .into_iter()
-        .map(|archiver_segment| archiver_segment.pieces)
+        .map(|archived_segment| archived_segment.pieces)
         .collect()
 }
 
