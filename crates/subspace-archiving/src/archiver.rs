@@ -27,6 +27,8 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::num::NonZeroUsize;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
@@ -383,7 +385,6 @@ impl Archiver {
                         &mut self.incremental_record_commitments,
                         &segment,
                         &self.kzg,
-                        false,
                     );
 
                     let Segment::V0 { items } = segment;
@@ -599,13 +600,6 @@ impl Archiver {
 
         self.last_archived_block = last_archived_block;
 
-        update_record_commitments(
-            &mut self.incremental_record_commitments,
-            &segment,
-            &self.kzg,
-            true,
-        );
-
         Some(segment)
     }
 
@@ -725,6 +719,42 @@ impl Archiver {
             pieces
         };
 
+        let existing_commitments = self.incremental_record_commitments.len();
+        // Add commitments for pieces that were not created incrementally
+        {
+            #[cfg(not(feature = "rayon"))]
+            let source_pieces = pieces.source();
+            #[cfg(feature = "rayon")]
+            let source_pieces = pieces.par_source();
+
+            let iter = source_pieces
+                .skip(existing_commitments)
+                .map(|piece| piece.record().safe_scalar_arrays().map(Scalar::from))
+                .map(|record_chunks| {
+                    let number_of_chunks = record_chunks.len();
+                    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+
+                    record_chunks.collect_into(&mut scalars);
+
+                    // Number of scalars for KZG must be a power of two elements
+                    scalars.resize(scalars.capacity(), Scalar::default());
+
+                    let polynomial = self.kzg.poly(&scalars).expect(
+                        "KZG instance must be configured to support this many scalars; qed",
+                    );
+                    self.kzg
+                        .commit(&polynomial)
+                        .expect("KZG instance must be configured to support this many scalars; qed")
+                });
+
+            #[cfg(not(feature = "rayon"))]
+            iter.collect_into(&mut *self.incremental_record_commitments);
+            // TODO: `collect_into_vec()`, unfortunately, truncates input, which is not what we want
+            //  can be unified when https://github.com/rayon-rs/rayon/issues/1039 is resolved
+            #[cfg(feature = "rayon")]
+            self.incremental_record_commitments
+                .extend(&iter.collect::<Vec<_>>());
+        }
         // Collect hashes to commitments from all records
         let record_commitments = self
             .erasure_coding

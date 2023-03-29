@@ -18,6 +18,8 @@ use derive_more::{
     MulAssign, Sub, SubAssign,
 };
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use scale_info::TypeInfo;
 
 // TODO: Remove once we redefine it through raw record
@@ -538,6 +540,33 @@ impl FlatPieces {
     /// Mutable iterator over parity pieces (odd indices).
     pub fn parity_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
         self.0.iter_mut().skip(1).step_by(2)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl FlatPieces {
+    /// Parallel iterator over source pieces (even indices).
+    pub fn par_source(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {
+        self.0.par_iter().step_by(2)
+    }
+
+    /// Mutable parallel iterator over source pieces (even indices).
+    pub fn par_source_mut(
+        &mut self,
+    ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
+        self.0.par_iter_mut().step_by(2)
+    }
+
+    /// Parallel iterator over parity pieces (odd indices).
+    pub fn par_parity(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {
+        self.0.par_iter().skip(1).step_by(2)
+    }
+
+    /// Mutable parallel iterator over parity pieces (odd indices).
+    pub fn par_parity_mut(
+        &mut self,
+    ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
+        self.0.par_iter_mut().skip(1).step_by(2)
     }
 }
 

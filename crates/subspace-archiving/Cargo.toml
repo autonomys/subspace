@@ -18,6 +18,7 @@ bench = false
 
 [dependencies]
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive"] }
+rayon = { version = "1.7.0", optional = true }
 serde = { version = "1.0.152", optional = true, features = ["derive"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding", default-features = false }
@@ -30,8 +31,13 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 
 [features]
 default = ["std"]
+rayon = [
+    "dep:rayon",
+    "subspace-core-primitives/rayon",
+]
 std = [
     "parity-scale-codec/std",
+    "rayon",
     "serde",
     "subspace-core-primitives/std",
     "subspace-erasure-coding/std",
