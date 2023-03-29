@@ -9,6 +9,7 @@ use either::Either;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,6 +72,13 @@ enum Command {
 struct KeypairOutput {
     keypair: String,
     peer_id: String,
+}
+
+impl Display for KeypairOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "PeerId: {}", self.peer_id)?;
+        writeln!(f, "Keypair: {}", self.keypair)
+    }
 }
 
 impl KeypairOutput {
@@ -177,7 +185,7 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("{json_output}")
             } else {
-                println!("{}", output.keypair)
+                println!("{output}")
             }
         }
     }
