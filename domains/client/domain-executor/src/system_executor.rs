@@ -159,6 +159,7 @@ where
             "system-executor-worker",
             None,
             crate::system_domain_worker::start_worker(
+                spawn_essential.clone(),
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 params.is_authority,

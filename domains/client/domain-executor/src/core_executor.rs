@@ -161,6 +161,7 @@ where
             "core-executor-worker",
             None,
             crate::core_domain_worker::start_worker(
+                spawn_essential.clone(),
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 params.is_authority,
