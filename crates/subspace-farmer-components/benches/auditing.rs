@@ -14,7 +14,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RecordedHistorySegment, SolutionRange, PLOT_SECTOR_SIZE,
+    Blake2b256Hash, PublicKey, RecordedHistorySegment, SegmentIndex, SolutionRange,
+    PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
@@ -54,7 +55,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces: NonZeroU64::new(1).unwrap(),
-        sector_expiration: 1,
+        sector_expiration: SegmentIndex::ONE,
     };
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;

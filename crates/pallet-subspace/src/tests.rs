@@ -45,6 +45,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use subspace_core_primitives::SegmentIndex;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::Error as VerificationError;
@@ -527,7 +528,7 @@ fn store_segment_header_works() {
 
         progress_to_block(&keypair, 1, 1);
 
-        let segment_header = create_segment_header(0);
+        let segment_header = create_segment_header(SegmentIndex::ZERO);
 
         let call = Call::<Test>::store_segment_headers {
             segment_headers: vec![segment_header],
@@ -554,7 +555,7 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
 
         progress_to_block(&keypair, 1, 1);
 
-        let segment_header = create_segment_header(0);
+        let segment_header = create_segment_header(SegmentIndex::ZERO);
 
         let inner = Call::store_segment_headers {
             segment_headers: vec![segment_header],
@@ -605,7 +606,10 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
         );
 
         let inner2 = Call::store_segment_headers {
-            segment_headers: vec![create_segment_header(1), create_segment_header(1)],
+            segment_headers: vec![
+                create_segment_header(SegmentIndex::ONE),
+                create_segment_header(SegmentIndex::ONE),
+            ],
         };
 
         // Same segment header can't be included twice even in the same extrinsic

@@ -49,7 +49,7 @@ where
 
     /// Create new instance with specified size (in bytes)
     pub fn new(aux_store: Arc<AS>, cache_size: u64, local_peer_id: PeerId) -> Self {
-        let max_pieces_in_cache: PieceIndex = cache_size / Piece::SIZE as PieceIndex;
+        let max_pieces_in_cache = PieceIndex::from(cache_size / Piece::SIZE as u64);
         let local_provided_keys = Self::get_local_provided_keys(aux_store.clone())
             .expect("DB loading should succeed.")
             .unwrap_or_default();
@@ -116,14 +116,15 @@ where
         first_piece_index: PieceIndex,
         pieces: &FlatPieces,
     ) -> Result<(), Box<dyn Error>> {
-        if self.max_pieces_in_cache == 0 {
+        if self.max_pieces_in_cache == PieceIndex::ZERO {
             return Ok(());
         }
 
         let insert_indexes = (first_piece_index..).take(pieces.len()).collect::<Vec<_>>();
 
-        let delete_indexes = first_piece_index
-            .checked_sub(self.max_pieces_in_cache)
+        let delete_indexes = u64::from(first_piece_index)
+            .checked_sub(u64::from(self.max_pieces_in_cache))
+            .map(PieceIndex::from)
             .map(|delete_pieces_from_index| {
                 (delete_pieces_from_index..first_piece_index).collect::<Vec<_>>()
             })

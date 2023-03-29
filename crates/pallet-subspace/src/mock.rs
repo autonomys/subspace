@@ -41,8 +41,8 @@ use subspace_archiving::archiver::{ArchivedSegment, Archiver};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, PieceArray, Randomness,
-    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
+    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, PieceArray, PieceIndex,
+    Randomness, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
     SolutionRange,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -194,8 +194,8 @@ pub fn go_to_block(
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
-            piece_offset: 0,
-            piece_commitment_hash: Default::default(),
+            piece_offset: PieceIndex::default(),
+            record_commitment_hash: Default::default(),
             piece_witness: Default::default(),
             chunk_offset: 0,
             chunk,
@@ -282,7 +282,7 @@ pub fn generate_equivocation_proof(
                 sector_index: 0,
                 total_pieces: NonZeroU64::new(1).unwrap(),
                 piece_offset,
-                piece_commitment_hash: Default::default(),
+                record_commitment_hash: Default::default(),
                 piece_witness: Default::default(),
                 chunk_offset: 0,
                 chunk,
@@ -313,8 +313,8 @@ pub fn generate_equivocation_proof(
     };
 
     // generate two headers at the current block
-    let mut h1 = make_header(0, 0);
-    let mut h2 = make_header(1, 1);
+    let mut h1 = make_header(PieceIndex::ZERO, 0);
+    let mut h2 = make_header(PieceIndex::ONE, 1);
 
     seal_header(&mut h1);
     seal_header(&mut h2);
@@ -381,8 +381,8 @@ pub fn create_signed_vote(
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).unwrap(),
-            piece_offset: 0,
-            piece_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
+            piece_offset: PieceIndex::default(),
+            record_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
             piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
             chunk_offset: 0,
             chunk,

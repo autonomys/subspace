@@ -47,7 +47,7 @@ impl SectorMetadata {
     pub fn encoded_size() -> usize {
         let default = SectorMetadata {
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
-            expires_at: 0,
+            expires_at: SegmentIndex::default(),
             commitments: vec![Commitment::default(); PLOT_SECTOR_SIZE as usize / Piece::SIZE],
         };
 

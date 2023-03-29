@@ -18,7 +18,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
-#![feature(array_chunks, new_uninit, slice_flatten)]
+#![feature(
+    array_chunks,
+    const_num_from_num,
+    const_trait_impl,
+    new_uninit,
+    slice_flatten,
+    step_trait
+)]
 
 pub mod crypto;
 pub mod objects;
@@ -32,11 +39,14 @@ extern crate alloc;
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
 use core::convert::AsRef;
-use core::fmt;
+use core::iter::Step;
 use core::num::NonZeroU64;
-use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
+use core::{fmt, mem};
+use derive_more::{
+    Add, AddAssign, Deref, Display, Div, DivAssign, From, Into, Mul, MulAssign, Rem, Sub, SubAssign,
+};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
     FlatPieces, Piece, PieceArray, RawRecord, Record, RecordWitness, RecordedHistorySegment,
     PIECES_IN_SEGMENT,
@@ -88,7 +98,83 @@ pub type SolutionRange = u64;
 pub type BlockWeight = u128;
 
 /// Segment index type.
-pub type SegmentIndex = u64;
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct SegmentIndex(u64);
+
+impl Step for SegmentIndex {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u64::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::backward_checked(start.0, count).map(Self)
+    }
+}
+
+impl const From<u64> for SegmentIndex {
+    fn from(original: u64) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<SegmentIndex> for u64 {
+    fn from(original: SegmentIndex) -> Self {
+        original.0
+    }
+}
+
+impl SegmentIndex {
+    /// Segment index 0.
+    pub const ZERO: SegmentIndex = SegmentIndex(0);
+    /// Segment index 1.
+    pub const ONE: SegmentIndex = SegmentIndex(1);
+
+    /// Get the first piece index in this segment.
+    pub const fn first_piece_index(&self) -> PieceIndex {
+        PieceIndex::from(self.0 * PIECES_IN_SEGMENT as u64)
+    }
+
+    /// Iterator over piece indexes that belong to this segment.
+    pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
+        (self.first_piece_index()..).take(PIECES_IN_SEGMENT as usize)
+    }
+
+    /// Iterator over piece indexes that belong to this segment with source pieces first.
+    pub fn segment_piece_indexes_source_first(&self) -> impl Iterator<Item = PieceIndex> {
+        self.segment_piece_indexes()
+            .step_by(2)
+            .chain(self.segment_piece_indexes().skip(1).step_by(2))
+    }
+}
 
 // TODO: New type
 /// Segment commitment type.
@@ -310,7 +396,7 @@ impl SegmentHeader {
     }
 
     /// Segment index
-    pub fn segment_index(&self) -> u64 {
+    pub fn segment_index(&self) -> SegmentIndex {
         match self {
             Self::V0 { segment_index, .. } => *segment_index,
         }
@@ -347,7 +433,82 @@ impl SegmentHeader {
 }
 
 /// Piece index in consensus
-pub type PieceIndex = u64;
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct PieceIndex(u64);
+
+impl Step for PieceIndex {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u64::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u64::backward_checked(start.0, count).map(Self)
+    }
+}
+
+impl const From<u64> for PieceIndex {
+    fn from(original: u64) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<PieceIndex> for u64 {
+    fn from(original: PieceIndex) -> Self {
+        original.0
+    }
+}
+
+impl PieceIndex {
+    /// Piece index 0.
+    pub const ZERO: PieceIndex = PieceIndex(0);
+    /// Piece index 1.
+    pub const ONE: PieceIndex = PieceIndex(1);
+
+    /// Convert piece index into bytes.
+    pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
+        self.0.to_le_bytes()
+    }
+
+    /// Segment index piece index corresponds to
+    pub const fn segment_index(&self) -> SegmentIndex {
+        SegmentIndex::from(self.0 / u64::from(PIECES_IN_SEGMENT))
+    }
+
+    /// Position of a piece in a segment
+    pub const fn position(&self) -> u32 {
+        // Position is statically guaranteed to fit into u32
+        (self.0 % u64::from(PIECES_IN_SEGMENT)) as u32
+    }
+}
 
 /// Sector index in consensus
 pub type SectorIndex = u64;
@@ -366,7 +527,7 @@ impl AsRef<[u8]> for PieceIndexHash {
 impl PieceIndexHash {
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(blake2b_256_hash(&index.to_le_bytes()))
+        Self(blake2b_256_hash(&index.to_bytes()))
     }
 }
 
@@ -387,7 +548,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Pieces offset within sector
     pub piece_offset: PieceIndex,
     /// Piece commitment that can use used to verify that piece was included in blockchain history
-    pub piece_commitment_hash: Scalar,
+    pub record_commitment_hash: Scalar,
     /// Witness for above piece commitment
     pub piece_witness: Witness,
     /// Chunk offset within a piece
@@ -414,7 +575,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             sector_index,
             total_pieces,
             piece_offset,
-            piece_commitment_hash,
+            record_commitment_hash,
             piece_witness,
             chunk_offset,
             chunk,
@@ -426,7 +587,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             sector_index,
             total_pieces,
             piece_offset,
-            piece_commitment_hash,
+            record_commitment_hash,
             piece_witness,
             chunk_offset,
             chunk,
@@ -447,8 +608,8 @@ where
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
-            piece_offset: 0,
-            piece_commitment_hash: Scalar::default(),
+            piece_offset: PieceIndex::default(),
+            record_commitment_hash: Scalar::default(),
             piece_witness: Witness::default(),
             chunk_offset: 0,
             chunk: ScalarLegacy::default(),
@@ -671,14 +832,13 @@ impl SectorId {
         piece_offset: PieceIndex,
         total_pieces: NonZeroU64,
     ) -> PieceIndex {
-        let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
-            &piece_offset.to_le_bytes(),
-            &self.0,
-        )) % U256::from(total_pieces.get());
+        let piece_index =
+            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0))
+                % U256::from(total_pieces.get());
 
-        piece_index
-            .try_into()
-            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+        PieceIndex::from(u64::try_from(piece_index).expect(
+            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
+        ))
     }
 
     /// Derive local challenge for this sector from provided global challenge

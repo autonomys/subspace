@@ -7,7 +7,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RecordedHistorySegment,
-    PIECES_IN_SEGMENT,
+    SegmentIndex, PIECES_IN_SEGMENT,
 };
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
@@ -79,7 +79,10 @@ fn basic() {
         // Second block is finished, but also third is included
         assert_eq!(contents.blocks, vec![(1, block_1), (2, block_2.clone())]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 0);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::ZERO
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -96,7 +99,10 @@ fn basic() {
         // Only third block is fully contained
         assert_eq!(contents.blocks, vec![(2, block_2)]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 0);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::ZERO
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -114,7 +120,10 @@ fn basic() {
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 1);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::ONE
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -131,7 +140,10 @@ fn basic() {
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 1);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::ONE
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -149,7 +161,10 @@ fn basic() {
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 2);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::from(2)
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -168,7 +183,10 @@ fn basic() {
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 2);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::from(2)
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -186,7 +204,10 @@ fn basic() {
         // Enough data to reconstruct fourth block
         assert_eq!(contents.blocks, vec![(3, block_3)]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 3);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::from(3)
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -205,7 +226,10 @@ fn basic() {
         // Nothing is fully contained here
         assert_eq!(contents.blocks, vec![]);
         assert!(contents.segment_header.is_some());
-        assert_eq!(contents.segment_header.unwrap().segment_index(), 3);
+        assert_eq!(
+            contents.segment_header.unwrap().segment_index(),
+            SegmentIndex::from(3)
+        );
         assert_eq!(
             contents.segment_header.unwrap().last_archived_block(),
             LastArchivedBlock {
@@ -357,8 +381,8 @@ fn invalid_usage() {
         assert_eq!(
             result,
             Err(ReconstructorError::IncorrectSegmentOrder {
-                expected_segment_index: 1,
-                actual_segment_index: 2
+                expected_segment_index: SegmentIndex::ONE,
+                actual_segment_index: SegmentIndex::from(2)
             })
         );
 
@@ -372,8 +396,8 @@ fn invalid_usage() {
         assert_eq!(
             result,
             Err(ReconstructorError::IncorrectSegmentOrder {
-                expected_segment_index: 2,
-                actual_segment_index: 3
+                expected_segment_index: SegmentIndex::from(2),
+                actual_segment_index: SegmentIndex::from(3)
             })
         );
     }

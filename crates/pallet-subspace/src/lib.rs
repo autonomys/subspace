@@ -1348,8 +1348,9 @@ fn check_vote<T: Config>(
 
     let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
-    let piece_index = sector_id.derive_piece_index(solution.piece_offset, solution.total_pieces);
-    let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+    let segment_index = sector_id
+        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .segment_index();
 
     let segment_commitment =
         if let Some(segment_commitment) = Pallet::<T>::segment_commitment(segment_index) {
@@ -1473,8 +1474,10 @@ fn check_segment_headers<T: Config>(
     };
 
     // Segment in segment headers should monotonically increase
-    if first_segment_header.segment_index() > 0
-        && !SegmentCommitment::<T>::contains_key(first_segment_header.segment_index() - 1)
+    if first_segment_header.segment_index() > SegmentIndex::ZERO
+        && !SegmentCommitment::<T>::contains_key(
+            first_segment_header.segment_index() - SegmentIndex::ONE,
+        )
     {
         return Err(InvalidTransaction::BadMandatory.into());
     }
@@ -1490,7 +1493,7 @@ fn check_segment_headers<T: Config>(
         let segment_index = segment_header.segment_index();
 
         // Segment in segment headers should monotonically increase
-        if segment_index != last_segment_index + 1 {
+        if segment_index != last_segment_index + SegmentIndex::ONE {
             return Err(InvalidTransaction::BadMandatory.into());
         }
 

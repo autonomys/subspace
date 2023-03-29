@@ -207,7 +207,7 @@ where
             let protocol_info = FarmerProtocolInfo {
                 total_pieces: runtime_api.total_pieces(best_hash)?,
                 // TODO: Fetch this from the runtime
-                sector_expiration: 100,
+                sector_expiration: SegmentIndex::from(100),
             };
 
             FarmerAppInfo {
@@ -286,7 +286,7 @@ where
                                     sector_index: solution.sector_index,
                                     total_pieces: solution.total_pieces,
                                     piece_offset: solution.piece_offset,
-                                    piece_commitment_hash: solution.piece_commitment_hash,
+                                    record_commitment_hash: solution.record_commitment_hash,
                                     piece_witness: solution.piece_witness,
                                     chunk_offset: solution.chunk_offset,
                                     chunk: solution.chunk,

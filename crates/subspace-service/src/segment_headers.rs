@@ -63,8 +63,8 @@ where
     }
 
     /// Returns last observed segment index.
-    pub fn max_segment_index(&self) -> u64 {
-        self.max_segment_index.load(Ordering::Relaxed)
+    pub fn max_segment_index(&self) -> SegmentIndex {
+        SegmentIndex::from(self.max_segment_index.load(Ordering::Relaxed))
     }
 
     /// Add segment header to cache (likely as the result of archiving)
@@ -78,13 +78,13 @@ where
 
         self.aux_store.insert_aux(&insert_data, &Vec::new())?;
         self.max_segment_index
-            .store(segment_header.segment_index(), Ordering::Relaxed);
+            .store(u64::from(segment_header.segment_index()), Ordering::Relaxed);
 
         Ok(())
     }
 
     fn key(segment_index: SegmentIndex) -> Vec<u8> {
-        Self::key_from_bytes(&u64::to_be_bytes(segment_index))
+        Self::key_from_bytes(&u64::from(segment_index).to_le_bytes())
     }
 
     fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {

@@ -4,9 +4,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    Piece, PieceIndex, SegmentCommitment, SegmentIndex, PIECES_IN_SEGMENT,
-};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
@@ -47,7 +45,7 @@ where
         piece: Piece,
     ) -> Option<Piece> {
         if source_peer_id != self.dsn_node.id() {
-            let segment_index: SegmentIndex = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
+            let segment_index = piece_index.segment_index();
 
             let maybe_segment_commitment = self
                 .segment_commitment_cache
@@ -96,11 +94,9 @@ where
 
             if !is_piece_valid(
                 &self.kzg,
-                PIECES_IN_SEGMENT as usize,
                 &piece,
                 &segment_commitment,
-                u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
-                    .expect("Always fix into u32; qed"),
+                piece_index.position(),
             ) {
                 error!(
                     %piece_index,
