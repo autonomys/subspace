@@ -42,7 +42,7 @@ pub use crate::node::{
 };
 pub use crate::node_runner::NodeRunner;
 pub use behavior::provider_storage::{
-    MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage,
+    MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
 };
 pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;

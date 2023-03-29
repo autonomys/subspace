@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
-    NetworkingParametersManager, ParityDbProviderStorage,
+    peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
+    ParityDbProviderStorage, VoidProviderStorage,
 };
 use tracing::info;
 
@@ -51,7 +51,6 @@ enum Command {
         #[arg(long, default_value_t = false)]
         disable_private_ips: bool,
         /// Defines path for the provider record storage DB (optional).
-        /// No value will enable memory storage instead.
         #[arg(long, value_hint = ValueHint::FilePath)]
         db_path: Option<PathBuf>,
         /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
@@ -121,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
                     local_peer_id,
                 )?)
             } else {
-                Either::Right(MemoryProviderStorage::new(local_peer_id))
+                Either::Right(VoidProviderStorage)
             };
 
             let networking_parameters_registry = {
