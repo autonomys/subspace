@@ -33,7 +33,7 @@ use std::error::Error;
 use std::io::Cursor;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::ArchiverSegment;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -196,7 +196,7 @@ async fn start_farming<Client>(
 }
 
 struct TestPieceGetter {
-    archived_segment: ArchivedSegment,
+    archived_segment: ArchiverSegment,
 }
 
 #[async_trait]
@@ -228,16 +228,18 @@ where
         .expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
-    let archived_segment = archiver
+    let archiver_segment = archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default())
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");
-    let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
+    let total_pieces = NonZeroU64::new(archiver_segment.pieces.len() as u64).unwrap();
     let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;
-    let piece_getter = TestPieceGetter { archived_segment };
+    let piece_getter = TestPieceGetter {
+        archived_segment: archiver_segment,
+    };
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces,

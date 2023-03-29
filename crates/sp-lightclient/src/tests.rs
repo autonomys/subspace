@@ -24,7 +24,7 @@ use sp_runtime::{Digest, DigestItem};
 use std::error::Error;
 use std::io::Cursor;
 use std::num::NonZeroU64;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{Archiver, ArchiverSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
@@ -65,7 +65,7 @@ fn derive_solution_range(
     subspace_core_primitives::bidirectional_distance(local_challenge, audit_chunk) * 2
 }
 
-fn archived_segment(kzg: Kzg) -> ArchivedSegment {
+fn archiver_segment(kzg: Kzg) -> ArchiverSegment {
     // we don't care about the block data
     let mut rng = StdRng::seed_from_u64(0);
     let mut block = vec![0u8; RecordedHistorySegment::SIZE];
@@ -89,13 +89,15 @@ struct Farmer {
 impl Farmer {
     fn new(keypair: &Keypair) -> Self {
         let kzg = Kzg::new(kzg::embedded_kzg_settings());
-        let archived_segment = archived_segment(kzg.clone());
-        let segment_header = archived_segment.segment_header;
-        let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
+        let archiver_segment = archiver_segment(kzg.clone());
+        let segment_header = archiver_segment.segment_header;
+        let total_pieces = NonZeroU64::new(archiver_segment.pieces.len() as u64).unwrap();
         let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
         let sector_index = 0;
-        let piece_getter = TestPieceGetter { archived_segment };
+        let piece_getter = TestPieceGetter {
+            archived_segment: archiver_segment,
+        };
         let public_key = PublicKey::from(keypair.public.to_bytes());
         let farmer_protocol_info = FarmerProtocolInfo {
             total_pieces,
@@ -135,7 +137,7 @@ struct ValidHeaderParams<'a> {
 }
 
 struct TestPieceGetter {
-    archived_segment: ArchivedSegment,
+    archived_segment: ArchiverSegment,
 }
 
 #[async_trait]

@@ -33,7 +33,7 @@ pub async fn recover_missing_piece<PG: PieceGetter>(
 
     let semaphore = Semaphore::new(PARALLELISM_LEVEL);
     let acquired_pieces_counter = AtomicUsize::default();
-    let required_pieces_number = RecordedHistorySegment::RAW_RECORDS;
+    let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
 
     // This is so we can move references into the future below
     let semaphore = &semaphore;

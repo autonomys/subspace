@@ -15,7 +15,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::ArchiverSegment;
 use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
@@ -279,7 +279,7 @@ pub(crate) async fn publish_pieces(
     node: &Node,
     first_piece_index: PieceIndex,
     segment_index: SegmentIndex,
-    archived_segment: Arc<ArchivedSegment>,
+    archived_segment: Arc<ArchiverSegment>,
 ) {
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.len());
 

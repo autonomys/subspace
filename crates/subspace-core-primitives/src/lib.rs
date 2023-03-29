@@ -48,8 +48,8 @@ use derive_more::{
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, RawRecord, Record, RecordWitness, RecordedHistorySegment,
-    PIECES_IN_SEGMENT,
+    ArchivedHistorySegment, FlatPieces, Piece, PieceArray, RawRecord, Record, RecordWitness,
+    RecordedHistorySegment,
 };
 use scale_info::TypeInfo;
 #[cfg(feature = "serde")]
@@ -160,12 +160,12 @@ impl SegmentIndex {
 
     /// Get the first piece index in this segment.
     pub const fn first_piece_index(&self) -> PieceIndex {
-        PieceIndex::from(self.0 * PIECES_IN_SEGMENT as u64)
+        PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
     /// Iterator over piece indexes that belong to this segment.
     pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
-        (self.first_piece_index()..).take(PIECES_IN_SEGMENT as usize)
+        (self.first_piece_index()..).take(ArchivedHistorySegment::NUM_PIECES)
     }
 
     /// Iterator over piece indexes that belong to this segment with source pieces first.
@@ -500,13 +500,13 @@ impl PieceIndex {
 
     /// Segment index piece index corresponds to
     pub const fn segment_index(&self) -> SegmentIndex {
-        SegmentIndex::from(self.0 / u64::from(PIECES_IN_SEGMENT))
+        SegmentIndex::from(self.0 / ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
     /// Position of a piece in a segment
     pub const fn position(&self) -> u32 {
         // Position is statically guaranteed to fit into u32
-        (self.0 % u64::from(PIECES_IN_SEGMENT)) as u32
+        (self.0 % ArchivedHistorySegment::NUM_PIECES as u64) as u32
     }
 }
 

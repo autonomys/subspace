@@ -29,10 +29,6 @@ const PIECE_SIZE: usize = 31_744;
 /// Size of a segment record given the global piece size (in bytes), is guaranteed to be multiple
 /// of [`Scalar::FULL_BYTES`].
 const RECORD_SIZE: usize = Piece::SIZE - RecordCommitment::SIZE - RecordWitness::SIZE;
-/// 128 data records and 128 parity records (as a result of erasure coding).
-pub const PIECES_IN_SEGMENT: u32 = RecordedHistorySegment::RAW_RECORDS as u32
-    * RecordedHistorySegment::ERASURE_CODING_RATE.1 as u32
-    / RecordedHistorySegment::ERASURE_CODING_RATE.0 as u32;
 
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
@@ -69,11 +65,11 @@ impl RawRecord {
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
-pub struct RecordedHistorySegment([RawRecord; Self::RAW_RECORDS]);
+pub struct RecordedHistorySegment([RawRecord; Self::NUM_RAW_RECORDS]);
 
 impl Default for RecordedHistorySegment {
     fn default() -> Self {
-        Self([RawRecord::default(); Self::RAW_RECORDS])
+        Self([RawRecord::default(); Self::NUM_RAW_RECORDS])
     }
 }
 
@@ -96,15 +92,45 @@ impl AsMut<[u8]> for RecordedHistorySegment {
 
 impl RecordedHistorySegment {
     /// Number of raw records in one segment of recorded history.
-    pub const RAW_RECORDS: usize = 128;
+    pub const NUM_RAW_RECORDS: usize = 128;
     /// Erasure coding rate for records during archiving process.
     pub const ERASURE_CODING_RATE: (usize, usize) = (1, 2);
     /// Size of recorded history segment in bytes.
     ///
     /// It includes half of the records (just source records) that will later be erasure coded and
-    /// together with corresponding commitments and witnesses will result in [`PIECES_IN_SEGMENT`]
-    /// [`Piece`]s of archival history.
-    pub const SIZE: usize = RawRecord::SIZE * Self::RAW_RECORDS;
+    /// together with corresponding commitments and witnesses will result in
+    /// [`ArchivedHistorySegment::NUM_PIECES`] [`Piece`]s of archival history.
+    pub const SIZE: usize = RawRecord::SIZE * Self::NUM_RAW_RECORDS;
+}
+
+/// Archived history segment after archiving is applied.
+#[derive(Debug, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct ArchivedHistorySegment(FlatPieces);
+
+impl Default for ArchivedHistorySegment {
+    fn default() -> Self {
+        Self(FlatPieces::new(Self::NUM_PIECES))
+    }
+}
+
+impl MaxEncodedLen for ArchivedHistorySegment {
+    fn max_encoded_len() -> usize {
+        Self::SIZE
+    }
+}
+
+impl ArchivedHistorySegment {
+    /// Number of pieces in one segment of archived history.
+    pub const NUM_PIECES: usize = RecordedHistorySegment::NUM_RAW_RECORDS
+        * RecordedHistorySegment::ERASURE_CODING_RATE.1
+        / RecordedHistorySegment::ERASURE_CODING_RATE.0;
+    /// Size of archived history segment in bytes.
+    ///
+    /// It includes erasure coded [`PieceArray`]s (both source and parity) that are composed from
+    /// [`Record`]s together with corresponding commitments and witnesses.
+    pub const SIZE: usize = Piece::SIZE * Self::NUM_PIECES;
 }
 
 /// Record contained within a piece.

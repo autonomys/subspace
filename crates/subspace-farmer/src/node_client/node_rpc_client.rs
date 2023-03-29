@@ -7,7 +7,7 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::ArchiverSegment;
 use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
@@ -109,7 +109,7 @@ impl NodeClient for NodeRpcClient {
 
     async fn subscribe_archived_segments(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = ArchivedSegment> + Send + 'static>>, RpcError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = ArchiverSegment> + Send + 'static>>, RpcError> {
         let subscription = self
             .client
             .subscribe(

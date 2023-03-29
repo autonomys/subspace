@@ -31,7 +31,7 @@ use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::sync::Arc;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{Archiver, ArchiverSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, SegmentHeader};
@@ -176,7 +176,7 @@ where
 {
     confirmation_depth_k: BlockNumber,
     archiver: Archiver,
-    older_archived_segments: Vec<ArchivedSegment>,
+    older_archived_segments: Vec<ArchiverSegment>,
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
@@ -301,13 +301,13 @@ where
                     encoded_block.len() as f32 / 1024.0
                 );
 
-                let archived_segments = archiver.add_block(encoded_block, block_object_mappings);
-                let new_segment_headers: Vec<SegmentHeader> = archived_segments
+                let archiver_segments = archiver.add_block(encoded_block, block_object_mappings);
+                let new_segment_headers: Vec<SegmentHeader> = archiver_segments
                     .iter()
                     .map(|archived_segment| archived_segment.segment_header)
                     .collect();
 
-                older_archived_segments.extend(archived_segments);
+                older_archived_segments.extend(archiver_segments);
 
                 if !new_segment_headers.is_empty() {
                     // Set list of expected segment headers for the block where we expect segment
@@ -507,13 +507,13 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                     );
 
                     let mut new_segment_headers = Vec::new();
-                    for archived_segment in archiver.add_block(encoded_block, block_object_mappings)
+                    for archiver_segment in archiver.add_block(encoded_block, block_object_mappings)
                     {
-                        let segment_header = archived_segment.segment_header;
+                        let segment_header = archiver_segment.segment_header;
 
                         send_archived_segment_notification(
                             &archived_segment_notification_sender,
-                            archived_segment,
+                            archiver_segment,
                         )
                         .await;
 
@@ -540,7 +540,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
 
 async fn send_archived_segment_notification(
     archived_segment_notification_sender: &SubspaceNotificationSender<ArchivedSegmentNotification>,
-    archived_segment: ArchivedSegment,
+    archived_segment: ArchiverSegment,
 ) {
     let (acknowledgement_sender, mut acknowledgement_receiver) =
         tracing_unbounded::<()>("subspace_acknowledgement", 100);

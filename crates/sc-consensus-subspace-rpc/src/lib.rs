@@ -42,7 +42,7 @@ use sp_runtime::traits::{Block as BlockT, Zero};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_archiving::archiver::ArchivedSegment;
+use subspace_archiving::archiver::ArchiverSegment;
 use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -88,7 +88,7 @@ pub trait SubspaceRpcApi {
     #[subscription(
         name = "subspace_subscribeArchivedSegment" => "subspace_archived_segment",
         unsubscribe = "subspace_unsubscribeArchivedSegment",
-        item = ArchivedSegment,
+        item = ArchiverSegment,
     )]
     fn subscribe_archived_segment(&self);
 
