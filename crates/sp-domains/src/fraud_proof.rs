@@ -117,6 +117,10 @@ pub enum VerificationError {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(parity_scale_codec::Error),
+    /// Decode error.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
+    Decode(#[from] parity_scale_codec::Error),
     /// Runtime api error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
