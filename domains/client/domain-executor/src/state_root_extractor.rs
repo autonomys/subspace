@@ -67,7 +67,7 @@ where
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
         let api = self.client.runtime_api();
-        api.extract_xdm_proof_state_roots(best_hash, ext)
+        api.extract_xdm_proof_state_roots(best_hash, ext.encode())
             .and_then(|maybe_state_roots| {
                 maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
             })
@@ -200,7 +200,9 @@ where
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
         <Self as MessengerApi<SBlock, NumberFor<SBlock>>>::extract_xdm_proof_state_roots(
-            self, block_hash, ext,
+            self,
+            block_hash,
+            ext.encode(),
         )
         .and_then(|maybe_state_roots| {
             maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))

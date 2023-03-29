@@ -1,4 +1,5 @@
 use crate::state_root_extractor::StateRootExtractor;
+use codec::Encode;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend};
 use sp_domains::ExecutorApi;
@@ -26,7 +27,8 @@ where
 {
     let api = system_domain_client.runtime_api();
     let best_hash = system_domain_client.info().best_hash;
-    if let Ok(Some(state_roots)) = api.extract_xdm_proof_state_roots(best_hash, extrinsic) {
+    if let Ok(Some(state_roots)) = api.extract_xdm_proof_state_roots(best_hash, extrinsic.encode())
+    {
         // verify system domain state root
         let header = system_domain_client
             .header(state_roots.system_domain_block_info.block_hash)?
