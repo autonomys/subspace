@@ -179,7 +179,7 @@ where
             on top of #{parent_number},{parent_hash}"
         );
 
-        let (extrinsics, maybe_new_runtime) = self
+        let extrinsics = self
             .core_domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
@@ -189,7 +189,6 @@ where
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                maybe_new_runtime,
                 Default::default(),
             )
             .await?;

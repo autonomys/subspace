@@ -17,7 +17,6 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
-use std::borrow::Cow;
 use std::sync::Arc;
 
 pub(crate) struct DomainBlockResult<Block, PBlock>
@@ -218,7 +217,6 @@ where
         (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         let primary_number = to_number_primitive(primary_number);
@@ -238,14 +236,7 @@ where
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
-            .build_and_import_block(
-                parent_hash,
-                parent_number,
-                extrinsics,
-                maybe_new_runtime,
-                fork_choice,
-                digests,
-            )
+            .build_and_import_block(parent_hash, parent_number, extrinsics, fork_choice, digests)
             .await?;
 
         tracing::debug!(
@@ -298,21 +289,10 @@ where
         &self,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        mut extrinsics: Vec<Block::Extrinsic>,
-        maybe_new_runtime: Option<Cow<'static, [u8]>>,
+        extrinsics: Vec<Block::Extrinsic>,
         fork_choice: ForkChoiceStrategy,
         digests: Digest,
     ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
-        if let Some(new_runtime) = maybe_new_runtime {
-            let encoded_set_code = self
-                .client
-                .runtime_api()
-                .construct_set_code_extrinsic(parent_hash, new_runtime.to_vec())?;
-            let set_code_extrinsic =
-                Block::Extrinsic::decode(&mut encoded_set_code.as_slice()).unwrap();
-            extrinsics.push(set_code_extrinsic);
-        }
-
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,

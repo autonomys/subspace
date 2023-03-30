@@ -1,6 +1,9 @@
-use crate::runtime_api::{CoreBundleConstructor, ExtractedStateRoots, StateRootExtractor};
+use crate::runtime_api::{
+    CoreBundleConstructor, ExtractedStateRoots, SetCodeConstructor, StateRootExtractor,
+};
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -23,6 +26,22 @@ pub struct RuntimeApiLight<Executor> {
 }
 
 impl<Block, Executor> Core<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        _context: ExecutionContext,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
+impl<Block, Executor> DomainCoreApi<Block, AccountId> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -168,6 +187,24 @@ where
     ) -> Result<Vec<Vec<u8>>, ApiError> {
         <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>>::construct_submit_core_bundle_extrinsics(
             self, at, signed_opaque_bundles,
+        )
+    }
+}
+
+impl<Executor, Block> SetCodeConstructor<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn construct_set_code_extrinsic(
+        &self,
+        at: Block::Hash,
+        runtime_code: Vec<u8>,
+    ) -> Result<Vec<u8>, ApiError> {
+        <Self as DomainCoreApi<Block, AccountId>>::construct_set_code_extrinsic(
+            self,
+            at,
+            runtime_code,
         )
     }
 }

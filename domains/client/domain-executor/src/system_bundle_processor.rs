@@ -147,7 +147,7 @@ where
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
-        let (extrinsics, maybe_new_runtime) = self
+        let extrinsics = self
             .system_domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
@@ -175,7 +175,6 @@ where
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                maybe_new_runtime,
                 digests,
             )
             .await?;

@@ -1,7 +1,9 @@
 //! This module provides the feature of extracting the potential new domain runtime and final
 //! list of extrinsics for the domain block from the original primary block.
 
-use crate::runtime_api::{CoreBundleConstructor, SignerExtractor, StateRootExtractor};
+use crate::runtime_api::{
+    CoreBundleConstructor, SetCodeConstructor, SignerExtractor, StateRootExtractor,
+};
 use crate::xdm_verifier::{
     verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
 };
@@ -232,7 +234,8 @@ where
     NumberFor<PBlock>: From<NumberFor<Block>>,
     RuntimeApi: CoreBundleConstructor<PBlock, Block>
         + SignerExtractor<Block, AccountId>
-        + StateRootExtractor<Block>,
+        + StateRootExtractor<Block>
+        + SetCodeConstructor<Block>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -253,7 +256,7 @@ where
         &self,
         primary_hash: PBlock::Hash,
         domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<(Vec<Block::Extrinsic>, MaybeNewRuntime)> {
+    ) -> sp_blockchain::Result<Vec<Block::Extrinsic>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
             prepare_domain_block_elements::<Block, PBlock, _>(
                 DomainId::SYSTEM,
@@ -287,7 +290,7 @@ where
             .chain(origin_system_extrinsics)
             .collect::<Vec<_>>();
 
-        let extrinsics = deduplicate_and_shuffle_extrinsics(
+        let mut extrinsics = deduplicate_and_shuffle_extrinsics(
             domain_hash,
             &self.runtime_api,
             extrinsics,
@@ -295,7 +298,20 @@ where
         )
         .map(|exts| self.filter_invalid_xdm_extrinsics(domain_hash, exts))?;
 
-        Ok((extrinsics, maybe_new_runtime))
+        if let Some(new_runtime) = maybe_new_runtime {
+            let encoded_set_code = self
+                .runtime_api
+                .construct_set_code_extrinsic(domain_hash, new_runtime.to_vec())?;
+            let set_code_extrinsic = Block::Extrinsic::decode(&mut encoded_set_code.as_slice())
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to decode `set_code` extrinsic: {err}"
+                    )))
+                })?;
+            extrinsics.push(set_code_extrinsic);
+        }
+
+        Ok(extrinsics)
     }
 
     fn filter_invalid_xdm_extrinsics(
@@ -354,7 +370,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    RuntimeApi: SignerExtractor<Block, AccountId>,
+    RuntimeApi: SignerExtractor<Block, AccountId> + SetCodeConstructor<Block>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
@@ -381,7 +397,7 @@ where
         &self,
         primary_hash: PBlock::Hash,
         domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<(Vec<Block::Extrinsic>, MaybeNewRuntime)> {
+    ) -> sp_blockchain::Result<Vec<Block::Extrinsic>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
             prepare_domain_block_elements::<Block, PBlock, _>(
                 self.domain_id,
@@ -396,7 +412,7 @@ where
 
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
 
-        let extrinsics = deduplicate_and_shuffle_extrinsics(
+        let mut extrinsics = deduplicate_and_shuffle_extrinsics(
             domain_hash,
             &self.runtime_api,
             extrinsics,
@@ -404,7 +420,20 @@ where
         )
         .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
 
-        Ok((extrinsics, maybe_new_runtime))
+        if let Some(new_runtime) = maybe_new_runtime {
+            let encoded_set_code = self
+                .runtime_api
+                .construct_set_code_extrinsic(domain_hash, new_runtime.to_vec())?;
+            let set_code_extrinsic = Block::Extrinsic::decode(&mut encoded_set_code.as_slice())
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to decode `set_code` extrinsic: {err}"
+                    )))
+                })?;
+            extrinsics.push(set_code_extrinsic);
+        }
+
+        Ok(extrinsics)
     }
 
     fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
