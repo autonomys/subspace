@@ -1,13 +1,13 @@
 #![allow(unused_imports, unused_variables)]
 use crate::invalid_state_transition_proof::SkipPreStateRootVerification;
-use crate::{ExecutionProver, ProofVerifier};
+use crate::{ExecutionProver, InvalidStateTransitionProofVerifier, ProofVerifier};
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
-use sc_client_api::{HeaderBackend, StorageProof};
+use sc_client_api::{proof_provider, HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
@@ -196,12 +196,14 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
-        ferdie.client.clone(),
-        ferdie.executor.clone(),
-        ferdie.task_manager.spawn_handle(),
-        SkipPreStateRootVerification,
-    );
+    let invalid_state_transition_proof_verifier =
+        InvalidStateTransitionProofVerifier::<Block, _, _, _, _, _, _>::new(
+            ferdie.client.clone(),
+            ferdie.executor.clone(),
+            ferdie.task_manager.spawn_handle(),
+            SkipPreStateRootVerification,
+        );
+    let proof_verifier = ProofVerifier::new(Arc::new(invalid_state_transition_proof_verifier));
 
     // Incorrect but it's fine for the test purpose.
     let parent_hash_alice = ferdie.client.info().best_hash;
@@ -496,12 +498,14 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
-        ferdie.client.clone(),
-        ferdie.executor.clone(),
-        ferdie.task_manager.spawn_handle(),
-        SkipPreStateRootVerification,
-    );
+    let invalid_state_transition_proof_verifier =
+        InvalidStateTransitionProofVerifier::<Block, _, _, _, _, _, _>::new(
+            ferdie.client.clone(),
+            ferdie.executor.clone(),
+            ferdie.task_manager.spawn_handle(),
+            SkipPreStateRootVerification,
+        );
+    let proof_provider = ProofVerifier::new(Arc::new(invalid_state_transition_proof_verifier));
 
     // Incorrect but it's fine for the test purpose.
     let parent_hash_alice = ferdie.client.info().best_hash;

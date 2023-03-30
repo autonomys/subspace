@@ -11,17 +11,15 @@ mod invalid_state_transition_proof;
 #[cfg(test)]
 mod tests;
 
-use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use futures::FutureExt;
-use invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
+use invalid_state_transition_proof::VerifyInvalidStateTransitionProof;
 pub use invalid_state_transition_proof::{
-    ExecutionProver, PrePostStateRootVerifier, VerifyPrePostStateRoot,
+    ExecutionProver, InvalidStateTransitionProofVerifier, PrePostStateRootVerifier,
+    VerifyPrePostStateRoot,
 };
-use sp_api::ProvideRuntimeApi;
-use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::traits::SpawnNamed;
 use sp_domains::fraud_proof::{FraudProof, VerificationError};
-use sp_domains::ExecutorApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -36,15 +34,12 @@ pub trait VerifyFraudProof<FPBlock: BlockT> {
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> {
-    invalid_state_transition_proof_verifier:
-        InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>,
+pub struct ProofVerifier<FPBlock, ISTPVerifier> {
+    invalid_state_transition_proof_verifier: Arc<ISTPVerifier>,
     _phantom: PhantomData<FPBlock>,
 }
 
-impl<FPBlock, PBlock, C, Exec: Clone, Spawn: Clone, Hash, PrePostStateRootVerifier: Clone> Clone
-    for ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
-{
+impl<FPBlock, ISTPVerifier> Clone for ProofVerifier<FPBlock, ISTPVerifier> {
     fn clone(&self) -> Self {
         Self {
             invalid_state_transition_proof_verifier: self
@@ -55,31 +50,13 @@ impl<FPBlock, PBlock, C, Exec: Clone, Spawn: Clone, Hash, PrePostStateRootVerifi
     }
 }
 
-impl<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
-    ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+impl<FPBlock, ISTPVerifier> ProofVerifier<FPBlock, ISTPVerifier>
 where
     FPBlock: BlockT,
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    Exec: CodeExecutor + Clone + 'static,
-    Spawn: SpawnNamed + Clone + Send + 'static,
-    Hash: Encode + Decode,
-    PrePostStateRootVerifier: VerifyPrePostStateRoot,
+    ISTPVerifier: VerifyInvalidStateTransitionProof,
 {
     /// Constructs a new instance of [`ProofVerifier`].
-    pub fn new(
-        client: Arc<C>,
-        executor: Exec,
-        spawn_handle: Spawn,
-        pre_post_state_root_verifier: PrePostStateRootVerifier,
-    ) -> Self {
-        let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-            client,
-            executor,
-            spawn_handle,
-            pre_post_state_root_verifier,
-        );
+    pub fn new(invalid_state_transition_proof_verifier: Arc<ISTPVerifier>) -> Self {
         Self {
             invalid_state_transition_proof_verifier,
             _phantom: Default::default(),
@@ -92,25 +69,18 @@ where
         fraud_proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
     ) -> Result<(), VerificationError> {
         match fraud_proof {
-            FraudProof::InvalidStateTransition(proof) => {
-                self.invalid_state_transition_proof_verifier.verify(proof)
-            }
+            FraudProof::InvalidStateTransition(proof) => self
+                .invalid_state_transition_proof_verifier
+                .verify_invalid_state_transition_proof(proof),
             proof => unimplemented!("Can not verify {proof:?}"),
         }
     }
 }
 
-impl<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> VerifyFraudProof<FPBlock>
-    for ProofVerifier<FPBlock, PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+impl<FPBlock, ISTPVerifier> VerifyFraudProof<FPBlock> for ProofVerifier<FPBlock, ISTPVerifier>
 where
     FPBlock: BlockT,
-    PBlock: BlockT,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
-    Exec: CodeExecutor + Clone + 'static,
-    Spawn: SpawnNamed + Clone + Send + 'static,
-    Hash: Encode + Decode + Send + Sync,
-    PrePostStateRootVerifier: VerifyPrePostStateRoot,
+    ISTPVerifier: VerifyInvalidStateTransitionProof,
 {
     fn verify_fraud_proof(
         &self,

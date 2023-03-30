@@ -471,3 +471,31 @@ where
         }
     }
 }
+
+/// Verifies invalid state transition proof.
+pub trait VerifyInvalidStateTransitionProof {
+    /// Returns `Ok(())` if given `invalid_state_transition_proof` is legitimate.
+    fn verify_invalid_state_transition_proof(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError>;
+}
+
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> VerifyInvalidStateTransitionProof
+    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+where
+    PBlock: BlockT,
+    C: ProvideRuntimeApi<PBlock> + Send + Sync,
+    C::Api: ExecutorApi<PBlock, Hash>,
+    Exec: CodeExecutor + Clone + 'static,
+    Spawn: SpawnNamed + Clone + Send + 'static,
+    Hash: Encode + Decode,
+    PrePostStateRootVerifier: VerifyPrePostStateRoot,
+{
+    fn verify_invalid_state_transition_proof(
+        &self,
+        invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        self.verify(invalid_state_transition_proof)
+    }
+}

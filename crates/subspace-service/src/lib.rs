@@ -128,14 +128,22 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
+    subspace_fraud_proof::InvalidStateTransitionProofVerifier<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+        SpawnTaskHandle,
+        Hash,
+        subspace_fraud_proof::PrePostStateRootVerifier<
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            Block,
+        >,
+    >;
+
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
-    Block,
-    FullClient<RuntimeApi, ExecutorDispatch>,
-    NativeElseWasmExecutor<ExecutorDispatch>,
-    SpawnTaskHandle,
-    Hash,
-    subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
 /// Subspace networking instantiation variant
@@ -292,12 +300,14 @@ where
 
     let bundle_validator = BundleValidator::new(client.clone());
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        client.clone(),
-        executor,
-        task_manager.spawn_handle(),
-        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-    );
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+        subspace_fraud_proof::InvalidStateTransitionProofVerifier::new(
+            client.clone(),
+            executor,
+            task_manager.spawn_handle(),
+            subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
+        ),
+    ));
     let tx_pre_validator = PrimaryChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),

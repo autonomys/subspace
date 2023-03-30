@@ -115,15 +115,20 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
     >,
 >;
 
-type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_fraud_proof::ProofVerifier<
-        Block,
+type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_fraud_proof::InvalidStateTransitionProofVerifier<
         PBlock,
         PClient,
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
         subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+    >;
+
+type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_fraud_proof::ProofVerifier<
+        Block,
+        InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
     >;
 
 /// Constructs a partial system domain node.
@@ -198,12 +203,14 @@ where
         telemetry
     });
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        primary_chain_client.clone(),
-        executor.clone(),
-        task_manager.spawn_handle(),
-        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-    );
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+        subspace_fraud_proof::InvalidStateTransitionProofVerifier::new(
+            primary_chain_client.clone(),
+            executor.clone(),
+            task_manager.spawn_handle(),
+            subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
+        ),
+    ));
 
     let system_domain_tx_pre_validator = SystemDomainTxPreValidator::new(
         client.clone(),
