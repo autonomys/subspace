@@ -19,13 +19,15 @@
 
 pub mod dsn;
 pub mod piece_cache;
-pub mod root_blocks;
 pub mod rpc;
+pub mod segment_headers;
+pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::piece_cache::PieceCache;
-use crate::root_blocks::{start_root_block_archiver, RootBlockCache};
+use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
+use crate::tx_pre_validator::PrimaryChainTxPreValidator;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -74,15 +76,13 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::PIECES_IN_SEGMENT;
-use subspace_fraud_proof::VerifyFraudProof;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
-use subspace_transaction_pool::bundle_validator::{BundleValidator, ValidateBundle};
-use subspace_transaction_pool::FullPool;
+use subspace_transaction_pool::bundle_validator::BundleValidator;
+use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
 
 /// Error type for Subspace service.
@@ -210,8 +210,12 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            PrimaryChainTxPreValidator<
+                Block,
+                FullClient<RuntimeApi, ExecutorDispatch>,
+                FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+                BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            >,
         >,
         (
             impl BlockImport<
@@ -294,12 +298,17 @@ where
         task_manager.spawn_handle(),
         subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
     );
+    let tx_pre_validator = PrimaryChainTxPreValidator::new(
+        client.clone(),
+        Box::new(task_manager.spawn_handle()),
+        proof_verifier.clone(),
+        bundle_validator.clone(),
+    );
     let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
-        proof_verifier.clone(),
-        bundle_validator.clone(),
+        tx_pre_validator,
     );
 
     let fraud_proof_block_import =
@@ -329,7 +338,7 @@ where
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                             *timestamp,
                             subspace_link.slot_duration(),
-                            subspace_link.root_blocks_for_block(parent_block_number + 1),
+                            subspace_link.segment_headers_for_block(parent_block_number + 1),
                         );
 
                     Ok((timestamp, subspace_inherents))
@@ -368,7 +377,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, Validator, Verifier>
+pub struct NewFull<Client, TxPreValidator>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -379,9 +388,7 @@ where
     Client::Api: TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    Validator:
-        ValidateBundle<Block, domain_runtime_primitives::Hash> + Clone + Send + Sync + 'static,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -408,13 +415,17 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, Verifier, Validator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
-    BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-    FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+    PrimaryChainTxPreValidator<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+    >,
 >;
 
 /// Builds a new service for a full client.
@@ -429,8 +440,12 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            PrimaryChainTxPreValidator<
+                Block,
+                FullClient<RuntimeApi, ExecutorDispatch>,
+                FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+                BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            >,
         >,
         (
             I,
@@ -480,7 +495,7 @@ where
         other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
     } = partial_components;
 
-    let root_block_cache = RootBlockCache::new(client.clone());
+    let segment_header_cache = SegmentHeaderCache::new(client.clone());
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -509,10 +524,10 @@ where
                         {
                             let segment_index = archived_segment_notification
                                 .archived_segment
-                                .root_block
+                                .segment_header
                                 .segment_index();
                             if let Err(error) = piece_cache.add_pieces(
-                                segment_index * u64::from(PIECES_IN_SEGMENT),
+                                segment_index.first_piece_index(),
                                 &archived_segment_notification.archived_segment.pieces,
                             ) {
                                 error!(
@@ -528,10 +543,22 @@ where
             let (node, mut node_runner) = create_dsn_instance::<Block, _>(
                 config.clone(),
                 piece_cache,
-                root_block_cache.clone(),
+                segment_header_cache.clone(),
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
+
+            node.on_new_listener(Arc::new({
+                let node = node.clone();
+
+                move |address| {
+                    info!(
+                        "DSN listening on {}",
+                        address.clone().with(Protocol::P2p(node.id().into()))
+                    );
+                }
+            }))
+            .detach();
 
             task_manager.spawn_essential_handle().spawn_essential(
                 "node-runner",
@@ -563,17 +590,17 @@ where
         Box::pin(dsn_archiving_fut.in_current_span()),
     );
 
-    let root_block_archiving_fut = start_root_block_archiver(
-        root_block_cache.clone(),
+    let segment_header_archiving_fut = start_segment_header_archiver(
+        segment_header_cache.clone(),
         subspace_link
             .archived_segment_notification_stream()
             .subscribe(),
     );
 
     task_manager.spawn_essential_handle().spawn_essential(
-        "root-block-archiver",
+        "segment-header-archiver",
         Some("subspace-networking"),
-        Box::pin(root_block_archiving_fut.in_current_span()),
+        Box::pin(segment_header_archiving_fut.in_current_span()),
     );
 
     let dsn_bootstrap_nodes = {
@@ -721,7 +748,7 @@ where
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                                 *timestamp,
                                 subspace_link.slot_duration(),
-                                subspace_link.root_blocks_for_block(parent_block_number + 1),
+                                subspace_link.segment_headers_for_block(parent_block_number + 1),
                             );
 
                         Ok((subspace_inherents, timestamp))
@@ -774,7 +801,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     subspace_link: subspace_link.clone(),
-                    root_blocks_provider: root_block_cache.clone(),
+                    segment_headers_provider: segment_header_cache.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

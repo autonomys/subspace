@@ -1,6 +1,6 @@
+use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
-use domain_client_executor::xdm_verifier::CoreDomainXDMVerifier;
 use domain_client_executor::{
     CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
     ExecutorStreams,
@@ -40,6 +40,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 use subspace_runtime_primitives::Index as Nonce;
+use subspace_transaction_pool::FullPool;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -51,7 +52,11 @@ type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDi
         FullClient<RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
-        FullPool<RuntimeApi, ExecutorDispatch, CoreDomainXDMVerifier<SClient, PBlock, SBlock>>,
+        FullPool<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            CoreDomainTxPreValidator<Block, SBlock, PBlock, SClient>,
+        >,
         FullBackend,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
@@ -110,13 +115,6 @@ pub struct NewFullCore<
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
-pub type FullPool<RuntimeApi, ExecutorDispatch, Verifier> =
-    subspace_transaction_pool::FullPoolWithChainVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        Verifier,
-    >;
-
 /// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
@@ -128,10 +126,10 @@ fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
         TFullBackend<Block>,
         (),
         sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
-        subspace_transaction_pool::FullPoolWithChainVerifier<
+        FullPool<
             Block,
             FullClient<RuntimeApi, Executor>,
-            CoreDomainXDMVerifier<SDC, PBlock, SBlock>,
+            CoreDomainTxPreValidator<Block, SBlock, PBlock, SDC>,
         >,
         (
             Option<Telemetry>,
@@ -188,13 +186,12 @@ where
         telemetry
     });
 
-    let core_domain_xdm_verifier =
-        CoreDomainXDMVerifier::<SDC, PBlock, SBlock>::new(system_domain_client);
-    let transaction_pool = subspace_transaction_pool::new_full_with_verifier(
+    let core_domain_tx_pre_validator = CoreDomainTxPreValidator::new(system_domain_client);
+    let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
-        core_domain_xdm_verifier,
+        core_domain_tx_pre_validator,
     );
 
     let import_queue = domain_client_consensus_relay_chain::import_queue(
@@ -388,7 +385,7 @@ where
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
-        &spawn_essential,
+        Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),

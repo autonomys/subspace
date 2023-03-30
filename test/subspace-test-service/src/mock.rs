@@ -32,6 +32,7 @@ use std::time;
 use subspace_core_primitives::{Blake2b256Hash, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
+use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
 use subspace_service::FullSelectChain;
 use subspace_solving::create_chunk_signature;
 use subspace_test_client::{Backend, Client, FraudProofVerifier, TestExecutorDispatch};
@@ -40,6 +41,9 @@ use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 
 type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, Block>, Block>;
+
+pub(super) type TxPreValidator =
+    PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
 /// A mock Subspace primary node instance used for testing.
 pub struct MockPrimaryNode {
@@ -52,8 +56,7 @@ pub struct MockPrimaryNode {
     /// Code executor.
     pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
     /// Transaction pool.
-    pub transaction_pool:
-        Arc<FullPool<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>>,
+    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// The next slot number
@@ -101,12 +104,18 @@ impl MockPrimaryNode {
             task_manager.spawn_handle(),
             subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
         );
+        let tx_pre_validator = PrimaryChainTxPreValidator::new(
+            client.clone(),
+            Box::new(task_manager.spawn_handle()),
+            proof_verifier.clone(),
+            bundle_validator,
+        );
+
         let transaction_pool = subspace_transaction_pool::new_full(
             &config,
             &task_manager,
             client.clone(),
-            proof_verifier.clone(),
-            bundle_validator,
+            tx_pre_validator,
         );
 
         let fraud_proof_block_import =

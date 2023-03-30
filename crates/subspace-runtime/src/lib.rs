@@ -71,7 +71,7 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Randomness, RecordsRoot, RootBlock, SegmentIndex, SolutionRange, PIECE_SIZE,
+    Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -307,12 +307,10 @@ pub struct TotalSpacePledged;
 
 impl Get<u128> for TotalSpacePledged {
     fn get() -> u128 {
-        let piece_size = u128::try_from(PIECE_SIZE)
-            .expect("Piece size is definitely small enough to fit into u128; qed");
         // Operations reordered to avoid data loss, but essentially are:
         // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
         u128::from(u64::MAX)
-            .saturating_mul(piece_size)
+            .saturating_mul(Piece::SIZE as u128)
             .saturating_mul(u128::from(SlotProbability::get().0))
             / u128::from(Subspace::solution_ranges().current)
             / u128::from(SlotProbability::get().1)
@@ -515,10 +513,10 @@ pub type Executive = frame_executive::Executive<
     AllPalletsWithSystem,
 >;
 
-fn extract_root_blocks(ext: &UncheckedExtrinsic) -> Option<Vec<RootBlock>> {
+fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {
     match &ext.function {
-        RuntimeCall::Subspace(pallet_subspace::Call::store_root_blocks { root_blocks }) => {
-            Some(root_blocks.clone())
+        RuntimeCall::Subspace(pallet_subspace::Call::store_segment_headers { segment_headers }) => {
+            Some(segment_headers.clone())
         }
         _ => None,
     }
@@ -672,12 +670,12 @@ impl_runtime_apis! {
             Subspace::is_in_block_list(farmer_public_key)
         }
 
-        fn records_root(segment_index: SegmentIndex) -> Option<RecordsRoot> {
-            Subspace::records_root(segment_index)
+        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
+            Subspace::segment_commitment(segment_index)
         }
 
-        fn extract_root_blocks(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<RootBlock>> {
-            extract_root_blocks(ext)
+        fn extract_segment_headers(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
+            extract_segment_headers(ext)
         }
 
         fn root_plot_public_key() -> Option<FarmerPublicKey> {

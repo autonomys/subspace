@@ -27,7 +27,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RecordsRoot, SegmentIndex, Solution, SolutionRange,
+    PublicKey, Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -83,18 +83,23 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace next solution range, return it.
     fn as_next_solution_range(&self) -> Option<SolutionRange>;
 
-    /// Construct a digest item which contains records root.
-    fn records_root(segment_index: SegmentIndex, records_root: RecordsRoot) -> Self;
+    /// Construct a digest item which contains segment commitment.
+    fn segment_commitment(
+        segment_index: SegmentIndex,
+        segment_commitment: SegmentCommitment,
+    ) -> Self;
 
-    /// If this item is a Subspace records root, return it.
-    fn as_records_root(&self) -> Option<(SegmentIndex, RecordsRoot)>;
+    /// If this item is a Subspace segment commitment, return it.
+    fn as_segment_commitment(&self) -> Option<(SegmentIndex, SegmentCommitment)>;
 
-    /// Construct digest item than indicates enabling of solution range adjustment and override next solution range.
+    /// Construct digest item than indicates enabling of solution range adjustment and override next
+    /// solution range.
     fn enable_solution_range_adjustment_and_override(
         override_solution_range: Option<SolutionRange>,
     ) -> Self;
 
-    /// If this item is a Subspace Enable solution range adjustment and override next solution range, return it.
+    /// If this item is a Subspace Enable solution range adjustment and override next solution
+    /// range, return it.
     fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
 
     /// Construct digest item than indicates update of root plot public key.
@@ -193,17 +198,20 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
-    fn records_root(segment_index: SegmentIndex, records_root: RecordsRoot) -> Self {
+    fn segment_commitment(
+        segment_index: SegmentIndex,
+        segment_commitment: SegmentCommitment,
+    ) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
-            ConsensusLog::RecordsRoot((segment_index, records_root)).encode(),
+            ConsensusLog::SegmentCommitment((segment_index, segment_commitment)).encode(),
         )
     }
 
-    fn as_records_root(&self) -> Option<(SegmentIndex, RecordsRoot)> {
+    fn as_segment_commitment(&self) -> Option<(SegmentIndex, SegmentCommitment)> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::RecordsRoot(records_root) = c {
-                Some(records_root)
+            if let ConsensusLog::SegmentCommitment(segment_commitment) = c {
+                Some(segment_commitment)
             } else {
                 None
             }
@@ -266,8 +274,8 @@ pub enum ErrorDigestType {
     NextGlobalRandomness,
     /// Next solution range
     NextSolutionRange,
-    /// Records root
-    RecordsRoot,
+    /// Segment commitment
+    SegmentCommitment,
     /// Generic consensus
     Consensus,
     /// Enable solution range adjustment and override solution range
@@ -297,8 +305,8 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::NextSolutionRange => {
                 write!(f, "NextSolutionRange")
             }
-            ErrorDigestType::RecordsRoot => {
-                write!(f, "RecordsRoot")
+            ErrorDigestType::SegmentCommitment => {
+                write!(f, "SegmentCommitment")
             }
             ErrorDigestType::Consensus => {
                 write!(f, "Consensus")
@@ -370,8 +378,8 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub next_global_randomness: Option<Randomness>,
     /// Next solution range
     pub next_solution_range: Option<SolutionRange>,
-    /// Records roots
-    pub records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
+    /// Segment commitments
+    pub segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
     /// Enable solution range adjustment and Override solution range
     pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
     /// Root plot public key was updated
@@ -394,7 +402,7 @@ where
     let mut maybe_solution_range = None;
     let mut maybe_next_global_randomness = None;
     let mut maybe_next_solution_range = None;
-    let mut records_roots = BTreeMap::new();
+    let mut segment_commitments = BTreeMap::new();
     let mut maybe_enable_and_override_solution_range = None;
     let mut maybe_root_plot_public_key_update = None;
 
@@ -468,11 +476,11 @@ where
                             }
                         }
                     }
-                    ConsensusLog::RecordsRoot((segment_index, records_root)) => {
-                        if let Entry::Vacant(entry) = records_roots.entry(segment_index) {
-                            entry.insert(records_root);
+                    ConsensusLog::SegmentCommitment((segment_index, segment_commitment)) => {
+                        if let Entry::Vacant(entry) = segment_commitments.entry(segment_index) {
+                            entry.insert(segment_commitment);
                         } else {
-                            return Err(Error::Duplicate(ErrorDigestType::RecordsRoot));
+                            return Err(Error::Duplicate(ErrorDigestType::SegmentCommitment));
                         }
                     }
                     ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
@@ -538,7 +546,7 @@ where
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
         next_global_randomness: maybe_next_global_randomness,
         next_solution_range: maybe_next_solution_range,
-        records_roots,
+        segment_commitments,
         enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
         root_plot_public_key_update: maybe_root_plot_public_key_update,
     })

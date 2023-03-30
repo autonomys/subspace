@@ -18,12 +18,20 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
-#![feature(slice_flatten)]
+#![feature(
+    array_chunks,
+    const_num_from_num,
+    const_trait_impl,
+    new_uninit,
+    slice_flatten,
+    step_trait
+)]
 
 pub mod crypto;
 pub mod objects;
 mod pieces;
 pub mod sector_codec;
+mod segments;
 #[cfg(test)]
 mod tests;
 
@@ -38,9 +46,10 @@ use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, Record, RecordWitness, PIECE_SIZE, RECORD_SIZE, WITNESS_SIZE,
+    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, RawRecord, Record, RecordWitness,
 };
 use scale_info::TypeInfo;
+pub use segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use uint::static_assertions::const_assert;
@@ -58,10 +67,10 @@ pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 /// be expanded to [`Scalar::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
 /// and decoding operate on the same amount of data.
 pub const PLOT_SECTOR_SIZE: u64 =
-    (PIECE_SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
+    (Piece::SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
 /// How many pieces we have in a sector
 pub const PIECES_IN_SECTOR: u64 =
-    PLOT_SECTOR_SIZE / (PIECE_SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
+    PLOT_SECTOR_SIZE / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -86,21 +95,12 @@ pub type SolutionRange = u64;
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
 
-/// Segment index type.
-pub type SegmentIndex = u64;
-
-/// Records root type.
-pub type RecordsRoot = Commitment;
+// TODO: New type
+/// Segment commitment type.
+pub type SegmentCommitment = Commitment;
 
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
-
-/// 128 data records and 128 parity records (as a result of erasure coding).
-pub const PIECES_IN_SEGMENT: u32 = 256;
-/// Recorded History Segment Size includes half of the records (just data records) that will later
-/// be erasure coded and together with corresponding witnesses will result in `PIECES_IN_SEGMENT`
-/// pieces of archival history.
-pub const RECORDED_HISTORY_SEGMENT_SIZE: u32 = RECORD_SIZE * PIECES_IN_SEGMENT / 2;
 
 /// Randomness context
 pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
@@ -283,58 +283,60 @@ impl LastArchivedBlock {
     }
 }
 
-/// Root block for a specific segment.
+/// Segment header for a specific segment.
 ///
-/// Each segment will have corresponding [`RootBlock`] included as the first item in the next
-/// segment. Each `RootBlock` includes hash of the previous one and all together form a chain of
-/// root blocks that is used for quick and efficient verification that some [`Piece`] corresponds to
-/// the actual archival history of the blockchain.
+/// Each segment will have corresponding [`SegmentHeader`] included as the first item in the next
+/// segment. Each `SegmentHeader` includes hash of the previous one and all together form a chain of
+/// segment headers that is used for quick and efficient verification that some [`Piece`]
+/// corresponds to the actual archival history of the blockchain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Encode, Decode, TypeInfo, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub enum RootBlock {
-    /// V0 of the root block data structure
+pub enum SegmentHeader {
+    /// V0 of the segment header data structure
     #[codec(index = 0)]
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Segment index
         segment_index: SegmentIndex,
-        /// Merkle root of the records in a segment.
-        records_root: RecordsRoot,
-        /// Hash of the root block of the previous segment
-        prev_root_block_hash: Blake2b256Hash,
+        /// Root of commitments of all records in a segment.
+        segment_commitment: SegmentCommitment,
+        /// Hash of the segment header of the previous segment
+        prev_segment_header_hash: Blake2b256Hash,
         /// Last archived block
         last_archived_block: LastArchivedBlock,
     },
 }
 
-impl RootBlock {
-    /// Hash of the whole root block
+impl SegmentHeader {
+    /// Hash of the whole segment header
     pub fn hash(&self) -> Blake2b256Hash {
         blake2b_256_hash(&self.encode())
     }
 
     /// Segment index
-    pub fn segment_index(&self) -> u64 {
+    pub fn segment_index(&self) -> SegmentIndex {
         match self {
             Self::V0 { segment_index, .. } => *segment_index,
         }
     }
 
     /// Merkle root of the records in a segment.
-    pub fn records_root(&self) -> RecordsRoot {
+    pub fn segment_commitment(&self) -> SegmentCommitment {
         match self {
-            Self::V0 { records_root, .. } => *records_root,
+            Self::V0 {
+                segment_commitment, ..
+            } => *segment_commitment,
         }
     }
 
-    /// Hash of the root block of the previous segment
-    pub fn prev_root_block_hash(&self) -> Blake2b256Hash {
+    /// Hash of the segment header of the previous segment
+    pub fn prev_segment_header_hash(&self) -> Blake2b256Hash {
         match self {
             Self::V0 {
-                prev_root_block_hash,
+                prev_segment_header_hash,
                 ..
-            } => *prev_root_block_hash,
+            } => *prev_segment_header_hash,
         }
     }
 
@@ -349,29 +351,8 @@ impl RootBlock {
     }
 }
 
-/// Piece index in consensus
-pub type PieceIndex = u64;
-
 /// Sector index in consensus
 pub type SectorIndex = u64;
-
-/// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode, From, Into)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PieceIndexHash(Blake2b256Hash);
-
-impl AsRef<[u8]> for PieceIndexHash {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl PieceIndexHash {
-    /// Constructs `PieceIndexHash` from `PieceIndex`
-    pub fn from_index(index: PieceIndex) -> Self {
-        Self(blake2b_256_hash(&index.to_le_bytes()))
-    }
-}
 
 // TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
@@ -390,7 +371,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Pieces offset within sector
     pub piece_offset: PieceIndex,
     /// Piece commitment that can use used to verify that piece was included in blockchain history
-    pub piece_record_hash: Scalar,
+    pub record_commitment_hash: Scalar,
     /// Witness for above piece commitment
     pub piece_witness: Witness,
     /// Chunk offset within a piece
@@ -417,7 +398,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             sector_index,
             total_pieces,
             piece_offset,
-            piece_record_hash,
+            record_commitment_hash,
             piece_witness,
             chunk_offset,
             chunk,
@@ -429,7 +410,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             sector_index,
             total_pieces,
             piece_offset,
-            piece_record_hash,
+            record_commitment_hash,
             piece_witness,
             chunk_offset,
             chunk,
@@ -450,8 +431,8 @@ where
             reward_address,
             sector_index: 0,
             total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
-            piece_offset: 0,
-            piece_record_hash: Scalar::default(),
+            piece_offset: PieceIndex::default(),
+            record_commitment_hash: Scalar::default(),
             piece_witness: Witness::default(),
             chunk_offset: 0,
             chunk: ScalarLegacy::default(),
@@ -628,14 +609,14 @@ impl From<u128> for U256 {
 }
 
 impl From<PieceIndexHash> for U256 {
-    fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
-        Self(private_u256::U256::from_big_endian(&hash))
+    fn from(hash: PieceIndexHash) -> Self {
+        Self(private_u256::U256::from_big_endian(hash.as_ref()))
     }
 }
 
 impl From<U256> for PieceIndexHash {
     fn from(number: U256) -> Self {
-        Self(number.to_be_bytes())
+        Self::from(number.to_be_bytes())
     }
 }
 
@@ -674,14 +655,13 @@ impl SectorId {
         piece_offset: PieceIndex,
         total_pieces: NonZeroU64,
     ) -> PieceIndex {
-        let piece_index = U256::from_le_bytes(blake2b_256_hash_with_key(
-            &piece_offset.to_le_bytes(),
-            &self.0,
-        )) % U256::from(total_pieces.get());
+        let piece_index =
+            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0))
+                % U256::from(total_pieces.get());
 
-        piece_index
-            .try_into()
-            .expect("Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed")
+        PieceIndex::from(u64::try_from(piece_index).expect(
+            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
+        ))
     }
 
     /// Derive local challenge for this sector from provided global challenge

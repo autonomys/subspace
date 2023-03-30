@@ -19,7 +19,7 @@ use subspace_core_primitives::{PieceIndexHash, PLOT_SECTOR_SIZE};
 use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
-use subspace_farmer::utils::piece_validator::RecordsRootPieceValidator;
+use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
@@ -108,15 +108,16 @@ pub(crate) async fn farm_multi_disk(
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
-    // TODO: Consider introducing and using global in-memory root block cache (this comment is in multiple files)
-    let records_roots_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
+    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
+    //  in multiple files)
+    let segment_commitments_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
     let piece_provider = PieceProvider::new(
         node.clone(),
-        Some(RecordsRootPieceValidator::new(
+        Some(SegmentCommitmentPieceValidator::new(
             node.clone(),
             node_client.clone(),
             kzg.clone(),
-            records_roots_cache,
+            segment_commitments_cache,
         )),
     );
     let piece_getter = Arc::new(FarmerPieceGetter::new(
@@ -131,11 +132,13 @@ pub(crate) async fn farm_multi_disk(
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
+        let allocated_plotting_space_with_overhead =
+            get_required_plot_space_with_overhead(disk_farm.allocated_plotting_space);
 
-        if disk_farm.allocated_plotting_space < minimum_plot_size {
+        if allocated_plotting_space_with_overhead < minimum_plot_size {
             return Err(anyhow::anyhow!(
                 "Plot size is too low ({} bytes). Minimum is {}",
-                disk_farm.allocated_plotting_space,
+                allocated_plotting_space_with_overhead,
                 minimum_plot_size
             ));
         }

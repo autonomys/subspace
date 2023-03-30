@@ -21,24 +21,24 @@ use sp_consensus_slots::Slot;
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
 use sp_std::result::Result;
 use sp_std::vec::Vec;
-use subspace_core_primitives::RootBlock;
+use subspace_core_primitives::SegmentHeader;
 
 /// The Subspace inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"subspace";
 
-/// Errors that can occur while checking root blocks.
+/// Errors that can occur while checking segment headers.
 #[derive(Debug, Encode)]
 #[cfg_attr(feature = "std", derive(Decode))]
 pub enum InherentError {
-    /// List of root blocks is not correct.
-    IncorrectRootBlocksList {
-        /// Expected list of root blocks according to node's inherents.
-        expected: Vec<RootBlock>,
-        /// List of root blocks contained within proposed block.
-        actual: Vec<RootBlock>,
+    /// List of segment headers is not correct.
+    IncorrectSegmentHeadersList {
+        /// Expected list of segment headers according to node's inherents.
+        expected: Vec<SegmentHeader>,
+        /// List of segment headers contained within proposed block.
+        actual: Vec<SegmentHeader>,
     },
-    /// List of root blocks is not present.
-    MissingRootBlocksList,
+    /// List of segment headers is not present.
+    MissingSegmentHeadersList,
 }
 
 impl IsFatalError for InherentError {
@@ -52,8 +52,8 @@ impl IsFatalError for InherentError {
 pub struct InherentType {
     /// Slot at which block was created.
     pub slot: Slot,
-    /// Root blocks expected to be included in the block.
-    pub root_blocks: Vec<RootBlock>,
+    /// Segment headers expected to be included in the block.
+    pub segment_headers: Vec<SegmentHeader>,
 }
 
 /// Auxiliary trait to extract Subspace inherent data.
@@ -75,7 +75,7 @@ impl SubspaceInherentData for InherentData {
     }
 }
 
-/// Provides the root blocks inherent data for Subspace.
+/// Provides the segment headers inherent data for Subspace.
 #[cfg(feature = "std")]
 pub struct InherentDataProvider {
     data: InherentType,
@@ -84,9 +84,12 @@ pub struct InherentDataProvider {
 #[cfg(feature = "std")]
 impl InherentDataProvider {
     /// Create new inherent data provider from the given `data`.
-    pub fn new(slot: Slot, root_blocks: Vec<RootBlock>) -> Self {
+    pub fn new(slot: Slot, segment_headers: Vec<SegmentHeader>) -> Self {
         Self {
-            data: InherentType { slot, root_blocks },
+            data: InherentType {
+                slot,
+                segment_headers,
+            },
         }
     }
 
@@ -95,11 +98,11 @@ impl InherentDataProvider {
     pub fn from_timestamp_and_slot_duration(
         timestamp: sp_timestamp::Timestamp,
         slot_duration: sp_consensus_slots::SlotDuration,
-        root_blocks: Vec<RootBlock>,
+        segment_headers: Vec<SegmentHeader>,
     ) -> Self {
         let slot = Slot::from_timestamp(timestamp, slot_duration);
 
-        Self::new(slot, root_blocks)
+        Self::new(slot, segment_headers)
     }
 
     /// Returns the `data` of this inherent data provider.

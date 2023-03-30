@@ -1,5 +1,5 @@
 use crate::crypto::Scalar;
-use crate::{PIECE_SIZE, PLOT_SECTOR_SIZE, U256};
+use crate::{Piece, PLOT_SECTOR_SIZE, U256};
 use num_integer::Roots;
 use rand::thread_rng;
 use rand_core::RngCore;
@@ -11,7 +11,7 @@ fn piece_distance_middle() {
 
 #[test]
 fn piece_size_multiple_of_scalar() {
-    assert_eq!(PIECE_SIZE % Scalar::SAFE_BYTES, 0);
+    assert_eq!(Piece::SIZE % Scalar::SAFE_BYTES, 0);
 }
 
 #[test]

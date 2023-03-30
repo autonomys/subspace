@@ -7,7 +7,7 @@ use sp_consensus_subspace::KzgExtension;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::{BTreeMap, HashMap};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{BlockWeight, RecordsRoot, SegmentIndex, SolutionRange};
+use subspace_core_primitives::{BlockWeight, SegmentCommitment, SegmentIndex, SolutionRange};
 
 pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
@@ -18,7 +18,7 @@ struct StorageData {
     number_to_hashes: HashMap<NumberOf<Header>, Vec<HashOf<Header>>>,
     best_header: (NumberOf<Header>, HashOf<Header>),
     finalized_head: Option<(NumberOf<Header>, HashOf<Header>)>,
-    records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
+    segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
 }
 
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
@@ -113,16 +113,19 @@ impl Storage<Header> for MockStorage {
             })
     }
 
-    fn store_records_roots(&mut self, mut records_roots: BTreeMap<SegmentIndex, RecordsRoot>) {
-        self.0.records_roots.append(&mut records_roots)
+    fn store_segment_commitments(
+        &mut self,
+        mut segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
+    ) {
+        self.0.segment_commitments.append(&mut segment_commitments)
     }
 
-    fn records_root(&self, segment_index: SegmentIndex) -> Option<RecordsRoot> {
-        self.0.records_roots.get(&segment_index).cloned()
+    fn segment_commitment(&self, segment_index: SegmentIndex) -> Option<SegmentCommitment> {
+        self.0.segment_commitments.get(&segment_index).cloned()
     }
 
     fn number_of_segments(&self) -> u64 {
-        self.0.records_roots.len() as u64
+        self.0.segment_commitments.len() as u64
     }
 }
 
@@ -134,7 +137,7 @@ impl MockStorage {
             number_to_hashes: Default::default(),
             best_header: (Default::default(), Default::default()),
             finalized_head: None,
-            records_roots: Default::default(),
+            segment_commitments: Default::default(),
         })
     }
 
@@ -172,13 +175,15 @@ impl MockStorage {
         self.0.headers.insert(hash, header);
     }
 
-    // hack to store records roots
-    pub(crate) fn store_records_root(
+    // hack to store segment commitments
+    pub(crate) fn store_segment_commitment(
         &mut self,
         segment_index: SegmentIndex,
-        records_root: RecordsRoot,
+        segment_commitment: SegmentCommitment,
     ) {
-        self.0.records_roots.insert(segment_index, records_root);
+        self.0
+            .segment_commitments
+            .insert(segment_index, segment_commitment);
     }
 }
 

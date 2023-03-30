@@ -75,7 +75,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ChunkSignature, FlatPieces, Piece, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    ArchivedHistorySegment, ChunkSignature, FlatPieces, Piece, PieceIndex, Solution,
 };
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
@@ -235,10 +235,10 @@ where
         new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         // TODO: Here we are hacking around lack of transaction support in test runtime and
-        //  remove known root blocks for current block to make sure block import doesn't fail, this
-        //  should be removed once runtime supports transactions
+        //  remove known segment headers for current block to make sure block import doesn't fail,
+        //  this should be removed once runtime supports transactions
         let block_number = block.header.number;
-        let removed_root_blocks = self.link.root_blocks.lock().pop(&block_number);
+        let removed_segment_headers = self.link.segment_headers.lock().pop(&block_number);
 
         let import_result = self
             .block_import
@@ -246,11 +246,11 @@ where
             .await
             .expect("importing block failed");
 
-        if let Some(removed_root_blocks) = removed_root_blocks {
+        if let Some(removed_segment_headers) = removed_segment_headers {
             self.link
-                .root_blocks
+                .segment_headers
                 .lock()
-                .put(block_number, removed_root_blocks);
+                .put(block_number, removed_segment_headers);
         }
 
         Ok(import_result)
@@ -426,10 +426,9 @@ fn rejects_empty_block() {
     })
 }
 
-fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
+fn get_archived_segments(client: &TestClient) -> Vec<ArchivedHistorySegment> {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg)
-        .expect("Incorrect parameters for archiver");
+    let mut archiver = Archiver::new(kzg).expect("Incorrect parameters for archiver");
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     archiver
@@ -508,7 +507,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
             let client = Arc::clone(&client);
 
             move || {
-                let archived_pieces = get_archived_pieces(&client);
+                let archived_pieces = get_archived_segments(&client);
                 archived_pieces_sender.send(archived_pieces).unwrap();
             }
         });
@@ -607,8 +606,8 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
     .await;
 }
 
-// TODO: Un-ignore once `submit_test_store_root_block()` is working or transactions are supported in
-//  test runtime
+// TODO: Un-ignore once `submit_test_store_segment_header()` is working or transactions are
+//  supported in test runtime
 #[tokio::test]
 #[ignore]
 async fn authoring_blocks() {
@@ -684,8 +683,8 @@ pub fn dummy_claim_slot(
                 reward_address: FarmerPublicKey::unchecked_from([0u8; 32]),
                 sector_index: 0,
                 total_pieces: NonZeroU64::new(1).unwrap(),
-                piece_offset: 0,
-                piece_record_hash: Default::default(),
+                piece_offset: PieceIndex::default(),
+                record_commitment_hash: Default::default(),
                 piece_witness: Default::default(),
                 chunk_offset: 0,
                 chunk: Default::default(),
@@ -835,8 +834,9 @@ fn verify_slots_are_strictly_increasing() {
     );
 }
 
-// TODO: Runtime at the moment doesn't implement transactions support, so root block extrinsic
-//  verification fails in tests (`submit_test_store_root_block()` doesn't submit extrinsic as such).
+// TODO: Runtime at the moment doesn't implement transactions support, so segment header extrinsic
+//  verification fails in tests (`submit_test_store_segment_header()` doesn't submit extrinsic as
+//  such).
 // // Check that block import results in archiving working.
 // #[test]
 // fn archiving_works() {

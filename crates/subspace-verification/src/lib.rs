@@ -28,8 +28,8 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
-    BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RecordsRoot, RewardSignature,
-    SectorId, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
+    BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RewardSignature, SectorId,
+    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
@@ -70,22 +70,20 @@ pub fn check_reward_signature(
 
 /// Check piece validity.
 ///
-/// If `records_root` is `None`, piece validity check will be skipped.
+/// If `segment_commitment` is `None`, piece validity check will be skipped.
 pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
     kzg: &Kzg,
-    pieces_in_segment: usize,
-    records_root: &RecordsRoot,
+    segment_commitment: &SegmentCommitment,
     position: u32,
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
 ) -> Result<(), Error>
 where
     &'a FarmerPublicKey: Into<PublicKey>,
 {
-    if !archiver::is_piece_record_hash_valid(
+    if !archiver::is_record_commitment_hash_valid(
         kzg,
-        pieces_in_segment,
-        &solution.piece_record_hash,
-        records_root,
+        &solution.record_commitment_hash,
+        segment_commitment,
         &solution.piece_witness,
         position,
     ) {
@@ -116,10 +114,8 @@ pub fn is_within_solution_range(
 /// Parameters for checking piece validity
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct PieceCheckParams {
-    /// Records root of segment to which piece belongs
-    pub records_root: RecordsRoot,
-    /// Number of pieces in a segment
-    pub pieces_in_segment: u32,
+    /// Segment commitment of segment to which piece belongs
+    pub segment_commitment: SegmentCommitment,
 }
 
 /// Parameters for solution verification
@@ -181,15 +177,11 @@ where
 
     // TODO: Check if sector already expired once we have such notion
 
-    if let Some(PieceCheckParams {
-        records_root,
-        pieces_in_segment,
-    }) = piece_check_params
-    {
-        let audit_piece_offset: PieceIndex = local_challenge % PIECES_IN_SECTOR;
-        let piece_index = sector_id.derive_piece_index(audit_piece_offset, solution.total_pieces);
-        let position = u32::try_from(piece_index % u64::from(*pieces_in_segment))
-            .expect("Position within segment always fits into u32; qed");
+    if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
+        let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);
+        let position = sector_id
+            .derive_piece_index(audit_piece_offset, solution.total_pieces)
+            .position();
 
         // TODO: Check that chunk belongs to the encoded piece
         let kzg = match kzg {
@@ -198,13 +190,7 @@ where
                 return Err(Error::MissingKzgInstance);
             }
         };
-        check_piece(
-            kzg,
-            *pieces_in_segment as usize,
-            records_root,
-            position,
-            solution,
-        )?;
+        check_piece(kzg, segment_commitment, position, solution)?;
     }
 
     Ok(())

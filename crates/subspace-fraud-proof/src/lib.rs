@@ -12,6 +12,8 @@ mod invalid_state_transition_proof;
 mod tests;
 
 use codec::{Decode, Encode};
+use futures::channel::oneshot;
+use futures::FutureExt;
 use invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 pub use invalid_state_transition_proof::{
     ExecutionProver, PrePostStateRootVerifier, VerifyPrePostStateRoot,
@@ -115,5 +117,36 @@ where
         proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
     ) -> Result<(), VerificationError> {
         self.verify(proof)
+    }
+}
+
+/// Verifies the fraud proof extracted from extrinsic in the transaction pool.
+pub async fn validate_fraud_proof_in_tx_pool<Block, Verifier>(
+    spawner: &dyn SpawnNamed,
+    fraud_proof_verifier: Verifier,
+    fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>,
+) -> Result<(), VerificationError>
+where
+    Block: BlockT,
+    Verifier: VerifyFraudProof<Block> + Send + 'static,
+{
+    let (verified_result_sender, verified_result_receiver) = oneshot::channel();
+
+    // Verify the fraud proof in another blocking task as it might be pretty heavy.
+    spawner.spawn_blocking(
+        "txpool-fraud-proof-verification",
+        None,
+        async move {
+            let verified_result = fraud_proof_verifier.verify_fraud_proof(&fraud_proof);
+            verified_result_sender
+                .send(verified_result)
+                .expect("Failed to send the verified fraud proof result");
+        }
+        .boxed(),
+    );
+
+    match verified_result_receiver.await {
+        Ok(verified_result) => verified_result,
+        Err(err) => Err(VerificationError::Oneshot(err.to_string())),
     }
 }

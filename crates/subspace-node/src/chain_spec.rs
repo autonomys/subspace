@@ -31,8 +31,8 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-// const GEMINI_3C_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3c.json");
 const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
+const GEMINI_3D_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3d.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -71,21 +71,17 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3c() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
-    Err("Wrong release for Gemini 3c. Use the release prefixed with `gemini-3c`".to_string())
-}
-
-pub fn gemini_3c_compiled(
+pub fn gemini_3d_compiled(
 ) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3c",
+        "Subspace Gemini 3d",
         // ID
-        "subspace_gemini_3c",
-        ChainType::Custom("Subspace Gemini 3c".to_string()),
+        "subspace_gemini_3d",
+        ChainType::Custom("Subspace Gemini 3d".to_string()),
         || {
             let sudo_account =
-                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
+                AccountId::from_ss58check("5CZy4hcmaVZUMZLfB41v1eAKvtZ8W7axeWuDvwjhjPwfhAqt")
                     .expect("Wrong root account address");
 
             let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
@@ -152,15 +148,20 @@ pub fn gemini_3c_compiled(
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3c"),
+        Some("subspace-gemini-3d"),
         None,
         // Properties
         Some(chain_spec_properties()),
         // Extensions
         ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::gemini_3c_config(),
+            execution_chain_spec: system_domain::chain_spec::gemini_3d_config(),
         },
     ))
+}
+
+pub fn gemini_3d_config(
+) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+    ConsensusChainSpec::from_json_bytes(GEMINI_3D_CHAIN_SPEC)
 }
 
 pub fn devnet_config(

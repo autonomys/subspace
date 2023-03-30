@@ -42,7 +42,7 @@ pub use crate::node::{
 };
 pub use crate::node_runner::NodeRunner;
 pub use behavior::provider_storage::{
-    MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage,
+    MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
 };
 pub use create::{create, peer_id, Config, CreationError, RelayMode};
 pub use libp2p;
@@ -59,8 +59,8 @@ pub use request_handlers::piece_by_key::{
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
 };
-pub use request_handlers::root_block::{
-    RootBlockBySegmentIndexesRequestHandler, RootBlockRequest, RootBlockResponse,
+pub use request_handlers::segment_header::{
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::unique_record_binary_heap::UniqueRecordBinaryHeap;

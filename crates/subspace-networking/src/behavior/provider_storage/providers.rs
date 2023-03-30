@@ -25,6 +25,28 @@ const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
 const PARITY_DB_ALL_PROVIDERS_COLUMN_NAME: u8 = 0;
 const PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME: u8 = 1;
 
+/// Stub provider storage implementation.
+/// All operations have no effect or return empty collections/iterators.
+pub struct VoidProviderStorage;
+
+impl ProviderStorage for VoidProviderStorage {
+    type ProvidedIter<'a> = iter::Empty<Cow<'a, ProviderRecord>>;
+
+    fn add_provider(&mut self, _: ProviderRecord) -> store::Result<()> {
+        Ok(())
+    }
+
+    fn providers(&self, _: &Key) -> Vec<ProviderRecord> {
+        Default::default()
+    }
+
+    fn provided(&self) -> Self::ProvidedIter<'_> {
+        iter::empty()
+    }
+
+    fn remove_provider(&mut self, _: &Key, _: &PeerId) {}
+}
+
 /// Memory based provider records storage.
 pub struct MemoryProviderStorage {
     inner: store::MemoryStore,

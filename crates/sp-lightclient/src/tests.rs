@@ -23,14 +23,14 @@ use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
 use std::error::Error;
 use std::io::Cursor;
-use std::num::{NonZeroU32, NonZeroU64};
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use std::num::NonZeroU64;
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Randomness, RecordsRoot, RootBlock, SectorId, SegmentIndex,
-    Solution, SolutionRange, PLOT_SECTOR_SIZE, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
+    Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment, SectorId, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
@@ -50,7 +50,7 @@ fn default_test_constants() -> ChainConstants<Header> {
             next_global_randomness: randomness,
             next_solution_range: Default::default(),
         },
-        genesis_records_roots: Default::default(),
+        genesis_segment_commitments: Default::default(),
         global_randomness_interval: 20,
         era_duration: 20,
         slot_probability: (1, 6),
@@ -65,13 +65,13 @@ fn derive_solution_range(
     subspace_core_primitives::bidirectional_distance(local_challenge, audit_chunk) * 2
 }
 
-fn archived_segment(kzg: Kzg) -> ArchivedSegment {
+fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
     // we don't care about the block data
     let mut rng = StdRng::seed_from_u64(0);
-    let mut block = vec![0u8; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
     rng.fill(block.as_mut_slice());
 
-    let mut archiver = Archiver::new(RECORDED_HISTORY_SEGMENT_SIZE, kzg).unwrap();
+    let mut archiver = Archiver::new(kzg).unwrap();
 
     archiver
         .add_block(block, Default::default())
@@ -81,7 +81,7 @@ fn archived_segment(kzg: Kzg) -> ArchivedSegment {
 }
 
 struct Farmer {
-    root_block: RootBlock,
+    segment_header: SegmentHeader,
     sector: Vec<u8>,
     sector_metadata: Vec<u8>,
 }
@@ -90,7 +90,7 @@ impl Farmer {
     fn new(keypair: &Keypair) -> Self {
         let kzg = Kzg::new(kzg::embedded_kzg_settings());
         let archived_segment = archived_segment(kzg.clone());
-        let root_block = archived_segment.root_block;
+        let segment_header = archived_segment.segment_header;
         let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
         let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
@@ -98,10 +98,8 @@ impl Farmer {
         let piece_getter = TestPieceGetter { archived_segment };
         let public_key = PublicKey::from(keypair.public.to_bytes());
         let farmer_protocol_info = FarmerProtocolInfo {
-            record_size: NonZeroU32::new(RECORD_SIZE).unwrap(),
-            recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
             total_pieces,
-            sector_expiration: 100,
+            sector_expiration: SegmentIndex::from(100),
         };
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
 
@@ -120,7 +118,7 @@ impl Farmer {
         .unwrap();
 
         Self {
-            root_block,
+            segment_header,
             sector,
             sector_metadata,
         }
@@ -137,7 +135,7 @@ struct ValidHeaderParams<'a> {
 }
 
 struct TestPieceGetter {
-    archived_segment: ArchivedSegment,
+    archived_segment: NewArchivedSegment,
 }
 
 #[async_trait]
@@ -151,14 +149,14 @@ impl PieceGetter for TestPieceGetter {
             .archived_segment
             .pieces
             .iter()
-            .nth(piece_index as usize)
+            .nth(u64::from(piece_index) as usize)
             .map(Piece::from))
     }
 }
 
 fn valid_header(
     params: ValidHeaderParams<'_>,
-) -> (Header, SolutionRange, SegmentIndex, RecordsRoot) {
+) -> (Header, SolutionRange, SegmentIndex, SegmentCommitment) {
     let ValidHeaderParams {
         parent_hash,
         number,
@@ -168,8 +166,8 @@ fn valid_header(
         farmer,
     } = params;
 
-    let segment_index = farmer.root_block.segment_index();
-    let records_root = farmer.root_block.records_root();
+    let segment_index = farmer.segment_header.segment_index();
+    let segment_commitment = farmer.segment_header.segment_commitment();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
@@ -222,7 +220,7 @@ fn valid_header(
         digest: Digest { logs: digests },
     };
 
-    (header, solution_range, segment_index, records_root)
+    (header, solution_range, segment_index, segment_commitment)
 }
 
 fn seal_header(keypair: &Keypair, header: &mut Header) {
@@ -370,7 +368,7 @@ fn add_headers_to_chain(
             (randomness, digests.next_global_randomness.is_some())
         };
 
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash,
                 number,
@@ -404,7 +402,7 @@ fn add_headers_to_chain(
         }
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         if let Some(ForkAt {
             is_best: maybe_best,
             ..
@@ -487,7 +485,7 @@ fn test_header_import_missing_parent() {
         let constants = default_test_constants();
         let (mut store, _genesis_hash) = initialize_store(constants, true, None);
         let randomness = default_randomness();
-        let (header, _, segment_index, records_root) = valid_header(ValidHeaderParams {
+        let (header, _, segment_index, segment_commitment) = valid_header(ValidHeaderParams {
             parent_hash: Default::default(),
             number: 1,
             slot: 1,
@@ -495,7 +493,7 @@ fn test_header_import_missing_parent() {
             randomness,
             farmer: &farmer,
         });
-        store.store_records_root(segment_index, records_root);
+        store.store_segment_commitment(segment_index, segment_commitment);
         let mut importer = HeaderImporter::new(store);
         assert_err!(
             importer.import_header(header.clone()),
@@ -730,7 +728,7 @@ fn test_reorg_to_heavier_smaller_chain() {
                 &header_at_2.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_2.header.hash(),
                 number: 3,
@@ -753,7 +751,7 @@ fn test_reorg_to_heavier_smaller_chain() {
             .override_solution_range(header_at_2.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(importer.store.best_header().header.hash(), new_weight - 1);
@@ -792,7 +790,7 @@ fn test_next_global_randomness_digest() {
                 &header_at_4.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
@@ -807,7 +805,7 @@ fn test_next_global_randomness_digest() {
             .override_solution_range(header_at_4.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_4.header.hash(), 0);
@@ -864,7 +862,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
                 &header_at_4.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
@@ -879,7 +877,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
             .override_solution_range(header_at_4.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_4.header.hash(), 0);
@@ -937,7 +935,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
                 &header_at_4.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
@@ -951,7 +949,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
             .override_solution_range(header_at_4.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_4.header.hash(), 0);
@@ -997,7 +995,7 @@ fn test_enable_solution_range_adjustment_without_override() {
                 &header_at_4.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
@@ -1011,7 +1009,7 @@ fn test_enable_solution_range_adjustment_without_override() {
             .override_solution_range(header_at_4.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_4.header.hash(), 0);
@@ -1066,7 +1064,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
                 &header_at_3.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_3.header.hash(),
                 number: 4,
@@ -1080,7 +1078,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
             .override_solution_range(header_at_3.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_3.header.hash(), 0);
@@ -1135,7 +1133,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
                 &header_at_4.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
@@ -1149,7 +1147,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
             .override_solution_range(header_at_4.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_4.header.hash(), 0);
@@ -1196,7 +1194,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
                 &header_at_4.header,
             )
             .unwrap();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
@@ -1210,7 +1208,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
             .override_solution_range(header_at_4.header.hash(), solution_range);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer
             .store
             .override_cumulative_weight(header_at_4.header.hash(), 0);
@@ -1289,7 +1287,7 @@ fn test_block_author_different_farmer() {
         // try to import header authored by different farmer
         let keypair_disallowed = Keypair::generate();
         let randomness = default_randomness();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: genesis_hash,
                 number: 1,
@@ -1303,7 +1301,7 @@ fn test_block_author_different_farmer() {
         importer.store.override_constants(constants);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer.store.override_cumulative_weight(genesis_hash, 0);
         let res = importer.import_header(header);
         assert_err!(
@@ -1328,7 +1326,7 @@ fn test_block_author_first_farmer() {
 
         // try import header with first farmer
         let randomness = default_randomness();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: genesis_hash,
                 number: 1,
@@ -1348,7 +1346,7 @@ fn test_block_author_first_farmer() {
         importer.store.override_constants(constants);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer.store.override_cumulative_weight(genesis_hash, 0);
         let res = importer.import_header(header.clone());
         assert_ok!(res);
@@ -1371,7 +1369,7 @@ fn test_block_author_allow_any_farmer() {
 
         // try to import header authored by different farmer
         let randomness = default_randomness();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: genesis_hash,
                 number: 1,
@@ -1389,7 +1387,7 @@ fn test_block_author_allow_any_farmer() {
         importer.store.override_constants(constants);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer.store.override_cumulative_weight(genesis_hash, 0);
         let res = importer.import_header(header.clone());
         assert_ok!(res);
@@ -1413,7 +1411,7 @@ fn test_disallow_root_plot_public_key_override() {
 
         // try to import header that contains root plot public key override
         let randomness = default_randomness();
-        let (mut header, solution_range, segment_index, records_root) =
+        let (mut header, solution_range, segment_index, segment_commitment) =
             valid_header(ValidHeaderParams {
                 parent_hash: genesis_hash,
                 number: 1,
@@ -1433,7 +1431,7 @@ fn test_disallow_root_plot_public_key_override() {
         importer.store.override_constants(constants);
         importer
             .store
-            .store_records_root(segment_index, records_root);
+            .store_segment_commitment(segment_index, segment_commitment);
         importer.store.override_cumulative_weight(genesis_hash, 0);
         let res = importer.import_header(header);
         assert_err!(

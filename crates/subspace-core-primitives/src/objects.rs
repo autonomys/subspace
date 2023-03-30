@@ -22,7 +22,7 @@
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-use crate::Blake2b256Hash;
+use crate::{Blake2b256Hash, PieceIndex};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
@@ -89,6 +89,7 @@ pub enum PieceObject {
     V0 {
         /// Object hash
         hash: Blake2b256Hash,
+        // TODO: This is a raw record offset, not a regular one
         /// Offset of the object
         offset: u32,
     },
@@ -128,7 +129,7 @@ pub enum GlobalObject {
     #[codec(index = 0)]
     V0 {
         /// Piece index where object is contained (at least its beginning, might not fit fully)
-        piece_index: u64,
+        piece_index: PieceIndex,
         /// Offset of the object
         offset: u32,
     },
@@ -136,7 +137,7 @@ pub enum GlobalObject {
 
 impl GlobalObject {
     /// Piece index where object is contained (at least its beginning, might not fit fully)
-    pub fn piece_index(&self) -> u64 {
+    pub fn piece_index(&self) -> PieceIndex {
         match self {
             Self::V0 { piece_index, .. } => *piece_index,
         }

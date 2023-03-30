@@ -1,6 +1,9 @@
 use crate::ErasureCoding;
+use blst_from_scratch::types::g1::FsG1;
+use kzg::G1;
 use std::iter;
 use std::num::NonZeroUsize;
+use subspace_core_primitives::crypto::kzg::Commitment;
 use subspace_core_primitives::crypto::Scalar;
 
 // TODO: This could have been done in-place, once implemented can be exposed as a utility
@@ -34,7 +37,7 @@ where
 }
 
 #[test]
-fn basic() {
+fn basic_data() {
     let scale = NonZeroUsize::new(8).unwrap();
     let num_shards = 2usize.pow(scale.get() as u32);
     let ec = ErasureCoding::new(scale).unwrap();
@@ -64,6 +67,31 @@ fn basic() {
         source_shards
             .iter()
             .chain(&parity_shards)
+            .copied()
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn basic_commitments() {
+    let scale = NonZeroUsize::new(7).unwrap();
+    let num_shards = 2usize.pow(scale.get() as u32);
+    let ec = ErasureCoding::new(scale).unwrap();
+
+    let source_commitments = (0..num_shards / 2)
+        .map(|_| Commitment::from(FsG1::rand()))
+        .collect::<Vec<_>>();
+
+    let parity_commitments = ec.extend_commitments(&source_commitments).unwrap();
+
+    assert_eq!(source_commitments.len() * 2, parity_commitments.len());
+
+    // Even indices must be source
+    assert_eq!(
+        source_commitments,
+        parity_commitments
+            .iter()
+            .step_by(2)
             .copied()
             .collect::<Vec<_>>()
     );

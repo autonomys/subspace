@@ -128,6 +128,12 @@ pub enum VerificationError {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Failed to get runtime code: {0}"))]
     RuntimeCode(String),
+    #[cfg(feature = "std")]
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Oneshot error when verifying fraud proof in tx pool: {0}")
+    )]
+    Oneshot(String),
 }
 
 /// Fraud proof.

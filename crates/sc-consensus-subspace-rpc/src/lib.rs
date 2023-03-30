@@ -40,13 +40,10 @@ use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use std::error::Error;
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_archiving::archiver::ArchivedSegment;
-use subspace_core_primitives::{
-    RecordsRoot, RootBlock, SegmentIndex, Solution, RECORDED_HISTORY_SEGMENT_SIZE, RECORD_SIZE,
-};
+use subspace_archiving::archiver::NewArchivedSegment;
+use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -91,21 +88,21 @@ pub trait SubspaceRpcApi {
     #[subscription(
         name = "subspace_subscribeArchivedSegment" => "subspace_archived_segment",
         unsubscribe = "subspace_unsubscribeArchivedSegment",
-        item = ArchivedSegment,
+        item = NewArchivedSegment,
     )]
     fn subscribe_archived_segment(&self);
 
     #[method(name = "subspace_recordsRoots")]
-    async fn records_roots(
+    async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RecordsRoot>>>;
+    ) -> RpcResult<Vec<Option<SegmentCommitment>>>;
 
-    #[method(name = "subspace_rootBlocks")]
-    async fn root_blocks(
+    #[method(name = "subspace_SegmentHeaders")]
+    async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RootBlock>>>;
+    ) -> RpcResult<Vec<Option<SegmentHeader>>>;
 }
 
 #[derive(Default)]
@@ -120,15 +117,15 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
-pub trait RootBlockProvider {
-    fn get_root_block(
+pub trait SegmentHeaderProvider {
+    fn get_segment_header(
         &self,
         segment_index: SegmentIndex,
-    ) -> Result<Option<RootBlock>, Box<dyn Error>>;
+    ) -> Result<Option<SegmentHeader>, Box<dyn Error>>;
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
+pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -138,7 +135,7 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     subspace_link: SubspaceLink<Block>,
-    root_block_provider: RBP,
+    segment_header_provider: RBP,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -148,7 +145,7 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: RootBlockProvider> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, RBP> {
+impl<Block: BlockT, Client, RBP: SegmentHeaderProvider> SubspaceRpc<Block, Client, RBP> {
     #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
@@ -161,7 +158,7 @@ impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, R
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         subspace_link: SubspaceLink<Block>,
-        root_block_provider: RBP,
+        segment_header_provider: RBP,
     ) -> Self {
         Self {
             client,
@@ -173,7 +170,7 @@ impl<Block: BlockT, Client, RBP: RootBlockProvider> SubspaceRpc<Block, Client, R
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
             subspace_link,
-            root_block_provider,
+            segment_header_provider,
         }
     }
 }
@@ -189,7 +186,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-    RBP: RootBlockProvider + Send + Sync + 'static,
+    RBP: SegmentHeaderProvider + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_hash = self.client.info().best_hash;
@@ -208,14 +205,9 @@ where
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
             let protocol_info = FarmerProtocolInfo {
-                record_size: NonZeroU32::new(RECORD_SIZE).ok_or_else(|| {
-                    error!("Incorrect record_size constant provided.");
-                    ApiError::Application("Incorrect record_size set".to_string().into())
-                })?,
-                recorded_history_segment_size: RECORDED_HISTORY_SEGMENT_SIZE,
                 total_pieces: runtime_api.total_pieces(best_hash)?,
                 // TODO: Fetch this from the runtime
-                sector_expiration: 100,
+                sector_expiration: SegmentIndex::from(100),
             };
 
             FarmerAppInfo {
@@ -294,7 +286,7 @@ where
                                     sector_index: solution.sector_index,
                                     total_pieces: solution.total_pieces,
                                     piece_offset: solution.piece_offset,
-                                    piece_record_hash: solution.piece_record_hash,
+                                    record_commitment_hash: solution.record_commitment_hash,
                                     piece_witness: solution.piece_witness,
                                     chunk_offset: solution.chunk_offset,
                                     chunk: solution.chunk,
@@ -460,10 +452,10 @@ where
         Ok(())
     }
 
-    async fn records_roots(
+    async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RecordsRoot>>> {
+    ) -> RpcResult<Vec<Option<SegmentCommitment>>> {
         if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
@@ -479,44 +471,44 @@ where
         let best_hash = self.client.info().best_hash;
         let best_block_number = self.client.info().best_number;
 
-        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+        let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
             .map(|segment_index| {
                 let api_result = runtime_api
-                    .records_root(best_hash, segment_index)
+                    .segment_commitment(best_hash, segment_index)
                     .map_err(|_| {
                         JsonRpseeError::Custom(
-                            "Internal error during `records_root` call".to_string(),
+                            "Internal error during `segment_commitment` call".to_string(),
                         )
                     });
 
-                api_result.map(|maybe_records_root| {
-                    // This is not a very nice hack due to the fact that at the time first block is produced
-                    // extrinsics with root blocks are not yet in runtime.
-                    if maybe_records_root.is_none() && best_block_number.is_zero() {
+                api_result.map(|maybe_segment_commitment| {
+                    // This is not a very nice hack due to the fact that at the time first block is
+                    //  producedextrinsics with segment headers are not yet in runtime.
+                    if maybe_segment_commitment.is_none() && best_block_number.is_zero() {
                         self.subspace_link
-                            .records_root_by_segment_index(segment_index)
+                            .segment_commitment_by_segment_index(segment_index)
                     } else {
-                        maybe_records_root
+                        maybe_segment_commitment
                     }
                 })
             })
             .collect();
 
-        if let Err(ref err) = records_root_result {
+        if let Err(ref err) = segment_commitment_result {
             error!(
-                "Failed to get data from runtime API (records_root): {}",
+                "Failed to get data from runtime API (segment_commitment): {}",
                 err
             );
         }
 
-        records_root_result
+        segment_commitment_result
     }
 
-    async fn root_blocks(
+    async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<RootBlock>>> {
+    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
         if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
@@ -528,15 +520,15 @@ where
             )));
         };
 
-        let records_root_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+        let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
             .map(|segment_index| {
                 let api_result = self
-                    .root_block_provider
-                    .get_root_block(segment_index)
+                    .segment_header_provider
+                    .get_segment_header(segment_index)
                     .map_err(|_| {
                         JsonRpseeError::Custom(
-                            "Internal error during `root_blocks` call".to_string(),
+                            "Internal error during `segment_headers` call".to_string(),
                         )
                     });
 
@@ -544,10 +536,10 @@ where
             })
             .collect();
 
-        if let Err(err) = &records_root_result {
-            error!(?err, "Failed to get root blocks.");
+        if let Err(err) = &segment_commitment_result {
+            error!(?err, "Failed to get segment headers.");
         }
 
-        records_root_result
+        segment_commitment_result
     }
 }

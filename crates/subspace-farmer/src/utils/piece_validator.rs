@@ -4,37 +4,37 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{Piece, PieceIndex, RecordsRoot, SegmentIndex, PIECES_IN_SEGMENT};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
 use tracing::error;
 
-pub struct RecordsRootPieceValidator<NC> {
+pub struct SegmentCommitmentPieceValidator<NC> {
     dsn_node: Node,
     node_client: NC,
     kzg: Kzg,
-    records_root_cache: Mutex<LruCache<SegmentIndex, RecordsRoot>>,
+    segment_commitment_cache: Mutex<LruCache<SegmentIndex, SegmentCommitment>>,
 }
 
-impl<NC> RecordsRootPieceValidator<NC> {
+impl<NC> SegmentCommitmentPieceValidator<NC> {
     pub fn new(
         dsn_node: Node,
         node_client: NC,
         kzg: Kzg,
-        records_root_cache: Mutex<LruCache<SegmentIndex, RecordsRoot>>,
+        segment_commitment_cache: Mutex<LruCache<SegmentIndex, SegmentCommitment>>,
     ) -> Self {
         Self {
             dsn_node,
             node_client,
             kzg,
-            records_root_cache,
+            segment_commitment_cache,
         }
     }
 }
 
 #[async_trait]
-impl<NC> PieceValidator for RecordsRootPieceValidator<NC>
+impl<NC> PieceValidator for SegmentCommitmentPieceValidator<NC>
 where
     NC: NodeClient,
 {
@@ -45,52 +45,58 @@ where
         piece: Piece,
     ) -> Option<Piece> {
         if source_peer_id != self.dsn_node.id() {
-            let segment_index: SegmentIndex = piece_index / PieceIndex::from(PIECES_IN_SEGMENT);
+            let segment_index = piece_index.segment_index();
 
-            let maybe_records_root = self.records_root_cache.lock().get(&segment_index).copied();
-            let records_root = match maybe_records_root {
-                Some(records_root) => records_root,
+            let maybe_segment_commitment = self
+                .segment_commitment_cache
+                .lock()
+                .get(&segment_index)
+                .copied();
+            let segment_commitment = match maybe_segment_commitment {
+                Some(segment_commitment) => segment_commitment,
                 None => {
-                    let records_roots =
-                        match self.node_client.records_roots(vec![segment_index]).await {
-                            Ok(records_roots) => records_roots,
-                            Err(error) => {
-                                error!(
-                                    %piece_index,
-                                    ?error,
-                                    "Failed tor retrieve records root from node"
-                                );
-                                return None;
-                            }
-                        };
-
-                    let records_root = match records_roots.into_iter().next().flatten() {
-                        Some(records_root) => records_root,
-                        None => {
+                    let segment_commitments = match self
+                        .node_client
+                        .segment_commitments(vec![segment_index])
+                        .await
+                    {
+                        Ok(segment_commitments) => segment_commitments,
+                        Err(error) => {
                             error!(
                                 %piece_index,
-                                %segment_index,
-                                "Records root for segment index wasn't found on node"
+                                ?error,
+                                "Failed tor retrieve segment commitment from node"
                             );
                             return None;
                         }
                     };
 
-                    self.records_root_cache
-                        .lock()
-                        .push(segment_index, records_root);
+                    let segment_commitment = match segment_commitments.into_iter().next().flatten()
+                    {
+                        Some(segment_commitment) => segment_commitment,
+                        None => {
+                            error!(
+                                %piece_index,
+                                %segment_index,
+                                "Segment commitment for segment index wasn't found on node"
+                            );
+                            return None;
+                        }
+                    };
 
-                    records_root
+                    self.segment_commitment_cache
+                        .lock()
+                        .push(segment_index, segment_commitment);
+
+                    segment_commitment
                 }
             };
 
             if !is_piece_valid(
                 &self.kzg,
-                PIECES_IN_SEGMENT as usize,
                 &piece,
-                records_root,
-                u32::try_from(piece_index % PieceIndex::from(PIECES_IN_SEGMENT))
-                    .expect("Always fix into u32; qed"),
+                &segment_commitment,
+                piece_index.position(),
             ) {
                 error!(
                     %piece_index,

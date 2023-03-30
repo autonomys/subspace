@@ -73,7 +73,7 @@ pub mod opaque {
     use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
     use sp_runtime::{generic, DigestItem, OpaqueExtrinsic};
     use sp_std::prelude::*;
-    use subspace_core_primitives::RECORDED_HISTORY_SEGMENT_SIZE;
+    use subspace_core_primitives::RecordedHistorySegment;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -111,7 +111,7 @@ pub mod opaque {
                 if header.digest.logs.is_empty() {
                     // We fill genesis block with extra data such that the very first archived
                     // segment can be produced right away, bootstrapping the farming process.
-                    let ballast = vec![0; RECORDED_HISTORY_SEGMENT_SIZE as usize];
+                    let ballast = vec![0; RecordedHistorySegment::SIZE];
                     header.digest.logs.push(DigestItem::Other(ballast));
                 }
                 Block { header, extrinsics }

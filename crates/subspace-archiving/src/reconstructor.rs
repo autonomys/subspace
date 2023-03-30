@@ -1,44 +1,41 @@
 extern crate alloc;
 
 use crate::archiver::{Segment, SegmentItem};
-use crate::utils;
+use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
+use core::num::NonZeroUsize;
 use parity_scale_codec::Decode;
-use reed_solomon_erasure::galois_16::ReedSolomon;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RootBlock, SegmentIndex,
-    RECORD_SIZE,
+    ArchivedBlockProgress, ArchivedHistorySegment, BlockNumber, LastArchivedBlock, Piece,
+    RawRecord, RecordedHistorySegment, SegmentHeader, SegmentIndex,
 };
+use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ReconstructorInstantiationError {
-    /// Segment size is not bigger than record size
+    /// Failed to initialize erasure coding
     #[cfg_attr(
         feature = "thiserror",
-        error("Segment size is not bigger than record size")
+        error("Failed to initialize erasure coding: {0}")
     )]
-    SegmentSizeTooSmall,
-    /// Segment size is not a multiple of record size
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Segment size is not a multiple of record size")
-    )]
-    SegmentSizesNotMultipleOfRecordSize,
+    FailedToInitializeErasureCoding(String),
 }
 
 /// Reconstructor-related instantiation error
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum ReconstructorError {
-    /// Segment size is not bigger than record size
+    /// Error during data shards reconstruction
     #[cfg_attr(
         feature = "thiserror",
         error("Error during data shards reconstruction: {0}")
     )]
-    DataShardsReconstruction(reed_solomon_erasure::Error),
+    DataShardsReconstruction(String),
     /// Segment size is not bigger than record size
     #[cfg_attr(feature = "thiserror", error("Error during segment decoding: {0}"))]
     SegmentDecoding(parity_scale_codec::Error),
@@ -57,8 +54,8 @@ pub enum ReconstructorError {
 /// information from segments that were added previously)
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ReconstructedContents {
-    /// Root block stored in a segment
-    pub root_block: Option<RootBlock>,
+    /// Segment header stored in a segment
+    pub segment_header: Option<SegmentHeader>,
     /// Reconstructed encoded blocks with their block numbers
     pub blocks: Vec<(BlockNumber, Vec<u8>)>,
 }
@@ -66,10 +63,8 @@ pub struct ReconstructedContents {
 /// Reconstructor helps to retrieve blocks from archived pieces.
 #[derive(Debug, Clone)]
 pub struct Reconstructor {
-    /// Configuration parameter defining the size of one recorded history segment
-    recorded_history_segment_size: u32,
     /// Erasure coding data structure
-    reed_solomon: ReedSolomon,
+    erasure_coding: ErasureCoding,
     /// Index of last segment added to reconstructor
     last_segment_index: Option<SegmentIndex>,
     /// Partially reconstructed block waiting for more data
@@ -77,24 +72,18 @@ pub struct Reconstructor {
 }
 
 impl Reconstructor {
-    pub fn new(
-        recorded_history_segment_size: u32,
-    ) -> Result<Self, ReconstructorInstantiationError> {
-        if recorded_history_segment_size <= RECORD_SIZE {
-            return Err(ReconstructorInstantiationError::SegmentSizeTooSmall);
-        }
-        if recorded_history_segment_size % RECORD_SIZE != 0 {
-            return Err(ReconstructorInstantiationError::SegmentSizesNotMultipleOfRecordSize);
-        }
+    pub fn new() -> Result<Self, ReconstructorInstantiationError> {
+        // TODO: Check if KZG can process number configured number of elements and update proof
+        //  message in `.expect()`
 
-        let source_shards = recorded_history_segment_size / RECORD_SIZE;
-        let parity_shards = source_shards;
-        let reed_solomon = ReedSolomon::new(source_shards as usize, parity_shards as usize)
-            .expect("ReedSolomon must always be correctly instantiated");
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
+                .expect("Recorded history segment contains at very least one record; qed"),
+        )
+        .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
 
         Ok(Self {
-            recorded_history_segment_size,
-            reed_solomon,
+            erasure_coding,
             last_segment_index: None,
             partial_block: None,
         })
@@ -102,7 +91,7 @@ impl Reconstructor {
 
     /// Given a set of pieces of a segment of the archived history (any half of all pieces are
     /// required to be present, the rest will be recovered automatically due to use of erasure
-    /// coding if needed), reconstructs and returns root block and a list of encoded blocks with
+    /// coding if needed), reconstructs and returns segment header and a list of encoded blocks with
     /// corresponding block numbers.
     ///
     /// It is possible to start with any segment, but when next segment is pushed, it needs to
@@ -111,13 +100,24 @@ impl Reconstructor {
         &mut self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<ReconstructedContents, ReconstructorError> {
-        let mut segment_data = Vec::with_capacity(self.recorded_history_segment_size as usize);
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        let mut segment_data = unsafe { Box::<RecordedHistorySegment>::new_zeroed().assume_init() };
+
         if !segment_pieces
             .iter()
-            .take(self.reed_solomon.data_shard_count())
-            .all(|maybe_piece| {
+            // Take each source shards here
+            .step_by(2)
+            .zip(segment_data.iter_mut())
+            .all(|(maybe_piece, raw_record)| {
                 if let Some(piece) = maybe_piece {
-                    segment_data.extend_from_slice(piece.record().as_ref());
+                    piece
+                        .record()
+                        .safe_scalar_arrays()
+                        .zip(raw_record.iter_mut())
+                        .for_each(|(source, target)| {
+                            *target = *source;
+                        });
                     true
                 } else {
                     false
@@ -126,32 +126,56 @@ impl Reconstructor {
         {
             // If not all data pieces are available, need to reconstruct data shards using erasure
             // coding.
-            let mut shards = segment_pieces
-                .iter()
-                .map(|maybe_piece| maybe_piece.as_ref().map(utils::slice_to_arrays))
-                .collect::<Vec<_>>();
 
-            self.reed_solomon
-                .reconstruct_data(&mut shards)
-                .map_err(ReconstructorError::DataShardsReconstruction)?;
+            // Scratch buffer to avoid re-allocation
+            let mut tmp_shards_scalars =
+                Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
+            // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
+            for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
+                // Collect chunks of each record at the same offset
+                for maybe_piece in segment_pieces.iter() {
+                    let maybe_scalar = maybe_piece
+                        .as_ref()
+                        .map(|piece| {
+                            piece
+                                .record()
+                                .full_scalar_arrays()
+                                .nth(record_offset)
+                                .expect("Statically guaranteed to exist in a piece; qed")
+                        })
+                        .map(Scalar::try_from)
+                        .transpose()
+                        .map_err(ReconstructorError::DataShardsReconstruction)?;
 
-            segment_data.clear();
-            shards
-                .into_iter()
-                .take(self.reed_solomon.data_shard_count())
-                .for_each(|maybe_piece| {
-                    let piece = maybe_piece.expect(
-                        "All data shards are available after successful reconstruction; qed",
-                    );
+                    tmp_shards_scalars.push(maybe_scalar);
+                }
 
-                    for chunk in piece.iter().take(RECORD_SIZE as usize / 2) {
-                        segment_data.extend_from_slice(chunk.as_ref());
-                    }
-                });
+                self.erasure_coding
+                    .recover(&tmp_shards_scalars)
+                    .map_err(ReconstructorError::DataShardsReconstruction)?
+                    .into_iter()
+                    // Take each source shards here
+                    .step_by(2)
+                    .zip(segment_data.iter_mut().map(|raw_record| {
+                        raw_record
+                            .iter_mut()
+                            .nth(record_offset)
+                            .expect("Statically guaranteed to exist in a piece; qed")
+                    }))
+                    .for_each(|(source_scalar, segment_data)| {
+                        // Source scalar only contains payload data within first
+                        // [`Scalar::SAFE_BYTES`]
+                        segment_data
+                            .copy_from_slice(&source_scalar.to_bytes()[..Scalar::SAFE_BYTES]);
+                    });
+
+                tmp_shards_scalars.clear();
+            }
         }
 
-        let Segment::V0 { items } = Segment::decode(&mut segment_data.as_ref())
-            .map_err(ReconstructorError::SegmentDecoding)?;
+        let Segment::V0 { items } =
+            Segment::decode(&mut AsRef::<[u8]>::as_ref(segment_data.as_ref()))
+                .map_err(ReconstructorError::SegmentDecoding)?;
 
         let mut reconstructed_contents = ReconstructedContents::default();
         let mut next_block_number = 0;
@@ -197,26 +221,29 @@ impl Reconstructor {
 
                     partial_block.extend_from_slice(&bytes);
                 }
-                SegmentItem::RootBlock(root_block) => {
-                    let segment_index = root_block.segment_index();
+                SegmentItem::ParentSegmentHeader(segment_header) => {
+                    let segment_index = segment_header.segment_index();
 
                     if let Some(last_segment_index) = self.last_segment_index {
                         if last_segment_index != segment_index {
                             return Err(ReconstructorError::IncorrectSegmentOrder {
-                                expected_segment_index: last_segment_index + 1,
-                                actual_segment_index: segment_index + 1,
+                                expected_segment_index: last_segment_index + SegmentIndex::ONE,
+                                actual_segment_index: segment_index + SegmentIndex::ONE,
                             });
                         }
                     }
 
-                    self.last_segment_index.replace(segment_index + 1);
+                    self.last_segment_index
+                        .replace(segment_index + SegmentIndex::ONE);
 
                     let LastArchivedBlock {
                         number,
                         archived_progress,
-                    } = root_block.last_archived_block();
+                    } = segment_header.last_archived_block();
 
-                    reconstructed_contents.root_block.replace(root_block);
+                    reconstructed_contents
+                        .segment_header
+                        .replace(segment_header);
 
                     match archived_progress {
                         ArchivedBlockProgress::Complete => {
@@ -244,7 +271,7 @@ impl Reconstructor {
         }
 
         if self.last_segment_index.is_none() {
-            self.last_segment_index.replace(0);
+            self.last_segment_index.replace(SegmentIndex::ZERO);
         }
 
         Ok(reconstructed_contents)

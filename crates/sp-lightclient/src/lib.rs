@@ -36,8 +36,8 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use subspace_core_primitives::{
-    BlockWeight, PublicKey, Randomness, RecordsRoot, RewardSignature, SectorId, SegmentIndex,
-    SolutionRange, PIECES_IN_SEGMENT,
+    ArchivedHistorySegment, BlockWeight, PublicKey, Randomness, RewardSignature, SectorId,
+    SegmentCommitment, SegmentIndex, SolutionRange,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{
@@ -56,13 +56,15 @@ pub struct ChainConstants<Header: HeaderT> {
     /// K Depth at which we finalize the heads.
     pub k_depth: NumberOf<Header>,
 
-    /// Genesis digest items at the start of the chain since the genesis block will not have any digests
-    /// to verify the Block #1 digests.
+    /// Genesis digest items at the start of the chain since the genesis block will not have any
+    /// digests to verify the Block #1 digests.
     pub genesis_digest_items: NextDigestItems,
 
-    /// Genesis block records roots to verify the Block #1 and other block solutions until Block #1 is finalized.
-    /// When Block #1 is finalized, these records roots are present in Block #1 are stored in the storage.
-    pub genesis_records_roots: BTreeMap<SegmentIndex, RecordsRoot>,
+    /// Genesis block segment commitments to verify the Block #1 and other block solutions until
+    /// Block #1 is finalized.
+    /// When Block #1 is finalized, these segment commitments are present in Block #1 are stored in
+    /// the storage.
+    pub genesis_segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
 
     /// Defines interval at which randomness is updated.
     pub global_randomness_interval: NumberOf<Header>,
@@ -87,7 +89,8 @@ pub enum StorageBound<Number> {
     NumberOfHeaderToKeepBeyondKDepth(Number),
 }
 
-/// HeaderExt describes an extended block chain header at a specific height along with some computed values.
+/// HeaderExt describes an extended block chain header at a specific height along with some computed
+/// values.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct HeaderExt<Header> {
     /// Actual header of the subspace block chain at a specific number.
@@ -109,7 +112,8 @@ pub struct HeaderExt<Header> {
     test_overrides: mock::TestOverrides,
 }
 
-/// Type to hold next digest items present in parent header that are used to verify the immediate descendant.
+/// Type to hold next digest items present in parent header that are used to verify the immediate
+/// descendant.
 #[derive(Default, Debug, Encode, Decode, Clone, TypeInfo)]
 pub struct NextDigestItems {
     next_global_randomness: Randomness,
@@ -200,11 +204,14 @@ pub trait Storage<Header: HeaderT> {
     /// Returns the latest finalized header.
     fn finalized_header(&self) -> HeaderExt<Header>;
 
-    /// Stores records roots for fast retrieval by segment index at or below finalized header.
-    fn store_records_roots(&mut self, records_roots: BTreeMap<SegmentIndex, RecordsRoot>);
+    /// Stores segment commitments for fast retrieval by segment index at or below finalized header.
+    fn store_segment_commitments(
+        &mut self,
+        segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
+    );
 
-    /// Returns a records root for a given segment index.
-    fn records_root(&self, segment_index: SegmentIndex) -> Option<RecordsRoot>;
+    /// Returns a segment commitment for a given segment index.
+    fn segment_commitment(&self, segment_index: SegmentIndex) -> Option<SegmentCommitment>;
 
     /// Returns the stored segment count.
     fn number_of_segments(&self) -> u64;
@@ -244,8 +251,8 @@ pub enum ImportError<Header: HeaderT> {
     SwitchedToForkBelowArchivingDepth,
     /// Header being imported is below the archiving depth.
     HeaderIsBelowArchivingDepth(HeaderBelowArchivingDepthError<Header>),
-    /// Missing records root for a given segment index.
-    MissingRecordsRoot(SegmentIndex),
+    /// Missing segment commitment for a given segment index.
+    MissingSegmentCommitment(SegmentIndex),
     /// Incorrect block author.
     IncorrectBlockAuthor(FarmerPublicKey),
 }
@@ -338,14 +345,17 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             header_digests.pre_digest.solution.sector_index,
         );
 
-        let piece_index = sector_id.derive_piece_index(
-            header_digests.pre_digest.solution.piece_offset,
-            header_digests.pre_digest.solution.total_pieces,
-        );
-        let segment_index: SegmentIndex = piece_index / SegmentIndex::from(PIECES_IN_SEGMENT);
+        let segment_index = sector_id
+            .derive_piece_index(
+                header_digests.pre_digest.solution.piece_offset,
+                header_digests.pre_digest.solution.total_pieces,
+            )
+            .segment_index();
 
-        let records_root =
-            self.find_records_root_for_segment_index(segment_index, parent_header.header.hash())?;
+        let segment_commitment = self.find_segment_commitment_for_segment_index(
+            segment_index,
+            parent_header.header.hash(),
+        )?;
 
         verify_solution(
             (&header_digests.pre_digest.solution).into(),
@@ -353,10 +363,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&VerifySolutionParams {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
-                piece_check_params: Some(PieceCheckParams {
-                    records_root,
-                    pieces_in_segment: PIECES_IN_SEGMENT,
-                }),
+                piece_check_params: Some(PieceCheckParams { segment_commitment }),
             })
                 .into(),
         )
@@ -624,14 +631,18 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     #[allow(dead_code)]
     fn total_pieces(&self, chain_tip: HashOf<Header>) -> Result<u64, ImportError<Header>> {
         // fetch the segment count from the store
-        let records_roots_count_till_finalized_header = self.store.number_of_segments();
+        let segment_commitments_count_till_finalized_header = self.store.number_of_segments();
 
         let finalized_header = self.store.finalized_header();
-        let mut records_roots_count = records_roots_count_till_finalized_header;
+        let mut segment_commitments_count = segment_commitments_count_till_finalized_header;
 
         // special case when Block #1 is not finalized yet, then include the genesis segment count
         if finalized_header.header.number().is_zero() {
-            records_roots_count += self.store.chain_constants().genesis_records_roots.len() as u64;
+            segment_commitments_count += self
+                .store
+                .chain_constants()
+                .genesis_segment_commitments
+                .len() as u64;
         }
 
         // calculate segment count present in each header from header till finalized header
@@ -647,7 +658,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 FarmerPublicKey,
                 FarmerSignature,
             >(&header.header)?;
-            records_roots_count += digest_items.records_roots.len() as u64;
+            segment_commitments_count += digest_items.segment_commitments.len() as u64;
 
             header = self
                 .store
@@ -655,35 +666,36 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
         }
 
-        Ok(records_roots_count * u64::from(PIECES_IN_SEGMENT))
+        Ok(segment_commitments_count * ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
-    /// Finds a records root mapped against a segment index in the chain with chain_tip as the tip of the chain.
-    /// We try to find the records root as follows,
-    ///  - Find records root from the store and return if found.
-    ///  - Find records root from the genesis record roots and return if found.
-    ///  - Find the records root present in the non finalized headers.
-    fn find_records_root_for_segment_index(
+    /// Finds a segment commitment mapped against a segment index in the chain with chain_tip as the
+    /// tip of the chain.
+    /// We try to find the segment commitment as follows:
+    ///  - Find segment commitment from the store and return if found.
+    ///  - Find segment commitment from the genesis segment commitment and return if found.
+    ///  - Find the segment commitment present in the non finalized headers.
+    fn find_segment_commitment_for_segment_index(
         &self,
         segment_index: SegmentIndex,
         chain_tip: HashOf<Header>,
-    ) -> Result<RecordsRoot, ImportError<Header>> {
-        // check if the records root is already in the store
-        if let Some(records_root) = self.store.records_root(segment_index) {
-            return Ok(records_root);
+    ) -> Result<SegmentCommitment, ImportError<Header>> {
+        // check if the segment commitment is already in the store
+        if let Some(segment_commitment) = self.store.segment_commitment(segment_index) {
+            return Ok(segment_commitment);
         };
 
-        // special case: check the genesis records roots if the Block #1 is not finalized yet
-        if let Some(records_root) = self
+        // special case: check the genesis segment commitments if the Block #1 is not finalized yet
+        if let Some(segment_commitment) = self
             .store
             .chain_constants()
-            .genesis_records_roots
+            .genesis_segment_commitments
             .get(&segment_index)
         {
-            return Ok(*records_root);
+            return Ok(*segment_commitment);
         }
 
-        // find the records root from the headers which are not finalized yet.
+        // find the segment commitment from the headers which are not finalized yet.
         let finalized_header = self.store.finalized_header();
         let mut header = self
             .store
@@ -698,8 +710,8 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 FarmerSignature,
             >(&header.header)?;
 
-            if let Some(records_root) = digest_items.records_roots.get(&segment_index) {
-                return Ok(*records_root);
+            if let Some(segment_commitment) = digest_items.segment_commitments.get(&segment_index) {
+                return Ok(*segment_commitment);
             }
 
             header = self
@@ -708,11 +720,11 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
         }
 
-        Err(ImportError::MissingRecordsRoot(segment_index))
+        Err(ImportError::MissingSegmentCommitment(segment_index))
     }
 
-    /// Stores finalized header and records roots present in the header.
-    fn store_finalized_header_and_records_roots(
+    /// Stores finalized header and segment commitments present in the header.
+    fn store_finalized_header_and_segment_commitments(
         &mut self,
         header: &Header,
     ) -> Result<(), ImportError<Header>> {
@@ -724,8 +736,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // mark header as finalized
         self.store.finalize_header(header.hash());
 
-        // store the records roots present in the header digests
-        self.store.store_records_roots(digests_items.records_roots);
+        // store the segment commitments present in the header digests
+        self.store
+            .store_segment_commitments(digests_items.segment_commitments);
         Ok(())
     }
 
@@ -784,7 +797,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                             .first()
                             .expect("First item must exist as the len is 1.");
 
-                        self.store_finalized_header_and_records_roots(&header_to_finalize.header)?
+                        self.store_finalized_header_and_segment_commitments(
+                            &header_to_finalize.header,
+                        )?
                     } else {
                         // there are multiple headers at the number to be finalized.
                         // find the correct ancestor header of the current best header.
@@ -818,7 +833,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                         }
 
                         // mark the header as finalized
-                        self.store_finalized_header_and_records_roots(&header_to_finalize.header)?
+                        self.store_finalized_header_and_segment_commitments(
+                            &header_to_finalize.header,
+                        )?
                     }
                 }
 

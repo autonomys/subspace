@@ -1,6 +1,6 @@
 use libp2p::multihash::Multihash;
 use std::error::Error;
-use subspace_core_primitives::PieceIndexHash;
+use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 
 /// Start of Subspace Network multicodec namespace (+1000 to distinguish from future stable values):
 /// https://github.com/multiformats/multicodec/blob/master/table.csv
@@ -29,7 +29,7 @@ impl TryFrom<u64> for MultihashCode {
     }
 }
 
-pub fn create_multihash_by_piece_index(piece_index: u64) -> Multihash {
+pub fn create_multihash_by_piece_index(piece_index: PieceIndex) -> Multihash {
     let piece_index_hash = PieceIndexHash::from_index(piece_index);
 
     piece_index_hash.to_multihash()
