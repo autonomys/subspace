@@ -1,21 +1,18 @@
+use crate::utils::{
+    extract_xdm_proof_state_roots_with_client, extract_xdm_proof_state_roots_with_runtime,
+    ExtractedStateRoots,
+};
 use codec::{Decode, Encode};
 use sc_executor::RuntimeVersionOf;
-use sp_api::{ApiError, BlockT, Core, ProvideRuntimeApi, RuntimeVersion};
+use sp_api::{ApiError, ApiExt, BlockT, Core, ProvideRuntimeApi, RuntimeVersion};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::{ExecutionContext, Hasher};
-use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
 use std::sync::Arc;
-
-type ExtractedStateRoots<Block> = ExtractedStateRootsFromProof<
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
-    <Block as BlockT>::Hash,
->;
 
 /// Trait to extract XDM state roots from the Extrinsic.
 pub trait StateRootExtractor<Block: BlockT> {
@@ -66,11 +63,26 @@ where
         best_hash: SBlock::Hash,
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
-        let api = self.client.runtime_api();
-        api.extract_xdm_proof_state_roots(best_hash, ext.encode())
-            .and_then(|maybe_state_roots| {
-                maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
-            })
+        let messenger_api_version = self
+            .client
+            .runtime_api()
+            .api_version::<dyn MessengerApi<SBlock, NumberFor<SBlock>>>(best_hash)?
+            .ok_or_else(|| {
+                ApiError::Application(
+                    format!(
+                        "Could not find `MessengerApi` api for block `{best_hash:?}`."
+                    )
+                    .into(),
+                )
+            })?;
+
+        let maybe_state_roots = extract_xdm_proof_state_roots_with_client(
+            messenger_api_version,
+            &*self.client.runtime_api(),
+            best_hash,
+            ext,
+        )?;
+        maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
 }
 
@@ -199,13 +211,9 @@ where
         block_hash: SBlock::Hash,
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
-        <Self as MessengerApi<SBlock, NumberFor<SBlock>>>::extract_xdm_proof_state_roots(
-            self,
-            block_hash,
-            ext.encode(),
-        )
-        .and_then(|maybe_state_roots| {
-            maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
-        })
+        let runtime_version = self.runtime_version()?;
+        let maybe_state_root =
+            extract_xdm_proof_state_roots_with_runtime(runtime_version, self, block_hash, ext)?;
+        maybe_state_root.ok_or(ApiError::Application("Empty state roots".into()))
     }
 }
