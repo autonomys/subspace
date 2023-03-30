@@ -74,7 +74,9 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{ChunkSignature, FlatPieces, Piece, PieceIndex, Solution};
+use subspace_core_primitives::{
+    ArchivedHistorySegment, ChunkSignature, FlatPieces, Piece, PieceIndex, Solution,
+};
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
 use tokio::runtime::{Handle, Runtime};
@@ -424,7 +426,7 @@ fn rejects_empty_block() {
     })
 }
 
-fn get_archived_pieces(client: &TestClient) -> Vec<FlatPieces> {
+fn get_archived_segments(client: &TestClient) -> Vec<ArchivedHistorySegment> {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg).expect("Incorrect parameters for archiver");
 
@@ -505,7 +507,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
             let client = Arc::clone(&client);
 
             move || {
-                let archived_pieces = get_archived_pieces(&client);
+                let archived_pieces = get_archived_segments(&client);
                 archived_pieces_sender.send(archived_pieces).unwrap();
             }
         });

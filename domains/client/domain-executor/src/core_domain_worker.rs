@@ -32,7 +32,7 @@ use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus_slots::Slot;
-use sp_core::traits::CodeExecutor;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
@@ -41,7 +41,7 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) async fn start_worker<
     Block,
     SBlock,
@@ -56,6 +56,7 @@ pub(super) async fn start_worker<
     NSNS,
     E,
 >(
+    spawn_essential: Box<dyn SpawnEssentialNamed>,
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     is_authority: bool,
@@ -115,7 +116,7 @@ pub(super) async fn start_worker<
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
@@ -131,6 +132,7 @@ pub(super) async fn start_worker<
 
     let handle_block_import_notifications_fut =
         handle_block_import_notifications::<Block, PBlock, _, _, _, _>(
+            spawn_essential,
             primary_chain_client.as_ref(),
             client.info().best_number,
             {
@@ -171,12 +173,17 @@ pub(super) async fn start_worker<
                 })
                 .boxed()
         },
-        Box::pin(
-            new_slot_notification_stream.map(|(slot, global_challenge)| ExecutorSlotInfo {
-                slot,
-                global_challenge,
-            }),
-        ),
+        Box::pin(new_slot_notification_stream.map(
+            |(slot, global_challenge, acknowledgement_sender)| {
+                (
+                    ExecutorSlotInfo {
+                        slot,
+                        global_challenge,
+                    },
+                    acknowledgement_sender,
+                )
+            },
+        )),
     );
 
     if is_authority {

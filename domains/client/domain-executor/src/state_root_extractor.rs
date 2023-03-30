@@ -69,10 +69,7 @@ where
             .api_version::<dyn MessengerApi<SBlock, NumberFor<SBlock>>>(best_hash)?
             .ok_or_else(|| {
                 ApiError::Application(
-                    format!(
-                        "Could not find `MessengerApi` api for block `{best_hash:?}`."
-                    )
-                    .into(),
+                    format!("Could not find `MessengerApi` api for block `{best_hash:?}`.").into(),
                 )
             })?;
 

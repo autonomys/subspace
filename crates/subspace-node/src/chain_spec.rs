@@ -32,6 +32,7 @@ use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
+const GEMINI_3D_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3d.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -156,6 +157,11 @@ pub fn gemini_3d_compiled(
             execution_chain_spec: system_domain::chain_spec::gemini_3d_config(),
         },
     ))
+}
+
+pub fn gemini_3d_config(
+) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+    ConsensusChainSpec::from_json_bytes(GEMINI_3D_CHAIN_SPEC)
 }
 
 pub fn devnet_config(

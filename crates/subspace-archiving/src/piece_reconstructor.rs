@@ -5,9 +5,7 @@ use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
-use subspace_core_primitives::{
-    FlatPieces, Piece, RawRecord, RecordedHistorySegment, PIECES_IN_SEGMENT,
-};
+use subspace_core_primitives::{ArchivedHistorySegment, Piece, RawRecord, RecordedHistorySegment};
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error.
@@ -57,7 +55,7 @@ impl PiecesReconstructor {
         //  message in `.expect()`
 
         let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(PIECES_IN_SEGMENT.ilog2() as usize)
+            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
                 .expect("Recorded history segment contains at very least one record; qed"),
         )
         .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
@@ -73,8 +71,8 @@ impl PiecesReconstructor {
     fn reconstruct_shards(
         &self,
         input_pieces: &[Option<Piece>],
-    ) -> Result<(FlatPieces, Polynomial), ReconstructorError> {
-        let mut reconstructed_pieces = FlatPieces::new(PIECES_IN_SEGMENT as usize);
+    ) -> Result<(ArchivedHistorySegment, Polynomial), ReconstructorError> {
+        let mut reconstructed_pieces = ArchivedHistorySegment::default();
 
         if !input_pieces
             .iter()
@@ -105,7 +103,7 @@ impl PiecesReconstructor {
 
             // Scratch buffer to avoid re-allocation
             let mut tmp_shards_scalars =
-                Vec::<Option<Scalar>>::with_capacity(PIECES_IN_SEGMENT as usize);
+                Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
                 // Collect chunks of each record at the same offset
@@ -145,7 +143,8 @@ impl PiecesReconstructor {
             }
         }
 
-        let mut source_record_commitments = Vec::with_capacity(RecordedHistorySegment::RAW_RECORDS);
+        let mut source_record_commitments =
+            Vec::with_capacity(RecordedHistorySegment::NUM_RAW_RECORDS);
         for (piece, maybe_input_piece) in
             reconstructed_pieces.iter_mut().zip(input_pieces).step_by(2)
         {
@@ -218,7 +217,7 @@ impl PiecesReconstructor {
     pub fn reconstruct_segment(
         &self,
         segment_pieces: &[Option<Piece>],
-    ) -> Result<FlatPieces, ReconstructorError> {
+    ) -> Result<ArchivedHistorySegment, ReconstructorError> {
         let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
         pieces.iter_mut().enumerate().for_each(|(position, piece)| {
@@ -245,7 +244,7 @@ impl PiecesReconstructor {
     ) -> Result<Piece, ReconstructorError> {
         let (reconstructed_records, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
-        if piece_position >= PIECES_IN_SEGMENT as usize {
+        if piece_position >= ArchivedHistorySegment::NUM_PIECES {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 

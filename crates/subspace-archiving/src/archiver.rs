@@ -33,9 +33,8 @@ use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, BlockNumber, FlatPieces, LastArchivedBlock, PieceArray,
-    RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
-    PIECES_IN_SEGMENT,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, LastArchivedBlock,
+    PieceArray, RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -171,15 +170,16 @@ pub enum SegmentItem {
     ParentSegmentHeader(SegmentHeader),
 }
 
-/// Archived segment as a combination of segment header hash, segment index and corresponding pieces
+/// Newly archived segment as a combination of segment header hash, segment index and corresponding
+/// archived history segment containing pieces
 #[derive(Debug, Clone, Eq, PartialEq, Decode, Encode)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct ArchivedSegment {
-    /// Segment header of the segment
+pub struct NewArchivedSegment {
+    /// Segment header
     pub segment_header: SegmentHeader,
-    /// Pieces that correspond to this segment
-    pub pieces: FlatPieces,
+    /// Segment of archived history containing pieces
+    pub pieces: ArchivedHistorySegment,
     /// Mappings for objects stored in corresponding pieces.
     ///
     /// NOTE: Only half (source pieces) will have corresponding mapping item in this `Vec`.
@@ -255,7 +255,7 @@ impl Archiver {
         //  message in `.expect()`
 
         let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(PIECES_IN_SEGMENT.ilog2() as usize)
+            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
                 .expect("Recorded history segment contains at very least one record; qed"),
         )
         .map_err(ArchiverInstantiationError::FailedToInitializeErasureCoding)?;
@@ -263,7 +263,7 @@ impl Archiver {
         Ok(Self {
             buffer: VecDeque::default(),
             incremental_record_commitments: IncrementalRecordCommitmentsState::with_capacity(
-                RecordedHistorySegment::RAW_RECORDS,
+                RecordedHistorySegment::NUM_RAW_RECORDS,
             ),
             erasure_coding,
             kzg,
@@ -348,7 +348,7 @@ impl Archiver {
         &mut self,
         bytes: Vec<u8>,
         object_mapping: BlockObjectMapping,
-    ) -> Vec<ArchivedSegment> {
+    ) -> Vec<NewArchivedSegment> {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block {
             bytes,
@@ -610,11 +610,11 @@ impl Archiver {
     }
 
     // Take segment as an input, apply necessary transformations and produce archived segment
-    fn produce_archived_segment(&mut self, segment: Segment) -> ArchivedSegment {
+    fn produce_archived_segment(&mut self, segment: Segment) -> NewArchivedSegment {
         // Create mappings
         let object_mapping = {
             let mut corrected_object_mapping =
-                vec![PieceObjectMapping::default(); RecordedHistorySegment::RAW_RECORDS];
+                vec![PieceObjectMapping::default(); RecordedHistorySegment::NUM_RAW_RECORDS];
             let Segment::V0 { items } = &segment;
             // `+1` corresponds to enum variant encoding
             let mut base_offset_in_segment = 1;
@@ -677,11 +677,11 @@ impl Archiver {
             // Segment is quite big and no longer necessary
             drop(segment);
 
-            let mut pieces = FlatPieces::new(PIECES_IN_SEGMENT as usize);
+            let mut pieces = ArchivedHistorySegment::default();
 
             // Scratch buffer to avoid re-allocation
             let mut tmp_source_shards_scalars =
-                Vec::<Scalar>::with_capacity(RecordedHistorySegment::RAW_RECORDS);
+                Vec::<Scalar>::with_capacity(RecordedHistorySegment::NUM_RAW_RECORDS);
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
                 // Collect chunks of each record at the same offset
@@ -785,7 +785,7 @@ impl Archiver {
         self.buffer
             .push_front(SegmentItem::ParentSegmentHeader(segment_header));
 
-        ArchivedSegment {
+        NewArchivedSegment {
             segment_header,
             pieces,
             object_mapping,
@@ -846,7 +846,7 @@ pub fn is_piece_valid(
 
     kzg.verify(
         segment_commitment,
-        PIECES_IN_SEGMENT as usize,
+        ArchivedHistorySegment::NUM_PIECES,
         position,
         &commitment_hash,
         &witness,
@@ -863,7 +863,7 @@ pub fn is_record_commitment_hash_valid(
 ) -> bool {
     kzg.verify(
         commitment,
-        PIECES_IN_SEGMENT as usize,
+        ArchivedHistorySegment::NUM_PIECES,
         position,
         commitment_hash,
         witness,

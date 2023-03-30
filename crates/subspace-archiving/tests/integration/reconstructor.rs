@@ -6,8 +6,8 @@ use subspace_archiving::reconstructor::{Reconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, FlatPieces, LastArchivedBlock, Piece, RecordedHistorySegment,
-    SegmentIndex, PIECES_IN_SEGMENT,
+    ArchivedBlockProgress, ArchivedHistorySegment, FlatPieces, LastArchivedBlock, Piece,
+    RecordedHistorySegment, SegmentIndex,
 };
 
 fn pieces_to_option_of_pieces(pieces: &FlatPieces) -> Vec<Option<Piece>> {
@@ -275,7 +275,7 @@ fn partial_data() {
                     .source()
                     .map(Piece::from)
                     .map(Some)
-                    .zip(iter::repeat(None).take(RecordedHistorySegment::RAW_RECORDS))
+                    .zip(iter::repeat(None).take(RecordedHistorySegment::NUM_RAW_RECORDS))
                     .flat_map(|(a, b)| [a, b])
                     .collect::<Vec<_>>(),
             )
@@ -290,11 +290,11 @@ fn partial_data() {
             .unwrap()
             .add_segment(
                 &iter::repeat(None)
-                    .take(RecordedHistorySegment::RAW_RECORDS)
+                    .take(RecordedHistorySegment::NUM_RAW_RECORDS)
                     .chain(
                         pieces
                             .iter()
-                            .skip(RecordedHistorySegment::RAW_RECORDS)
+                            .skip(RecordedHistorySegment::NUM_RAW_RECORDS)
                             .map(Piece::from)
                             .map(Some),
                     )
@@ -308,9 +308,9 @@ fn partial_data() {
     {
         // Mix of data and parity shards
         let mut pieces = pieces.iter().map(Piece::from).map(Some).collect::<Vec<_>>();
-        pieces[PIECES_IN_SEGMENT as usize / 4..]
+        pieces[ArchivedHistorySegment::NUM_PIECES / 4..]
             .iter_mut()
-            .take(RecordedHistorySegment::RAW_RECORDS)
+            .take(RecordedHistorySegment::NUM_RAW_RECORDS)
             .for_each(|piece| {
                 piece.take();
             });
@@ -342,11 +342,11 @@ fn invalid_usage() {
             &archived_segments[0]
                 .pieces
                 .iter()
-                .take(RecordedHistorySegment::RAW_RECORDS - 1)
+                .take(RecordedHistorySegment::NUM_RAW_RECORDS - 1)
                 .map(Piece::from)
                 .map(Some)
                 .chain(iter::repeat(None))
-                .take(PIECES_IN_SEGMENT as usize)
+                .take(ArchivedHistorySegment::NUM_PIECES)
                 .collect::<Vec<_>>(),
         );
 
@@ -361,7 +361,7 @@ fn invalid_usage() {
                 thread_rng().fill(piece.as_mut());
                 Some(piece)
             })
-            .take(PIECES_IN_SEGMENT as usize)
+            .take(ArchivedHistorySegment::NUM_PIECES)
             .collect::<Vec<_>>(),
         );
 

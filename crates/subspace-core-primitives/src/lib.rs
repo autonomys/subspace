@@ -31,6 +31,7 @@ pub mod crypto;
 pub mod objects;
 mod pieces;
 pub mod sector_codec;
+mod segments;
 #[cfg(test)]
 mod tests;
 
@@ -39,19 +40,16 @@ extern crate alloc;
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
 use core::convert::AsRef;
-use core::iter::Step;
+use core::fmt;
 use core::num::NonZeroU64;
-use core::{fmt, mem};
-use derive_more::{
-    Add, AddAssign, Deref, Display, Div, DivAssign, From, Into, Mul, MulAssign, Rem, Sub, SubAssign,
-};
+use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, Encode};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, RawRecord, Record, RecordWitness, RecordedHistorySegment,
-    PIECES_IN_SEGMENT,
+    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, RawRecord, Record, RecordWitness,
 };
 use scale_info::TypeInfo;
+pub use segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use uint::static_assertions::const_assert;
@@ -96,85 +94,6 @@ pub type SolutionRange = u64;
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
-
-/// Segment index type.
-#[derive(
-    Debug,
-    Display,
-    Default,
-    Copy,
-    Clone,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Encode,
-    Decode,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(transparent)]
-pub struct SegmentIndex(u64);
-
-impl Step for SegmentIndex {
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        u64::steps_between(&start.0, &end.0)
-    }
-
-    fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        u64::forward_checked(start.0, count).map(Self)
-    }
-
-    fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        u64::backward_checked(start.0, count).map(Self)
-    }
-}
-
-impl const From<u64> for SegmentIndex {
-    fn from(original: u64) -> Self {
-        Self(original)
-    }
-}
-
-impl const From<SegmentIndex> for u64 {
-    fn from(original: SegmentIndex) -> Self {
-        original.0
-    }
-}
-
-impl SegmentIndex {
-    /// Segment index 0.
-    pub const ZERO: SegmentIndex = SegmentIndex(0);
-    /// Segment index 1.
-    pub const ONE: SegmentIndex = SegmentIndex(1);
-
-    /// Get the first piece index in this segment.
-    pub const fn first_piece_index(&self) -> PieceIndex {
-        PieceIndex::from(self.0 * PIECES_IN_SEGMENT as u64)
-    }
-
-    /// Iterator over piece indexes that belong to this segment.
-    pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
-        (self.first_piece_index()..).take(PIECES_IN_SEGMENT as usize)
-    }
-
-    /// Iterator over piece indexes that belong to this segment with source pieces first.
-    pub fn segment_piece_indexes_source_first(&self) -> impl Iterator<Item = PieceIndex> {
-        self.segment_piece_indexes()
-            .step_by(2)
-            .chain(self.segment_piece_indexes().skip(1).step_by(2))
-    }
-}
 
 // TODO: New type
 /// Segment commitment type.
@@ -432,104 +351,8 @@ impl SegmentHeader {
     }
 }
 
-/// Piece index in consensus
-#[derive(
-    Debug,
-    Display,
-    Default,
-    Copy,
-    Clone,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Encode,
-    Decode,
-    Add,
-    AddAssign,
-    Sub,
-    SubAssign,
-    Mul,
-    MulAssign,
-    Div,
-    DivAssign,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(transparent)]
-pub struct PieceIndex(u64);
-
-impl Step for PieceIndex {
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        u64::steps_between(&start.0, &end.0)
-    }
-
-    fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        u64::forward_checked(start.0, count).map(Self)
-    }
-
-    fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        u64::backward_checked(start.0, count).map(Self)
-    }
-}
-
-impl const From<u64> for PieceIndex {
-    fn from(original: u64) -> Self {
-        Self(original)
-    }
-}
-
-impl const From<PieceIndex> for u64 {
-    fn from(original: PieceIndex) -> Self {
-        original.0
-    }
-}
-
-impl PieceIndex {
-    /// Piece index 0.
-    pub const ZERO: PieceIndex = PieceIndex(0);
-    /// Piece index 1.
-    pub const ONE: PieceIndex = PieceIndex(1);
-
-    /// Convert piece index into bytes.
-    pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
-        self.0.to_le_bytes()
-    }
-
-    /// Segment index piece index corresponds to
-    pub const fn segment_index(&self) -> SegmentIndex {
-        SegmentIndex::from(self.0 / u64::from(PIECES_IN_SEGMENT))
-    }
-
-    /// Position of a piece in a segment
-    pub const fn position(&self) -> u32 {
-        // Position is statically guaranteed to fit into u32
-        (self.0 % u64::from(PIECES_IN_SEGMENT)) as u32
-    }
-}
-
 /// Sector index in consensus
 pub type SectorIndex = u64;
-
-/// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode, From, Into)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PieceIndexHash(Blake2b256Hash);
-
-impl AsRef<[u8]> for PieceIndexHash {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl PieceIndexHash {
-    /// Constructs `PieceIndexHash` from `PieceIndex`
-    pub fn from_index(index: PieceIndex) -> Self {
-        Self(blake2b_256_hash(&index.to_bytes()))
-    }
-}
 
 // TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
@@ -786,14 +609,14 @@ impl From<u128> for U256 {
 }
 
 impl From<PieceIndexHash> for U256 {
-    fn from(PieceIndexHash(hash): PieceIndexHash) -> Self {
-        Self(private_u256::U256::from_big_endian(&hash))
+    fn from(hash: PieceIndexHash) -> Self {
+        Self(private_u256::U256::from_big_endian(hash.as_ref()))
     }
 }
 
 impl From<U256> for PieceIndexHash {
     fn from(number: U256) -> Self {
-        Self(number.to_be_bytes())
+        Self::from(number.to_be_bytes())
     }
 }
 

@@ -9,8 +9,8 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, K
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PieceArray, Record,
-    RecordedHistorySegment, SegmentHeader, SegmentIndex, BLAKE2B_256_HASH_SIZE, PIECES_IN_SEGMENT,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, LastArchivedBlock, PieceArray,
+    Record, RecordedHistorySegment, SegmentHeader, SegmentIndex, BLAKE2B_256_HASH_SIZE,
 };
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
@@ -137,7 +137,7 @@ fn archiver() {
     let first_archived_segment = archived_segments.into_iter().next().unwrap();
     assert_eq!(
         first_archived_segment.pieces.len(),
-        PIECES_IN_SEGMENT as usize
+        ArchivedHistorySegment::NUM_PIECES
     );
     assert_eq!(
         first_archived_segment.segment_header.segment_index(),
@@ -157,7 +157,7 @@ fn archiver() {
 
     assert_eq!(
         first_archived_segment.object_mapping.len(),
-        RecordedHistorySegment::RAW_RECORDS
+        RecordedHistorySegment::NUM_RAW_RECORDS
     );
     // 4 objects fit into the first segment
     assert_eq!(
@@ -219,7 +219,7 @@ fn archiver() {
 
     assert_eq!(
         archived_segments[0].object_mapping.len(),
-        RecordedHistorySegment::RAW_RECORDS
+        RecordedHistorySegment::NUM_RAW_RECORDS
     );
     // 1 object fits into the second segment
     assert_eq!(
@@ -232,7 +232,7 @@ fn archiver() {
     );
     assert_eq!(
         archived_segments[1].object_mapping.len(),
-        RecordedHistorySegment::RAW_RECORDS
+        RecordedHistorySegment::NUM_RAW_RECORDS
     );
     // 0 object fits into the second segment
     assert_eq!(
@@ -274,7 +274,10 @@ fn archiver() {
     let mut previous_segment_header_hash = first_archived_segment.segment_header.hash();
     let last_segment_header = archived_segments.iter().last().unwrap().segment_header;
     for archived_segment in archived_segments {
-        assert_eq!(archived_segment.pieces.len(), PIECES_IN_SEGMENT as usize);
+        assert_eq!(
+            archived_segment.pieces.len(),
+            ArchivedHistorySegment::NUM_PIECES
+        );
         assert_eq!(
             archived_segment.segment_header.segment_index(),
             expected_segment_index

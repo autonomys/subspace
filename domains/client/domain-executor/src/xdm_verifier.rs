@@ -31,8 +31,7 @@ where
         .api_version::<dyn MessengerApi<SBlock, NumberFor<SBlock>>>(best_hash)?
         .ok_or_else(|| {
             Error::Application(
-                format!("Could not find `MessengerApi` api for block `{best_hash:?}`.")
-                    .into(),
+                format!("Could not find `MessengerApi` api for block `{best_hash:?}`.").into(),
             )
         })?;
     if let Ok(Some(state_roots)) = extract_xdm_proof_state_roots_with_client(

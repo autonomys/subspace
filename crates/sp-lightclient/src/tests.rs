@@ -24,7 +24,7 @@ use sp_runtime::{Digest, DigestItem};
 use std::error::Error;
 use std::io::Cursor;
 use std::num::NonZeroU64;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
@@ -65,7 +65,7 @@ fn derive_solution_range(
     subspace_core_primitives::bidirectional_distance(local_challenge, audit_chunk) * 2
 }
 
-fn archived_segment(kzg: Kzg) -> ArchivedSegment {
+fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
     // we don't care about the block data
     let mut rng = StdRng::seed_from_u64(0);
     let mut block = vec![0u8; RecordedHistorySegment::SIZE];
@@ -135,7 +135,7 @@ struct ValidHeaderParams<'a> {
 }
 
 struct TestPieceGetter {
-    archived_segment: ArchivedSegment,
+    archived_segment: NewArchivedSegment,
 }
 
 #[async_trait]

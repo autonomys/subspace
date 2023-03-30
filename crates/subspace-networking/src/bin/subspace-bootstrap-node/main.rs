@@ -7,14 +7,16 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
 use libp2p::identity::ed25519::Keypair;
-use libp2p::Multiaddr;
+use libp2p::{Multiaddr, PeerId};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, MemoryProviderStorage,
-    NetworkingParametersManager, ParityDbProviderStorage,
+    peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
+    ParityDbProviderStorage, VoidProviderStorage,
 };
 use tracing::info;
 
@@ -50,7 +52,6 @@ enum Command {
         #[arg(long, default_value_t = false)]
         disable_private_ips: bool,
         /// Defines path for the provider record storage DB (optional).
-        /// No value will enable memory storage instead.
         #[arg(long, value_hint = ValueHint::FilePath)]
         db_path: Option<PathBuf>,
         /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
@@ -58,7 +59,34 @@ enum Command {
         piece_providers_cache_size: ByteSize,
     },
     /// Generate a new keypair
-    GenerateKeypair,
+    GenerateKeypair {
+        /// Produce an output in JSON format when enabled.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+}
+
+/// Helper struct for the `GenerateKeypair` command output.
+#[derive(Debug, Serialize, Deserialize)]
+struct KeypairOutput {
+    keypair: String,
+    peer_id: String,
+}
+
+impl Display for KeypairOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "PeerId: {}", self.peer_id)?;
+        writeln!(f, "Keypair: {}", self.keypair)
+    }
+}
+
+impl KeypairOutput {
+    fn new(keypair: Keypair) -> Self {
+        Self {
+            keypair: hex::encode(keypair.encode()),
+            peer_id: peer_id_from_keypair(keypair).to_base58(),
+        }
+    }
 }
 
 #[tokio::main]
@@ -89,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
                 NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
 
             let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
-            let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair.clone()));
+            let local_peer_id = peer_id_from_keypair(keypair.clone());
 
             let provider_storage = if let Some(path) = &db_path {
                 let db_path = path.join("subspace_storage_providers_db");
@@ -100,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
                     local_peer_id,
                 )?)
             } else {
-                Either::Right(MemoryProviderStorage::new(local_peer_id))
+                Either::Right(VoidProviderStorage)
             };
 
             let networking_parameters_registry = {
@@ -148,10 +176,22 @@ async fn main() -> anyhow::Result<()> {
 
             node_runner.run().await
         }
-        Command::GenerateKeypair => {
-            println!("{}", hex::encode(Keypair::generate().encode()))
+        Command::GenerateKeypair { json } => {
+            let output = KeypairOutput::new(Keypair::generate());
+
+            if json {
+                let json_output = serde_json::to_string(&output)?;
+
+                println!("{json_output}")
+            } else {
+                println!("{output}")
+            }
         }
     }
 
     Ok(())
+}
+
+fn peer_id_from_keypair(keypair: Keypair) -> PeerId {
+    peer_id(&libp2p::identity::Keypair::Ed25519(keypair))
 }

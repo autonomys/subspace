@@ -9,8 +9,8 @@ use core::num::NonZeroUsize;
 use parity_scale_codec::Decode;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, BlockNumber, LastArchivedBlock, Piece, RawRecord,
-    RecordedHistorySegment, SegmentHeader, SegmentIndex, PIECES_IN_SEGMENT,
+    ArchivedBlockProgress, ArchivedHistorySegment, BlockNumber, LastArchivedBlock, Piece,
+    RawRecord, RecordedHistorySegment, SegmentHeader, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -77,7 +77,7 @@ impl Reconstructor {
         //  message in `.expect()`
 
         let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(PIECES_IN_SEGMENT.ilog2() as usize)
+            NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
                 .expect("Recorded history segment contains at very least one record; qed"),
         )
         .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
@@ -129,7 +129,7 @@ impl Reconstructor {
 
             // Scratch buffer to avoid re-allocation
             let mut tmp_shards_scalars =
-                Vec::<Option<Scalar>>::with_capacity(PIECES_IN_SEGMENT as usize);
+                Vec::<Option<Scalar>>::with_capacity(ArchivedHistorySegment::NUM_PIECES);
             // Iterate over the chunks of `Scalar::SAFE_BYTES` bytes of all records
             for record_offset in 0..RawRecord::SIZE / Scalar::SAFE_BYTES {
                 // Collect chunks of each record at the same offset

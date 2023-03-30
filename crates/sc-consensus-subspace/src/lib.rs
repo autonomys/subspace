@@ -77,7 +77,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -127,7 +127,7 @@ pub struct RewardSigningNotification {
 #[derive(Debug, Clone)]
 pub struct ArchivedSegmentNotification {
     /// Archived segment.
-    pub archived_segment: Arc<ArchivedSegment>,
+    pub archived_segment: Arc<NewArchivedSegment>,
     /// Sender that signified the fact of receiving archived segment by farmer.
     ///
     /// This must be used to send a message or else block import pipeline will get stuck.

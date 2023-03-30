@@ -5,6 +5,7 @@ use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{ExecutorApi, SignedOpaqueBundle};
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
 use std::collections::hash_map::Entry;
@@ -15,7 +16,7 @@ use std::pin::Pin;
 pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
     bundler: BundlerFn,
-    mut slots: impl Stream<Item = ExecutorSlotInfo> + Unpin,
+    mut slots: impl Stream<Item = (ExecutorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -35,7 +36,7 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
         > + Send
         + Sync,
 {
-    while let Some(executor_slot_info) = slots.next().await {
+    while let Some((executor_slot_info, slot_acknowledgement_sender)) = slots.next().await {
         if let Err(error) =
             on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
                 .await
@@ -43,9 +44,13 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
             tracing::error!(?error, "Failed to submit bundle");
             break;
         }
+        if let Some(mut sender) = slot_acknowledgement_sender {
+            let _ = sender.send(()).await;
+        }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_block_import_notifications<
     Block,
     PBlock,
@@ -54,6 +59,7 @@ pub(crate) async fn handle_block_import_notifications<
     SubspaceBlockImports,
     ClientBlockImports,
 >(
+    spawn_essential: Box<dyn SpawnEssentialNamed>,
     primary_chain_client: &PClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
@@ -73,7 +79,8 @@ pub(crate) async fn handle_block_import_notifications<
             (PBlock::Hash, NumberFor<PBlock>),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
-        + Sync,
+        + Sync
+        + 'static,
     SubspaceBlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
     ClientBlockImports: Stream<Item = BlockImportNotification<PBlock>> + Unpin,
 {
@@ -101,6 +108,31 @@ pub(crate) async fn handle_block_import_notifications<
     // the primary block import in case the primary chain runs much faster than the domain.).
     let (mut block_info_sender, mut block_info_receiver) =
         mpsc::channel(primary_block_import_throttling_buffer_size as usize);
+
+    // Run the actual processor in a dedicated task, otherwise `tokio::select!` might hang forever
+    // when the throttling buffer is full.
+    spawn_essential.spawn_essential_blocking(
+        "primary-block-processor",
+        None,
+        Box::pin(async move {
+            while let Some(maybe_block_info) = block_info_receiver.next().await {
+                if let Some(block_info) = maybe_block_info {
+                    if let Err(error) = block_imported::<Block, PBlock, _>(
+                        &processor,
+                        &mut active_leaves,
+                        block_info,
+                    )
+                    .await
+                    {
+                        tracing::error!(?error, "Failed to process primary block");
+                        // Bring down the service as bundles processor is an essential task.
+                        // TODO: more graceful shutdown.
+                        break;
+                    }
+                }
+            }
+        }),
+    );
 
     loop {
         tokio::select! {
@@ -142,20 +174,6 @@ pub(crate) async fn handle_block_import_notifications<
                 // Pause the primary block import when the sink is full.
                 let _ = block_info_sender.feed(None).await;
                 let _ = block_import_acknowledgement_sender.send(()).await;
-            }
-            Some(maybe_block_info) = block_info_receiver.next() => {
-                if let Some(block_info) = maybe_block_info {
-                    if let Err(error) = block_imported::<Block, PBlock, _>(
-                        &processor,
-                        &mut active_leaves,
-                        block_info,
-                    ).await {
-                        tracing::error!(?error, "Failed to process primary block");
-                        // Bring down the service as bundles processor is an essential task.
-                        // TODO: more graceful shutdown.
-                        break;
-                    }
-                }
             }
         }
     }

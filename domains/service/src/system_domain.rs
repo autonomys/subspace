@@ -276,7 +276,7 @@ where
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -369,7 +369,7 @@ where
     let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream", 100);
 
     let executor = SystemExecutor::new(
-        &spawn_essential,
+        Box::new(task_manager.spawn_essential_handle()),
         select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),

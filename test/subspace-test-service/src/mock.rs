@@ -1,4 +1,5 @@
 use crate::node_config;
+use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use sc_block_builder::BlockBuilderProvider;
@@ -17,6 +18,7 @@ use sp_consensus::{BlockOrigin, CacheKeyId, Error as ConsensusError, NoNetwork, 
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_domains::ExecutorPublicKey;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::Digest;
@@ -34,7 +36,7 @@ use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
 use subspace_service::FullSelectChain;
 use subspace_solving::create_chunk_signature;
 use subspace_test_client::{Backend, Client, FraudProofVerifier, TestExecutorDispatch};
-use subspace_test_runtime::{RuntimeApi, SLOT_DURATION};
+use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
 use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 
@@ -60,7 +62,9 @@ pub struct MockPrimaryNode {
     /// The next slot number
     next_slot: u64,
     /// The slot notification subscribers
-    new_slot_notification_subscribers: Vec<TracingUnboundedSender<(Slot, Blake2b256Hash)>>,
+    #[allow(clippy::type_complexity)]
+    new_slot_notification_subscribers:
+        Vec<TracingUnboundedSender<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)>>,
     /// Block import pipeline
     block_import:
         MockBlockImport<BoxBlockImport<Block, TransactionFor<Client, Block>>, Client, Block>,
@@ -156,14 +160,28 @@ impl MockPrimaryNode {
         self.next_slot
     }
 
-    /// Produce slot
-    pub fn produce_slot(&mut self) -> Slot {
+    /// Produce a slot and wait for the acknowledgement of all the slot notification subscribers
+    pub async fn produce_slot_and_wait_for_bundle_submission(&mut self) -> Slot {
         let slot = Slot::from(self.next_slot);
         self.next_slot += 1;
 
-        let value = (slot, Hash::random().into());
-        self.new_slot_notification_subscribers
-            .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
+        let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
+
+        // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
+        // will block forever as there is still a sender not closed.
+        {
+            let value = (
+                slot,
+                Hash::random().into(),
+                Some(slot_acknowledgement_sender),
+            );
+            self.new_slot_notification_subscribers
+                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
+        }
+
+        while (slot_acknowledgement_receiver.next().await).is_some() {
+            // Wait for all the acknowledgements to progress.
+        }
 
         slot
     }
@@ -171,7 +189,7 @@ impl MockPrimaryNode {
     /// Subscribe the new slot notification
     pub fn new_slot_notification_stream(
         &mut self,
-    ) -> TracingUnboundedReceiver<(Slot, Blake2b256Hash)> {
+    ) -> TracingUnboundedReceiver<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.new_slot_notification_subscribers.push(tx);
         rx
@@ -186,6 +204,30 @@ impl MockPrimaryNode {
             .imported_block_notification_subscribers
             .push(tx);
         rx
+    }
+
+    /// Check if a bundle that created by `bundle_author` at `slot` is present at the transaction pool
+    pub fn is_bundle_present_in_tx_pool(&self, slot: u64, bundle_author: Sr25519Keyring) -> bool {
+        let bundle_author = ExecutorPublicKey::unchecked_from(bundle_author.public().0);
+        for ready_tx in self.transaction_pool.ready() {
+            let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
+                .expect("should be able to decode");
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle,
+            }) = ext.function
+            {
+                let slot_match = signed_opaque_bundle.bundle.header.slot_number == slot;
+                let author_match = signed_opaque_bundle
+                    .bundle_solution
+                    .proof_of_election()
+                    .executor_public_key
+                    == bundle_author;
+                if slot_match && author_match {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -296,10 +338,8 @@ impl MockPrimaryNode {
     }
 
     /// Produce block based on the current best block and the extrinsics in pool
-    pub async fn produce_block(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn produce_block_with_slot(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
         let block_timer = time::Instant::now();
-
-        let slot = self.produce_slot();
 
         let parent_hash = self.client.info().best_hash;
         let parent_number = self.client.info().best_number;
@@ -328,9 +368,10 @@ impl MockPrimaryNode {
     }
 
     /// Produce `n` number of blocks.
-    pub async fn produce_n_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
+    pub async fn produce_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
         for _ in 0..n {
-            self.produce_block().await?;
+            let slot = self.produce_slot_and_wait_for_bundle_submission().await;
+            self.produce_block_with_slot(slot).await?;
         }
         Ok(())
     }
