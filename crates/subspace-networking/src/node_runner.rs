@@ -35,6 +35,7 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use tokio::sync::watch;
 use tokio::time::Sleep;
 use tracing::{debug, error, info, trace, warn};
 
@@ -107,6 +108,8 @@ where
     metrics: Option<Metrics>,
     /// Mapping from specific peer to number of established connections
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
+    /// DSN connection observer. Turns on/off DSN operations like piece retrieval.
+    dsn_connection_observer_tx: watch::Sender<bool>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -124,6 +127,7 @@ where
     pub(crate) target_connections: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
+    pub(crate) dsn_connection_observer_tx: watch::Sender<bool>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -142,6 +146,7 @@ where
             target_connections,
             temporary_bans,
             metrics,
+            dsn_connection_observer_tx,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -163,6 +168,7 @@ where
             temporary_bans,
             metrics,
             established_connections: HashMap::new(),
+            dsn_connection_observer_tx,
         }
     }
 
@@ -210,6 +216,31 @@ where
     async fn handle_peer_dialing(&mut self) {
         let local_peer_id = *self.swarm.local_peer_id();
         let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
+
+        // Handle DSN connection signaling
+        // TODO: consider moving it a separate watcher with decoupled check period.
+        let current_dsn_connection_state = !connected_peers.is_empty();
+        let previous_dsn_connection_state = {
+            if let Some(shared) = self.shared_weak.upgrade() {
+                *shared.dsn_connection_observer_rx.borrow()
+            } else {
+                return; // App is closing
+            }
+        };
+        if previous_dsn_connection_state != current_dsn_connection_state {
+            if let Err(err) = self
+                .dsn_connection_observer_tx
+                .send(current_dsn_connection_state)
+            {
+                error!("DSN connection observer channel failed: {err}")
+            }
+
+            if current_dsn_connection_state {
+                info!("DSN connection established.");
+            } else {
+                warn!("DSN connection lost.");
+            }
+        }
 
         // Handle reserved peers first.
         if !self.reserved_peers.is_empty() {

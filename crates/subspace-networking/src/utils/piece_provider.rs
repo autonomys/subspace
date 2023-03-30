@@ -136,6 +136,24 @@ where
         retry(backoff, || async {
             let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
+            // Wait until we connect to DSN.
+            let mut dsn_connection_observer = self.node.dsn_connection_observer().clone();
+            loop {
+                let dsn_connected = *dsn_connection_observer.borrow();
+
+                if !dsn_connected {
+                    debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. No DSN connection...");
+
+                    if let Err(err) = dsn_connection_observer.changed().await {
+                        return Err(backoff::Error::permanent(
+                            format!("DSN observer closed the channel's sender: {err}", ).into(),
+                        ))
+                    }
+                } else {
+                    break;
+                }
+            }
+
             if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, current_attempt, "Got piece");
                 return Ok(Some(piece));
