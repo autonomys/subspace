@@ -286,10 +286,9 @@ async fn run_executor_with_mock_primary_node(
         maybe_relayer_id: None,
     };
     let executor_streams = ExecutorStreams {
-        // TODO: set `primary_block_import_throttling_buffer_size` to 0 once
-        // https://github.com/subspace/subspace/issues/1316 is resolved, otherwise
-        // the executor may skip a slot due to it is lagging behide the primary chain
-        primary_block_import_throttling_buffer_size: 10,
+        // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
+        // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
+        primary_block_import_throttling_buffer_size: 0,
         subspace_imported_block_notification_stream: mock_primary_node
             .imported_block_notification_stream(),
         client_imported_block_notification_stream: mock_primary_node
