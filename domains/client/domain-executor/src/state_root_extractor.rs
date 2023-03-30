@@ -209,8 +209,8 @@ where
         ext: &SBlock::Extrinsic,
     ) -> Result<ExtractedStateRoots<SBlock>, ApiError> {
         let runtime_version = self.runtime_version()?;
-        let maybe_state_root =
+        let maybe_state_roots =
             extract_xdm_proof_state_roots_with_runtime(runtime_version, self, block_hash, ext)?;
-        maybe_state_root.ok_or(ApiError::Application("Empty state roots".into()))
+        maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
 }
