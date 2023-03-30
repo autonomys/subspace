@@ -385,7 +385,7 @@ where
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
-        &spawn_essential,
+        Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),
