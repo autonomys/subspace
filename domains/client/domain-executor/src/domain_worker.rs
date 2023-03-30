@@ -16,7 +16,7 @@ use std::pin::Pin;
 pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
     bundler: BundlerFn,
-    mut slots: impl Stream<Item = ExecutorSlotInfo> + Unpin,
+    mut slots: impl Stream<Item = (ExecutorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -36,13 +36,16 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
         > + Send
         + Sync,
 {
-    while let Some(executor_slot_info) = slots.next().await {
+    while let Some((executor_slot_info, slot_acknowledgement_sender)) = slots.next().await {
         if let Err(error) =
             on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
                 .await
         {
             tracing::error!(?error, "Failed to submit bundle");
             break;
+        }
+        if let Some(mut sender) = slot_acknowledgement_sender {
+            let _ = sender.send(()).await;
         }
     }
 }

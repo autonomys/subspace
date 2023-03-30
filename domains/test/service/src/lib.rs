@@ -199,6 +199,7 @@ async fn run_executor(
                 (
                     slot_notification.new_slot_info.slot,
                     slot_notification.new_slot_info.global_challenge,
+                    None,
                 )
             }),
         _phantom: Default::default(),
@@ -285,7 +286,9 @@ async fn run_executor_with_mock_primary_node(
         maybe_relayer_id: None,
     };
     let executor_streams = ExecutorStreams {
-        primary_block_import_throttling_buffer_size: 10,
+        // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
+        // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
+        primary_block_import_throttling_buffer_size: 0,
         subspace_imported_block_notification_stream: mock_primary_node
             .imported_block_notification_stream(),
         client_imported_block_notification_stream: mock_primary_node
@@ -353,6 +356,8 @@ async fn run_executor_with_mock_primary_node(
 
 /// A Cumulus test node instance used for testing.
 pub struct SystemDomainNode {
+    /// The node's key
+    pub key: Sr25519Keyring,
     /// TaskManager's instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -500,6 +505,7 @@ impl SystemDomainNodeBuilder {
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         SystemDomainNode {
+            key: self.key,
             task_manager,
             client,
             backend,
@@ -537,6 +543,7 @@ impl SystemDomainNodeBuilder {
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         SystemDomainNode {
+            key: self.key,
             task_manager,
             client,
             backend,
