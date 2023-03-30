@@ -113,7 +113,7 @@ where
         SC: SelectChain<PBlock>,
         IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-        NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+        NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     {
         let active_leaves =
             active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;

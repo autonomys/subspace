@@ -103,7 +103,7 @@ pub(super) async fn start_worker<
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
@@ -160,12 +160,17 @@ pub(super) async fn start_worker<
                 })
                 .boxed()
         },
-        Box::pin(
-            new_slot_notification_stream.map(|(slot, global_challenge)| ExecutorSlotInfo {
-                slot,
-                global_challenge,
-            }),
-        ),
+        Box::pin(new_slot_notification_stream.map(
+            |(slot, global_challenge, acknowledgement_sender)| {
+                (
+                    ExecutorSlotInfo {
+                        slot,
+                        global_challenge,
+                    },
+                    acknowledgement_sender,
+                )
+            },
+        )),
     );
 
     if is_authority {
@@ -175,6 +180,7 @@ pub(super) async fn start_worker<
         )
         .await;
     } else {
+        drop(handle_slot_notifications_fut);
         handle_block_import_notifications_fut.await
     }
 }

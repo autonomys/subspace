@@ -64,7 +64,7 @@ async fn test_executor_full_node_catching_up() {
     futures::join!(
         alice.wait_for_blocks(3),
         bob.wait_for_blocks(3),
-        ferdie.produce_n_blocks(3),
+        ferdie.produce_blocks(3),
     )
     .2
     .unwrap();

@@ -790,7 +790,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                         // An inbound request failed, either while reading the request or due to
                         // failing to send a response.
                         RequestResponseEvent::InboundFailure { peer, error, .. } => {
-                            warn!(?error, %peer, "Inbound request failed.");
+                            debug!(?error, %peer, "Inbound request failed.");
 
                             let out = Event::InboundRequest {
                                 peer,

@@ -539,6 +539,7 @@ fn main() -> Result<(), Error> {
                                 (
                                     slot_notification.new_slot_info.slot,
                                     slot_notification.new_slot_info.global_challenge,
+                                    None,
                                 )
                             })
                     };
