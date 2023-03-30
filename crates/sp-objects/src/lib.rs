@@ -26,7 +26,6 @@ sp_api::decl_runtime_apis! {
         /// Returns all the validated object call hashes for a given block
         fn validated_object_call_hashes() -> Vec<Hash>;
 
-
         /// Extract block object mapping for a given block
         fn extract_block_object_mapping(block: Block, validated_object_calls: Vec<Hash>) -> BlockObjectMapping;
     }

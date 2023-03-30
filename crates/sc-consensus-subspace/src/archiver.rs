@@ -486,7 +486,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
 
                     best_archived_block_hash = block_hash_to_archive;
 
-                    let block_object_mappings = client
+                    let block_object_mappings = match client
                         .runtime_api()
                         .validated_object_call_hashes(block_hash_to_archive)
                         .and_then(|calls| {
@@ -495,8 +495,16 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                                 block.block.clone(),
                                 calls,
                             )
-                        })
-                        .unwrap_or_default();
+                        }) {
+                        Ok(block_object_mappings) => block_object_mappings,
+                        Err(error) => {
+                            error!(
+                                target: "subspace",
+                                "Failed to retrieve block object mappings: {error}"
+                            );
+                            return;
+                        }
+                    };
 
                     let encoded_block = block.encode();
                     debug!(
