@@ -93,8 +93,8 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    pub async fn new<SE, SC, IBNS, CIBNS, NSNS>(
-        spawn_essential: &SE,
+    pub async fn new<SC, IBNS, CIBNS, NSNS>(
+        spawn_essential: Box<dyn SpawnEssentialNamed>,
         select_chain: &SC,
         params: EssentialExecutorParams<
             Block,
@@ -110,7 +110,6 @@ where
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
-        SE: SpawnEssentialNamed,
         SC: SelectChain<PBlock>,
         IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
@@ -160,6 +159,7 @@ where
             "system-executor-worker",
             None,
             crate::system_domain_worker::start_worker(
+                spawn_essential.clone(),
                 params.primary_chain_client.clone(),
                 params.client.clone(),
                 params.is_authority,

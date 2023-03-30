@@ -369,7 +369,7 @@ where
     let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream", 100);
 
     let executor = SystemExecutor::new(
-        &spawn_essential,
+        Box::new(task_manager.spawn_essential_handle()),
         select_chain,
         EssentialExecutorParams {
             primary_chain_client: primary_chain_client.clone(),
