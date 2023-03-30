@@ -273,8 +273,8 @@ impl Node {
         self.shared.id
     }
 
-    pub fn dsn_connection_observer(&self) -> watch::Receiver<bool> {
-        self.shared.dsn_connection_observer_rx.clone()
+    pub fn online_status_observer(&self) -> watch::Receiver<bool> {
+        self.shared.online_status_observer_rx.clone()
     }
 
     pub async fn get_value(

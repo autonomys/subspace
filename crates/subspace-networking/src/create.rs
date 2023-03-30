@@ -437,14 +437,14 @@ where
     let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
     let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
     // DSN is not connected from the start.
-    let (dsn_connection_observer_tx, dsn_connection_observer_rx) = watch::channel(false);
+    let (online_status_observer_tx, online_status_observer_rx) = watch::channel(false);
 
     let shared = Arc::new(Shared::new(
         local_peer_id,
         command_sender,
         kademlia_tasks_semaphore,
         regular_tasks_semaphore,
-        dsn_connection_observer_rx,
+        online_status_observer_rx,
     ));
     let shared_weak = Arc::downgrade(&shared);
 
@@ -460,7 +460,7 @@ where
         target_connections,
         temporary_bans,
         metrics,
-        dsn_connection_observer_tx,
+        online_status_observer_tx,
     });
 
     Ok((node, node_runner))

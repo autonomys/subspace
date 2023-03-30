@@ -137,16 +137,19 @@ where
             let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
             // Wait until we connect to DSN.
-            let mut dsn_connection_observer = self.node.dsn_connection_observer().clone();
+            let mut online_status_observer = self.node.online_status_observer();
+            // We have a loop because we can be notified about the offline status multiple times
+            // and it will "emit the changed event".
             loop {
-                let dsn_connected = *dsn_connection_observer.borrow();
+                let online = *online_status_observer.borrow();
 
-                if !dsn_connected {
+                if !online {
                     debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. No DSN connection...");
 
-                    if let Err(err) = dsn_connection_observer.changed().await {
+                    // Wait until we get the updates.
+                    if let Err(err) = online_status_observer.changed().await {
                         return Err(backoff::Error::permanent(
-                            format!("DSN observer closed the channel's sender: {err}", ).into(),
+                            format!("DSN status observer closed the channel's sender: {err}", ).into(),
                         ))
                     }
                 } else {
