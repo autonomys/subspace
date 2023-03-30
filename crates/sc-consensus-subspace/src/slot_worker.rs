@@ -142,7 +142,28 @@ where
         slot: Slot,
         _epoch_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
-        debug!(target: "subspace", "Attempting to claim slot {}", slot);
+        let parent_slot = match extract_pre_digest(parent_header) {
+            Ok(pre_digest) => pre_digest.slot,
+            Err(error) => {
+                error!(
+                    target: "subspace",
+                    "Failed to parse pre-digest out of parent header: {error}"
+                );
+
+                return None;
+            }
+        };
+
+        if slot <= parent_slot {
+            debug!(
+                target: "subspace",
+                "Skipping claiming slot {slot} it must be higher than parent slot {parent_slot}",
+            );
+
+            return None;
+        } else {
+            debug!(target: "subspace", "Attempting to claim slot {}", slot);
+        }
 
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
