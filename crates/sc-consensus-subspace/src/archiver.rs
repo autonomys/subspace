@@ -31,7 +31,7 @@ use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::sync::Arc;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, SegmentHeader};
@@ -176,7 +176,7 @@ where
 {
     confirmation_depth_k: BlockNumber,
     archiver: Archiver,
-    older_archived_segments: Vec<ArchivedSegment>,
+    older_archived_segments: Vec<NewArchivedSegment>,
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
@@ -540,7 +540,7 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
 
 async fn send_archived_segment_notification(
     archived_segment_notification_sender: &SubspaceNotificationSender<ArchivedSegmentNotification>,
-    archived_segment: ArchivedSegment,
+    archived_segment: NewArchivedSegment,
 ) {
     let (acknowledgement_sender, mut acknowledgement_receiver) =
         tracing_unbounded::<()>("subspace_acknowledgement", 100);

@@ -57,8 +57,8 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    Piece, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex, SegmentHeader,
-    SegmentIndex, SolutionRange, PIECES_IN_SEGMENT,
+    ArchivedHistorySegment, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex,
+    SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -673,7 +673,7 @@ impl<T: Config> Pallet<T> {
     pub fn total_pieces() -> NonZeroU64 {
         // Chain starts with one segment plotted, even if it is not recorded in the runtime yet
         let number_of_segments = u64::from(SegmentCommitment::<T>::count()).max(1);
-        NonZeroU64::new(number_of_segments * u64::from(PIECES_IN_SEGMENT))
+        NonZeroU64::new(number_of_segments * ArchivedHistorySegment::NUM_PIECES as u64)
             .expect("Neither of multiplied values is zero; qed")
     }
 
@@ -1036,7 +1036,7 @@ impl<T: Config> Pallet<T> {
     pub fn archived_history_size() -> u64 {
         let archived_segments = SegmentCommitment::<T>::count();
 
-        u64::from(archived_segments) * u64::from(PIECES_IN_SEGMENT) * Piece::SIZE as u64
+        u64::from(archived_segments) * ArchivedHistorySegment::SIZE as u64
     }
 
     pub fn chain_constants() -> ChainConstants {

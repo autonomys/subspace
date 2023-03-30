@@ -37,7 +37,7 @@ use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::num::NonZeroU64;
 use std::sync::Once;
-use subspace_archiving::archiver::{ArchivedSegment, Archiver};
+use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
@@ -342,7 +342,7 @@ pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
     }
 }
 
-pub fn create_archived_segment() -> ArchivedSegment {
+pub fn create_archived_segment() -> NewArchivedSegment {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg).unwrap();
 
