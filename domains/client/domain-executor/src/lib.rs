@@ -147,14 +147,14 @@ pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
     /// Pause the primary block import when the primary chain client
     /// runs much faster than the domain client.
     pub primary_block_import_throttling_buffer_size: u32,
-    /// Primary block import notification from `sc-consensus-subspace`.
+    /// Notification about to be imported.
     ///
     /// Fired before the completion of entire block import pipeline.
-    pub subspace_imported_block_notification_stream: IBNS,
-    /// Primary block import nofication from the native client.
+    pub block_importing_notification_stream: IBNS,
+    /// Primary block import notification from the client.
     ///
     /// Fired after the completion of entire block import pipeline.
-    pub client_imported_block_notification_stream: CIBNS,
+    pub imported_block_notification_stream: CIBNS,
     /// New slot arrives.
     pub new_slot_notification_stream: NSNS,
     pub _phantom: PhantomData<PBlock>,

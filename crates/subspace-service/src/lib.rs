@@ -46,7 +46,7 @@ use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, ImportedBlockNotification, NewSlotNotification,
+    ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
@@ -406,9 +406,9 @@ where
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// Block signing stream.
     pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
-    /// Imported block stream.
-    pub imported_block_notification_stream:
-        SubspaceNotificationStream<ImportedBlockNotification<Block>>,
+    /// Stream of notifications about blocks about to be imported.
+    pub block_importing_notification_stream:
+        SubspaceNotificationStream<BlockImportingNotification<Block>>,
     /// Archived segment stream.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -708,7 +708,7 @@ where
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let reward_signing_notification_stream = subspace_link.reward_signing_notification_stream();
-    let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
+    let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if config.role.is_authority() || config.force_new_slot_notifications {
@@ -825,7 +825,7 @@ where
         backend,
         new_slot_notification_stream,
         reward_signing_notification_stream,
-        imported_block_notification_stream,
+        block_importing_notification_stream,
         archived_segment_notification_stream,
         network_starter,
         transaction_pool,

@@ -519,14 +519,14 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                    let imported_block_notification_stream = || {
+                    let block_importing_notification_stream = || {
                         primary_chain_node
-                            .imported_block_notification_stream
+                            .block_importing_notification_stream
                             .subscribe()
-                            .then(|imported_block_notification| async move {
+                            .then(|block_importing_notification| async move {
                                 (
-                                    imported_block_notification.block_number,
-                                    imported_block_notification.block_import_acknowledgement_sender,
+                                    block_importing_notification.block_number,
+                                    block_importing_notification.acknowledgement_sender,
                                 )
                             })
                     };
@@ -549,9 +549,8 @@ fn main() -> Result<(), Error> {
 
                     let executor_streams = ExecutorStreams {
                         primary_block_import_throttling_buffer_size,
-                        subspace_imported_block_notification_stream:
-                            imported_block_notification_stream(),
-                        client_imported_block_notification_stream: primary_chain_node
+                        block_importing_notification_stream: block_importing_notification_stream(),
+                        imported_block_notification_stream: primary_chain_node
                             .client
                             .every_import_notification_stream(),
                         new_slot_notification_stream: new_slot_notification_stream(),
@@ -601,9 +600,9 @@ fn main() -> Result<(), Error> {
 
                         let executor_streams = ExecutorStreams {
                             primary_block_import_throttling_buffer_size,
-                            subspace_imported_block_notification_stream:
-                                imported_block_notification_stream(),
-                            client_imported_block_notification_stream: primary_chain_node
+                            block_importing_notification_stream:
+                                block_importing_notification_stream(),
+                            imported_block_notification_stream: primary_chain_node
                                 .client
                                 .every_import_notification_stream(),
                             new_slot_notification_stream: new_slot_notification_stream(),

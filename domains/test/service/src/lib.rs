@@ -180,16 +180,16 @@ async fn run_executor(
     };
     let executor_streams = ExecutorStreams {
         primary_block_import_throttling_buffer_size: 10,
-        subspace_imported_block_notification_stream: primary_chain_full_node
-            .imported_block_notification_stream
+        block_importing_notification_stream: primary_chain_full_node
+            .block_importing_notification_stream
             .subscribe()
-            .then(|imported_block_notification| async move {
+            .then(|block_importing_notification| async move {
                 (
-                    imported_block_notification.block_number,
-                    imported_block_notification.block_import_acknowledgement_sender,
+                    block_importing_notification.block_number,
+                    block_importing_notification.acknowledgement_sender,
                 )
             }),
-        client_imported_block_notification_stream: primary_chain_full_node
+        imported_block_notification_stream: primary_chain_full_node
             .client
             .every_import_notification_stream(),
         new_slot_notification_stream: primary_chain_full_node
@@ -289,9 +289,9 @@ async fn run_executor_with_mock_primary_node(
         // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
         // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
         primary_block_import_throttling_buffer_size: 0,
-        subspace_imported_block_notification_stream: mock_primary_node
-            .imported_block_notification_stream(),
-        client_imported_block_notification_stream: mock_primary_node
+        block_importing_notification_stream: mock_primary_node
+            .block_importing_notification_stream(),
+        imported_block_notification_stream: mock_primary_node
             .client
             .every_import_notification_stream(),
         new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
