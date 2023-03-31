@@ -1,6 +1,6 @@
 use crate::runtime_api::StateRootExtractor;
 use crate::utils::extract_xdm_proof_state_roots_with_client;
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend};
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
@@ -27,19 +27,9 @@ where
 {
     let api = system_domain_client.runtime_api();
     let best_hash = system_domain_client.info().best_hash;
-    let messenger_api_version = api
-        .api_version::<dyn MessengerApi<SBlock, NumberFor<SBlock>>>(best_hash)?
-        .ok_or_else(|| {
-            Error::Application(
-                format!("Could not find `MessengerApi` api for block `{best_hash:?}`.").into(),
-            )
-        })?;
-    if let Ok(Some(state_roots)) = extract_xdm_proof_state_roots_with_client(
-        messenger_api_version,
-        &*api,
-        best_hash,
-        extrinsic,
-    ) {
+    if let Ok(Some(state_roots)) =
+        extract_xdm_proof_state_roots_with_client(&*api, best_hash, extrinsic)
+    {
         // verify system domain state root
         let header = system_domain_client
             .header(state_roots.system_domain_block_info.block_hash)?

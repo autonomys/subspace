@@ -5,7 +5,7 @@ use crate::runtime_api::{
 use crate::utils::extract_xdm_proof_state_roots_with_client;
 use codec::Codec;
 use domain_runtime_primitives::DomainCoreApi;
-use sp_api::{ApiError, ApiExt, BlockT, ProvideRuntimeApi};
+use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
@@ -44,20 +44,7 @@ where
         ext: &Block::Extrinsic,
     ) -> Result<ExtractedStateRoots<Block>, ApiError> {
         let api = self.client.runtime_api();
-        let messenger_api_version = api
-            .api_version::<dyn MessengerApi<Block, NumberFor<Block>>>(best_hash)?
-            .ok_or_else(|| {
-                ApiError::Application(
-                    format!("Could not find `MessengerApi` api for block `{best_hash:?}`.").into(),
-                )
-            })?;
-
-        let maybe_state_roots = extract_xdm_proof_state_roots_with_client(
-            messenger_api_version,
-            &*api,
-            best_hash,
-            ext,
-        )?;
+        let maybe_state_roots = extract_xdm_proof_state_roots_with_client(&*api, best_hash, ext)?;
 
         maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
