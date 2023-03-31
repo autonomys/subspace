@@ -195,13 +195,13 @@ impl MockPrimaryNode {
         rx
     }
 
-    /// Subscribe the block import notification
-    pub fn imported_block_notification_stream(
+    /// Subscribe the block importing notification
+    pub fn block_importing_notification_stream(
         &mut self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.block_import
-            .imported_block_notification_subscribers
+            .block_importing_notification_subscribers
             .push(tx);
         rx
     }
@@ -382,7 +382,7 @@ impl MockPrimaryNode {
 struct MockBlockImport<Inner, Client, Block: BlockT> {
     inner: Inner,
     client: Arc<Client>,
-    imported_block_notification_subscribers:
+    block_importing_notification_subscribers:
         Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>,
 }
 
@@ -391,7 +391,7 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
         MockBlockImport {
             inner,
             client,
-            imported_block_notification_subscribers: Vec::new(),
+            block_importing_notification_subscribers: Vec::new(),
         }
     }
 }
@@ -422,18 +422,17 @@ where
         ));
 
         let import_result = self.inner.import_block(block, new_cache).await?;
-        let (block_import_acknowledgement_sender, mut block_import_acknowledgement_receiver) =
-            mpsc::channel(0);
+        let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `block_import_acknowledgement_sender` after the notification otherwise the receiver
         // will block forever as there is still a sender not closed.
         {
-            let value = (block_number, block_import_acknowledgement_sender);
-            self.imported_block_notification_subscribers
+            let value = (block_number, acknowledgement_sender);
+            self.block_importing_notification_subscribers
                 .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
         }
 
-        while (block_import_acknowledgement_receiver.next().await).is_some() {
+        while (acknowledgement_receiver.next().await).is_some() {
             // Wait for all the acknowledgements to progress.
         }
 

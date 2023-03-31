@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    get_chain_constants, ArchivedSegmentNotification, ImportedBlockNotification, SubspaceLink,
+    get_chain_constants, ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
     SubspaceNotificationSender,
 };
 use codec::Encode;
@@ -414,8 +414,9 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
         "subspace-archiver",
         None,
         Box::pin({
-            let mut imported_block_notification_stream =
-                subspace_link.imported_block_notification_stream.subscribe();
+            let mut block_importing_notification_stream = subspace_link
+                .block_importing_notification_stream
+                .subscribe();
             let archived_segment_notification_sender =
                 subspace_link.archived_segment_notification_sender.clone();
             let segment_headers = Arc::clone(&subspace_link.segment_headers);
@@ -430,13 +431,13 @@ pub fn start_subspace_archiver<Block, Backend, Client>(
                     .await;
                 }
 
-                while let Some(ImportedBlockNotification {
+                while let Some(BlockImportingNotification {
                     block_number,
                     // Just to be very explicit that block import shouldn't continue until archiving
                     // is over
-                    block_import_acknowledgement_sender: _block_import_acknowledgement_sender,
+                    acknowledgement_sender: _acknowledgement_sender,
                     ..
-                }) = imported_block_notification_stream.next().await
+                }) = block_importing_notification_stream.next().await
                 {
                     let block_number_to_archive =
                         match block_number.checked_sub(&confirmation_depth_k.into()) {

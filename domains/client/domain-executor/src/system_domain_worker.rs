@@ -111,8 +111,8 @@ pub(super) async fn start_worker<
 
     let ExecutorStreams {
         primary_block_import_throttling_buffer_size,
-        subspace_imported_block_notification_stream,
-        client_imported_block_notification_stream,
+        block_importing_notification_stream,
+        imported_block_notification_stream,
         new_slot_notification_stream,
         _phantom,
     } = executor_streams;
@@ -143,8 +143,8 @@ pub(super) async fn start_worker<
                      }| (hash, number),
                 )
                 .collect(),
-            Box::pin(subspace_imported_block_notification_stream),
-            Box::pin(client_imported_block_notification_stream),
+            Box::pin(block_importing_notification_stream),
+            Box::pin(imported_block_notification_stream),
             primary_block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
