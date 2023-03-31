@@ -449,7 +449,7 @@ pub struct SubspaceLink<Block: BlockT> {
     imported_block_notification_stream:
         SubspaceNotificationStream<ImportedBlockNotification<Block>>,
     /// Segment headers that are expected to appear in the corresponding blocks, used for block
-    /// validation
+    /// production and validation
     segment_headers: Arc<Mutex<LruCache<NumberFor<Block>, Vec<SegmentHeader>>>>,
     kzg: Kzg,
 }
