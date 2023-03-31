@@ -484,7 +484,7 @@ where
 
                 api_result.map(|maybe_segment_commitment| {
                     // This is not a very nice hack due to the fact that at the time first block is
-                    //  producedextrinsics with segment headers are not yet in runtime.
+                    //  produced extrinsics with segment headers are not yet in runtime.
                     if maybe_segment_commitment.is_none() && best_block_number.is_zero() {
                         self.subspace_link
                             .segment_commitment_by_segment_index(segment_index)
