@@ -1,4 +1,4 @@
-use domain_client_executor::xdm_verifier::verify_xdm_with_system_domain_client;
+use domain_client_block_preprocessor::xdm_verifier::verify_xdm_with_system_domain_client;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;

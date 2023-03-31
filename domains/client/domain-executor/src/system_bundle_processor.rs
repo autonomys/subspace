@@ -1,8 +1,8 @@
-use crate::domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
-use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
+use domain_block_preprocessor::preprocessor::SystemDomainBlockPreprocessor;
+use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -26,9 +26,10 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: SyncCryptoStorePtr,
-    system_domain_block_preprocessor: SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient>,
+    system_domain_block_preprocessor:
+        SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    state_root_extractor: StateRootExtractorWithSystemDomainClient<Client>,
+    state_root_extractor: RuntimeApiFull<Client>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -85,8 +86,10 @@ where
         keystore: SyncCryptoStorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let system_domain_block_preprocessor =
-            SystemDomainBlockPreprocessor::new(client.clone(), primary_chain_client.clone());
+        let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(
+            primary_chain_client.clone(),
+            RuntimeApiFull::new(client.clone()),
+        );
         Self {
             primary_chain_client,
             client: client.clone(),
@@ -94,7 +97,7 @@ where
             keystore,
             system_domain_block_preprocessor,
             domain_block_processor,
-            state_root_extractor: StateRootExtractorWithSystemDomainClient::new(client),
+            state_root_extractor: RuntimeApiFull::new(client),
         }
     }
 

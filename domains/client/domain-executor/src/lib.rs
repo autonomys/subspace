@@ -86,7 +86,6 @@ mod core_bundle_processor;
 mod core_domain_worker;
 mod core_executor;
 mod core_gossip_message_validator;
-mod domain_block_preprocessor;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
@@ -94,7 +93,6 @@ mod domain_worker;
 mod fraud_proof;
 mod gossip_message_validator;
 mod parent_chain;
-pub mod state_root_extractor;
 mod system_bundle_processor;
 mod system_domain_worker;
 mod system_executor;
@@ -102,7 +100,6 @@ mod system_gossip_message_validator;
 #[cfg(test)]
 mod tests;
 mod utils;
-pub mod xdm_verifier;
 
 pub use self::core_executor::Executor as CoreExecutor;
 pub use self::core_gossip_message_validator::CoreGossipMessageValidator;

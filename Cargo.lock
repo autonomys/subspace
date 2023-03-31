@@ -2180,6 +2180,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-block-preprocessor"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "parity-scale-codec",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "sc-client-api",
+ "sc-executor",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-keyring",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-state-machine",
+ "subspace-core-primitives",
+ "subspace-wasm-tools",
+ "system-runtime-primitives",
+ "tracing",
+]
+
+[[package]]
 name = "domain-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
@@ -2201,28 +2225,23 @@ dependencies = [
  "core-payments-domain-runtime",
  "crossbeam",
  "domain-block-builder",
+ "domain-block-preprocessor",
  "domain-client-executor-gossip",
  "domain-runtime-primitives",
  "domain-test-service",
  "futures 0.3.27",
  "futures-timer",
- "pallet-balances",
  "pallet-domains",
  "parity-scale-codec",
- "parking_lot 0.12.1",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
  "sc-executor",
  "sc-executor-common",
- "sc-network",
  "sc-service",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
- "schnorrkel",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -2231,7 +2250,6 @@ dependencies = [
  "sp-core",
  "sp-domain-digests",
  "sp-domains",
- "sp-keyring",
  "sp-keystore",
  "sp-messenger",
  "sp-runtime",
@@ -2332,6 +2350,7 @@ dependencies = [
  "async-trait",
  "clap 4.1.13",
  "cross-domain-message-gossip",
+ "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",

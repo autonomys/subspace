@@ -1,4 +1,4 @@
-use crate::state_root_extractor::StateRootExtractor;
+use crate::runtime_api::StateRootExtractor;
 use crate::utils::extract_xdm_proof_state_roots_with_client;
 use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{Error, HeaderBackend};
@@ -91,6 +91,7 @@ where
 /// Returns Error when required calls to fetch header info fails.
 pub fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
     primary_chain_client: &Arc<PClient>,
+    at: SBlock::Hash,
     state_root_extractor: &SRE,
     extrinsic: &SBlock::Extrinsic,
 ) -> Result<bool, Error>
@@ -103,7 +104,6 @@ where
     PBlock::Hash: From<SBlock::Hash>,
     SRE: StateRootExtractor<SBlock>,
 {
-    let at = state_root_extractor.block_hash();
     if let Ok(state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {
         // verify system domain state root
         let best_hash = primary_chain_client.info().best_hash;

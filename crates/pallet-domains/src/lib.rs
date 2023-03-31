@@ -292,7 +292,10 @@ mod pallet {
                     signed_opaque_bundle,
                 } => {
                     if let Err(e) = Self::validate_bundle(signed_opaque_bundle) {
-                        log::error!(target: "runtime::domains", "Bad bundle, error: {e:?}");
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Bad bundle {:?}, error: {e:?}", signed_opaque_bundle.domain_id(),
+                        );
                         if let BundleError::Receipt(_) = e {
                             return InvalidTransactionCode::ExecutionReceipt.into();
                         } else {
@@ -312,7 +315,7 @@ mod pallet {
                 Call::submit_fraud_proof { fraud_proof } => {
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domains",
                             "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
                         );
@@ -328,7 +331,7 @@ mod pallet {
                     if let Err(e) =
                         Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domains",
                             "Bad bundle equivocation proof: {bundle_equivocation_proof:?}, error: {e:?}",
                         );
@@ -346,7 +349,7 @@ mod pallet {
                     if let Err(e) =
                         Self::validate_invalid_transaction_proof(invalid_transaction_proof)
                     {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domains",
                             "Bad invalid transaction proof: {invalid_transaction_proof:?}, error: {e:?}",
                         );
@@ -413,7 +416,7 @@ impl<T: Config> Pallet<T> {
                         DomainId::SYSTEM,
                         receipt,
                     ) {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
                             expected: {:?}, got: {:?}",
@@ -430,7 +433,7 @@ impl<T: Config> Pallet<T> {
                         DomainId::SYSTEM,
                         receipt,
                     ) {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
                             expected: {:?}, got: {:?}",
@@ -499,7 +502,7 @@ impl<T: Config> Pallet<T> {
                 ))
                 .ok_or(BundleError::StateRootNotFound)
                 .map_err(|err| {
-                    log::error!(
+                    log::debug!(
                         target: "runtime::domains",
                         "State root for #{block_number:?},{block_hash:?} not found, \
                         current head receipt: {:?}",
@@ -510,7 +513,7 @@ impl<T: Config> Pallet<T> {
             };
 
             if expected_state_root != *state_root {
-                log::error!(
+                log::debug!(
                     target: "runtime::domains",
                     "Bad state root for #{block_number:?},{block_hash:?}, \
                     expected: {expected_state_root:?}, got: {state_root:?}",
@@ -578,7 +581,7 @@ impl<T: Config> Pallet<T> {
                 };
 
                 if is_stale_bundle {
-                    log::error!(
+                    log::debug!(
                         target: "runtime::domains",
                         "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
                         ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
@@ -635,7 +638,7 @@ impl<T: Config> Pallet<T> {
                 };
 
             if !bundle_created_on_valid_primary_block {
-                log::error!(
+                log::debug!(
                     target: "runtime::domains",
                     "Bundle is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
                     bundle.header.primary_number,
@@ -679,7 +682,7 @@ impl<T: Config> Pallet<T> {
                     );
 
                 if !point_to_parent_block && !point_to_valid_primary_block {
-                    log::error!(
+                    log::debug!(
                         target: "runtime::domains",
                         "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
                         expected: #{primary_number:?},{:?}",
@@ -691,7 +694,7 @@ impl<T: Config> Pallet<T> {
 
                 // Ensure the receipt is not too new.
                 if primary_number == current_block_number || primary_number > max_allowed {
-                    log::error!(
+                    log::debug!(
                         target: "runtime::domains",
                         "Receipt for #{primary_number:?} is too far in future, \
                         current_block_number: {current_block_number:?}, max_allowed: {max_allowed:?}",
