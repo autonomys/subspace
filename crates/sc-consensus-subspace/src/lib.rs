@@ -29,7 +29,7 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
-pub use archiver::start_subspace_archiver;
+pub use archiver::create_subspace_archiver;
 use codec::Encode;
 use futures::channel::mpsc;
 use futures::StreamExt;

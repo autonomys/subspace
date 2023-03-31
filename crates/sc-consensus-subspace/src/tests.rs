@@ -57,6 +57,7 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_core::crypto::UncheckedFrom;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{Block as BlockT, Zero};
@@ -494,12 +495,11 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
         let task_manager =
             TaskManager::new(sc_cli::build_runtime().unwrap().handle().clone(), None).unwrap();
 
-        super::start_subspace_archiver(
-            &data.link,
-            client.clone(),
-            None,
-            &task_manager.spawn_essential_handle(),
-        );
+        let subspace_archiver = super::create_subspace_archiver(&data.link, client.clone(), None);
+
+        task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
         let (archived_pieces_sender, archived_pieces_receiver) = oneshot::channel();
 

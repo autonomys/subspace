@@ -650,12 +650,15 @@ where
         }
     };
 
-    sc_consensus_subspace::start_subspace_archiver(
+    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
         &subspace_link,
         client.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
-        &task_manager.spawn_essential_handle(),
     );
+
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
     if config.sync_from_dsn {
         import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
