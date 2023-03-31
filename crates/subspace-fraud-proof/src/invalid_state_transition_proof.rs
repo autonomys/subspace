@@ -7,7 +7,7 @@
 
 use codec::{Codec, Decode, Encode};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
-use domain_block_preprocessor::SystemDomainBlockPreprocessor;
+use domain_block_preprocessor::{CoreDomainBlockPreprocessor, SystemDomainBlockPreprocessor};
 use domain_runtime_primitives::opaque::Block;
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, BlockBackend, HeaderBackend};
@@ -16,6 +16,7 @@ use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::{DomainId, ExecutorApi};
+use sp_messenger::MessengerApi;
 use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_state_machine::backend::AsTrieBackend;
@@ -24,6 +25,7 @@ use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
+use system_runtime_primitives::SystemDomainApi;
 
 /// Creates storage proof for verifying an execution without owning the whole state.
 pub struct ExecutionProver<Block, B, Exec> {
@@ -410,17 +412,6 @@ pub trait BuildDomainExtrinsics<PBlock: BlockT> {
     ) -> sp_blockchain::Result<Vec<Vec<u8>>>;
 }
 
-impl<PBlock: BlockT> BuildDomainExtrinsics<PBlock> for () {
-    fn build_domain_extrinsics(
-        &self,
-        domain_id: DomainId,
-        primary_hash: <PBlock as BlockT>::Hash,
-        domain_runtime: Vec<u8>,
-    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
-        todo!("Remove this empty impl once CoreDomainExtrinsicsBuilder is ready")
-    }
-}
-
 /// Utility to build the system domain extrinsics.
 pub struct SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor> {
     primary_chain_client: Arc<PClient>,
@@ -487,6 +478,95 @@ where
         domain_runtime: Vec<u8>,
     ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
         self.build_system_domain_extrinsics(primary_hash, domain_runtime)
+    }
+}
+
+/// Utility to build the core domain extrinsics.
+pub struct CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor> {
+    primary_chain_client: Arc<PClient>,
+    system_domain_client: Arc<SClient>,
+    executor: Arc<Executor>,
+    _phantom: PhantomData<(PBlock, SBlock)>,
+}
+
+impl<PBlock, SBlock, PClient, SClient, Executor>
+    CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor>
+where
+    PBlock: BlockT,
+    PBlock::Hash: From<sp_core::H256>,
+    SBlock: BlockT,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
+    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
+    Executor: CodeExecutor,
+{
+    /// Constructs a new instance of [`CoreDomainExtrinsicsBuilder`].
+    pub fn new(
+        primary_chain_client: Arc<PClient>,
+        system_domain_client: Arc<SClient>,
+        executor: Arc<Executor>,
+    ) -> Self {
+        Self {
+            primary_chain_client,
+            system_domain_client,
+            executor,
+            _phantom: Default::default(),
+        }
+    }
+
+    fn build_core_domain_extrinsics(
+        &self,
+        domain_id: DomainId,
+        primary_hash: PBlock::Hash,
+        runtime_code: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        let core_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+        let domain_extrinsics = CoreDomainBlockPreprocessor::<Block, _, _, _, _, _>::new(
+            domain_id,
+            core_runtime_api_light,
+            self.primary_chain_client.clone(),
+            self.system_domain_client.clone(),
+        )
+        .preprocess_primary_block_for_verifier(primary_hash)?;
+        Ok(domain_extrinsics)
+    }
+}
+
+impl<PBlock, SBlock, PClient, SClient, Executor> BuildDomainExtrinsics<PBlock>
+    for CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor>
+where
+    PBlock: BlockT,
+    PBlock::Hash: From<sp_core::H256>,
+    SBlock: BlockT,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
+    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
+    Executor: CodeExecutor,
+{
+    fn build_domain_extrinsics(
+        &self,
+        domain_id: DomainId,
+        primary_hash: <PBlock as BlockT>::Hash,
+        domain_runtime: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        self.build_core_domain_extrinsics(domain_id, primary_hash, domain_runtime)
     }
 }
 

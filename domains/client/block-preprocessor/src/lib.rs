@@ -425,6 +425,19 @@ where
         }
     }
 
+    pub fn preprocess_primary_block_for_verifier(
+        &self,
+        primary_hash: PBlock::Hash,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
+        let domain_hash = Default::default();
+        Ok(self
+            .preprocess_primary_block(primary_hash, domain_hash)?
+            .into_iter()
+            .map(|ext| ext.encode())
+            .collect())
+    }
+
     pub fn preprocess_primary_block(
         &self,
         primary_hash: PBlock::Hash,
