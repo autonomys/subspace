@@ -1,5 +1,6 @@
 use crate::runtime_api::{
-    CoreBundleConstructor, ExtractedStateRoots, SetCodeConstructor, StateRootExtractor,
+    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor,
 };
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
@@ -192,6 +193,20 @@ where
         <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>>::construct_submit_core_bundle_extrinsics(
             self, at, signed_opaque_bundles,
         )
+    }
+}
+
+impl<Executor, Block> SignerExtractor<Block, AccountId> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
+{
+    fn extract_signer(
+        &self,
+        at: Block::Hash,
+        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+    ) -> Result<ExtractSignerResult<Block, AccountId>, ApiError> {
+        <Self as DomainCoreApi<Block, AccountId>>::extract_signer(self, at, extrinsics)
     }
 }
 
