@@ -110,13 +110,13 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3c Core Eth Relay Domain",
+        "Subspace Gemini 3d Core Eth Relay Domain",
         // ID
-        "subspace_gemini_3c_core_eth_relay_domain",
-        ChainType::Local,
+        "subspace_gemini_3d_core_eth_relay_domain",
+        ChainType::Live,
         move || {
             let sudo_account =
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
@@ -138,7 +138,7 @@ pub fn gemini_3c_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3c-core-core-eth-relay-domain"),
+        Some("subspace-gemini-3d-core-core-eth-relay-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -191,7 +191,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
 pub fn load_chain_spec(spec_id: &str) -> std::result::Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
         "dev" => development_config(),
-        "gemini-3c" => gemini_3c_config(),
+        "gemini-3d" => gemini_3d_config(),
         "devnet" => devnet_config(),
         "" | "local" => local_testnet_config(),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
