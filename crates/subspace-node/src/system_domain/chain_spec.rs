@@ -230,24 +230,52 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
                     )
                     .expect("Wrong executor public key"),
                 )],
-                vec![(
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
-                        .expect("Wrong executor account address"),
-                    1_000 * SSC,
-                    DomainConfig {
-                        wasm_runtime_hash: blake2b_256_hash(
-                            system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                vec![
+                    (
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
                         )
-                        .into(),
-                        max_bundle_size: 4 * 1024 * 1024,
-                        bundle_slot_probability: (1, 1),
-                        max_bundle_weight: Weight::MAX,
-                        min_operator_stake: 100 * SSC,
-                    },
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
-                    Percent::from_percent(10),
-                )],
+                        1_000 * SSC,
+                        DomainConfig {
+                            wasm_runtime_hash: blake2b_256_hash(
+                                system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                            )
+                            .into(),
+                            max_bundle_size: 4 * 1024 * 1024,
+                            bundle_slot_probability: (1, 1),
+                            max_bundle_weight: Weight::MAX,
+                            min_operator_stake: 100 * SSC,
+                        },
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
+                        )
+                        .expect("Wrong executor account address"),
+                        Percent::from_percent(10),
+                    ),
+                    (
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
+                        )
+                        .expect("Wrong executor account address"),
+                        1_000 * SSC,
+                        DomainConfig {
+                            wasm_runtime_hash: blake2b_256_hash(
+                                system_domain_runtime::CORE_ETH_RELAY_WASM_BUNDLE,
+                            )
+                            .into(),
+                            max_bundle_size: 4 * 1024 * 1024,
+                            bundle_slot_probability: (1, 1),
+                            max_bundle_weight: Weight::MAX,
+                            min_operator_stake: 100 * SSC,
+                        },
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
+                        )
+                        .expect("Wrong executor account address"),
+                        Percent::from_percent(10),
+                    ),
+                ],
                 Some(sudo_account),
                 Default::default(),
             )
@@ -296,24 +324,52 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     )
                     .expect("Wrong executor public key"),
                 )],
-                vec![(
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
-                        .expect("Wrong executor account address"),
-                    1_000 * SSC,
-                    DomainConfig {
-                        wasm_runtime_hash: blake2b_256_hash(
-                            system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                vec![
+                    (
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
                         )
-                        .into(),
-                        max_bundle_size: 4 * 1024 * 1024,
-                        bundle_slot_probability: (1, 1),
-                        max_bundle_weight: Weight::MAX,
-                        min_operator_stake: 100 * SSC,
-                    },
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
                         .expect("Wrong executor account address"),
-                    Percent::from_percent(10),
-                )],
+                        1_000 * SSC,
+                        DomainConfig {
+                            wasm_runtime_hash: blake2b_256_hash(
+                                system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
+                            )
+                            .into(),
+                            max_bundle_size: 4 * 1024 * 1024,
+                            bundle_slot_probability: (1, 1),
+                            max_bundle_weight: Weight::MAX,
+                            min_operator_stake: 100 * SSC,
+                        },
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
+                        )
+                        .expect("Wrong executor account address"),
+                        Percent::from_percent(10),
+                    ),
+                    (
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
+                        )
+                        .expect("Wrong executor account address"),
+                        1_000 * SSC,
+                        DomainConfig {
+                            wasm_runtime_hash: blake2b_256_hash(
+                                system_domain_runtime::CORE_ETH_RELAY_WASM_BUNDLE,
+                            )
+                            .into(),
+                            max_bundle_size: 4 * 1024 * 1024,
+                            bundle_slot_probability: (1, 1),
+                            max_bundle_weight: Weight::MAX,
+                            min_operator_stake: 100 * SSC,
+                        },
+                        AccountId::from_ss58check(
+                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
+                        )
+                        .expect("Wrong executor account address"),
+                        Percent::from_percent(10),
+                    ),
+                ],
                 Some(sudo_account.clone()),
                 vec![(
                     sudo_account,
