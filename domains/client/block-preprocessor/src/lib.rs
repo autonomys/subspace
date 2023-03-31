@@ -6,4 +6,5 @@ pub mod preprocessor;
 pub mod runtime_api;
 pub mod runtime_api_full;
 pub mod runtime_api_light;
+mod utils;
 pub mod xdm_verifier;

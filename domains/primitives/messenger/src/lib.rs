@@ -26,6 +26,7 @@ use messages::{
     CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
 };
 use sp_domains::DomainId;
+use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
@@ -68,9 +69,15 @@ sp_api::decl_runtime_apis! {
     }
 
     /// Api to provide XDM extraction from Runtime Calls.
+    #[api_version(2)]
     pub trait MessengerApi<BlockNumber> where BlockNumber: Encode + Decode{
+        #[changed_in(2)]
         fn extract_xdm_proof_state_roots(
             extrinsic: &Block::Extrinsic
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
+
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
 
         fn confirmation_depth() -> BlockNumber;

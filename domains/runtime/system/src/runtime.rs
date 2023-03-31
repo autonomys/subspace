@@ -1,3 +1,4 @@
+use codec::Decode;
 use domain_runtime_primitives::{opaque, RelayerId};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
@@ -89,7 +90,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-system-domain"),
     impl_name: create_runtime_str!("subspace-system-domain"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 2,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -660,7 +661,7 @@ impl_runtime_apis! {
 
     impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
         fn extract_xdm_proof_state_roots(
-            extrinsic: &<Block as BlockT>::Extrinsic,
+            extrinsic: Vec<u8>,
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
             extract_xdm_proof_state_roots(extrinsic)
         }
@@ -727,15 +728,19 @@ impl_runtime_apis! {
 }
 
 fn extract_xdm_proof_state_roots(
-    ext: &UncheckedExtrinsic,
+    encoded_ext: Vec<u8>,
 ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
-    match &ext.function {
-        RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
-            msg.extract_state_roots_from_proof::<BlakeTwo256>()
+    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
+        match &ext.function {
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            _ => None,
         }
-        RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
-            msg.extract_state_roots_from_proof::<BlakeTwo256>()
-        }
-        _ => None,
+    } else {
+        None
     }
 }

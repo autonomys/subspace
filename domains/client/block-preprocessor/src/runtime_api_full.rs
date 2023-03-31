@@ -2,6 +2,7 @@ use crate::runtime_api::{
     CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SignerExtractor,
     StateRootExtractor,
 };
+use crate::utils::extract_xdm_proof_state_roots_with_client;
 use codec::Codec;
 use domain_runtime_primitives::DomainCoreApi;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
@@ -43,10 +44,9 @@ where
         ext: &Block::Extrinsic,
     ) -> Result<ExtractedStateRoots<Block>, ApiError> {
         let api = self.client.runtime_api();
-        api.extract_xdm_proof_state_roots(best_hash, ext)
-            .and_then(|maybe_state_roots| {
-                maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
-            })
+        let maybe_state_roots = extract_xdm_proof_state_roots_with_client(&*api, best_hash, ext)?;
+
+        maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
 }
 
