@@ -84,9 +84,8 @@ async fn test_executor_full_node_catching_up() {
     );
 }
 
-// TODO: This test fails if running all the tests in this crate
-// with `cargo test -- --ignored`, but passes if running individually, `cargo nextest run` also
-// passes.
+// TODO: enable the test after we can fetch call_data from the original primary block, currently the test
+// will fail due to `panicked at 'Bad input data provided to initialize_block_with_post_state_root: Codec error'`
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
@@ -99,14 +98,11 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
         tokio_handle.clone(),
         Ferdie,
-        vec![],
         BasePath::new(directory.path().join("ferdie")),
-    )
-    .await;
-    ferdie_network_starter.start_network();
+    );
 
     // Run Alice (a system domain authority node)
     let alice = domain_test_service::SystemDomainNodeBuilder::new(
@@ -114,15 +110,44 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .connect_to_primary_chain_node(&ferdie)
-    .build(Role::Authority, false, true)
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    alice.wait_for_blocks(3).await;
+    // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
+    // after https://github.com/subspace/subspace/issues/1301 is resolved.
+    futures::join!(alice.wait_for_blocks(2), ferdie.produce_blocks(2))
+        .1
+        .unwrap();
+
+    // Get a bundle from the txn pool and change its receipt to an invalid one
+    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let bad_bundle = {
+        let mut signed_opaque_bundle = ferdie
+            .get_bundle_from_tx_pool(slot.into(), alice.key)
+            .unwrap();
+        signed_opaque_bundle.bundle.receipts[0].trace[0] = Default::default();
+        signed_opaque_bundle
+    };
+    let bad_receipt = bad_bundle.bundle.receipts[0].clone();
+    let bad_receipt_number = bad_receipt.primary_number;
+
+    // Submit the bad receipt to the primary chain
+    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        pallet_domains::Call::submit_bundle {
+            signed_opaque_bundle: bad_bundle,
+        }
+        .into(),
+    );
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_extrinsics(vec![submit_bundle_tx.into()]),
+    )
+    .1
+    .unwrap();
 
     let header = alice
         .client
-        .header(alice.client.hash(1).unwrap().unwrap())
+        .header(alice.client.hash(bad_receipt_number).unwrap().unwrap())
         .unwrap()
         .unwrap();
     let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
@@ -140,18 +165,18 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     );
 
     let digest = {
-        let primary_block_info =
-            DigestItem::primary_block_info((1, ferdie.client.hash(1).unwrap().unwrap()));
-
         Digest {
-            logs: vec![primary_block_info],
+            logs: vec![DigestItem::primary_block_info((
+                bad_receipt_number,
+                ferdie.client.hash(bad_receipt_number).unwrap().unwrap(),
+            ))],
         }
     };
 
     let new_header = Header::new(
         *header.number(),
         header.hash(),
-        Default::default(),
+        *header.state_root(),
         parent_header.hash(),
         digest,
     );
@@ -171,15 +196,20 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let header_ferdie = ferdie
         .client
-        .header(ferdie.client.hash(1).unwrap().unwrap())
+        .header(ferdie.client.hash(bad_receipt_number).unwrap().unwrap())
         .unwrap()
         .unwrap();
-    let parent_hash_ferdie = header_ferdie.hash();
-    let parent_number_ferdie = *header_ferdie.number();
+    let parent_header_ferdie = ferdie
+        .client
+        .header(*header_ferdie.parent_hash())
+        .unwrap()
+        .unwrap();
+    let parent_hash_ferdie = parent_header_ferdie.hash();
+    let parent_number_ferdie = *parent_header_ferdie.number();
 
     let good_invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: DomainId::SYSTEM,
-        bad_receipt_hash: Hash::random(),
+        bad_receipt_hash: bad_receipt.hash(),
         parent_number: parent_number_ferdie,
         primary_parent_hash: parent_hash_ferdie,
         pre_state_root: *parent_header.state_root(),
