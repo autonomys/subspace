@@ -1,23 +1,14 @@
 //! Subspace fraud proof
-//!
-//! This crates provides the feature of generating and verifying the execution proof used in
-//! the Subspace fraud proof mechanism. The execution is more fine-grained than the entire
-//! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
-//! specific extrinsic execution are supported.
 
 #![warn(missing_docs)]
 
-mod invalid_state_transition_proof;
+pub mod invalid_state_transition_proof;
 #[cfg(test)]
 mod tests;
 
 use futures::channel::oneshot;
 use futures::FutureExt;
 use invalid_state_transition_proof::VerifyInvalidStateTransitionProof;
-pub use invalid_state_transition_proof::{
-    ExecutionProver, InvalidStateTransitionProofVerifier, PrePostStateRootVerifier,
-    VerifyPrePostStateRoot,
-};
 use sp_core::traits::SpawnNamed;
 use sp_domains::fraud_proof::{FraudProof, VerificationError};
 use sp_runtime::traits::{Block as BlockT, NumberFor};

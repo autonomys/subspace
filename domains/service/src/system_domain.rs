@@ -39,6 +39,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -116,13 +117,13 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
 >;
 
 type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_fraud_proof::InvalidStateTransitionProofVerifier<
+    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
         PBlock,
         PClient,
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
     >;
 
 type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
@@ -204,11 +205,11 @@ where
     });
 
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
-        subspace_fraud_proof::InvalidStateTransitionProofVerifier::new(
+        InvalidStateTransitionProofVerifier::new(
             primary_chain_client.clone(),
             executor.clone(),
             task_manager.spawn_handle(),
-            subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
+            PrePostStateRootVerifier::new(client.clone()),
         ),
     ));
 

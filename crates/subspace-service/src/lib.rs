@@ -76,6 +76,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{peer_id, Node};
@@ -129,16 +130,13 @@ pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::InvalidStateTransitionProofVerifier<
+    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
         NativeElseWasmExecutor<ExecutorDispatch>,
         SpawnTaskHandle,
         Hash,
-        subspace_fraud_proof::PrePostStateRootVerifier<
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            Block,
-        >,
+        PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
     >;
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
@@ -301,11 +299,11 @@ where
     let bundle_validator = BundleValidator::new(client.clone());
 
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
-        subspace_fraud_proof::InvalidStateTransitionProofVerifier::new(
+        InvalidStateTransitionProofVerifier::new(
             client.clone(),
             executor,
             task_manager.spawn_handle(),
-            subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
+            PrePostStateRootVerifier::new(client.clone()),
         ),
     ));
     let tx_pre_validator = PrimaryChainTxPreValidator::new(

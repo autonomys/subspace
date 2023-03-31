@@ -1,3 +1,10 @@
+//! Invalid state transition proof
+//!
+//! This module provides the feature of generating and verifying the execution proof used in
+//! the Subspace fraud proof mechanism. The execution is more fine-grained than the entire
+//! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
+//! specific extrinsic execution are supported.
+
 use codec::{Codec, Decode, Encode};
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, HeaderBackend};

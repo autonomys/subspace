@@ -21,6 +21,7 @@ use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use subspace_core_primitives::BlockNumber;
+use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_test_service::mock::MockPrimaryNode;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
@@ -132,7 +133,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .intermediate_roots(header.hash())
         .expect("Get intermediate roots");
 
-    let prover = subspace_fraud_proof::ExecutionProver::new(
+    let prover = ExecutionProver::new(
         alice.backend.clone(),
         alice.code_executor.clone(),
         Box::new(alice.task_manager.spawn_handle()),
