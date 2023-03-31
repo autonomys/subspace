@@ -1,8 +1,8 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
-use domain_block_preprocessor::preprocessor::SystemDomainBlockPreprocessor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
+use domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
