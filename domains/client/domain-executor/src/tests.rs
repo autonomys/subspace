@@ -362,13 +362,11 @@ async fn extract_core_domain_wasm_bundle_in_system_domain_runtime_should_work() 
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, _ferdie_network_starter) = run_primary_chain_validator_node(
-        tokio_handle.clone(),
+    let ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle,
         Ferdie,
-        vec![],
         BasePath::new(directory.path().join("ferdie")),
-    )
-    .await;
+    );
 
     let system_domain_bundle = ferdie
         .client
