@@ -10745,6 +10745,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-slots",
  "sp-consensus-subspace",
+ "sp-core",
  "sp-domains",
  "sp-inherents",
  "sp-keyring",

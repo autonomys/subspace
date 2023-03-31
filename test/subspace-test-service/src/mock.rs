@@ -18,7 +18,7 @@ use sp_consensus::{BlockOrigin, Error as ConsensusError, NoNetwork, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_domains::ExecutorPublicKey;
+use sp_domains::{ExecutorPublicKey, SignedOpaqueBundle};
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::Digest;
@@ -220,8 +220,12 @@ impl MockPrimaryNode {
         rx
     }
 
-    /// Check if a bundle that created by `bundle_author` at `slot` is present at the transaction pool
-    pub fn is_bundle_present_in_tx_pool(&self, slot: u64, bundle_author: Sr25519Keyring) -> bool {
+    /// Get the bundle that created by `bundle_author` at `slot` from the transaction pool
+    pub fn get_bundle_from_tx_pool(
+        &self,
+        slot: u64,
+        bundle_author: Sr25519Keyring,
+    ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, sp_core::H256>> {
         let bundle_author = ExecutorPublicKey::unchecked_from(bundle_author.public().0);
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
@@ -237,11 +241,11 @@ impl MockPrimaryNode {
                     .executor_public_key
                     == bundle_author;
                 if slot_match && author_match {
-                    return true;
+                    return Some(signed_opaque_bundle);
                 }
             }
         }
-        false
+        None
     }
 }
 

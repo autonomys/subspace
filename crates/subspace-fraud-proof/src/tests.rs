@@ -419,7 +419,9 @@ async fn invalid_execution_proof_should_not_work() {
 
     // Produce a domain bundle to include the above test tx
     let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(ferdie.is_bundle_present_in_tx_pool(slot.into(), alice.key));
+    assert!(ferdie
+        .get_bundle_from_tx_pool(slot.into(), alice.key)
+        .is_some());
 
     // Wait for `alice` to apply these txs
     futures::future::join(
