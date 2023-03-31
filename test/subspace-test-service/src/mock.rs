@@ -363,19 +363,27 @@ impl MockPrimaryNode {
 
         let (block, storage_changes) = self.build_block(slot, parent_hash, extrinsics).await?;
 
-        tracing::info!(
-			"🎁 Prepared block for proposing at {} ({} ms) [hash: {:?}; parent_hash: {}; extrinsics ({}): [{}]]",
-			block.header().number(),
-			block_timer.elapsed().as_millis(),
-			block.header().hash(),
-			block.header().parent_hash(),
-			block.extrinsics().len(),
-			block.extrinsics()
-				.iter()
-				.map(|xt| BlakeTwo256::hash_of(xt).to_string())
-				.collect::<Vec<_>>()
-				.join(", ")
-		);
+        log_new_block(&block, block_timer.elapsed().as_millis());
+
+        self.import_block(block, Some(storage_changes)).await?;
+
+        Ok(())
+    }
+
+    /// Produce block based on the current best block and the given extrinsics
+    pub async fn produce_block_with_extrinsics(
+        &mut self,
+        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+    ) -> Result<(), Box<dyn Error>> {
+        let slot = self.produce_slot_and_wait_for_bundle_submission().await;
+
+        let block_timer = time::Instant::now();
+
+        let (block, storage_changes) = self
+            .build_block(slot, self.client.info().best_hash, extrinsics)
+            .await?;
+
+        log_new_block(&block, block_timer.elapsed().as_millis());
 
         self.import_block(block, Some(storage_changes)).await?;
 
@@ -390,6 +398,22 @@ impl MockPrimaryNode {
         }
         Ok(())
     }
+}
+
+fn log_new_block(block: &Block, used_time_ms: u128) {
+    tracing::info!(
+        "🎁 Prepared block for proposing at {} ({} ms) [hash: {:?}; parent_hash: {}; extrinsics ({}): [{}]]",
+        block.header().number(),
+        used_time_ms,
+        block.header().hash(),
+        block.header().parent_hash(),
+        block.extrinsics().len(),
+        block.extrinsics()
+            .iter()
+            .map(|xt| BlakeTwo256::hash_of(xt).to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 }
 
 // `MockBlockImport` is mostly port from `sc-consensus-subspace::SubspaceBlockImport` with all
