@@ -9948,6 +9948,7 @@ dependencies = [
  "criterion",
  "parity-scale-codec",
  "rand 0.8.5",
+ "rayon",
  "serde",
  "subspace-core-primitives",
  "subspace-erasure-coding",
