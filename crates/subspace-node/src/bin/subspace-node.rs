@@ -206,12 +206,19 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-                sc_consensus_subspace::start_subspace_archiver(
+                let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
                     &subspace_link,
                     client.clone(),
                     None,
-                    &task_manager.spawn_essential_handle(),
                 );
+
+                task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "subspace-archiver",
+                        None,
+                        Box::pin(subspace_archiver),
+                    );
 
                 Ok((
                     cmd.run(client, import_queue, task_manager.spawn_essential_handle())

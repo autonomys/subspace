@@ -29,7 +29,7 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
-pub use archiver::start_subspace_archiver;
+pub use archiver::create_subspace_archiver;
 use codec::Encode;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -448,6 +448,8 @@ pub struct SubspaceLink<Block: BlockT> {
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
+    block_importing_notification_sender:
+        SubspaceNotificationSender<BlockImportingNotification<Block>>,
     block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<Block>>,
     /// Segment headers that are expected to appear in the corresponding blocks, used for block
@@ -1263,6 +1265,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
+        block_importing_notification_sender: block_importing_notification_sender.clone(),
         block_importing_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
