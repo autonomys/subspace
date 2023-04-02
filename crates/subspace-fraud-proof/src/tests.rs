@@ -227,9 +227,8 @@ async fn execution_proof_creation_and_verification_should_work() {
         proof: storage_proof,
         execution_phase,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
     // Test extrinsic execution.
     for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {
@@ -288,9 +287,8 @@ async fn execution_proof_creation_and_verification_should_work() {
             proof: storage_proof,
             execution_phase,
         };
-        // TODO: re-enable when #1230 resolves
-        // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-        // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+        let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+        assert!(proof_verifier.verify(&fraud_proof).is_ok());
     }
 
     // Test `finalize_block`
@@ -342,9 +340,8 @@ async fn execution_proof_creation_and_verification_should_work() {
         proof: storage_proof,
         execution_phase,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
@@ -535,7 +532,7 @@ async fn invalid_execution_proof_should_not_work() {
             Arc::new(ferdie.executor.clone()),
         ),
     );
-    let proof_provider =
+    let proof_verifier =
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
     // Incorrect but it's fine for the test purpose.
@@ -552,9 +549,8 @@ async fn invalid_execution_proof_should_not_work() {
         proof: proof1,
         execution_phase: execution_phase0.clone(),
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_err());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
@@ -566,9 +562,8 @@ async fn invalid_execution_proof_should_not_work() {
         proof: proof0.clone(),
         execution_phase: execution_phase1,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_err());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
@@ -580,7 +575,6 @@ async fn invalid_execution_proof_should_not_work() {
         proof: proof0,
         execution_phase: execution_phase0,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
