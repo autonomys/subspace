@@ -161,6 +161,13 @@ impl AsMut<[u8]> for RawRecord {
 impl RawRecord {
     /// Size of raw record in bytes, is guaranteed to be a multiple of [`Scalar::SAFE_BYTES`].
     pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
+
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::new_zeroed().assume_init() }
+    }
 }
 
 /// Record contained within a piece.
@@ -186,6 +193,13 @@ impl Record {
     /// Size of a segment record given the global piece size (in bytes) after erasure coding
     /// [`RawRecord`], is guaranteed to be a multiple of [`Scalar::FULL_BYTES`].
     pub const SIZE: usize = RECORD_SIZE;
+
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::new_zeroed().assume_init() }
+    }
 
     /// Get a stream of arrays, each containing safe scalar bytes.
     ///
@@ -289,9 +303,15 @@ impl RecordWitness {
 /// Internally piece contains a record and corresponding witness that together with segment
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Piece(Box<PieceArray>);
+
+impl Default for Piece {
+    fn default() -> Self {
+        Self(PieceArray::new_boxed())
+    }
+}
 
 // TODO: Manual implementation due to https://github.com/paritytech/parity-scale-codec/issues/419,
 //  can be replaced with derive once fixed upstream version is released
@@ -418,6 +438,13 @@ impl From<PieceArray> for Piece {
 }
 
 impl PieceArray {
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::<Self>::new_zeroed().assume_init() }
+    }
+
     /// Split piece into underlying components.
     pub fn split(&self) -> (&Record, &RecordCommitment, &RecordWitness) {
         let (record, extra) = self.0.split_at(Record::SIZE);

@@ -1,5 +1,3 @@
-#![feature(new_uninit)]
-
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
 use memmap2::Mmap;
@@ -37,9 +35,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let keypair = Keypair::from_bytes(&[0; 96]).unwrap();
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let sector_index = 0;
-    // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
-    // SAFETY: Data structure filled with zeroes is a valid invariant
-    let mut input = unsafe { Box::<RecordedHistorySegment>::new_zeroed().assume_init() };
+    let mut input = RecordedHistorySegment::new_boxed();
     thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
