@@ -11,7 +11,6 @@ use sc_client_api::AuxStore;
 use sc_consensus_subspace::ArchivedSegmentNotification;
 use sc_consensus_subspace_rpc::SegmentHeaderProvider;
 use sp_core::traits::SpawnNamed;
-use sp_runtime::traits::Block as BlockT;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -88,13 +87,12 @@ pub struct DsnConfig {
 type DsnProviderStorage<AS> =
     NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
 
-pub(crate) fn create_dsn_instance<Block, AS>(
+pub(crate) fn create_dsn_instance<AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     segment_header_cache: SegmentHeaderCache<AS>,
 ) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
 where
-    Block: BlockT,
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");

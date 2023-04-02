@@ -542,11 +542,8 @@ where
                     }
                 });
 
-            let (node, mut node_runner) = create_dsn_instance::<Block, _>(
-                config.clone(),
-                piece_cache,
-                segment_header_cache.clone(),
-            )?;
+            let (node, mut node_runner) =
+                create_dsn_instance(config.clone(), piece_cache, segment_header_cache.clone())?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 
