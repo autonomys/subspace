@@ -2,7 +2,7 @@ extern crate alloc;
 
 use crate::archiver::Segment;
 use alloc::vec::Vec;
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Encode, Output};
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -20,10 +20,16 @@ pub(super) struct IncrementalRecordCommitmentsState {
 }
 
 impl Deref for IncrementalRecordCommitmentsState {
-    type Target = [Commitment];
+    type Target = Vec<Commitment>;
 
     fn deref(&self) -> &Self::Target {
         &self.state
+    }
+}
+
+impl DerefMut for IncrementalRecordCommitmentsState {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
     }
 }
 
@@ -41,17 +47,15 @@ impl IncrementalRecordCommitmentsState {
     }
 }
 
-/// Update internal record commitments state based on (full or partial) segment.
+/// Update internal record commitments state based on provided segment.
 pub(super) fn update_record_commitments(
     incremental_record_commitments: &mut IncrementalRecordCommitmentsState,
     segment: &Segment,
     kzg: &Kzg,
-    full: bool,
 ) {
     segment.encode_to(&mut IncrementalRecordCommitmentsProcessor::new(
         incremental_record_commitments,
         kzg,
-        full,
     ));
 }
 
@@ -66,24 +70,6 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
     incremental_record_commitments: &'a mut IncrementalRecordCommitmentsState,
     /// Kzg instance used for commitments creation
     kzg: &'a Kzg,
-    /// Whether segment is full or partial
-    full: bool,
-}
-
-impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
-    fn drop(&mut self) {
-        if self.full {
-            let record_offset = self.processed_bytes % RawRecord::SIZE;
-            if record_offset > 0 {
-                // This is fine since we'll have at most a few iterations and allocation is less
-                // desirable than a loop here
-                for _ in 0..(RawRecord::SIZE - record_offset) {
-                    self.update_commitment_state(&[0]);
-                }
-                self.create_commitment();
-            }
-        }
-    }
 }
 
 impl<'a> Output for IncrementalRecordCommitmentsProcessor<'a> {
@@ -126,7 +112,6 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
     fn new(
         incremental_record_commitments: &'a mut IncrementalRecordCommitmentsState,
         kzg: &'a Kzg,
-        full: bool,
     ) -> Self {
         Self {
             // TODO: Remove `processed_bytes`, `raw_record_buffer` should be sufficient
@@ -134,7 +119,6 @@ impl<'a> IncrementalRecordCommitmentsProcessor<'a> {
             raw_record_buffer: Vec::with_capacity(RawRecord::SIZE),
             incremental_record_commitments,
             kzg,
-            full,
         }
     }
 

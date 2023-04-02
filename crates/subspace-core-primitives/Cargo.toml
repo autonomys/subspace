@@ -56,8 +56,9 @@ default = [
 ]
 # Parallel decoding will use all CPUs available, but will allocate a memory of a size of a sector instead of square root
 # of that
-parallel-decoding = ["rayon"]
+parallel-decoding = ["dep:rayon"]
 embedded-kzg-settings = []
+rayon = ["dep:rayon"]
 serde = [
     "dep:serde",
     # TODO: `serde_arrays` doesn't support `no_std` right now: https://github.com/Kromey/serde_arrays/issues/8
