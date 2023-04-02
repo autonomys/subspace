@@ -348,6 +348,14 @@ impl TryFrom<Vec<u8>> for Piece {
     }
 }
 
+impl From<&PieceArray> for Piece {
+    fn from(value: &PieceArray) -> Self {
+        let mut piece = Piece::default();
+        piece.as_mut().copy_from_slice(value.as_ref());
+        piece
+    }
+}
+
 impl Deref for Piece {
     type Target = PieceArray;
 
@@ -422,18 +430,6 @@ impl AsRef<[u8]> for PieceArray {
 impl AsMut<[u8]> for PieceArray {
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
-    }
-}
-
-impl From<&PieceArray> for Piece {
-    fn from(value: &PieceArray) -> Self {
-        Piece(Box::new(*value))
-    }
-}
-
-impl From<PieceArray> for Piece {
-    fn from(value: PieceArray) -> Self {
-        Piece(Box::new(value))
     }
 }
 

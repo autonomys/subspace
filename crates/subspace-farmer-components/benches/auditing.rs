@@ -12,7 +12,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RecordedHistorySegment, SegmentIndex, SolutionRange,
+    Blake2b256Hash, Piece, PublicKey, RecordedHistorySegment, SegmentIndex, SolutionRange,
     PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
@@ -38,16 +38,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
-    let piece = archiver
-        .add_block(
-            AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
-            Default::default(),
-        )
-        .into_iter()
-        .next()
-        .unwrap()
-        .pieces[0]
-        .into();
+    let piece = Piece::from(
+        &archiver
+            .add_block(
+                AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
+                Default::default(),
+            )
+            .into_iter()
+            .next()
+            .unwrap()
+            .pieces[0],
+    );
 
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces: NonZeroU64::new(1).unwrap(),
