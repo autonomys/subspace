@@ -129,13 +129,16 @@ where
 ///
 /// This can be used to verify any extrinsic-specific execution on the combined state of `backend`
 /// and `delta`.
-fn create_delta_backend<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>(
+fn create_delta_backend<'a, S, H, DB>(
     backend: &'a TrieBackend<S, H>,
     delta: DB,
     post_delta_root: H::Out,
 ) -> TrieBackend<DeltaBackend<'a, S, H, DB>, H>
 where
+    S: 'a + TrieBackendStorage<H>,
+    H: 'a + Hasher,
     H::Out: Codec,
+    DB: HashDB<H, DBValue>,
 {
     let essence = backend.essence();
     let delta_backend = DeltaBackend {
@@ -146,14 +149,22 @@ where
     TrieBackendBuilder::new(delta_backend, post_delta_root).build()
 }
 
-struct DeltaBackend<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>> {
+struct DeltaBackend<'a, S, H, DB>
+where
+    S: 'a + TrieBackendStorage<H>,
+    H: 'a + Hasher,
+    DB: HashDB<H, DBValue>,
+{
     backend: &'a S,
     delta: DB,
     _phantom: PhantomData<H>,
 }
 
-impl<'a, S: 'a + TrieBackendStorage<H>, H: 'a + Hasher, DB: HashDB<H, DBValue>>
-    TrieBackendStorage<H> for DeltaBackend<'a, S, H, DB>
+impl<'a, S, H, DB> TrieBackendStorage<H> for DeltaBackend<'a, S, H, DB>
+where
+    S: 'a + TrieBackendStorage<H>,
+    H: 'a + Hasher,
+    DB: HashDB<H, DBValue>,
 {
     type Overlay = S::Overlay;
 
@@ -191,8 +202,12 @@ pub struct InvalidStateTransitionProofVerifier<
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, C, Exec: Clone, Spawn: Clone, Hash, PrePostStateRootVerifier: Clone> Clone
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> Clone
     for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+where
+    Exec: Clone,
+    Spawn: Clone,
+    PrePostStateRootVerifier: Clone,
 {
     fn clone(&self) -> Self {
         Self {

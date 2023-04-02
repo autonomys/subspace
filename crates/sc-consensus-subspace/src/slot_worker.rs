@@ -499,10 +499,10 @@ where
             return Ok(signature);
         }
 
-        Err(ConsensusError::CannotSign(
-            public_key.to_raw_vec(),
-            "Farmer didn't sign reward".to_string(),
-        ))
+        Err(ConsensusError::CannotSign(format!(
+            "Farmer didn't sign reward. Key: {:?}",
+            public_key.to_raw_vec()
+        )))
     }
 }
 

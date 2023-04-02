@@ -61,7 +61,6 @@ mod pallet {
 
     /// Pallet feeds, used for storing arbitrary user-provided data combined into feeds.
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 

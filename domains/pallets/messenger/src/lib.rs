@@ -131,7 +131,6 @@ mod pallet {
 
     /// Pallet messenger used to communicate between domains and other blockchains.
     #[pallet::pallet]
-    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 

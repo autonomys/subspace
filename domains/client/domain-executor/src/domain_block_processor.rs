@@ -344,9 +344,7 @@ where
             import_block
         };
 
-        let import_result = (&*self.client)
-            .import_block(block_import_params, Default::default())
-            .await?;
+        let import_result = (&*self.client).import_block(block_import_params).await?;
 
         match import_result {
             ImportResult::Imported(..) => {}

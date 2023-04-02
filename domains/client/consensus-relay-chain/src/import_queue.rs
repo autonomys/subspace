@@ -20,10 +20,9 @@ use sc_consensus::{
 };
 use sp_blockchain::Result as ClientResult;
 use sp_consensus::error::Error as ConsensusError;
-use sp_consensus::{BlockOrigin, CacheKeyId};
+use sp_consensus::BlockOrigin;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use substrate_prometheus_endpoint::Registry;
 
@@ -63,14 +62,13 @@ where
     async fn import_block(
         &mut self,
         mut block_import_params: BlockImportParams<Block, Self::Transaction>,
-        cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         // Best block is determined by the primary chain, or if we are doing the initial sync
         // we import all blocks as new best.
         block_import_params.fork_choice = Some(ForkChoiceStrategy::Custom(
             block_import_params.origin == BlockOrigin::NetworkInitialSync,
         ));
-        let import_result = self.inner.import_block(block_import_params, cache).await?;
+        let import_result = self.inner.import_block(block_import_params).await?;
         Ok(import_result)
     }
 }
@@ -97,16 +95,10 @@ where
     async fn verify(
         &mut self,
         mut block_params: BlockImportParams<Block, ()>,
-    ) -> Result<
-        (
-            BlockImportParams<Block, ()>,
-            Option<Vec<(CacheKeyId, Vec<u8>)>>,
-        ),
-        String,
-    > {
+    ) -> Result<BlockImportParams<Block, ()>, String> {
         block_params.post_hash = Some(block_params.header.hash());
 
-        Ok((block_params, None))
+        Ok(block_params)
     }
 }
 

@@ -74,6 +74,10 @@ impl pallet_balances::Config for Test {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type HoldIdentifier = ();
+    type MaxHolds = ();
 }
 
 parameter_types! {
@@ -197,8 +201,8 @@ fn register_should_work() {
             AccountData {
                 free: 2000,
                 reserved: 0,
-                misc_frozen: stake,
-                fee_frozen: stake
+                frozen: stake,
+                ..AccountData::default()
             }
         );
         assert_eq!(KeyOwner::<Test>::get(&public_key).unwrap(), 2);
@@ -226,8 +230,8 @@ fn stake_extra_should_work() {
             AccountData {
                 free: 1000,
                 reserved: 0,
-                misc_frozen: 100,
-                fee_frozen: 100
+                frozen: 100,
+                ..AccountData::default()
             }
         );
         let extra = 200;
@@ -247,8 +251,8 @@ fn stake_extra_should_work() {
             AccountData {
                 free: 1000,
                 reserved: 0,
-                misc_frozen: 100 + extra,
-                fee_frozen: 100 + extra
+                frozen: 100 + extra,
+                ..AccountData::default()
             }
         );
     });
@@ -264,8 +268,8 @@ fn decrease_and_withdraw_stake_should_work() {
             AccountData {
                 free: 1000,
                 reserved: 0,
-                misc_frozen: 100,
-                fee_frozen: 100
+                frozen: 100,
+                ..AccountData::default()
             }
         );
         assert_noop!(
@@ -289,8 +293,8 @@ fn decrease_and_withdraw_stake_should_work() {
             AccountData {
                 free: 1000,
                 reserved: 0,
-                misc_frozen: 100,
-                fee_frozen: 100
+                frozen: 100,
+                ..AccountData::default()
             }
         );
 
@@ -330,8 +334,8 @@ fn decrease_and_withdraw_stake_should_work() {
             AccountData {
                 free: 1000,
                 reserved: 0,
-                misc_frozen: 90,
-                fee_frozen: 90
+                frozen: 90,
+                ..AccountData::default()
             }
         );
     });
@@ -435,8 +439,8 @@ fn update_reward_address_should_work() {
 #[test]
 fn test_total_stake_overflow() {
     new_test_ext().execute_with(|| {
-        Balances::set_balance(RawOrigin::Root.into(), 2, StakeWeight::MAX / 2, 0).unwrap();
-        Balances::set_balance(RawOrigin::Root.into(), 3, StakeWeight::MAX / 2, 0).unwrap();
+        Balances::force_set_balance(RawOrigin::Root.into(), 2, StakeWeight::MAX / 2).unwrap();
+        Balances::force_set_balance(RawOrigin::Root.into(), 3, StakeWeight::MAX / 2).unwrap();
 
         assert_eq!(TotalActiveStake::<Test>::get(), 100);
         assert_eq!(TotalStakeWeight::<Test>::get(), 100);
@@ -461,7 +465,7 @@ fn test_total_stake_overflow() {
         );
 
         // `increase_stake` trigger overflow error
-        Balances::set_balance(RawOrigin::Root.into(), 1, StakeWeight::MAX / 2, 0).unwrap();
+        Balances::force_set_balance(RawOrigin::Root.into(), 1, StakeWeight::MAX / 2).unwrap();
         assert_noop!(
             ExecutorRegistry::increase_stake(RuntimeOrigin::signed(1), StakeWeight::MAX / 2),
             Error::<Test>::ArithmeticOverflow

@@ -12,7 +12,7 @@ use sp_blockchain::HeaderBackend;
 use sp_domains::{
     Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
 };
-use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
+use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
@@ -44,7 +44,7 @@ pub(super) struct DomainBundleProducer<
     client: Arc<Client>,
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
-    keystore: SyncCryptoStorePtr,
+    keystore: KeystorePtr,
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, TransactionPool>,
     _phantom_data: PhantomData<(SBlock, PBlock, ParentChainBlock)>,
@@ -114,7 +114,7 @@ where
         parent_chain: ParentChain,
         transaction_pool: Arc<TransactionPool>,
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
-        keystore: SyncCryptoStorePtr,
+        keystore: KeystorePtr,
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
             system_domain_client.clone(),
@@ -224,7 +224,7 @@ where
 
 pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
     bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    keystore: SyncCryptoStorePtr,
+    keystore: KeystorePtr,
     bundle_solution: BundleSolution<Block::Hash>,
 ) -> Result<SignedOpaqueBundle<Block, PBlock>, sp_blockchain::Error> {
     let to_sign = bundle.hash();
@@ -232,17 +232,16 @@ pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
         .proof_of_election()
         .executor_public_key
         .clone();
-    match SyncCryptoStore::sign_with(
-        &*keystore,
+    match keystore.sr25519_sign(
         ExecutorPublicKey::ID,
-        &bundle_author.into(),
+        bundle_author.as_ref(),
         to_sign.as_ref(),
     ) {
         Ok(Some(signature)) => {
             let signed_bundle = SignedBundle {
                 bundle,
                 bundle_solution,
-                signature: ExecutorSignature::decode(&mut signature.as_slice()).map_err(|err| {
+                signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Failed to decode the signature of bundle: {err}"
                     )))

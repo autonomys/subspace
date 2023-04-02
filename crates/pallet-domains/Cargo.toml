@@ -13,19 +13,19 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 log = { version = "0.4.17", default-features = false }
 pallet-receipts = { version = "0.1.0", default-features = false, path = "../pallet-receipts" }
 scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 
 [dev-dependencies]
-sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
-sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "456cfad45a178617f6886ec400c312f2fea59232" }
+sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
+sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 
 [features]
 default = ["std"]

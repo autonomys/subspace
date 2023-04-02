@@ -594,7 +594,7 @@ fn main() -> Result<(), Error> {
                     >(
                         system_domain_config,
                         primary_chain_node.client.clone(),
-                        primary_chain_node.network.clone(),
+                        primary_chain_node.sync_service.clone(),
                         &primary_chain_node.select_chain,
                         executor_streams,
                         gossip_msg_sink.clone(),
@@ -638,9 +638,9 @@ fn main() -> Result<(), Error> {
                             domain_id: core_domain_cli.domain_id,
                             core_domain_config,
                             system_domain_client: system_domain_node.client.clone(),
-                            system_domain_network: system_domain_node.network.clone(),
+                            system_domain_sync_service: system_domain_node.sync_service.clone(),
                             primary_chain_client: primary_chain_node.client.clone(),
-                            primary_network_sync_oracle: primary_chain_node.network.clone(),
+                            primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
                             select_chain: primary_chain_node.select_chain.clone(),
                             executor_streams,
                             gossip_message_sink: gossip_msg_sink,
@@ -708,7 +708,8 @@ fn main() -> Result<(), Error> {
                     }
 
                     let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
-                        primary_chain_node.network.clone(),
+                        primary_chain_node.network_service.clone(),
+                        primary_chain_node.sync_service.clone(),
                         domain_tx_pool_sinks,
                     );
 

@@ -6,6 +6,7 @@ use super::*;
 use frame_support::{assert_noop, assert_ok, error::BadOrigin};
 use mock::*;
 use pallet_balances::{BalanceLock, Reasons};
+use sp_runtime::TokenError;
 use sp_runtime::traits::Dispatchable;
 
 #[test]
@@ -82,6 +83,45 @@ fn vested_transfer_works() {
 		System::assert_last_event(RuntimeEvent::Vesting(crate::Event::VestingScheduleAdded {
 			from: ALICE,
 			to: BOB,
+			vesting_schedule: schedule,
+		}));
+	});
+}
+
+#[test]
+fn self_vesting() {
+	ExtBuilder::build().execute_with(|| {
+		System::set_block_number(1);
+
+		let schedule = VestingSchedule {
+			start: 0u64,
+			period: 10u64,
+			period_count: 1u32,
+			per_period: ALICE_BALANCE,
+		};
+
+		let bad_schedule = VestingSchedule {
+			start: 0u64,
+			period: 10u64,
+			period_count: 1u32,
+			per_period: 10 * ALICE_BALANCE,
+		};
+
+		assert_noop!(
+			Vesting::vested_transfer(RuntimeOrigin::signed(ALICE), ALICE, bad_schedule),
+			crate::Error::<Runtime>::InsufficientBalanceToLock
+		);
+
+		assert_ok!(Vesting::vested_transfer(
+			RuntimeOrigin::signed(ALICE),
+			ALICE,
+			schedule.clone()
+		));
+
+		assert_eq!(Vesting::vesting_schedules(ALICE), vec![schedule.clone()]);
+		System::assert_last_event(RuntimeEvent::Vesting(crate::Event::VestingScheduleAdded {
+			from: ALICE,
+			to: ALICE,
 			vesting_schedule: schedule,
 		}));
 	});
@@ -175,7 +215,7 @@ fn vested_transfer_fails_if_transfer_err() {
 		};
 		assert_noop!(
 			Vesting::vested_transfer(RuntimeOrigin::signed(BOB), ALICE, schedule),
-			pallet_balances::Error::<Runtime, _>::InsufficientBalance,
+			DispatchError::Token(TokenError::FundsUnavailable),
 		);
 	});
 }
@@ -479,7 +519,7 @@ fn cliff_vesting_works() {
 			assert_eq!(PalletBalances::locks(&BOB), vec![balance_lock.clone()]);
 			assert_noop!(
 				PalletBalances::transfer(RuntimeOrigin::signed(BOB), CHARLIE, VESTING_AMOUNT),
-				pallet_balances::Error::<Runtime>::LiquidityRestrictions,
+				DispatchError::Token(TokenError::Frozen),
 			);
 		}
 

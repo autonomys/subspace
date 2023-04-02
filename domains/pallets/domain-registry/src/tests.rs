@@ -79,6 +79,10 @@ impl pallet_balances::Config for Test {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type HoldIdentifier = ();
+    type MaxHolds = ();
 }
 
 parameter_types! {
@@ -258,8 +262,8 @@ fn create_domain_should_work() {
             AccountData {
                 free: 2000,
                 reserved: 0,
-                misc_frozen: deposit,
-                fee_frozen: deposit,
+                frozen: deposit,
+                ..AccountData::default()
             }
         );
 
