@@ -15,6 +15,6 @@ include = [
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb", default-features = false }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-serde = "1.0.152"
+serde = "1.0.159"
 sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }

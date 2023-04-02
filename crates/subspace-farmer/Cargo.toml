@@ -13,20 +13,20 @@ include = [
 
 [dependencies]
 anyhow = "1.0.66"
-async-trait = "0.1.64"
+async-trait = "0.1.68"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
 blake2 = "0.10.6"
 bytesize = "1.2.0"
-clap = { version = "4.1.6", features = ["color", "derive"] }
+clap = { version = "4.2.1", features = ["color", "derive"] }
 derive_more = "0.99.17"
-dirs = "4.0.0"
+dirs = "5.0.0"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
-futures = "0.3.26"
+futures = "0.3.28"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.2", features = ["client", "macros", "server"] }
-lru = "0.9.0"
+lru = "0.10.0"
 memmap2 = "0.5.10"
 num-traits = "0.2.15"
 parity-db = "0.4.6"
@@ -34,8 +34,8 @@ parity-scale-codec = "3.4.0"
 parking_lot = "0.12.1"
 rand = "0.8.5"
 schnorrkel = "0.9.1"
-serde = { version = "1.0.152", features = ["derive"] }
-serde_json = "1.0.93"
+serde = { version = "1.0.159", features = ["derive"] }
+serde_json = "1.0.95"
 static_assertions = "1.1.0"
 std-semaphore = "0.1.0"
 ss58-registry = "1.39.0"
@@ -46,13 +46,13 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.4.4"
-tempfile = "3.4.0"
+tempfile = "3.5.0"
 thiserror = "1.0.38"
-tokio = { version = "1.25.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
+tokio = { version = "1.27.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }
-zeroize = "1.5.7"
+zeroize = "1.6.0"
 
 # The only triple tested and confirmed as working in `jemallocator` crate is `x86_64-unknown-linux-gnu`
 [target.'cfg(all(target_arch = "x86_64", target_vendor = "unknown", target_os = "linux", target_env = "gnu"))'.dependencies]

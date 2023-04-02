@@ -19,5 +19,5 @@ sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/subs
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-futures = "0.3.26"
+futures = "0.3.28"
 thiserror = "1.0.38"

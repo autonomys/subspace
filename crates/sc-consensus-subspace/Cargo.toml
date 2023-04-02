@@ -14,13 +14,13 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.64"
+async-trait = "0.1.68"
 codec = { package = "parity-scale-codec", version = "3.4.0", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-futures = "0.3.26"
+futures = "0.3.28"
 futures-timer = "3.0.2"
 log = "0.4.17"
-lru = "0.9.0"
+lru = "0.10.0"
 parking_lot = "0.12.1"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb", version = "0.10.0-dev" }
 rand = "0.8.5"
@@ -30,7 +30,7 @@ sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspac
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-serde = { version = "1.0.152", features = ["derive"] }
+serde = { version = "1.0.159", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
@@ -59,4 +59,4 @@ sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate",
 sc-network-test = { version = "0.8.0", path = "../../substrate/sc-network-test" }
 substrate-test-runtime = { version = "2.0.0", path = "../../substrate/substrate-test-runtime" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../../substrate/substrate-test-runtime-client" }
-tokio = "1.25.0"
+tokio = "1.27.0"

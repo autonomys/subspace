@@ -29,9 +29,9 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-fe
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 
 [dev-dependencies]
-async-trait = "0.1.64"
+async-trait = "0.1.68"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-futures = "0.3.26"
+futures = "0.3.28"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }

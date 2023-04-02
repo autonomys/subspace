@@ -5,7 +5,7 @@ authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-futures = "0.3.26"
+futures = "0.3.28"
 parity-scale-codec = { version = "3.4.0", features = ["derive"] }
 parking_lot = "0.12.1"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }

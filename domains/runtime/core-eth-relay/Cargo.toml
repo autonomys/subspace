@@ -20,7 +20,7 @@ frame-support = { version = "4.0.0-dev", default-features = false, git = "https:
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-hex-literal = { version = '0.3.1', optional = true }
+hex-literal = { version = '0.4.0', optional = true }
 log = { version = "0.4.17", default-features = false }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-registry", default-features = false }
@@ -30,7 +30,7 @@ pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 pallet-transporter = { version = "0.1.0", path = "../../pallets/transporter", default-features = false }
-scale-info = { version = "2.3.1", default-features = false, features = ["derive"] }
+scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
 # Light client pallet and primitives
 snowbridge-beacon-primitives = { git = "https://github.com/Snowfork/snowbridge", rev = "4f5bfd68456afd41f6c7626c53268d726149a972", default-features = false }
 snowbridge-ethereum-beacon-client = { git = "https://github.com/Snowfork/snowbridge", rev = "4f5bfd68456afd41f6c7626c53268d726149a972", default-features = false }
