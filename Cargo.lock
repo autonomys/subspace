@@ -10157,6 +10157,7 @@ version = "0.1.0"
 dependencies = [
  "bytesize",
  "clap 4.1.13",
+ "core-eth-relay-runtime",
  "core-payments-domain-runtime",
  "cross-domain-message-gossip",
  "dirs",

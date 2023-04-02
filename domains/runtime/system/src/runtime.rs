@@ -36,6 +36,7 @@ use subspace_runtime_primitives::{SHANNON, SSC};
 
 // Make core-payments WASM runtime available.
 include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
+include!(concat!(env!("OUT_DIR"), "/core_eth_relay_wasm_bundle.rs"));
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
