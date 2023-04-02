@@ -514,7 +514,7 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
-                    weight: Weight::from_ref_time(0),
+                    weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
         }
