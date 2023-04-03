@@ -509,6 +509,24 @@ where
                 info.listen_addrs.truncate(30);
             }
 
+            let addresses = info
+                .listen_addrs
+                .iter()
+                .filter(|addr| {
+                    // filter non-global addresses when non-globals addresses are disabled
+                    is_global_address_or_dns(addr) || self.allow_non_global_addresses_in_dht
+                })
+                .cloned()
+                .collect::<HashSet<_>>() // deduplication
+                .into_iter()
+                .collect::<Vec<_>>();
+
+            if !addresses.is_empty() {
+                self.networking_parameters_registry
+                    .add_known_peer(peer_id, addresses)
+                    .await;
+            }
+
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
             let kademlia_enabled = info.protocols.iter().any(|protocol_a| {
                 kademlia
