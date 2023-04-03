@@ -116,11 +116,9 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .unwrap();
 
     // Get a bundle from the txn pool and change its receipt to an invalid one
-    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
-        let mut signed_opaque_bundle = ferdie
-            .get_bundle_from_tx_pool(slot.into(), alice.key)
-            .unwrap();
+        let mut signed_opaque_bundle = bundle.unwrap();
         signed_opaque_bundle.bundle.receipts[0].trace[0] = Default::default();
         signed_opaque_bundle
     };
@@ -422,10 +420,8 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .unwrap();
 
     // Get a bundle from alice's tx pool and used as bundle template.
-    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let bundle_template = ferdie
-        .get_bundle_from_tx_pool(slot.into(), alice.key)
-        .unwrap();
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let bundle_template = bundle.unwrap();
     let alice_key = alice.key;
     // Drop alice in order to control the execution chain by submitting the receipts manually later.
     drop(alice);

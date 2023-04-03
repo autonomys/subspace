@@ -115,10 +115,8 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     // Produce a domain bundle to include the above test txs and wait for `alice`
     // to apply these txs
-    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(ferdie
-        .get_bundle_from_tx_pool(slot.into(), alice.key)
-        .is_some());
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
     futures::future::join(
         alice.wait_for_blocks(1),
         ferdie.produce_block_with_slot(slot),
@@ -432,10 +430,8 @@ async fn invalid_execution_proof_should_not_work() {
     }
 
     // Produce a domain bundle to include the above test tx
-    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(ferdie
-        .get_bundle_from_tx_pool(slot.into(), alice.key)
-        .is_some());
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
 
     // Wait for `alice` to apply these txs
     futures::future::join(
