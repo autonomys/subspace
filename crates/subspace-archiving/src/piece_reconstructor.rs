@@ -259,7 +259,7 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::from(reconstructed_records[piece_position]);
+        let mut piece = Piece::from(&reconstructed_records[piece_position]);
 
         piece.witness_mut().copy_from_slice(
             &self

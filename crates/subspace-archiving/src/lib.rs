@@ -15,13 +15,7 @@
 
 //! Collection of modules used for dealing with archived state of Subspace Network.
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(
-    array_chunks,
-    drain_filter,
-    iter_collect_into,
-    new_uninit,
-    slice_flatten
-)]
+#![feature(array_chunks, drain_filter, iter_collect_into, slice_flatten)]
 
 pub mod archiver;
 pub mod piece_reconstructor;

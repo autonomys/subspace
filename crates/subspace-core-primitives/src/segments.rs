@@ -1,4 +1,5 @@
 use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
+use alloc::boxed::Box;
 use core::iter::Step;
 use core::mem;
 use derive_more::{
@@ -129,6 +130,13 @@ impl RecordedHistorySegment {
     /// together with corresponding commitments and witnesses will result in
     /// [`ArchivedHistorySegment::NUM_PIECES`] [`Piece`]s of archival history.
     pub const SIZE: usize = RawRecord::SIZE * Self::NUM_RAW_RECORDS;
+
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::<Self>::new_zeroed().assume_init() }
+    }
 }
 
 /// Archived history segment after archiving is applied.
