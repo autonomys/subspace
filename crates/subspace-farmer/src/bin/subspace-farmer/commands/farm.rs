@@ -344,6 +344,7 @@ pub(crate) async fn farm_multi_disk(
         "farmer-networking".to_string(),
     )?;
     let mut networking_fut = Box::pin(networking_fut).fuse();
+    let status_informer_fut = node.online_status_informer();
 
     futures::select!(
         // Signal future
@@ -357,6 +358,11 @@ pub(crate) async fn farm_multi_disk(
         // Node runner future
         _ = networking_fut => {
             info!("Node runner exited.")
+        },
+
+        // Status informer future
+        _ = status_informer_fut.fuse() => {
+            info!("DSN online status observer exited.");
         },
     );
 

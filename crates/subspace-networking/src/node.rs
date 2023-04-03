@@ -15,6 +15,7 @@ use libp2p::kad::record::Key;
 use libp2p::kad::{PeerRecord, ProviderRecord};
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -22,7 +23,7 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::watch;
 use tokio::time::sleep;
-use tracing::{error, trace};
+use tracing::{error, info, trace, warn};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
@@ -273,8 +274,28 @@ impl Node {
         self.shared.id
     }
 
-    pub fn online_status_observer(&self) -> watch::Receiver<bool> {
-        self.shared.online_status_observer_rx.clone()
+    pub fn online_status_observer(&self) -> &watch::Receiver<bool> {
+        &self.shared.online_status_observer_rx
+    }
+
+    /// Prints DSN online status changes.
+    pub fn online_status_informer(&self) -> impl Future<Output = ()> {
+        let mut online_status_observer = self.online_status_observer().clone();
+        async move {
+            loop {
+                if online_status_observer.changed().await.is_err() {
+                    return; // app is closing
+                }
+
+                let online_status = *online_status_observer.borrow();
+
+                if online_status {
+                    info!("DSN connection established.");
+                } else {
+                    warn!("DSN connection lost.");
+                }
+            }
+        }
     }
 
     pub async fn get_value(

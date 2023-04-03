@@ -560,6 +560,18 @@ where
             }))
             .detach();
 
+            let status_informer_fut = node.online_status_informer();
+            task_manager.spawn_handle().spawn(
+                "status-observer",
+                Some("subspace-networking"),
+                Box::pin(
+                    async move {
+                        status_informer_fut.await;
+                    }
+                    .in_current_span(),
+                ),
+            );
+
             task_manager.spawn_essential_handle().spawn_essential(
                 "node-runner",
                 Some("subspace-networking"),

@@ -137,7 +137,7 @@ where
             let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
             // Wait until we connect to DSN.
-            let mut online_status_observer = self.node.online_status_observer();
+            let mut online_status_observer = self.node.online_status_observer().clone();
             // We have a loop because we can be notified about the offline status multiple times
             // and it will "emit the changed event".
             loop {

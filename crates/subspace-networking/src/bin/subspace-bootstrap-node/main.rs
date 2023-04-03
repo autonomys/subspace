@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
+use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
@@ -174,7 +175,18 @@ async fn main() -> anyhow::Result<()> {
             }))
             .detach();
 
-            node_runner.run().await
+            let status_informer_fut = node.online_status_informer();
+            let networking_fut = node_runner.run();
+
+            select!(
+                // Status informer future
+                _ = status_informer_fut.fuse() => {
+                    info!("DSN online status observer exited.");
+                },
+
+                // Node runner future
+                _ = networking_fut.fuse() => {},
+            );
         }
         Command::GenerateKeypair { json } => {
             let output = KeypairOutput::new(Keypair::generate());

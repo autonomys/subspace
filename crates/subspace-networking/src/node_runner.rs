@@ -222,12 +222,6 @@ where
             if let Err(err) = self.online_status_observer_tx.send(current_online_status) {
                 error!("DSN connection observer channel failed: {err}")
             }
-
-            if current_online_status {
-                info!("DSN connection established.");
-            } else {
-                warn!("DSN connection lost.");
-            }
         }
     }
 
