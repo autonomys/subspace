@@ -116,7 +116,6 @@ mod pallet {
 
     /// Pallet rewards for issuing rewards to block producers.
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 

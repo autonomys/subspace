@@ -123,6 +123,10 @@ macro_rules! impl_runtime {
             type MaxReserves = ();
             type ReserveIdentifier = ();
             type WeightInfo = ();
+            type FreezeIdentifier = ();
+            type MaxFreezes = ();
+            type HoldIdentifier = ();
+            type MaxHolds = ();
         }
 
         parameter_types! {
@@ -209,7 +213,6 @@ pub(crate) mod mock_pallet_receipts {
     pub trait Config: frame_system::Config {}
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 

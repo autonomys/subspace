@@ -3,12 +3,12 @@ mod worker;
 use self::worker::GossipWorker;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
+use sc_network::config::NonDefaultSetConfig;
 use sc_network::PeerId;
-use sc_network_common::config::NonDefaultSetConfig;
-use sc_network_common::protocol::role::ObservedRole;
+use sc_network_common::role::ObservedRole;
 use sc_network_gossip::{
-    GossipEngine, MessageIntent, Network as GossipNetwork, ValidationResult, Validator,
-    ValidatorContext,
+    GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
+    ValidationResult, Validator, ValidatorContext,
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
@@ -253,9 +253,11 @@ type BundleReceiver<Block, PBlock> = TracingUnboundedReceiver<
 >;
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor> {
+pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, GossipSync, Executor> {
     /// Substrate network service.
     pub network: Network,
+    /// Syncing service an event stream for peers.
+    pub sync: Arc<GossipSync>,
     /// Executor instance.
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
@@ -263,16 +265,18 @@ pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, Executor
 }
 
 /// Starts the executor gossip worker.
-pub async fn start_gossip_worker<PBlock, Block, Network, Executor>(
-    gossip_params: ExecutorGossipParams<PBlock, Block, Network, Executor>,
+pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor>(
+    gossip_params: ExecutorGossipParams<PBlock, Block, Network, GossipSync, Executor>,
 ) where
     PBlock: BlockT,
     Block: BlockT,
     Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
     Executor: GossipMessageHandler<PBlock, Block> + Send + Sync + 'static,
+    GossipSync: GossipSyncing<Block> + 'static,
 {
     let ExecutorGossipParams {
         network,
+        sync,
         executor,
         bundle_receiver,
     } = gossip_params;
@@ -280,6 +284,7 @@ pub async fn start_gossip_worker<PBlock, Block, Network, Executor>(
     let gossip_validator = Arc::new(GossipValidator::new(executor));
     let gossip_engine = GossipEngine::new(
         network,
+        sync,
         EXECUTOR_PROTOCOL_NAME,
         gossip_validator.clone(),
         None,

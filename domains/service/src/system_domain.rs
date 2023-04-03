@@ -90,8 +90,10 @@ where
     pub backend: Arc<FullBackend>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
-    /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Network service.
+    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
@@ -318,7 +320,7 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(BuildNetworkParams {
             config: &system_domain_config.service_config,
             client: client.clone(),
@@ -355,11 +357,12 @@ where
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
         config: system_domain_config.service_config,
-        keystore: params.keystore_container.sync_keystore(),
+        keystore: params.keystore_container.keystore(),
         backend: backend.clone(),
-        network: network.clone(),
+        network: network_service.clone(),
         system_rpc_tx,
         tx_handler_controller,
+        sync_service: sync_service.clone(),
         telemetry: telemetry.as_mut(),
     })?;
 
@@ -379,7 +382,7 @@ where
             backend: backend.clone(),
             code_executor: code_executor.clone(),
             is_authority,
-            keystore: params.keystore_container.sync_keystore(),
+            keystore: params.keystore_container.keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
@@ -396,7 +399,8 @@ where
     );
     let executor_gossip =
         domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-            network: network.clone(),
+            network: network_service.clone(),
+            sync: sync_service.clone(),
             executor: gossip_message_validator,
             bundle_receiver,
         });
@@ -414,7 +418,7 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
             relayer_id,
             client.clone(),
-            network.clone(),
+            sync_service.clone(),
             gossip_message_sink.clone(),
         );
 
@@ -472,7 +476,8 @@ where
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         network_starter,
         executor,

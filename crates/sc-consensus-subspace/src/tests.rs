@@ -49,8 +49,7 @@ use schnorrkel::Keypair;
 use sp_api::HeaderT;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, DisableProofRecording, Environment, NoNetwork as DummyOracle,
-    Proposal, Proposer,
+    BlockOrigin, DisableProofRecording, Environment, NoNetwork as DummyOracle, Proposal, Proposer,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
@@ -233,7 +232,6 @@ where
     async fn import_block(
         &mut self,
         block: BlockImportParams<TestBlock, Self::Transaction>,
-        new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         // TODO: Here we are hacking around lack of transaction support in test runtime and
         //  remove known segment headers for current block to make sure block import doesn't fail,
@@ -243,7 +241,7 @@ where
 
         let import_result = self
             .block_import
-            .import_block(block, new_cache)
+            .import_block(block)
             .await
             .expect("importing block failed");
 
@@ -299,13 +297,7 @@ impl Verifier<TestBlock> for TestVerifier {
     async fn verify(
         &mut self,
         mut block: BlockImportParams<TestBlock, ()>,
-    ) -> Result<
-        (
-            BlockImportParams<TestBlock, ()>,
-            Option<Vec<(CacheKeyId, Vec<u8>)>>,
-        ),
-        String,
-    > {
+    ) -> Result<BlockImportParams<TestBlock, ()>, String> {
         // apply post-sealing mutations (i.e. stripping seal, if desired).
         (self.mutator)(&mut block.header, Stage::PostSeal);
         self.inner.verify(block).await
@@ -409,6 +401,10 @@ impl TestNetFactory for SubspaceTestNet {
     fn peers(&self) -> &Vec<SubspacePeer> {
         trace!(target: "subspace", "Retrieving peers");
         &self.peers
+    }
+
+    fn peers_mut(&mut self) -> &mut Vec<SubspacePeer> {
+        &mut self.peers
     }
 
     fn mut_peers<F: FnOnce(&mut Vec<SubspacePeer>)>(&mut self, closure: F) {

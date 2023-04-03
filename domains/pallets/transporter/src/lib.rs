@@ -92,7 +92,6 @@ mod pallet {
 
     /// Pallet transporter to move funds between domains.
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 

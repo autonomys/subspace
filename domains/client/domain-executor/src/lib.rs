@@ -117,7 +117,7 @@ use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnNamed;
 use sp_domains::{ExecutionReceipt, SignedBundle};
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
@@ -185,7 +185,7 @@ pub struct EssentialExecutorParams<
     pub backend: Arc<Backend>,
     pub code_executor: Arc<E>,
     pub is_authority: bool,
-    pub keystore: SyncCryptoStorePtr,
+    pub keystore: KeystorePtr,
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
     pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,

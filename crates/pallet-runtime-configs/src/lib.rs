@@ -26,7 +26,6 @@ mod pallet {
     use sp_runtime::traits::Zero;
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub trait Store)]
     pub struct Pallet<T>(_);
 
     /// Whether to disable the executor calls.

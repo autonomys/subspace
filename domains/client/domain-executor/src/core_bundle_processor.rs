@@ -11,7 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::marker::PhantomData;
@@ -30,7 +30,7 @@ where
     parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    keystore: SyncCryptoStorePtr,
+    keystore: KeystorePtr,
     core_domain_block_preprocessor: CoreDomainBlockPreprocessor<
         Block,
         PBlock,
@@ -103,7 +103,7 @@ where
         system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        keystore: SyncCryptoStorePtr,
+        keystore: KeystorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(

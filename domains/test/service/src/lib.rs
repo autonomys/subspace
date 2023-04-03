@@ -27,8 +27,9 @@ use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
+use sc_network::config::{NonReservedPeerMode, TransportConfig};
 use sc_network::{multiaddr, NetworkService, NetworkStateInfo};
-use sc_network_common::config::{NonReservedPeerMode, TransportConfig};
+use sc_network_sync::SyncingService;
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, NetworkConfiguration,
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod, WasmtimeInstantiationStrategy,
@@ -116,6 +117,7 @@ async fn run_executor(
     Arc<Backend>,
     Arc<CodeExecutor>,
     Arc<NetworkService<Block, H256>>,
+    Arc<SyncingService<Block>>,
     RpcHandlers,
     Executor,
 )> {
@@ -216,7 +218,7 @@ async fn run_executor(
     >(
         system_domain_config,
         primary_chain_full_node.client.clone(),
-        primary_chain_full_node.network.clone(),
+        primary_chain_full_node.sync_service.clone(),
         &primary_chain_full_node.select_chain,
         executor_streams,
         gossip_msg_sink,
@@ -228,7 +230,8 @@ async fn run_executor(
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         network_starter,
         rpc_handlers,
         executor,
@@ -237,8 +240,11 @@ async fn run_executor(
 
     let mut domain_tx_pool_sinks = BTreeMap::new();
     domain_tx_pool_sinks.insert(DomainId::SYSTEM, tx_pool_sink);
-    let cross_domain_message_gossip_worker =
-        GossipWorker::<Block>::new(network.clone(), domain_tx_pool_sinks);
+    let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
+        network_service.clone(),
+        sync_service.clone(),
+        domain_tx_pool_sinks,
+    );
 
     task_manager
         .spawn_essential_handle()
@@ -259,7 +265,8 @@ async fn run_executor(
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         executor,
     ))
@@ -276,6 +283,7 @@ async fn run_executor_with_mock_primary_node(
     Arc<Backend>,
     Arc<CodeExecutor>,
     Arc<NetworkService<Block, H256>>,
+    Arc<SyncingService<Block>>,
     RpcHandlers,
     Executor,
 )> {
@@ -321,7 +329,8 @@ async fn run_executor_with_mock_primary_node(
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         network_starter,
         rpc_handlers,
         executor,
@@ -330,8 +339,11 @@ async fn run_executor_with_mock_primary_node(
 
     let mut domain_tx_pool_sinks = BTreeMap::new();
     domain_tx_pool_sinks.insert(DomainId::SYSTEM, tx_pool_sink);
-    let cross_domain_message_gossip_worker =
-        GossipWorker::<Block>::new(network.clone(), domain_tx_pool_sinks);
+    let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
+        network_service.clone(),
+        sync_service.clone(),
+        domain_tx_pool_sinks,
+    );
 
     task_manager
         .spawn_essential_handle()
@@ -348,7 +360,8 @@ async fn run_executor_with_mock_primary_node(
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         executor,
     ))
@@ -366,8 +379,10 @@ pub struct SystemDomainNode {
     pub backend: Arc<Backend>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
-    /// Node's network.
-    pub network: Arc<NetworkService<Block, H256>>,
+    /// Network service.
+    pub network_service: Arc<NetworkService<Block, H256>>,
+    /// Sync service.
+    pub sync_service: Arc<SyncingService<Block>>,
     /// The `MultiaddrWithPeerId` to this node. This is useful if you want to pass it as "boot node"
     /// to other nodes.
     pub addr: MultiaddrWithPeerId,
@@ -496,12 +511,20 @@ impl SystemDomainNodeBuilder {
             format!("{} (PrimaryChain)", primary_chain_config.network.node_name);
 
         let multiaddr = system_domain_config.network.listen_addresses[0].clone();
-        let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-            run_executor(system_domain_config, primary_chain_config)
-                .await
-                .expect("could not start system domain node");
+        let (
+            task_manager,
+            client,
+            backend,
+            code_executor,
+            network_service,
+            sync_service,
+            rpc_handlers,
+            executor,
+        ) = run_executor(system_domain_config, primary_chain_config)
+            .await
+            .expect("could not start system domain node");
 
-        let peer_id = network.local_peer_id();
+        let peer_id = network_service.local_peer_id();
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         SystemDomainNode {
@@ -510,7 +533,8 @@ impl SystemDomainNodeBuilder {
             client,
             backend,
             code_executor,
-            network,
+            network_service,
+            sync_service,
             addr,
             rpc_handlers,
             executor,
@@ -534,12 +558,20 @@ impl SystemDomainNodeBuilder {
         .expect("could not generate system domain node Configuration");
 
         let multiaddr = system_domain_config.network.listen_addresses[0].clone();
-        let (task_manager, client, backend, code_executor, network, rpc_handlers, executor) =
-            run_executor_with_mock_primary_node(system_domain_config, mock_primary_node)
-                .await
-                .expect("could not start system domain node");
+        let (
+            task_manager,
+            client,
+            backend,
+            code_executor,
+            network_service,
+            sync_service,
+            rpc_handlers,
+            executor,
+        ) = run_executor_with_mock_primary_node(system_domain_config, mock_primary_node)
+            .await
+            .expect("could not start system domain node");
 
-        let peer_id = network.local_peer_id();
+        let peer_id = network_service.local_peer_id();
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
         SystemDomainNode {
@@ -548,7 +580,8 @@ impl SystemDomainNodeBuilder {
             client,
             backend,
             code_executor,
-            network,
+            network_service,
+            sync_service,
             addr,
             rpc_handlers,
             executor,
@@ -604,7 +637,6 @@ pub fn node_config(
         transaction_pool: Default::default(),
         network: network_config,
         keystore: KeystoreConfig::InMemory,
-        keystore_remote: Default::default(),
         database: DatabaseSource::ParityDb {
             path: root.join("paritydb"),
         },

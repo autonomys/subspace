@@ -19,7 +19,7 @@
 
 #![feature(try_blocks)]
 
-use futures::{future, FutureExt, SinkExt, StreamExt};
+use futures::{future, FutureExt, StreamExt};
 use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::SubscriptionResult;
@@ -250,7 +250,7 @@ where
                 .map(move |new_slot_notification| {
                     let NewSlotNotification {
                         new_slot_info,
-                        mut solution_sender,
+                        solution_sender,
                     } = new_slot_notification;
 
                     let (response_sender, response_receiver) = async_oneshot::oneshot();
@@ -293,7 +293,7 @@ where
                                     chunk_signature: solution.chunk_signature,
                                 };
 
-                                let _ = solution_sender.send(solution).await;
+                                let _ = solution_sender.unbounded_send(solution);
                             }
                         }
                     };
@@ -338,7 +338,7 @@ where
                 let RewardSigningNotification {
                     hash,
                     public_key,
-                    mut signature_sender,
+                    signature_sender,
                 } = reward_signing_notification;
 
                 let (response_sender, response_receiver) = async_oneshot::oneshot();
@@ -363,7 +363,7 @@ where
                         if let Some(signature) = reward_signature.signature {
                             match FarmerSignature::decode(&mut signature.encode().as_ref()) {
                                 Ok(signature) => {
-                                    let _ = signature_sender.send(signature).await;
+                                    let _ = signature_sender.unbounded_send(signature);
                                 }
                                 Err(error) => {
                                     warn!(

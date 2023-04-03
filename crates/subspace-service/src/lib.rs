@@ -396,8 +396,10 @@ where
     pub client: Arc<Client>,
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
-    /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Network service.
+    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Full client backend.
@@ -668,7 +670,7 @@ where
             })?;
     }
 
-    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             client: client.clone(),
@@ -679,7 +681,7 @@ where
             warp_sync_params: None,
         })?;
 
-    let sync_oracle = network.clone();
+    let sync_oracle = sync_service.clone();
     let best_hash = client.info().best_hash;
     let mut imported_blocks_stream = client.import_notification_stream();
     task_manager.spawn_handle().spawn(
@@ -702,7 +704,7 @@ where
             &config,
             task_manager.spawn_handle(),
             client.clone(),
-            network.clone(),
+            network_service.clone(),
         );
     }
 
@@ -728,8 +730,8 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: network.clone(),
-            justification_sync_link: network.clone(),
+            sync_oracle: sync_service.clone(),
+            justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
@@ -778,9 +780,9 @@ where
     }
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
-        network: network.clone(),
+        network: network_service.clone(),
         client: client.clone(),
-        keystore: keystore_container.sync_keystore(),
+        keystore: keystore_container.keystore(),
         task_manager: &mut task_manager,
         transaction_pool: transaction_pool.clone(),
         rpc_builder: if enable_rpc_extensions {
@@ -817,13 +819,15 @@ where
         config: config.into(),
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
+        sync_service: sync_service.clone(),
     })?;
 
     Ok(NewFull {
         task_manager,
         client,
         select_chain,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         backend,
         new_slot_notification_stream,

@@ -11,7 +11,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::ExecutorApi;
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
@@ -25,7 +25,7 @@ where
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    keystore: SyncCryptoStorePtr,
+    keystore: KeystorePtr,
     system_domain_block_preprocessor:
         SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
@@ -83,7 +83,7 @@ where
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        keystore: SyncCryptoStorePtr,
+        keystore: KeystorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(

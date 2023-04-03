@@ -1,7 +1,7 @@
 use codec::Encode;
 use frame_support::sp_io;
 use hex_literal::hex;
-use sp_objects::runtime_decl_for_ObjectsApi::ObjectsApi;
+use sp_objects::runtime_decl_for_objects_api::ObjectsApiV1;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{crypto, Blake2b256Hash};
