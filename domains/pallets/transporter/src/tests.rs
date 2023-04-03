@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 fn test_initiate_transfer_failed() {
     new_test_ext().execute_with(|| {
         let account = 100;
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 0);
 
         // transfer 500 to dst_domain id 100
@@ -34,7 +34,7 @@ fn test_initiate_transfer_failed() {
 fn test_initiate_transfer() {
     new_test_ext().execute_with(|| {
         let account = USER_ACCOUNT;
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 1000);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
@@ -47,7 +47,7 @@ fn test_initiate_transfer() {
         };
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
         assert_ok!(res);
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
@@ -179,7 +179,7 @@ fn test_transfer_response_revert() {
         let dst_domain_id: DomainId = 1.into();
 
         // check pre dispatch balances
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 1000);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
@@ -188,7 +188,7 @@ fn test_transfer_response_revert() {
         initiate_transfer(dst_domain_id, account, amount);
 
         // check post init
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
@@ -214,7 +214,7 @@ fn test_transfer_response_revert() {
         assert_ok!(res);
 
         // balance changes should be reverted.
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 1000);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
@@ -237,7 +237,7 @@ fn test_transfer_response_successful() {
         let dst_domain_id: DomainId = 1.into();
 
         // check pre dispatch balances
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 1000);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
@@ -246,7 +246,7 @@ fn test_transfer_response_successful() {
         initiate_transfer(dst_domain_id, account, amount);
 
         // check post init
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
@@ -268,7 +268,7 @@ fn test_transfer_response_successful() {
         assert_ok!(res);
 
         // balance changes should be as is.
-        let balance = Balances::free_balance(&account);
+        let balance = Balances::free_balance(account);
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 500);
@@ -291,7 +291,7 @@ fn test_receive_incoming_transfer() {
         let dst_domain_id: DomainId = 1.into();
 
         // check pre dispatch balances
-        let balance = Balances::free_balance(&receiver);
+        let balance = Balances::free_balance(receiver);
         assert_eq!(balance, 0);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
@@ -312,7 +312,7 @@ fn test_receive_incoming_transfer() {
             .encode(),
         );
         assert_ok!(resp);
-        let balance = Balances::free_balance(&receiver);
+        let balance = Balances::free_balance(receiver);
         assert_eq!(balance, 500);
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1500);
