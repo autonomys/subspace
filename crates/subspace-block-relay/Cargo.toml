@@ -1,0 +1,14 @@
+[package]
+name = "subspace-block-relay"
+description = "Block relay implementation"
+license = "MIT OR Apache-2.0"
+version = "0.1.0"
+authors = ["Rahul Subramaniyam <rahulksnv@gmail.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+async-trait = "0.1.68"

@@ -10227,6 +10227,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-block-relay"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+]
+
+[[package]]
 name = "subspace-chiapos"
 version = "0.1.0"
 source = "git+https://github.com/subspace/chiapos?rev=a239ddf83b4d8420f23616d604af83c756c40116#a239ddf83b4d8420f23616d604af83c756c40116"
