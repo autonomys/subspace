@@ -87,10 +87,6 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 
-[patch.crates-io]
-# TODO: Remove once chacha20poly1305 0.10 appears in libp2p's dependencies
-chacha20poly1305 = { git = "https://github.com/RustCrypto/AEADs", rev = "06dbfb5571687fd1bbe9d3c9b2193a1ba17f8e99" }
-
 # Reason: We need to patch substrate dependency of snowfork libraries to our fork
 # TODO: Remove when we are using upstream substrate instead of fork
 [patch."https://github.com/paritytech/substrate.git"]

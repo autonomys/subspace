@@ -12,13 +12,13 @@ include = [
 ]
 
 [dependencies]
-async-trait = "0.1.64"
+async-trait = "0.1.68"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../client/cross-domain-message-gossip" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../../client/consensus-relay-chain" }
 domain-client-executor = { version = "0.1.0", path = "../../client/domain-executor" }
 domain-service = { version = "0.1.0", path = "../../service" }
 domain-test-runtime = { version = "0.1.0", path = "../runtime" }
-futures = "0.3.26"
+futures = "0.3.28"
 frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 rand = "0.8.5"
@@ -49,5 +49,5 @@ subspace-test-client = { version = "0.1.0", path = "../../../test/subspace-test-
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-test-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
-tokio = { version = "1.25.0", features = ["macros"] }
+tokio = { version = "1.27.0", features = ["macros"] }
 tracing = "0.1.37"

@@ -11,7 +11,7 @@ include = [
 ]
 
 [dependencies]
-async-trait = "0.1.64"
+async-trait = "0.1.68"
 codec = { package = "parity-scale-codec", version = "3.4.0", features = ["derive"] }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "438b5918d7fae0498edb4375334ab173b834c7fb" }
