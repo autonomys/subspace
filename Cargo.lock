@@ -2420,6 +2420,7 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
+ "system-runtime-primitives",
  "tracing",
 ]
 
