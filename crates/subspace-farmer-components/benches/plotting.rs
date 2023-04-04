@@ -10,7 +10,9 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{PublicKey, RecordedHistorySegment, SegmentIndex, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{
+    HistorySize, PublicKey, RecordedHistorySegment, SegmentIndex, PLOT_SECTOR_SIZE,
+};
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::FarmerProtocolInfo;
 
@@ -33,7 +35,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         .pieces;
 
     let farmer_protocol_info = FarmerProtocolInfo {
-        total_pieces: NonZeroU64::new(1).unwrap(),
+        history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
         sector_expiration: SegmentIndex::ONE,
     };
 

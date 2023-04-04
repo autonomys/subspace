@@ -27,7 +27,6 @@ include!(concat!(env!("OUT_DIR"), "/test_domain_wasm_bundle.rs"));
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
-use core::num::NonZeroU64;
 use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
@@ -71,7 +70,8 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    HistorySize, Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex,
+    SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -1067,8 +1067,8 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn total_pieces() -> NonZeroU64 {
-            <pallet_subspace::Pallet<Runtime>>::total_pieces()
+        fn history_size() -> HistorySize {
+            <pallet_subspace::Pallet<Runtime>>::history_size()
         }
 
         fn slot_duration() -> Duration {

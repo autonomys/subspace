@@ -2,8 +2,10 @@ use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 use alloc::boxed::Box;
 use core::iter::Step;
 use core::mem;
+use core::num::NonZeroU64;
 use derive_more::{
-    Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, Mul, MulAssign, Sub, SubAssign,
+    Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul, MulAssign, Sub,
+    SubAssign,
 };
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -62,6 +64,50 @@ impl const From<u64> for SegmentIndex {
 impl const From<SegmentIndex> for u64 {
     fn from(original: SegmentIndex) -> Self {
         original.0
+    }
+}
+
+/// Size of blockchain history in segments.
+#[derive(
+    Debug,
+    Display,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    From,
+    Into,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct HistorySize(NonZeroU64);
+
+impl From<SegmentIndex> for HistorySize {
+    fn from(value: SegmentIndex) -> Self {
+        Self(NonZeroU64::new(value.0 + 1).expect("Not zero; qed"))
+    }
+}
+
+impl HistorySize {
+    /// Size of blockchain history in pieces.
+    pub const fn in_pieces(&self) -> NonZeroU64 {
+        self.0.saturating_mul(
+            NonZeroU64::new(ArchivedHistorySegment::NUM_PIECES as u64).expect("Not zero; qed"),
+        )
+    }
+
+    /// Segment index that corresponds to this history size.
+    pub const fn segment_index(&self) -> SegmentIndex {
+        SegmentIndex::from(self.0.get() - 1)
     }
 }
 

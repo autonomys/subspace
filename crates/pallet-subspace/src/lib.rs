@@ -57,8 +57,8 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, LegacySectorId, PublicKey, Randomness, RewardSignature, SectorIndex,
-    SegmentHeader, SegmentIndex, SolutionRange,
+    ArchivedHistorySegment, HistorySize, LegacySectorId, PublicKey, Randomness, RewardSignature,
+    SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -669,11 +669,10 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Total number of pieces in the blockchain
-    pub fn total_pieces() -> NonZeroU64 {
+    pub fn history_size() -> HistorySize {
         // Chain starts with one segment plotted, even if it is not recorded in the runtime yet
         let number_of_segments = u64::from(SegmentCommitment::<T>::count()).max(1);
-        NonZeroU64::new(number_of_segments * ArchivedHistorySegment::NUM_PIECES as u64)
-            .expect("Neither of multiplied values is zero; qed")
+        HistorySize::from(NonZeroU64::new(number_of_segments).expect("Not zero; qed"))
     }
 
     /// Determine whether a randomness update should take place at this block.

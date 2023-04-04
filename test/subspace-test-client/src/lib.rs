@@ -29,13 +29,12 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::io::Cursor;
-use std::num::NonZeroU64;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{PublicKey, SegmentIndex, Solution, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{HistorySize, PublicKey, SegmentIndex, Solution, PLOT_SECTOR_SIZE};
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
@@ -209,13 +208,13 @@ where
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");
-    let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
+    let history_size = HistorySize::from(SegmentIndex::ZERO);
     let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
-        total_pieces,
+        history_size,
         // TODO: This constant should come from the chain itself
         sector_expiration: SegmentIndex::from(100),
     };

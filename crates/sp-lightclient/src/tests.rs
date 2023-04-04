@@ -27,7 +27,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    LegacySectorId, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
+    HistorySize, LegacySectorId, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
@@ -89,13 +89,13 @@ impl Farmer {
         let kzg = Kzg::new(kzg::embedded_kzg_settings());
         let archived_segment = archived_segment(kzg.clone());
         let segment_header = archived_segment.segment_header;
-        let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
+        let history_size = HistorySize::from(NonZeroU64::new(1).unwrap());
         let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
         let sector_index = 0;
         let public_key = PublicKey::from(keypair.public.to_bytes());
         let farmer_protocol_info = FarmerProtocolInfo {
-            total_pieces,
+            history_size,
             sector_expiration: SegmentIndex::from(100),
         };
         let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();

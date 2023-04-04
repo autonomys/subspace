@@ -31,7 +31,6 @@ use crate::digests::{CompatibleDigestItem, PreDigest};
 use alloc::borrow::Cow;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::num::NonZeroU64;
 use core::time::Duration;
 use scale_info::TypeInfo;
 use schnorrkel::context::SigningContext;
@@ -46,8 +45,9 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RewardSignature, SegmentCommitment, SegmentHeader,
-    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
+    REWARD_SIGNATURE_LENGTH,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
@@ -449,8 +449,8 @@ sp_api::decl_runtime_apis! {
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 
-        /// Total number of pieces in a blockchain
-        fn total_pieces() -> NonZeroU64;
+        /// Size of the blockchain history
+        fn history_size() -> HistorySize;
 
         /// Get the segment commitment of records for specified segment index
         fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;

@@ -156,14 +156,14 @@ where
     SM: io::Write,
 {
     let sector_id = LegacySectorId::new(public_key, sector_index);
-    let current_segment_index =
-        PieceIndex::from(farmer_protocol_info.total_pieces.get()).segment_index();
+    let current_segment_index = farmer_protocol_info.history_size.segment_index();
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (PieceIndex::ZERO..)
         .take(PLOT_SECTOR_SIZE as usize / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
         .map(|piece_offset| {
-            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.total_pieces)
+            sector_id
+                .derive_piece_index(piece_offset, farmer_protocol_info.history_size.in_pieces())
         })
         .collect();
 
@@ -242,7 +242,7 @@ where
         .collect::<Result<Vec<Commitment>, PlottingError>>()?;
 
     let sector_metadata = SectorMetadata {
-        total_pieces: farmer_protocol_info.total_pieces,
+        history_size: farmer_protocol_info.history_size,
         expires_at,
         commitments,
     };

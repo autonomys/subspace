@@ -237,7 +237,7 @@ where
                 .segment_commitment(parent_hash, segment_index)
                 .ok()?;
             // TODO: This will be necessary for verifying sector expiration in the future
-            let _total_pieces = runtime_api.total_pieces(parent_hash).ok()?;
+            let _history_size = runtime_api.history_size(parent_hash).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with segment headers are not yet in runtime.

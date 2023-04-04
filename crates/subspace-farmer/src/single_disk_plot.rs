@@ -1077,7 +1077,10 @@ impl SingleDiskPlot {
                 let piece_indexes = (PieceIndex::ZERO..)
                     .take(PIECES_IN_SECTOR as usize)
                     .map(|piece_offset| {
-                        sector_id.derive_piece_index(piece_offset, sector_metadata.total_pieces)
+                        sector_id.derive_piece_index(
+                            piece_offset,
+                            sector_metadata.history_size.in_pieces(),
+                        )
                     })
                     .collect();
 

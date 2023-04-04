@@ -118,9 +118,10 @@ impl EligibleSector {
         let piece_witness = match Witness::try_from_bytes(witness) {
             Ok(piece_witness) => piece_witness,
             Err(error) => {
-                let piece_index = self
-                    .sector_id
-                    .derive_piece_index(self.audit_piece_offset, sector_metadata.total_pieces);
+                let piece_index = self.sector_id.derive_piece_index(
+                    self.audit_piece_offset,
+                    sector_metadata.history_size.in_pieces(),
+                );
                 let audit_piece_bytes_offset = self.audit_piece_offset
                     * (Piece::SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
                 error!(
@@ -141,7 +142,7 @@ impl EligibleSector {
                 public_key: PublicKey::from(keypair.public.to_bytes()),
                 reward_address,
                 sector_index: self.sector_index,
-                total_pieces: sector_metadata.total_pieces,
+                total_pieces: sector_metadata.history_size.in_pieces(),
                 piece_offset: self.audit_piece_offset,
                 record_commitment_hash: blake2b_256_254_hash_to_scalar(commitment.as_ref()),
                 piece_witness,

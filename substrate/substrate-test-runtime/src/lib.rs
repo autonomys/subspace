@@ -25,7 +25,6 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
-use core::num::NonZeroU64;
 use frame_support::dispatch::RawOrigin;
 use frame_support::parameter_types;
 use frame_support::traits::{CallerTrait, ConstU32, ConstU64, CrateVersion};
@@ -54,7 +53,7 @@ use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{SegmentCommitment, SegmentIndex};
+use subspace_core_primitives::{HistorySize, SegmentCommitment, SegmentIndex};
 
 // Include the WASM binary
 #[cfg(feature = "std")]
@@ -859,8 +858,8 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn total_pieces() -> NonZeroU64 {
-                    <pallet_subspace::Pallet<Runtime>>::total_pieces()
+                fn history_size() -> HistorySize {
+                    <pallet_subspace::Pallet<Runtime>>::history_size()
                 }
 
                 fn slot_duration() -> core::time::Duration {
@@ -1115,8 +1114,8 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn total_pieces() -> NonZeroU64 {
-                    <pallet_subspace::Pallet<Runtime>>::total_pieces()
+                fn history_size() -> HistorySize {
+                    <pallet_subspace::Pallet<Runtime>>::history_size()
                 }
 
                 fn slot_duration() -> core::time::Duration {

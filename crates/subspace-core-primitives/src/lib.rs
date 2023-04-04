@@ -21,6 +21,7 @@
 #![feature(
     array_chunks,
     const_num_from_num,
+    const_option,
     const_trait_impl,
     new_uninit,
     slice_flatten,
@@ -54,7 +55,7 @@ pub use pieces::{
     RecordWitness,
 };
 use scale_info::TypeInfo;
-pub use segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
+pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
 use uint::static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
