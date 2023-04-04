@@ -80,7 +80,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
+    Blake2b256Hash, BlockWeight, LegacySectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
     Solution, SolutionRange,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -895,7 +895,7 @@ where
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let sector_id = SectorId::new(
+        let sector_id = LegacySectorId::new(
             &(&pre_digest.solution.public_key).into(),
             pre_digest.solution.sector_index,
         );
@@ -1076,7 +1076,7 @@ where
                 pre_digest.slot.into(),
             );
 
-            let sector_id = SectorId::new(
+            let sector_id = LegacySectorId::new(
                 &(&pre_digest.solution.public_key).into(),
                 pre_digest.solution.sector_index,
             );

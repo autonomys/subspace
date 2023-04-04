@@ -641,18 +641,21 @@ impl TryFrom<U256> for u64 {
     }
 }
 
+// TODO: Remove
 /// Data structure representing sector ID in farmer's plot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
+pub struct LegacySectorId(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash,
+);
 
-impl AsRef<[u8]> for SectorId {
+impl AsRef<[u8]> for LegacySectorId {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl SectorId {
+impl LegacySectorId {
     /// Create new sector ID by deriving it from public key and sector index
     pub fn new(public_key: &PublicKey, sector_index: SectorIndex) -> Self {
         Self(blake2b_256_hash_with_key(

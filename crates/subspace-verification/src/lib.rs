@@ -28,8 +28,9 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
-    BlockNumber, ChunkSignature, PieceIndex, PublicKey, Randomness, RewardSignature, SectorId,
-    SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR, RANDOMNESS_CONTEXT,
+    BlockNumber, ChunkSignature, LegacySectorId, PieceIndex, PublicKey, Randomness,
+    RewardSignature, SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR,
+    RANDOMNESS_CONTEXT,
 };
 use subspace_solving::{
     create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
@@ -151,7 +152,7 @@ where
 
     let public_key = PublicKey::from(&solution.public_key);
 
-    let sector_id = SectorId::new(&public_key, solution.sector_index);
+    let sector_id = LegacySectorId::new(&public_key, solution.sector_index);
 
     let local_challenge =
         sector_id.derive_local_challenge(&derive_global_challenge(global_randomness, slot));
