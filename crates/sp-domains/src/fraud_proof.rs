@@ -16,7 +16,10 @@ pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
     InitializeBlock { domain_parent_hash: H256 },
     /// Executes some extrinsic.
-    ApplyExtrinsic(u32),
+    ApplyExtrinsic {
+        extrinsic_index: u32,
+        primary_hash: H256,
+    },
     /// Executes the `finalize_block` hook.
     FinalizeBlock { total_extrinsics: u32 },
 }
@@ -28,7 +31,7 @@ impl ExecutionPhase {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
             Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
+            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
@@ -41,7 +44,7 @@ impl ExecutionPhase {
     pub fn verifying_method(&self) -> &'static str {
         match self {
             Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
@@ -52,7 +55,7 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            Self::InitializeBlock { .. } | Self::ApplyExtrinsic(_) => {
+            Self::InitializeBlock { .. } | Self::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
@@ -83,6 +86,18 @@ pub enum VerificationError {
         error("`post_state_root` is same as the one on chain")
     )]
     SamePostStateRoot,
+    /// Domain extrinsic at given index not found.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Domain extrinsic at index {0} not found")
+    )]
+    DomainExtrinsicNotFound(u32),
+    /// Error occurred while building the domain extrinsics.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to rebuild the domain extrinsic list")
+    )]
+    FailedToBuildDomainExtrinsics,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",

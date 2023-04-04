@@ -1,6 +1,7 @@
 #![allow(unused_imports, unused_variables)]
 use crate::invalid_state_transition_proof::{
     ExecutionProver, InvalidStateTransitionProofVerifier, SkipPreStateRootVerification,
+    SystemDomainExtrinsicsBuilder,
 };
 use crate::ProofVerifier;
 use codec::Encode;
@@ -204,6 +205,10 @@ async fn execution_proof_creation_and_verification_should_work() {
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
         SkipPreStateRootVerification,
+        SystemDomainExtrinsicsBuilder::new(
+            ferdie.client.clone(),
+            Arc::new(ferdie.executor.clone()),
+        ),
     );
     let proof_verifier =
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
@@ -237,7 +242,10 @@ async fn execution_proof_creation_and_verification_should_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(target_extrinsic_index as u32);
+        let execution_phase = ExecutionPhase::ApplyExtrinsic {
+            extrinsic_index: target_extrinsic_index as u32,
+            primary_hash: parent_hash_alice,
+        };
         let apply_extrinsic_call_data = xt.encode();
 
         let storage_proof = prover
@@ -433,8 +441,16 @@ async fn invalid_execution_proof_should_not_work() {
     .unwrap();
 
     let best_hash = alice.client.info().best_hash;
+    let best_number = alice.client.info().best_number;
     let header = alice.client.header(best_hash).unwrap().unwrap();
     let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
+
+    let primary_hash = ferdie
+        .client
+        .header(ferdie.client.hash(best_number).unwrap().unwrap())
+        .unwrap()
+        .unwrap()
+        .hash();
 
     let create_block_builder = || {
         BlockBuilder::new(
@@ -468,7 +484,10 @@ async fn invalid_execution_proof_should_not_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(extrinsic_index as u32);
+        let execution_phase = ExecutionPhase::ApplyExtrinsic {
+            extrinsic_index: extrinsic_index as u32,
+            primary_hash,
+        };
         let apply_extrinsic_call_data = test_txs[extrinsic_index].encode();
 
         let proof = prover
@@ -487,7 +506,10 @@ async fn invalid_execution_proof_should_not_work() {
     let (proof1, post_delta_root1, execution_phase1) = create_extrinsic_proof(1);
 
     let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(1u32);
+        let execution_phase = ExecutionPhase::ApplyExtrinsic {
+            extrinsic_index: 1u32,
+            primary_hash,
+        };
         let apply_extrinsic_call_data = transfer_to_charlie_again.encode();
         prover.check_execution_proof(
             parent_header.hash(),
@@ -508,6 +530,10 @@ async fn invalid_execution_proof_should_not_work() {
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
         SkipPreStateRootVerification,
+        SystemDomainExtrinsicsBuilder::new(
+            ferdie.client.clone(),
+            Arc::new(ferdie.executor.clone()),
+        ),
     );
     let proof_provider =
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));

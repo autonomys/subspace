@@ -126,6 +126,7 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
         SpawnTaskHandle,
         Hash,
         PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        (),
     >;
 
 type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
@@ -212,6 +213,7 @@ where
             executor.clone(),
             task_manager.spawn_handle(),
             PrePostStateRootVerifier::new(client.clone()),
+            (),
         ),
     ));
 
