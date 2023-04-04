@@ -299,6 +299,12 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: ReceiptsApi<Block, domain_runtime_primitives::Hash>,
 {
+    // TODO: It's not necessary to require `pre_state_root` in the proof and then verify, it can
+    // be just retrieved by the verifier itself according the execution phase, which requires some
+    // fixes in tests however, we can do this refactoring once we have or are able to construct a
+    // proper `VerifyPrePostStateRoot` implementation in test.
+    //
+    // Related: https://github.com/subspace/subspace/pull/1240#issuecomment-1476212007
     fn verify_pre_state_root(
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
