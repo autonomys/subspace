@@ -6,6 +6,7 @@ use super::*;
 use frame_support::{assert_noop, assert_ok, error::BadOrigin};
 use mock::*;
 use pallet_balances::{BalanceLock, Reasons};
+use sp_runtime::TokenError;
 use sp_runtime::traits::Dispatchable;
 
 #[test]
@@ -20,7 +21,7 @@ fn vesting_from_chain_spec_works() {
 		assert!(PalletBalances::ensure_can_withdraw(&CHARLIE, 11, WithdrawReasons::TRANSFER, 19).is_err());
 
 		assert_eq!(
-			Vesting::vesting_schedules(&CHARLIE),
+			Vesting::vesting_schedules(CHARLIE),
 			vec![
 				VestingSchedule {
 					start: 2u64,
@@ -78,10 +79,49 @@ fn vested_transfer_works() {
 			BOB,
 			schedule.clone()
 		));
-		assert_eq!(Vesting::vesting_schedules(&BOB), vec![schedule.clone()]);
+		assert_eq!(Vesting::vesting_schedules(BOB), vec![schedule.clone()]);
 		System::assert_last_event(RuntimeEvent::Vesting(crate::Event::VestingScheduleAdded {
 			from: ALICE,
 			to: BOB,
+			vesting_schedule: schedule,
+		}));
+	});
+}
+
+#[test]
+fn self_vesting() {
+	ExtBuilder::build().execute_with(|| {
+		System::set_block_number(1);
+
+		let schedule = VestingSchedule {
+			start: 0u64,
+			period: 10u64,
+			period_count: 1u32,
+			per_period: ALICE_BALANCE,
+		};
+
+		let bad_schedule = VestingSchedule {
+			start: 0u64,
+			period: 10u64,
+			period_count: 1u32,
+			per_period: 10 * ALICE_BALANCE,
+		};
+
+		assert_noop!(
+			Vesting::vested_transfer(RuntimeOrigin::signed(ALICE), ALICE, bad_schedule),
+			crate::Error::<Runtime>::InsufficientBalanceToLock
+		);
+
+		assert_ok!(Vesting::vested_transfer(
+			RuntimeOrigin::signed(ALICE),
+			ALICE,
+			schedule.clone()
+		));
+
+		assert_eq!(Vesting::vesting_schedules(ALICE), vec![schedule.clone()]);
+		System::assert_last_event(RuntimeEvent::Vesting(crate::Event::VestingScheduleAdded {
+			from: ALICE,
+			to: ALICE,
 			vesting_schedule: schedule,
 		}));
 	});
@@ -113,7 +153,7 @@ fn add_new_vesting_schedule_merges_with_current_locked_balance_and_until() {
 		));
 
 		assert_eq!(
-			PalletBalances::locks(&BOB).get(0),
+			PalletBalances::locks(BOB).get(0),
 			Some(&BalanceLock {
 				id: VESTING_LOCK_ID,
 				amount: 17u64,
@@ -175,7 +215,7 @@ fn vested_transfer_fails_if_transfer_err() {
 		};
 		assert_noop!(
 			Vesting::vested_transfer(RuntimeOrigin::signed(BOB), ALICE, schedule),
-			pallet_balances::Error::<Runtime, _>::InsufficientBalance,
+			DispatchError::Token(TokenError::FundsUnavailable),
 		);
 	});
 }
@@ -253,7 +293,7 @@ fn claim_works() {
 		assert_eq!(PalletBalances::free_balance(BOB), 0);
 
 		// no locks anymore
-		assert_eq!(PalletBalances::locks(&BOB), vec![]);
+		assert_eq!(PalletBalances::locks(BOB), vec![]);
 	});
 }
 
@@ -271,7 +311,7 @@ fn claim_for_works() {
 		assert_ok!(Vesting::claim_for(RuntimeOrigin::signed(ALICE), BOB));
 
 		assert_eq!(
-			PalletBalances::locks(&BOB).get(0),
+			PalletBalances::locks(BOB).get(0),
 			Some(&BalanceLock {
 				id: VESTING_LOCK_ID,
 				amount: 20u64,
@@ -285,7 +325,7 @@ fn claim_for_works() {
 		assert_ok!(Vesting::claim_for(RuntimeOrigin::signed(ALICE), BOB));
 
 		// no locks anymore
-		assert_eq!(PalletBalances::locks(&BOB), vec![]);
+		assert_eq!(PalletBalances::locks(BOB), vec![]);
 		assert!(!VestingSchedules::<Runtime>::contains_key(BOB));
 	});
 }
@@ -324,7 +364,7 @@ fn update_vesting_schedules_works() {
 		// empty vesting schedules cleanup the storage and unlock the fund
 		assert!(VestingSchedules::<Runtime>::contains_key(BOB));
 		assert_eq!(
-			PalletBalances::locks(&BOB).get(0),
+			PalletBalances::locks(BOB).get(0),
 			Some(&BalanceLock {
 				id: VESTING_LOCK_ID,
 				amount: 10u64,
@@ -333,7 +373,7 @@ fn update_vesting_schedules_works() {
 		);
 		assert_ok!(Vesting::update_vesting_schedules(RuntimeOrigin::root(), BOB, vec![]));
 		assert!(!VestingSchedules::<Runtime>::contains_key(BOB));
-		assert_eq!(PalletBalances::locks(&BOB), vec![]);
+		assert_eq!(PalletBalances::locks(BOB), vec![]);
 	});
 }
 
@@ -388,13 +428,13 @@ fn multiple_vesting_schedule_claim_works() {
 			schedule2.clone()
 		));
 
-		assert_eq!(Vesting::vesting_schedules(&BOB), vec![schedule, schedule2.clone()]);
+		assert_eq!(Vesting::vesting_schedules(BOB), vec![schedule, schedule2.clone()]);
 
 		MockBlockNumberProvider::set(21);
 
 		assert_ok!(Vesting::claim(RuntimeOrigin::signed(BOB)));
 
-		assert_eq!(Vesting::vesting_schedules(&BOB), vec![schedule2]);
+		assert_eq!(Vesting::vesting_schedules(BOB), vec![schedule2]);
 
 		MockBlockNumberProvider::set(31);
 
@@ -402,7 +442,7 @@ fn multiple_vesting_schedule_claim_works() {
 
 		assert!(!VestingSchedules::<Runtime>::contains_key(BOB));
 
-		assert_eq!(PalletBalances::locks(&BOB), vec![]);
+		assert_eq!(PalletBalances::locks(BOB), vec![]);
 	});
 }
 
@@ -470,22 +510,22 @@ fn cliff_vesting_works() {
 			cliff_schedule
 		));
 		assert_eq!(PalletBalances::free_balance(BOB), VESTING_AMOUNT);
-		assert_eq!(PalletBalances::locks(&BOB), vec![balance_lock.clone()]);
+		assert_eq!(PalletBalances::locks(BOB), vec![balance_lock.clone()]);
 
 		for i in 1..VESTING_PERIOD {
 			MockBlockNumberProvider::set(i);
 			assert_ok!(Vesting::claim(RuntimeOrigin::signed(BOB)));
 			assert_eq!(PalletBalances::free_balance(BOB), VESTING_AMOUNT);
-			assert_eq!(PalletBalances::locks(&BOB), vec![balance_lock.clone()]);
+			assert_eq!(PalletBalances::locks(BOB), vec![balance_lock.clone()]);
 			assert_noop!(
 				PalletBalances::transfer(RuntimeOrigin::signed(BOB), CHARLIE, VESTING_AMOUNT),
-				pallet_balances::Error::<Runtime>::LiquidityRestrictions,
+				DispatchError::Token(TokenError::Frozen),
 			);
 		}
 
 		MockBlockNumberProvider::set(VESTING_PERIOD);
 		assert_ok!(Vesting::claim(RuntimeOrigin::signed(BOB)));
-		assert!(PalletBalances::locks(&BOB).is_empty());
+		assert!(PalletBalances::locks(BOB).is_empty());
 		assert_ok!(PalletBalances::transfer(
 			RuntimeOrigin::signed(BOB),
 			CHARLIE,

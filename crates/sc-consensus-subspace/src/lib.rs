@@ -29,7 +29,7 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
-pub use archiver::start_subspace_archiver;
+pub use archiver::create_subspace_archiver;
 use codec::Encode;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -56,8 +56,7 @@ use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, Tr
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, Environment, Error as ConsensusError, Proposer, SelectChain,
-    SyncOracle,
+    BlockOrigin, Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
@@ -71,7 +70,6 @@ use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -448,6 +446,8 @@ pub struct SubspaceLink<Block: BlockT> {
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
+    block_importing_notification_sender:
+        SubspaceNotificationSender<BlockImportingNotification<Block>>,
     block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<Block>>,
     /// Segment headers that are expected to appear in the corresponding blocks, used for block
@@ -607,13 +607,7 @@ where
     async fn verify(
         &mut self,
         mut block: BlockImportParams<Block, ()>,
-    ) -> Result<
-        (
-            BlockImportParams<Block, ()>,
-            Option<Vec<(CacheKeyId, Vec<u8>)>>,
-        ),
-        String,
-    > {
+    ) -> Result<BlockImportParams<Block, ()>, String> {
         trace!(
             target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
@@ -728,7 +722,7 @@ where
                 block.post_digests.push(verified_info.seal);
                 block.post_hash = Some(hash);
 
-                Ok((block, Default::default()))
+                Ok(block)
             }
             CheckedHeader::Deferred(a, b) => {
                 debug!(target: "subspace", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
@@ -1024,7 +1018,6 @@ where
     async fn import_block(
         &mut self,
         mut block: BlockImportParams<Block, Self::Transaction>,
-        new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
@@ -1033,11 +1026,7 @@ where
         match self.client.status(block_hash) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
-                return self
-                    .inner
-                    .import_block(block, new_cache)
-                    .await
-                    .map_err(Into::into);
+                return self.inner.import_block(block).await.map_err(Into::into);
             }
             Ok(sp_blockchain::BlockStatus::Unknown) => {}
             Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
@@ -1161,7 +1150,7 @@ where
         };
         block.fork_choice = Some(fork_choice);
 
-        let import_result = self.inner.import_block(block, new_cache).await?;
+        let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
         self.block_importing_notification_sender
@@ -1263,6 +1252,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
+        block_importing_notification_sender: block_importing_notification_sender.clone(),
         block_importing_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(

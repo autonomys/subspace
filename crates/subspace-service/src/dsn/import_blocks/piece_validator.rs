@@ -5,7 +5,7 @@ use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
-use tracing::error;
+use tracing::{error, warn};
 
 pub struct SegmentCommitmentPieceValidator {
     dsn_node: Node,
@@ -55,7 +55,7 @@ impl PieceValidator for SegmentCommitmentPieceValidator {
                 &segment_commitment,
                 piece_index.position(),
             ) {
-                error!(
+                warn!(
                     %piece_index,
                     %source_peer_id,
                     "Received invalid piece from peer"

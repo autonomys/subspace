@@ -15,7 +15,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::{NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink};
+use crate::{
+    BlockImportingNotification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
+    SubspaceLink,
+};
+use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
@@ -294,6 +298,25 @@ where
             }
         }
 
+        // TODO: This is a workaround for potential root cause of
+        //  https://github.com/subspace/subspace/issues/871, also being discussed in
+        //  https://substrate.stackexchange.com/questions/7886/is-block-creation-guaranteed-to-be-running-after-parent-block-is-fully-imported
+        if maybe_pre_digest.is_some() {
+            let block_number = *parent_header.number() + One::one();
+            let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
+
+            self.subspace_link
+                .block_importing_notification_sender
+                .notify(move || BlockImportingNotification {
+                    block_number,
+                    acknowledgement_sender,
+                });
+
+            while (acknowledgement_receiver.next().await).is_some() {
+                // Wait for all the acknowledgements to finish.
+            }
+        }
+
         maybe_pre_digest
     }
 
@@ -476,10 +499,10 @@ where
             return Ok(signature);
         }
 
-        Err(ConsensusError::CannotSign(
-            public_key.to_raw_vec(),
-            "Farmer didn't sign reward".to_string(),
-        ))
+        Err(ConsensusError::CannotSign(format!(
+            "Farmer didn't sign reward. Key: {:?}",
+            public_key.to_raw_vec()
+        )))
     }
 }
 

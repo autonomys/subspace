@@ -49,14 +49,14 @@ use schnorrkel::Keypair;
 use sp_api::HeaderT;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, DisableProofRecording, Environment, NoNetwork as DummyOracle,
-    Proposal, Proposer,
+    BlockOrigin, DisableProofRecording, Environment, NoNetwork as DummyOracle, Proposal, Proposer,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::inherents::InherentDataProvider;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_core::crypto::UncheckedFrom;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_inherents::{CreateInherentDataProviders, InherentData};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{Block as BlockT, Zero};
@@ -232,7 +232,6 @@ where
     async fn import_block(
         &mut self,
         block: BlockImportParams<TestBlock, Self::Transaction>,
-        new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         // TODO: Here we are hacking around lack of transaction support in test runtime and
         //  remove known segment headers for current block to make sure block import doesn't fail,
@@ -242,7 +241,7 @@ where
 
         let import_result = self
             .block_import
-            .import_block(block, new_cache)
+            .import_block(block)
             .await
             .expect("importing block failed");
 
@@ -298,13 +297,7 @@ impl Verifier<TestBlock> for TestVerifier {
     async fn verify(
         &mut self,
         mut block: BlockImportParams<TestBlock, ()>,
-    ) -> Result<
-        (
-            BlockImportParams<TestBlock, ()>,
-            Option<Vec<(CacheKeyId, Vec<u8>)>>,
-        ),
-        String,
-    > {
+    ) -> Result<BlockImportParams<TestBlock, ()>, String> {
         // apply post-sealing mutations (i.e. stripping seal, if desired).
         (self.mutator)(&mut block.header, Stage::PostSeal);
         self.inner.verify(block).await
@@ -410,6 +403,10 @@ impl TestNetFactory for SubspaceTestNet {
         &self.peers
     }
 
+    fn peers_mut(&mut self) -> &mut Vec<SubspacePeer> {
+        &mut self.peers
+    }
+
     fn mut_peers<F: FnOnce(&mut Vec<SubspacePeer>)>(&mut self, closure: F) {
         closure(&mut self.peers);
     }
@@ -494,12 +491,11 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
         let task_manager =
             TaskManager::new(sc_cli::build_runtime().unwrap().handle().clone(), None).unwrap();
 
-        super::start_subspace_archiver(
-            &data.link,
-            client.clone(),
-            None,
-            &task_manager.spawn_essential_handle(),
-        );
+        let subspace_archiver = super::create_subspace_archiver(&data.link, client.clone(), None);
+
+        task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
         let (archived_pieces_sender, archived_pieces_receiver) = oneshot::channel();
 

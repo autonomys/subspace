@@ -131,7 +131,6 @@ mod pallet {
 
     /// Pallet messenger used to communicate between domains and other blockchains.
     #[pallet::pallet]
-    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -342,7 +341,7 @@ mod pallet {
 
     type Tag = (DomainId, ChannelId, Nonce);
 
-    fn unsigned_validity<T: Config>(prefix: &'static str, provides: Tag) -> TransactionValidity {
+    fn unsigned_validity(prefix: &'static str, provides: Tag) -> TransactionValidity {
         ValidTransaction::with_tag_prefix(prefix)
             .priority(TransactionPriority::MAX)
             .and_provides(provides)
@@ -382,12 +381,12 @@ mod pallet {
                         should_init_channel: _,
                     } = Self::do_validate_relay_message(xdm)?;
                     let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
-                    unsigned_validity::<T>("MessengerInbox", provides_tag)
+                    unsigned_validity("MessengerInbox", provides_tag)
                 }
                 Call::relay_message_response { msg: xdm } => {
                     let msg = Self::do_validate_relay_message_response(xdm)?;
                     let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
-                    unsigned_validity::<T>("MessengerOutboxResponse", provides_tag)
+                    unsigned_validity("MessengerOutboxResponse", provides_tag)
                 }
                 _ => InvalidTransaction::Call.into(),
             }

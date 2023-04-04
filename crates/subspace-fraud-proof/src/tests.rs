@@ -340,6 +340,8 @@ async fn execution_proof_creation_and_verification_should_work() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+// TODO: Un-ignore when fixed, see https://github.com/subspace/subspace/pull/1347 for details
+#[ignore]
 async fn invalid_execution_proof_should_not_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

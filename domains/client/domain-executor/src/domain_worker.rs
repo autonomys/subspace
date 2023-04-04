@@ -117,12 +117,9 @@ pub(crate) async fn handle_block_import_notifications<
         Box::pin(async move {
             while let Some(maybe_block_info) = block_info_receiver.next().await {
                 if let Some(block_info) = maybe_block_info {
-                    if let Err(error) = block_imported::<Block, PBlock, _>(
-                        &processor,
-                        &mut active_leaves,
-                        block_info,
-                    )
-                    .await
+                    if let Err(error) =
+                        block_imported::<PBlock, _>(&processor, &mut active_leaves, block_info)
+                            .await
                     {
                         tracing::error!(?error, "Failed to process primary block");
                         // Bring down the service as bundles processor is an essential task.
@@ -225,13 +222,12 @@ where
     Ok(())
 }
 
-async fn block_imported<Block, PBlock, ProcessorFn>(
+async fn block_imported<PBlock, ProcessorFn>(
     processor: &ProcessorFn,
     active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
     block_info: BlockInfo<PBlock>,
 ) -> Result<(), ApiError>
 where
-    Block: BlockT,
     PBlock: BlockT,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),

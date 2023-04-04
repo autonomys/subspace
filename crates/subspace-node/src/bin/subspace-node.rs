@@ -75,6 +75,24 @@ impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
     }
 }
 
+/// Core eth relay domain executor instance.
+pub struct CoreEthRelayDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for CoreEthRelayDomainExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_eth_relay_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_eth_relay_runtime::native_version()
+    }
+}
+
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -206,12 +224,19 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
 
-                sc_consensus_subspace::start_subspace_archiver(
+                let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
                     &subspace_link,
                     client.clone(),
                     None,
-                    &task_manager.spawn_essential_handle(),
                 );
+
+                task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "subspace-archiver",
+                        None,
+                        Box::pin(subspace_archiver),
+                    );
 
                 Ok((
                     cmd.run(client, import_queue, task_manager.spawn_essential_handle())
@@ -569,7 +594,7 @@ fn main() -> Result<(), Error> {
                     >(
                         system_domain_config,
                         primary_chain_node.client.clone(),
-                        primary_chain_node.network.clone(),
+                        primary_chain_node.sync_service.clone(),
                         &primary_chain_node.select_chain,
                         executor_streams,
                         gossip_msg_sink.clone(),
@@ -613,9 +638,9 @@ fn main() -> Result<(), Error> {
                             domain_id: core_domain_cli.domain_id,
                             core_domain_config,
                             system_domain_client: system_domain_node.client.clone(),
-                            system_domain_network: system_domain_node.network.clone(),
+                            system_domain_sync_service: system_domain_node.sync_service.clone(),
                             primary_chain_client: primary_chain_node.client.clone(),
-                            primary_network_sync_oracle: primary_chain_node.network.clone(),
+                            primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
                             select_chain: primary_chain_node.select_chain.clone(),
                             executor_streams,
                             gossip_message_sink: gossip_msg_sink,
@@ -648,6 +673,32 @@ fn main() -> Result<(), Error> {
 
                                 core_domain_node.network_starter.start_network();
                             }
+                            DomainId::CORE_ETH_RELAY => {
+                                let core_domain_node =
+                                    domain_service::new_full_core::<
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        core_eth_relay_runtime::RuntimeApi,
+                                        CoreEthRelayDomainExecutorDispatch,
+                                    >(core_domain_params)
+                                    .await?;
+
+                                domain_tx_pool_sinks.insert(
+                                    core_domain_cli.domain_id,
+                                    core_domain_node.tx_pool_sink,
+                                );
+                                primary_chain_node
+                                    .task_manager
+                                    .add_child(core_domain_node.task_manager);
+
+                                core_domain_node.network_starter.start_network();
+                            }
                             core_domain_id => {
                                 return Err(Error::Other(format!(
                                     "{core_domain_id:?} unimplemented",
@@ -657,7 +708,8 @@ fn main() -> Result<(), Error> {
                     }
 
                     let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
-                        primary_chain_node.network.clone(),
+                        primary_chain_node.network_service.clone(),
+                        primary_chain_node.sync_service.clone(),
                         domain_tx_pool_sinks,
                     );
 

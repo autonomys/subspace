@@ -1,6 +1,6 @@
 // This file is part of Substrate.
 
-// Copyright (C) 2017-2022 Parity Technologies (UK) Ltd.
+// Copyright (C) Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 
 // This program is free software: you can redistribute it and/or modify
@@ -88,7 +88,7 @@ async fn sync_cycle_from_offline_to_syncing_to_offline() {
 		}
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 
 	// Block until all nodes are done syncing.
 	futures::future::poll_fn::<(), _>(|cx| {
@@ -100,7 +100,7 @@ async fn sync_cycle_from_offline_to_syncing_to_offline() {
 		}
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 
 	// Now drop nodes 1 and 2, and check that node 0 is offline.
 	net.peers.remove(2);
@@ -113,7 +113,7 @@ async fn sync_cycle_from_offline_to_syncing_to_offline() {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -137,7 +137,7 @@ async fn syncing_node_not_major_syncing_when_disconnected() {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 
 	// Destroy two nodes, and check that we switch to non-major syncing.
 	net.peers.remove(2);
@@ -150,7 +150,7 @@ async fn syncing_node_not_major_syncing_when_disconnected() {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -253,7 +253,7 @@ async fn sync_no_common_longer_chain_fails() {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 	let peer1 = &net.peers()[1];
 	assert!(!net.peers()[0].blockchain_canon_equals(peer1));
 }
@@ -307,7 +307,7 @@ async fn sync_justifications() {
 
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -344,7 +344,7 @@ async fn sync_justifications_across_forks() {
 			Poll::Pending
 		}
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -432,13 +432,13 @@ async fn can_sync_small_non_best_forks() {
 	// poll until the two nodes connect, otherwise announcing the block will not work
 	futures::future::poll_fn::<(), _>(|cx| {
 		net.poll(cx);
-		if net.peer(0).num_peers() == 0 {
+		if net.peer(0).num_peers() == 0 || net.peer(1).num_peers() == 0 {
 			Poll::Pending
 		} else {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 
 	// synchronization: 0 synced to longer chain and 1 didn't sync to small chain.
 
@@ -460,7 +460,7 @@ async fn can_sync_small_non_best_forks() {
 		}
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 	net.run_until_sync().await;
 
 	let another_fork = net.peer(0).push_blocks_at(BlockId::Number(35), 2, true).pop().unwrap();
@@ -472,7 +472,7 @@ async fn can_sync_small_non_best_forks() {
 		}
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -510,7 +510,7 @@ async fn can_sync_forks_ahead_of_the_best_chain() {
 		}
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -544,7 +544,7 @@ async fn can_sync_explicit_forks() {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 
 	// synchronization: 0 synced to longer chain and 1 didn't sync to small chain.
 
@@ -567,7 +567,7 @@ async fn can_sync_explicit_forks() {
 		}
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -611,7 +611,7 @@ async fn does_not_sync_announced_old_best_block() {
 		net.poll(cx);
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 	assert!(!net.peer(1).is_major_syncing());
 
 	net.peer(0).announce_block(old_hash_with_parent, None);
@@ -620,7 +620,7 @@ async fn does_not_sync_announced_old_best_block() {
 		net.poll(cx);
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 	assert!(!net.peer(1).is_major_syncing());
 }
 
@@ -641,7 +641,7 @@ async fn full_sync_requires_block_body() {
 			Poll::Ready(())
 		}
 	})
-		.await;
+	.await;
 	net.run_until_idle().await;
 	assert_eq!(net.peer(1).client.info().best_number, 0);
 }
@@ -664,7 +664,7 @@ async fn imports_stale_once() {
 				Poll::Pending
 			}
 		})
-			.await;
+		.await;
 	}
 
 	// given the network with 2 full nodes
@@ -676,12 +676,12 @@ async fn imports_stale_once() {
 	// check that NEW block is imported from announce message
 	let new_hash = net.peer(0).push_blocks(1, false).pop().unwrap();
 	import_with_announce(&mut net, new_hash).await;
-	assert_eq!(net.peer(1).num_downloaded_blocks(), 1);
+	assert_eq!(net.peer(1).num_downloaded_blocks().await, 1);
 
 	// check that KNOWN STALE block is imported from announce message
 	let known_stale_hash = net.peer(0).push_blocks_at(BlockId::Number(0), 1, true).pop().unwrap();
 	import_with_announce(&mut net, known_stale_hash).await;
-	assert_eq!(net.peer(1).num_downloaded_blocks(), 2);
+	assert_eq!(net.peer(1).num_downloaded_blocks().await, 2);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -741,7 +741,7 @@ impl BlockAnnounceValidator<Block> for FailingBlockAnnounceValidator {
 				Validation::Success { is_new_best: true }
 			})
 		}
-			.boxed()
+		.boxed()
 	}
 }
 
@@ -790,7 +790,7 @@ impl BlockAnnounceValidator<Block> for DeferredBlockAnnounceValidator {
 			futures_timer::Delay::new(std::time::Duration::from_millis(500)).await;
 			Ok(Validation::Success { is_new_best: false })
 		}
-			.boxed()
+		.boxed()
 	}
 }
 
@@ -848,7 +848,7 @@ async fn sync_to_tip_requires_that_sync_protocol_is_informed_about_best_block() 
 	assert!(!net.peer(1).has_block(block_hash));
 
 	// Make sync protocol aware of the best block
-	net.peer(0).network_service().new_best_block_imported(block_hash, 3);
+	net.peer(0).sync_service().new_best_block_imported(block_hash, 3);
 	net.run_until_idle().await;
 
 	// Connect another node that should now sync to the tip
@@ -865,7 +865,7 @@ async fn sync_to_tip_requires_that_sync_protocol_is_informed_about_best_block() 
 			Poll::Pending
 		}
 	})
-		.await;
+	.await;
 
 	// However peer 1 should still not have the block.
 	assert!(!net.peer(1).has_block(block_hash));
@@ -894,8 +894,8 @@ async fn sync_to_tip_when_we_sync_together_with_multiple_peers() {
 
 	assert!(!net.peer(2).has_block(block_hash));
 
-	net.peer(0).network_service().new_best_block_imported(block_hash, 10_000);
-	net.peer(0).network_service().announce_block(block_hash, None);
+	net.peer(0).sync_service().new_best_block_imported(block_hash, 10_000);
+	net.peer(0).sync_service().announce_block(block_hash, None);
 
 	while !net.peer(2).has_block(block_hash) && !net.peer(1).has_block(block_hash) {
 		net.run_until_idle().await;
@@ -925,7 +925,7 @@ async fn block_announce_data_is_propagated() {
 					Ok(Validation::Failure { disconnect: false })
 				}
 			}
-				.boxed()
+			.boxed()
 		}
 	}
 
@@ -955,7 +955,7 @@ async fn block_announce_data_is_propagated() {
 			Poll::Pending
 		}
 	})
-		.await;
+	.await;
 
 	let block_hash = net
 		.peer(0)
@@ -991,7 +991,7 @@ async fn continue_to_sync_after_some_block_announcement_verifications_failed() {
 					Ok(Validation::Success { is_new_best: false })
 				}
 			}
-				.boxed()
+			.boxed()
 		}
 	}
 
@@ -1060,7 +1060,7 @@ async fn multiple_requests_are_accepted_as_long_as_they_are_not_fulfilled() {
 
 		Poll::Ready(())
 	})
-		.await;
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1078,14 +1078,17 @@ async fn syncs_all_forks_from_single_peer() {
 	let branch1 = net.peer(0).push_blocks_at(BlockId::Number(10), 2, true).pop().unwrap();
 
 	// Wait till peer 1 starts downloading
-	futures::future::poll_fn::<(), _>(|cx| {
-		net.poll(cx);
-		if net.peer(1).network().best_seen_block() != Some(12) {
-			return Poll::Pending
-		}
-		Poll::Ready(())
-	})
+	loop {
+		futures::future::poll_fn::<(), _>(|cx| {
+			net.poll(cx);
+			Poll::Ready(())
+		})
 		.await;
+
+		if net.peer(1).sync_service().best_seen_block().await.unwrap() == Some(12) {
+			break
+		}
+	}
 
 	// Peer 0 produces and announces another fork
 	let branch2 = net.peer(0).push_blocks_at(BlockId::Number(10), 2, false).pop().unwrap();
@@ -1186,7 +1189,7 @@ async fn syncs_state() {
 				Poll::Pending
 			}
 		})
-			.await;
+		.await;
 		assert!(!net.peer(1).client().has_state_at(&BlockId::Number(64)));
 		// Wait for the rest of the states to be imported.
 		futures::future::poll_fn::<(), _>(|cx| {
@@ -1197,7 +1200,7 @@ async fn syncs_state() {
 				Poll::Pending
 			}
 		})
-			.await;
+		.await;
 	}
 }
 
@@ -1286,7 +1289,46 @@ async fn warp_sync() {
 			Poll::Pending
 		}
 	})
-		.await;
+	.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore]
+async fn warp_sync_to_target_block() {
+	sp_tracing::try_init_simple();
+	let mut net = TestNet::new(0);
+	// Create 3 synced peers and 1 peer trying to warp sync.
+	net.add_full_peer_with_config(Default::default());
+	net.add_full_peer_with_config(Default::default());
+	net.add_full_peer_with_config(Default::default());
+
+	let blocks = net.peer(0).push_blocks(64, false);
+	let target = blocks[63];
+	net.peer(1).push_blocks(64, false);
+	net.peer(2).push_blocks(64, false);
+
+	let target_block = net.peer(0).client.header(target).unwrap().unwrap();
+
+	net.add_full_peer_with_config(FullPeerConfig {
+		sync_mode: SyncMode::Warp,
+		target_block: Some(target_block),
+		..Default::default()
+	});
+
+	net.run_until_sync().await;
+	assert!(net.peer(3).client().has_state_at(&BlockId::Number(64)));
+
+	// Wait for peer 1 download block history
+	futures::future::poll_fn::<(), _>(|cx| {
+		net.poll(cx);
+		let peer = net.peer(3);
+		if blocks.iter().all(|b| peer.has_body(*b)) {
+			Poll::Ready(())
+		} else {
+			Poll::Pending
+		}
+	})
+	.await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -3,9 +3,11 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
-use subspace_core_primitives::{ArchivedHistorySegment, Piece, RawRecord, RecordedHistorySegment};
+use subspace_core_primitives::{ArchivedHistorySegment, Piece, RawRecord};
 use subspace_erasure_coding::ErasureCoding;
 
 /// Reconstructor-related instantiation error.
@@ -143,46 +145,50 @@ impl PiecesReconstructor {
             }
         }
 
-        let mut source_record_commitments =
-            Vec::with_capacity(RecordedHistorySegment::NUM_RAW_RECORDS);
-        for (piece, maybe_input_piece) in
-            reconstructed_pieces.iter_mut().zip(input_pieces).step_by(2)
-        {
-            if let Some(input_piece) = maybe_input_piece {
-                source_record_commitments.push(
+        let source_record_commitments = {
+            #[cfg(not(feature = "rayon"))]
+            let iter = reconstructed_pieces.iter_mut().zip(input_pieces).step_by(2);
+            #[cfg(feature = "rayon")]
+            let iter = reconstructed_pieces
+                .par_iter_mut()
+                .zip_eq(input_pieces)
+                .step_by(2);
+
+            iter.map(|(piece, maybe_input_piece)| {
+                if let Some(input_piece) = maybe_input_piece {
                     Commitment::try_from_bytes(input_piece.commitment())
-                        .map_err(|_error| ReconstructorError::InvalidInputPieceCommitment)?,
-                );
-            } else {
-                let scalars = {
-                    let record_chunks = piece.record().full_scalar_arrays();
-                    let number_of_chunks = record_chunks.len();
-                    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+                        .map_err(|_error| ReconstructorError::InvalidInputPieceCommitment)
+                } else {
+                    let scalars = {
+                        let record_chunks = piece.record().full_scalar_arrays();
+                        let number_of_chunks = record_chunks.len();
+                        let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
 
-                    for record_chunk in record_chunks {
-                        scalars.push(
-                            Scalar::try_from(record_chunk)
-                                .map_err(ReconstructorError::DataShardsReconstruction)?,
-                        );
-                    }
+                        for record_chunk in record_chunks {
+                            scalars.push(
+                                Scalar::try_from(record_chunk)
+                                    .map_err(ReconstructorError::DataShardsReconstruction)?,
+                            );
+                        }
 
-                    // Number of scalars for KZG must be a power of two elements
-                    scalars.resize(scalars.capacity(), Scalar::default());
+                        // Number of scalars for KZG must be a power of two elements
+                        scalars.resize(scalars.capacity(), Scalar::default());
 
-                    scalars
-                };
+                        scalars
+                    };
 
-                let polynomial = self
-                    .kzg
-                    .poly(&scalars)
-                    .expect("KZG instance must be configured to support this many scalars; qed");
-                let commitment = self
-                    .kzg
-                    .commit(&polynomial)
-                    .expect("KZG instance must be configured to support this many scalars; qed");
-                source_record_commitments.push(commitment);
-            }
-        }
+                    let polynomial = self.kzg.poly(&scalars).expect(
+                        "KZG instance must be configured to support this many scalars; qed",
+                    );
+                    let commitment = self.kzg.commit(&polynomial).expect(
+                        "KZG instance must be configured to support this many scalars; qed",
+                    );
+
+                    Ok(commitment)
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?
+        };
         let record_commitments = self
             .erasure_coding
             .extend_commitments(&source_record_commitments)
@@ -220,7 +226,12 @@ impl PiecesReconstructor {
     ) -> Result<ArchivedHistorySegment, ReconstructorError> {
         let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
-        pieces.iter_mut().enumerate().for_each(|(position, piece)| {
+        #[cfg(not(feature = "rayon"))]
+        let iter = pieces.iter_mut().enumerate();
+        #[cfg(feature = "rayon")]
+        let iter = pieces.par_iter_mut().enumerate();
+
+        iter.for_each(|(position, piece)| {
             piece.witness_mut().copy_from_slice(
                 &self
                     .kzg
@@ -248,7 +259,7 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::from(reconstructed_records[piece_position]);
+        let mut piece = Piece::from(&reconstructed_records[piece_position]);
 
         piece.witness_mut().copy_from_slice(
             &self

@@ -2,9 +2,9 @@
 
 pub mod worker;
 
+use async_channel::TrySendError;
 use cross_domain_message_gossip::Message as GossipMessage;
 use domain_runtime_primitives::RelayerId;
-use futures::channel::mpsc::TrySendError;
 use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;

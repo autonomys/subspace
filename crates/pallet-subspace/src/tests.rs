@@ -472,7 +472,7 @@ fn report_equivocation_has_valid_weight() {
     // the weight is always the same.
     assert!((1..=1000)
         .map(|_| { <Test as Config>::WeightInfo::report_equivocation() })
-        .all(|w| w == Weight::from_ref_time(10_000)));
+        .all(|w| w == Weight::from_parts(10_000, 0)));
 }
 
 #[test]

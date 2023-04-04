@@ -707,10 +707,10 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
             + fee_model.outbox_fee.compute_fee
             + fee_model.outbox_fee.relayer_pool_fee;
 
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 500 - fees);
+        assert_eq!(domain_a::Balances::free_balance(account_id), 500 - fees);
         // source domain take 2 fees and dst_domain takes 2
         assert_eq!(
-            domain_a::Balances::free_balance(&domain_a::Messenger::messenger_account_id()),
+            domain_a::Balances::free_balance(domain_a::Messenger::messenger_account_id()),
             fee_model.outbox_fee.compute_fee + fee_model.outbox_fee.relayer_pool_fee
         );
         assert!(domain_a::Transporter::outgoing_transfers(
@@ -745,9 +745,9 @@ fn verify_transfer_on_domain(
                 nonce: U256::one(),
             },
         ));
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 496);
+        assert_eq!(domain_a::Balances::free_balance(account_id), 496);
         assert_eq!(
-            domain_a::Balances::free_balance(&domain_a::Messenger::messenger_account_id()),
+            domain_a::Balances::free_balance(domain_a::Messenger::messenger_account_id()),
             1
         );
         let relayer_a_balance = domain_a::Balances::free_balance(domain_a::RELAYER_ID);
@@ -777,9 +777,9 @@ fn verify_transfer_on_domain(
                 relayer_id: domain_b::RELAYER_ID,
             },
         ));
-        assert_eq!(domain_b::Balances::free_balance(&account_id), 1500);
+        assert_eq!(domain_b::Balances::free_balance(account_id), 1500);
         assert_eq!(
-            domain_b::Balances::free_balance(&domain_b::Messenger::messenger_account_id()),
+            domain_b::Balances::free_balance(domain_b::Messenger::messenger_account_id()),
             1
         );
         let relayer_b_balance = domain_b::Balances::free_balance(domain_b::RELAYER_ID);
@@ -909,7 +909,7 @@ fn test_join_relayer_set() {
     let relayer_id = 100;
 
     domain_a_test_ext.execute_with(|| {
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 1000);
+        assert_eq!(domain_a::Balances::free_balance(account_id), 1000);
         let res = domain_a::Messenger::join_relayer_set(
             domain_a::RuntimeOrigin::signed(account_id),
             relayer_id,
@@ -922,7 +922,7 @@ fn test_join_relayer_set() {
                 deposit_reserved: RelayerDeposit::get(),
             }
         );
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+        assert_eq!(domain_a::Balances::free_balance(account_id), 500);
 
         // cannot rejoin again
         let res = domain_a::Messenger::join_relayer_set(
@@ -959,7 +959,7 @@ fn test_exit_relayer_set() {
 
     domain_a_test_ext.execute_with(|| {
         domain_a::Balances::make_free_balance_be(&account_id, 2000);
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 2000);
+        assert_eq!(domain_a::Balances::free_balance(account_id), 2000);
         for relayer in [relayer_id_1, relayer_id_2, relayer_id_3] {
             let res = domain_a::Messenger::join_relayer_set(
                 domain_a::RuntimeOrigin::signed(account_id),
@@ -974,7 +974,7 @@ fn test_exit_relayer_set() {
                 }
             );
         }
-        assert_eq!(domain_a::Balances::free_balance(&account_id), 500);
+        assert_eq!(domain_a::Balances::free_balance(account_id), 500);
 
         let assigned_relayer_id = domain_a::Messenger::next_relayer().unwrap();
         assert_eq!(assigned_relayer_id, RELAYER_ID);

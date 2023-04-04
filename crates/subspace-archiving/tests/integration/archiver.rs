@@ -1,5 +1,7 @@
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use rand::{thread_rng, Rng};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use std::assert_matches::assert_matches;
 use std::io::Write;
 use std::iter;
@@ -181,14 +183,25 @@ fn archiver() {
         compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
 
-    // Check that all pieces are valid
-    for (position, piece) in first_archived_segment.pieces.iter().enumerate() {
-        assert!(archiver::is_piece_valid(
-            &kzg,
-            piece,
-            &first_archived_segment.segment_header.segment_commitment(),
-            position as u32,
-        ));
+    #[cfg(not(feature = "rayon"))]
+    let iter = first_archived_segment.pieces.iter().enumerate();
+    #[cfg(feature = "rayon")]
+    let iter = first_archived_segment.pieces.par_iter().enumerate();
+    let results = iter
+        .map(|(position, piece)| {
+            (
+                position,
+                archiver::is_piece_valid(
+                    &kzg,
+                    piece,
+                    &first_archived_segment.segment_header.segment_commitment(),
+                    position as u32,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (position, valid) in results {
+        assert!(valid, "Piece at position {position} is valid");
     }
 
     let block_2 = {
@@ -287,13 +300,25 @@ fn archiver() {
             previous_segment_header_hash
         );
 
-        for (position, piece) in archived_segment.pieces.iter().enumerate() {
-            assert!(archiver::is_piece_valid(
-                &kzg,
-                piece,
-                &archived_segment.segment_header.segment_commitment(),
-                position as u32,
-            ));
+        #[cfg(not(feature = "rayon"))]
+        let iter = archived_segment.pieces.iter().enumerate();
+        #[cfg(feature = "rayon")]
+        let iter = archived_segment.pieces.par_iter().enumerate();
+        let results = iter
+            .map(|(position, piece)| {
+                (
+                    position,
+                    archiver::is_piece_valid(
+                        &kzg,
+                        piece,
+                        &archived_segment.segment_header.segment_commitment(),
+                        position as u32,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (position, valid) in results {
+            assert!(valid, "Piece at position {position} is valid");
         }
 
         expected_segment_index += SegmentIndex::ONE;
@@ -333,13 +358,25 @@ fn archiver() {
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.partial_archived(), None);
 
-        for (position, piece) in archived_segment.pieces.iter().enumerate() {
-            assert!(archiver::is_piece_valid(
-                &kzg,
-                piece,
-                &archived_segment.segment_header.segment_commitment(),
-                position as u32,
-            ));
+        #[cfg(not(feature = "rayon"))]
+        let iter = archived_segment.pieces.iter().enumerate();
+        #[cfg(feature = "rayon")]
+        let iter = archived_segment.pieces.par_iter().enumerate();
+        let results = iter
+            .map(|(position, piece)| {
+                (
+                    position,
+                    archiver::is_piece_valid(
+                        &kzg,
+                        piece,
+                        &archived_segment.segment_header.segment_commitment(),
+                        position as u32,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (position, valid) in results {
+            assert!(valid, "Piece at position {position} is valid");
         }
     }
 }
