@@ -29,6 +29,9 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, Solution};
+use subspace_fraud_proof::invalid_state_transition_proof::{
+    InvalidStateTransitionProofVerifier, PrePostStateRootVerifier,
+};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
 use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
@@ -97,12 +100,15 @@ impl MockPrimaryNode {
 
         let bundle_validator = BundleValidator::new(client.clone());
 
-        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-            client.clone(),
-            executor.clone(),
-            task_manager.spawn_handle(),
-            subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-        );
+        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+            InvalidStateTransitionProofVerifier::new(
+                client.clone(),
+                executor.clone(),
+                task_manager.spawn_handle(),
+                PrePostStateRootVerifier::new(client.clone()),
+            ),
+        ));
+
         let tx_pre_validator = PrimaryChainTxPreValidator::new(
             client.clone(),
             Box::new(task_manager.spawn_handle()),
