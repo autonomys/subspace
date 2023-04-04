@@ -904,7 +904,7 @@ where
 
         let piece_index = sector_id.derive_piece_index(
             pre_digest.solution.piece_offset,
-            pre_digest.solution.total_pieces,
+            pre_digest.solution.history_size,
         );
         let position = piece_index.position();
         let segment_index = piece_index.segment_index();

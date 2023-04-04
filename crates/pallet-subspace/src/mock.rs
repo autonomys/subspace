@@ -41,9 +41,9 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, PieceArray, PieceIndex,
-    Randomness, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
-    SolutionRange,
+    ArchivedBlockProgress, Blake2b256Hash, HistorySize, LastArchivedBlock, Piece, PieceArray,
+    PieceIndex, Randomness, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    Solution, SolutionRange,
 };
 use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
@@ -197,7 +197,7 @@ pub fn go_to_block(
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
-            total_pieces: NonZeroU64::new(1).unwrap(),
+            history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
             piece_offset: PieceIndex::default(),
             record_commitment_hash: Default::default(),
             piece_witness: Default::default(),
@@ -284,7 +284,7 @@ pub fn generate_equivocation_proof(
                 public_key: public_key.clone(),
                 reward_address,
                 sector_index: 0,
-                total_pieces: NonZeroU64::new(1).unwrap(),
+                history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
                 piece_offset,
                 record_commitment_hash: Default::default(),
                 piece_witness: Default::default(),
@@ -384,7 +384,7 @@ pub fn create_signed_vote(
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
-            total_pieces: NonZeroU64::new(1).unwrap(),
+            history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
             piece_offset: PieceIndex::default(),
             record_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
             piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),

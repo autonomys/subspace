@@ -181,7 +181,7 @@ where
     if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
         let audit_piece_offset = PieceIndex::from(local_challenge % u64::from(PIECES_IN_SECTOR));
         let position = sector_id
-            .derive_piece_index(audit_piece_offset, solution.total_pieces)
+            .derive_piece_index(audit_piece_offset, solution.history_size)
             .position();
 
         // TODO: Check that chunk belongs to the encoded piece

@@ -1347,7 +1347,7 @@ fn check_vote<T: Config>(
     let sector_id = LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
     let segment_index = sector_id
-        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .derive_piece_index(solution.piece_offset, solution.history_size)
         .segment_index();
 
     let segment_commitment =

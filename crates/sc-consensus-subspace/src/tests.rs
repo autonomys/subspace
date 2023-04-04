@@ -75,7 +75,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, ChunkSignature, FlatPieces, Piece, PieceIndex, Solution,
+    ArchivedHistorySegment, ChunkSignature, FlatPieces, HistorySize, Piece, PieceIndex, Solution,
 };
 use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
 use substrate_test_runtime::{Block as TestBlock, Hash};
@@ -678,7 +678,7 @@ pub fn dummy_claim_slot(
                 public_key: FarmerPublicKey::unchecked_from([0u8; 32]),
                 reward_address: FarmerPublicKey::unchecked_from([0u8; 32]),
                 sector_index: 0,
-                total_pieces: NonZeroU64::new(1).unwrap(),
+                history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
                 piece_offset: PieceIndex::default(),
                 record_commitment_hash: Default::default(),
                 piece_witness: Default::default(),

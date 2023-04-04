@@ -348,7 +348,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let segment_index = sector_id
             .derive_piece_index(
                 header_digests.pre_digest.solution.piece_offset,
-                header_digests.pre_digest.solution.total_pieces,
+                header_digests.pre_digest.solution.history_size,
             )
             .segment_index();
 

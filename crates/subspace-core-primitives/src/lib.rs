@@ -417,8 +417,8 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub reward_address: RewardAddress,
     /// Index of the sector where solution was found
     pub sector_index: SectorIndex,
-    /// Number of pieces in archived history at time of sector creation
-    pub total_pieces: NonZeroU64,
+    /// Size of the blockchain history at time of sector creation
+    pub history_size: HistorySize,
     /// Pieces offset within sector
     pub piece_offset: PieceIndex,
     /// Piece commitment that can use used to verify that piece was included in blockchain history
@@ -447,7 +447,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             public_key,
             reward_address,
             sector_index,
-            total_pieces,
+            history_size,
             piece_offset,
             record_commitment_hash,
             piece_witness,
@@ -459,7 +459,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             public_key,
             reward_address: Into::<T>::into(reward_address).into(),
             sector_index,
-            total_pieces,
+            history_size,
             piece_offset,
             record_commitment_hash,
             piece_witness,
@@ -477,7 +477,7 @@ impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
             public_key,
             reward_address,
             sector_index: 0,
-            total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
+            history_size: HistorySize::from(NonZeroU64::new(1).expect("1 is not 0; qed")),
             piece_offset: PieceIndex::default(),
             record_commitment_hash: Scalar::default(),
             piece_witness: Witness::default(),
@@ -722,16 +722,16 @@ impl LegacySectorId {
         ))
     }
 
-    /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
-    /// of blockchain_history is `total_pieces`
+    /// Derive piece index that should be stored in sector at `piece_offset` for specified size of
+    /// blockchain history
     pub fn derive_piece_index(
         &self,
         piece_offset: PieceIndex,
-        total_pieces: NonZeroU64,
+        history_size: HistorySize,
     ) -> PieceIndex {
         let piece_index =
             U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0))
-                % U256::from(total_pieces.get());
+                % U256::from(history_size.in_pieces().get());
 
         PieceIndex::from(u64::try_from(piece_index).expect(
             "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",

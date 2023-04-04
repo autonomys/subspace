@@ -162,8 +162,7 @@ where
     let piece_indexes: Vec<PieceIndex> = (PieceIndex::ZERO..)
         .take(PLOT_SECTOR_SIZE as usize / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
         .map(|piece_offset| {
-            sector_id
-                .derive_piece_index(piece_offset, farmer_protocol_info.history_size.in_pieces())
+            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.history_size)
         })
         .collect();
 

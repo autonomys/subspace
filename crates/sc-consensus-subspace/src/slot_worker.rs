@@ -231,7 +231,7 @@ where
                 LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
             let segment_index = sector_id
-                .derive_piece_index(solution.piece_offset, solution.total_pieces)
+                .derive_piece_index(solution.piece_offset, solution.history_size)
                 .segment_index();
             let mut maybe_segment_commitment = runtime_api
                 .segment_commitment(parent_hash, segment_index)

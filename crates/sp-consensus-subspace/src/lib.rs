@@ -349,7 +349,7 @@ impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedS
             public_key: solution.public_key.clone(),
             reward_address: (),
             sector_index: solution.sector_index,
-            total_pieces: solution.total_pieces,
+            history_size: solution.history_size,
             piece_offset: solution.piece_offset,
             record_commitment_hash: solution.record_commitment_hash,
             piece_witness: solution.piece_witness,
