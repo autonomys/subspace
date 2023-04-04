@@ -13,6 +13,7 @@ use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor}
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
@@ -106,7 +107,7 @@ where
                 .map_err(|_| FraudProofError::InvalidStateRootType)
         };
 
-        let prover = subspace_fraud_proof::ExecutionProver::new(
+        let prover = ExecutionProver::new(
             self.backend.clone(),
             self.code_executor.clone(),
             self.spawner.clone() as Box<dyn SpawnNamed>,
@@ -260,7 +261,7 @@ where
         extrinsic_index: usize,
         parent_header: &Block::Header,
         current_hash: Block::Hash,
-        prover: &subspace_fraud_proof::ExecutionProver<Block, Backend, E>,
+        prover: &ExecutionProver<Block, Backend, E>,
     ) -> Result<(StorageProof, ExecutionPhase), FraudProofError> {
         let extrinsics = self.block_body(current_hash)?;
 
