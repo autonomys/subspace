@@ -171,7 +171,7 @@ where
     let sector_id = LegacySectorId::new(public_key, sector_index);
 
     let local_challenge = sector_id.derive_local_challenge(global_challenge);
-    let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);
+    let audit_piece_offset = PieceIndex::from(local_challenge % u64::from(PIECES_IN_SECTOR));
     // Offset of the piece in sector (in bytes, accounts for the fact that encoded piece has its
     // chunks expanded with zero byte padding)
     let audit_piece_bytes_offset = audit_piece_offset

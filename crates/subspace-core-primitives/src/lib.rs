@@ -64,17 +64,22 @@ const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
+// TODO: This should become consensus parameter rather than a constant
+/// How many pieces we have in a sector
+pub const PIECES_IN_SECTOR: u32 = 1300;
+// TODO: Remove constant, it is derived dynamically from above consensus parameter
 /// Size of one plotted sector.
 ///
-/// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
-/// equal to number of columns, but we need to account for the fact that [`Scalar::SAFE_BYTES`] will
-/// be expanded to [`Scalar::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
-/// and decoding operate on the same amount of data.
-pub const PLOT_SECTOR_SIZE: u64 =
-    (Piece::SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
-/// How many pieces we have in a sector
-pub const PIECES_IN_SECTOR: u64 =
-    PLOT_SECTOR_SIZE / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
+/// NOTE: This only accounts for plot, ignoring extra metadata (witnesses, optional commitments,
+/// etc.) that might be necessary to store as well.
+#[deprecated]
+pub const PLOT_SECTOR_SIZE: u64 = u64::from(PIECES_IN_SECTOR) * Record::SIZE as u64;
+/// Number of s-buckets contained within one sector.
+///
+/// Essentially we chunk records into scalars and erasure code them, hence formula used.
+pub const S_BUCKETS_IN_SECTOR: usize = Record::NUM_CHUNKS
+    * RecordedHistorySegment::ERASURE_CODING_RATE.1
+    / RecordedHistorySegment::ERASURE_CODING_RATE.0;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;

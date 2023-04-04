@@ -179,7 +179,7 @@ where
     // TODO: Check if sector already expired once we have such notion
 
     if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
-        let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);
+        let audit_piece_offset = PieceIndex::from(local_challenge % u64::from(PIECES_IN_SECTOR));
         let position = sector_id
             .derive_piece_index(audit_piece_offset, solution.total_pieces)
             .position();
