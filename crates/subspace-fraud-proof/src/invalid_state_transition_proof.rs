@@ -672,6 +672,8 @@ where
                     <Block as BlockT>::Hash::decode(&mut domain_parent_hash.encode().as_slice())?;
                 let parent_number =
                     <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
+                // TODO: digests for system domain is not `Default::default()`, fix it and add a test
+                // to cover the entire flow of creation and verification in the production environment.
                 let new_header = <Block as BlockT>::Header::new(
                     parent_number,
                     Default::default(),

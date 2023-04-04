@@ -144,6 +144,8 @@ where
             let pre_state_root = as_h256(parent_header.state_root())?;
             let post_state_root = as_h256(local_root)?;
 
+            // TODO: digests for system domain is not `Default::default()`, fix it and add a test
+            // to cover the entire flow of creation and verification in the production environment.
             let new_header = Block::Header::new(
                 block_number.into(),
                 Default::default(),
