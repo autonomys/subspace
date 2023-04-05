@@ -15,6 +15,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::utils::online_status_informer;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
     ParityDbProviderStorage, VoidProviderStorage,
@@ -175,7 +176,7 @@ async fn main() -> anyhow::Result<()> {
             }))
             .detach();
 
-            let status_informer_fut = node.online_status_informer();
+            let status_informer_fut = online_status_informer(&node);
             let networking_fut = node_runner.run();
 
             select!(

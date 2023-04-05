@@ -25,6 +25,7 @@ use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::utils::online_status_informer;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use tokio::sync::broadcast;
@@ -344,7 +345,7 @@ pub(crate) async fn farm_multi_disk(
         "farmer-networking".to_string(),
     )?;
     let mut networking_fut = Box::pin(networking_fut).fuse();
-    let status_informer_fut = node.online_status_informer();
+    let status_informer_fut = online_status_informer(&node);
 
     futures::select!(
         // Signal future
