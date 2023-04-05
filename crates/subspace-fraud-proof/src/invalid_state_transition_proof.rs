@@ -257,6 +257,13 @@ pub trait VerifyPrePostStateRoot {
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError>;
+
+    /// Returns the hash of primary block at height `domain_block_number`.
+    fn primary_hash(
+        &self,
+        domain_id: DomainId,
+        domain_block_number: u32,
+    ) -> Result<H256, VerificationError>;
 }
 
 /// Verifier of `pre_state_root` in [`InvalidStateTransitionProof`].
@@ -314,10 +321,7 @@ where
                     Block::Hash::decode(&mut domain_parent_hash.encode().as_slice())?,
                 )?
             }
-            ExecutionPhase::ApplyExtrinsic {
-                extrinsic_index: trace_index_of_pre_state_root,
-                ..
-            }
+            ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
             | ExecutionPhase::FinalizeBlock {
                 total_extrinsics: trace_index_of_pre_state_root,
             } => {
@@ -364,10 +368,7 @@ where
             ExecutionPhase::InitializeBlock { .. } => trace
                 .get(0)
                 .ok_or(VerificationError::PostStateRootNotFound)?,
-            ExecutionPhase::ApplyExtrinsic {
-                extrinsic_index: trace_index_of_post_state_root,
-                ..
-            }
+            ExecutionPhase::ApplyExtrinsic(trace_index_of_post_state_root)
             | ExecutionPhase::FinalizeBlock {
                 total_extrinsics: trace_index_of_post_state_root,
             } => trace
@@ -380,6 +381,22 @@ where
         } else {
             Ok(())
         }
+    }
+
+    fn primary_hash(
+        &self,
+        domain_id: DomainId,
+        domain_block_number: u32,
+    ) -> Result<H256, VerificationError> {
+        self.client
+            .runtime_api()
+            .primary_hash(
+                self.client.info().best_hash,
+                domain_id,
+                domain_block_number.into(),
+            )?
+            .and_then(|primary_hash| Decode::decode(&mut primary_hash.encode().as_slice()).ok())
+            .ok_or(VerificationError::PrimaryHashNotFound)
     }
 }
 
@@ -398,6 +415,14 @@ impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
         _invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
         Ok(())
+    }
+
+    fn primary_hash(
+        &self,
+        _domain_id: DomainId,
+        _domain_block_number: u32,
+    ) -> Result<H256, VerificationError> {
+        Ok(Default::default())
     }
 }
 
@@ -582,6 +607,7 @@ impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier, DomainExtrinsicsBui
     >
 where
     PBlock: BlockT,
+    H256: Into<PBlock::Hash>,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
@@ -683,14 +709,13 @@ where
                 );
                 new_header.encode()
             }
-            ExecutionPhase::ApplyExtrinsic {
-                extrinsic_index,
-                primary_hash,
-            } => {
-                let primary_hash = PBlock::Hash::decode(&mut primary_hash.encode().as_slice())?;
+            ExecutionPhase::ApplyExtrinsic(extrinsic_index) => {
+                let primary_hash = self
+                    .pre_post_state_root_verifier
+                    .primary_hash(*domain_id, parent_number + 1)?;
                 let domain_extrinsics = self
                     .domain_extrinsics_builder
-                    .build_domain_extrinsics(*domain_id, primary_hash, wasm_bundle.to_vec())
+                    .build_domain_extrinsics(*domain_id, primary_hash.into(), wasm_bundle.to_vec())
                     .map_err(|_| VerificationError::FailedToBuildDomainExtrinsics)?;
                 domain_extrinsics
                     .into_iter()
@@ -749,6 +774,7 @@ impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier, DomainExtrinsicsBui
     >
 where
     PBlock: BlockT,
+    H256: Into<PBlock::Hash>,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,

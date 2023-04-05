@@ -241,10 +241,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic {
-            extrinsic_index: target_extrinsic_index as u32,
-            primary_hash: parent_hash_alice,
-        };
+        let execution_phase = ExecutionPhase::ApplyExtrinsic(target_extrinsic_index as u32);
         let apply_extrinsic_call_data = xt.encode();
 
         let storage_proof = prover
@@ -481,10 +478,7 @@ async fn invalid_execution_proof_should_not_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic {
-            extrinsic_index: extrinsic_index as u32,
-            primary_hash,
-        };
+        let execution_phase = ExecutionPhase::ApplyExtrinsic(extrinsic_index as u32);
         let apply_extrinsic_call_data = test_txs[extrinsic_index].encode();
 
         let proof = prover
@@ -503,10 +497,7 @@ async fn invalid_execution_proof_should_not_work() {
     let (proof1, post_delta_root1, execution_phase1) = create_extrinsic_proof(1);
 
     let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
-        let execution_phase = ExecutionPhase::ApplyExtrinsic {
-            extrinsic_index: 1u32,
-            primary_hash,
-        };
+        let execution_phase = ExecutionPhase::ApplyExtrinsic(1u32);
         let apply_extrinsic_call_data = transfer_to_charlie_again.encode();
         prover.check_execution_proof(
             parent_header.hash(),

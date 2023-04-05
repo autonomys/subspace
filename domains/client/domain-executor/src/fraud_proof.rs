@@ -221,12 +221,7 @@ where
             let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
 
-            // TODO: double check it's fine to use the primary_hash from receipt.
-            let primary_hash = H256::decode(&mut local_receipt.primary_hash.encode().as_slice())
-                .map_err(|_| FraudProofError::InvalidStateRootType)?;
-
             let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-                primary_hash,
                 local_trace_index as usize - 1,
                 &parent_header,
                 block_hash,
@@ -265,7 +260,6 @@ where
 
     fn create_extrinsic_execution_proof(
         &self,
-        primary_hash: H256,
         extrinsic_index: usize,
         parent_header: &Block::Header,
         current_hash: Block::Hash,
@@ -281,12 +275,11 @@ where
             })?
             .encode();
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic {
-            extrinsic_index: extrinsic_index
+        let execution_phase = ExecutionPhase::ApplyExtrinsic(
+            extrinsic_index
                 .try_into()
                 .expect("extrinsic_index must fit into u32"),
-            primary_hash,
-        };
+        );
         let apply_extrinsic_call_data = encoded_extrinsic;
 
         let block_builder = BlockBuilder::new(

@@ -16,10 +16,7 @@ pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
     InitializeBlock { domain_parent_hash: H256 },
     /// Executes some extrinsic.
-    ApplyExtrinsic {
-        extrinsic_index: u32,
-        primary_hash: H256,
-    },
+    ApplyExtrinsic(u32),
     /// Executes the `finalize_block` hook.
     FinalizeBlock { total_extrinsics: u32 },
 }
@@ -31,7 +28,7 @@ impl ExecutionPhase {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
             Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
+            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
@@ -44,7 +41,7 @@ impl ExecutionPhase {
     pub fn verifying_method(&self) -> &'static str {
         match self {
             Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
+            Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
@@ -55,7 +52,7 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            Self::InitializeBlock { .. } | Self::ApplyExtrinsic { .. } => {
+            Self::InitializeBlock { .. } | Self::ApplyExtrinsic(_) => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
@@ -77,6 +74,9 @@ pub enum VerificationError {
     /// `pre_state_root` in the invalid state transition proof is invalid.
     #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
     InvalidPreStateRoot,
+    /// Hash of the primary block being challenged not found.
+    #[cfg_attr(feature = "thiserror", error("primary hash not found"))]
+    PrimaryHashNotFound,
     /// `post_state_root` not found in the state.
     #[cfg_attr(feature = "thiserror", error("`post_state_root` not found"))]
     PostStateRootNotFound,
