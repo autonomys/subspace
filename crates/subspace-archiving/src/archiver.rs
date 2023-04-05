@@ -706,7 +706,7 @@ impl Archiver {
                 let output_chunks = pieces.iter_mut().map(|piece| {
                     piece
                         .record_mut()
-                        .full_scalar_arrays_mut()
+                        .iter_mut()
                         .nth(record_offset)
                         .expect("Statically known to exist in a record; qed")
                 });
@@ -730,7 +730,7 @@ impl Archiver {
             let iter = source_pieces
                 .skip(existing_commitments)
                 .map(|piece| {
-                    piece.record().full_scalar_arrays().map(|scalar_bytes| {
+                    piece.record().iter().map(|scalar_bytes| {
                         Scalar::try_from(scalar_bytes).expect(
                             "Source pieces were just created and are guaranteed to contain \
                             valid scalars; qed",
@@ -844,11 +844,9 @@ pub fn is_piece_valid(
         }
     };
 
-    let record_chunks = record.full_scalar_arrays();
-    let number_of_chunks = record_chunks.len();
-    let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+    let mut scalars = Vec::with_capacity(record.len().next_power_of_two());
 
-    for record_chunk in record_chunks {
+    for record_chunk in record.iter() {
         match Scalar::try_from(record_chunk) {
             Ok(scalar) => {
                 scalars.push(scalar);

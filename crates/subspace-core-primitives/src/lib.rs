@@ -55,8 +55,6 @@ pub use pieces::{
 };
 use scale_info::TypeInfo;
 pub use segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use uint::static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms

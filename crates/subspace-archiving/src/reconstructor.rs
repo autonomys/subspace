@@ -108,16 +108,11 @@ impl Reconstructor {
             .zip(segment_data.iter_mut())
             .all(|(maybe_piece, raw_record)| {
                 if let Some(piece) = maybe_piece {
-                    piece
-                        .record()
-                        .full_scalar_arrays()
-                        .zip(raw_record.iter_mut())
-                        .for_each(|(source, target)| {
-                            *target = *source
-                                .array_chunks()
-                                .next()
-                                .expect("Target is smaller than source; qed");
-                        });
+                    piece.record().iter().zip(raw_record.iter_mut()).for_each(
+                        |(source, target)| {
+                            target.copy_from_slice(&source[..Scalar::SAFE_BYTES]);
+                        },
+                    );
                     true
                 } else {
                     false
@@ -139,7 +134,7 @@ impl Reconstructor {
                         .map(|piece| {
                             piece
                                 .record()
-                                .full_scalar_arrays()
+                                .iter()
                                 .nth(record_offset)
                                 .expect("Statically guaranteed to exist in a piece; qed")
                         })
