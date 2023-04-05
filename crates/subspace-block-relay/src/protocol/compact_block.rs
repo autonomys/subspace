@@ -13,21 +13,24 @@ struct CompactResponse {
     protocol_unit_ids: Vec<Vec<u8>>,
 }
 
-pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId>
+pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,
+    ProtocolUnit: Encode + Decode,
 {
-    pub(crate) backend:
-        Arc<dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
+    pub(crate) backend: Arc<
+        dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
+    >,
 }
 
 #[async_trait]
-impl<DownloadUnitId, ProtocolUnitId> ProtocolClient<DownloadUnitId>
-    for CompactBlockClient<DownloadUnitId, ProtocolUnitId>
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolClient<DownloadUnitId>
+    for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,
+    ProtocolUnit: Encode + Decode,
 {
     fn build_request(&self) -> ProtocolInitialRequest {
         // Nothing to do for compact blocks
@@ -46,21 +49,24 @@ where
     }
 }
 
-pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId>
+pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,
+    ProtocolUnit: Encode + Decode,
 {
-    pub(crate) backend:
-        Arc<dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
+    pub(crate) backend: Arc<
+        dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
+    >,
 }
 
 #[async_trait]
-impl<DownloadUnitId, ProtocolUnitId> ProtocolServer<DownloadUnitId>
-    for CompactBlockServer<DownloadUnitId, ProtocolUnitId>
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolServer<DownloadUnitId>
+    for CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,
+    ProtocolUnit: Encode + Decode,
 {
     fn build_response(
         &self,

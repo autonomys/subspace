@@ -36,10 +36,11 @@ where
 }
 
 /// The backend interface to read the relevant data
-pub trait ProtocolBackend<DownloadUnitId, ProtocolUnitId>
+pub trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,
+    ProtocolUnit: Encode + Decode,
 {
     /// Returns all the protocol units for the given download unit.
     fn download_unit_members(
@@ -48,5 +49,5 @@ where
     ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, RelayError>;
 
     /// Returns the protocol unit contents with the given Id.
-    fn protocol_unit(&self, id: &ProtocolUnitId) -> Option<Vec<u8>>;
+    fn protocol_unit(&self, id: &ProtocolUnitId) -> Result<Option<ProtocolUnit>, RelayError>;
 }

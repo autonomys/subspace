@@ -22,6 +22,9 @@ type BlockIndex<Block> = <Block as BlockT>::Hash;
 /// The transaction Id for the backend APIs
 type TxnIndex<Pool> = TxHash<Pool>;
 
+/// The transaction
+type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
+
 #[derive(Encode, Decode)]
 struct InitialRequest<Block: BlockT> {
     block_request: BlockRequest<Block>,
@@ -164,7 +167,7 @@ where
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
-impl<Block, Client, Pool> ProtocolBackend<BlockIndex<Block>, TxnIndex<Pool>>
+impl<Block, Client, Pool> ProtocolBackend<BlockIndex<Block>, TxnIndex<Pool>, Extrinsic<Block>>
     for ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
@@ -186,7 +189,7 @@ where
             .collect())
     }
 
-    fn protocol_unit(&self, id: &TxnIndex<Pool>) -> Option<Vec<u8>> {
+    fn protocol_unit(&self, id: &TxnIndex<Pool>) -> Result<Option<Extrinsic<Block>>, RelayError> {
         unimplemented!()
     }
 }
