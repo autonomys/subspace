@@ -729,7 +729,14 @@ impl Archiver {
 
             let iter = source_pieces
                 .skip(existing_commitments)
-                .map(|piece| piece.record().safe_scalar_arrays().map(Scalar::from))
+                .map(|piece| {
+                    piece.record().full_scalar_arrays().map(|scalar_bytes| {
+                        Scalar::try_from(scalar_bytes).expect(
+                            "Source pieces were just created and are guaranteed to contain \
+                            valid scalars; qed",
+                        )
+                    })
+                })
                 .map(|record_chunks| {
                     let number_of_chunks = record_chunks.len();
                     let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());

@@ -201,42 +201,6 @@ impl Record {
         unsafe { Box::new_zeroed().assume_init() }
     }
 
-    /// Get a stream of arrays, each containing safe scalar bytes.
-    ///
-    /// Only useful for source records since only those contain raw record bytes that fit into safe
-    /// scalar bytes and the rest is zero bytes padding.
-    pub fn safe_scalar_arrays(
-        &self,
-    ) -> impl ExactSizeIterator<Item = &'_ [u8; Scalar::SAFE_BYTES]> + '_ {
-        self.full_scalar_arrays().map(|bytes| {
-            bytes
-                .array_chunks::<{ Scalar::SAFE_BYTES }>()
-                .next()
-                .expect(
-                    "Safe bytes are smaller length as safe bytes, hence first element always \
-                    exists; qed",
-                )
-        })
-    }
-
-    /// Get a stream of mutable arrays, each containing safe scalar bytes.
-    ///
-    /// Only useful for source records since only those contain raw record bytes that fit into safe
-    /// scalar bytes and the rest is zero bytes padding.
-    pub fn safe_scalar_arrays_mut(
-        &mut self,
-    ) -> impl ExactSizeIterator<Item = &'_ mut [u8; Scalar::SAFE_BYTES]> + '_ {
-        self.full_scalar_arrays_mut().map(|bytes| {
-            bytes
-                .array_chunks_mut::<{ Scalar::SAFE_BYTES }>()
-                .next()
-                .expect(
-                    "Safe bytes are smaller length as safe bytes, hence first element always \
-                    exists; qed",
-                )
-        })
-    }
-
     /// Get a stream of arrays, each containing scalar bytes.
     pub fn full_scalar_arrays(
         &self,
