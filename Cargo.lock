@@ -10232,11 +10232,16 @@ name = "subspace-block-relay"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "libp2p 0.51.0",
  "parity-scale-codec",
+ "sc-client-api",
+ "sc-network",
  "sc-network-common",
  "sc-network-sync",
+ "sc-transaction-pool-api",
  "sp-runtime",
+ "tracing",
 ]
 
 [[package]]

@@ -3,9 +3,11 @@
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use libp2p::PeerId;
+use sc_network::request_responses::IncomingRequest;
 use sc_network_sync::service::network::NetworkServiceHandle;
 
 mod consensus;
+mod protocol;
 
 /// Nodes advertise/exchange DownloadUnits with each other. DownloadUnit has
 /// two parts:
@@ -41,7 +43,9 @@ mod consensus;
 ///    additional messages
 ///
 
-/// The messages exchanged between the relay client/server.
+pub(crate) const LOG_TARGET: &str = "block_relay";
+
+/// The client to server message
 #[derive(Encode, Decode)]
 pub(crate) enum RelayServerMessage<T: Encode + Decode> {
     /// The initial request
@@ -51,39 +55,73 @@ pub(crate) enum RelayServerMessage<T: Encode + Decode> {
     ProtocolRequest(Vec<u8>),
 }
 
-/// The client stub.
+type ProtocolInitialRequest = Option<Vec<u8>>;
+
+/// The relay client stub
 pub trait RelayClient {
     type Request;
 
-    /// Fetches the download unit from the peer.
+    /// Fetches the download units from the peer
     fn download(&self, who: PeerId, request: &Self::Request, network: NetworkServiceHandle);
 }
 
-/// The relay server.
-#[async_trait]
-pub trait RelayServer {
-    async fn on_message(&mut self);
-}
-
-/// The client side of the protocol.
+/// The client side of the protocol used by RelayClient
 #[async_trait]
 pub trait ProtocolClient<DownloadUnitId>
 where
     DownloadUnitId: Encode + Decode,
 {
-    /// Builds the initial request to be sent to the server side. This
-    /// would be bundled by the caller with the overall request sent out.
-    fn build_request(&self, download_unit: &DownloadUnitId) -> Vec<u8>;
+    /// Builds the protocol portion of the initial request
+    fn build_request(&self) -> ProtocolInitialRequest;
 
     /// Resolve the initial response to produce the protocol units.
     async fn resolve(&self) -> Vec<u8>;
 }
 
-/// The server side of the protocol.
-pub trait ProtocolServer {
+/// The relay server
+#[async_trait]
+pub trait RelayServer {
+    async fn on_request(&mut self, request: IncomingRequest);
+}
+
+/// The server side of the protocol used by RelayServer
+pub trait ProtocolServer<DownloadUnitId>
+where
+    DownloadUnitId: Encode + Decode,
+{
     /// Builds the protocol response for the request from the protocol client.
-    fn build_response(&self, protocol_request: Vec<u8>) -> Vec<u8>;
+    fn build_response(
+        &self,
+        id: &DownloadUnitId,
+        protocol_request: ProtocolInitialRequest,
+    ) -> Result<Vec<u8>, RelayError>;
 
     /// Handles the additional client messages during the reconcile phase.
     fn on_message(&self);
+}
+
+/// The pool backend used by the protocol client/server sides.
+pub trait PoolBackend<DownloadUnitId, ProtocolUnitId>
+where
+    DownloadUnitId: Encode + Decode,
+    ProtocolUnitId: Encode + Decode,
+{
+    /// Returns all the protocol units for the given download unit.
+    fn download_unit_members(
+        &self,
+        id: &DownloadUnitId,
+    ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, String>;
+
+    /// Returns the protocol unit contents with the given Id.
+    fn protocol_unit(&self, id: &ProtocolUnitId) -> Option<Vec<u8>>;
+}
+
+/// Errors returned by the server side.
+#[derive(Encode, Decode)]
+pub enum RelayError {
+    /// Failed to decode the incoming request
+    InvalidIncomingRequest(String),
+
+    /// Invalid block hash in the block request
+    InvalidBlockHash(String),
 }
