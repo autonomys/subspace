@@ -13,14 +13,14 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 log = { version = "0.4.17", default-features = false }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 
 [features]
 default = ["std"]

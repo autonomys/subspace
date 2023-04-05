@@ -13,9 +13,9 @@ include = [
 [dependencies]
 async-trait = "0.1.68"
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
-sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 
 [dependencies.libp2p]
 # TODO: change to upstream release when https://github.com/libp2p/rust-libp2p/pull/3287 is released

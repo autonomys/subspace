@@ -832,12 +832,11 @@ where
 
 		let fork_id = Some(String::from("test-fork-id"));
 
-		let block_request_protocol_config = {
-			let (handler, protocol_config) =
-				BlockRequestHandler::new(&protocol_id, None, client.clone(), 50);
-			self.spawn_task(handler.run().boxed());
-			protocol_config
+		let (mut block_server, block_downloader, block_request_protocol_config) = {
+				let params = BlockRequestHandler::new(&protocol_id, None, client.clone(), 50);
+				(params.server, params.downloader, params.request_response_config)
 		};
+		self.spawn_task(Box::pin(async move { block_server.run().await; }));
 
 		let state_request_protocol_config = {
 			let (handler, protocol_config) =
@@ -898,7 +897,7 @@ where
 				Some(warp_sync_params),
 				chain_sync_network_handle,
 				import_queue.service(),
-				block_request_protocol_config.name.clone(),
+				block_downloader,
 				state_request_protocol_config.name.clone(),
 				Some(warp_protocol_config.name.clone()),
 				rx,
