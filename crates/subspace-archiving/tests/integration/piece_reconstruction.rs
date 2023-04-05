@@ -1,4 +1,6 @@
 use rand::Rng;
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -83,12 +85,22 @@ fn piece_reconstruction_works() {
 
     let reconstructor = PiecesReconstructor::new(kzg).unwrap();
 
-    for (missing_piece_position, missing_piece) in missing_pieces {
-        let recovered_piece = reconstructor
-            .reconstruct_piece(&maybe_pieces, missing_piece_position)
-            .unwrap();
+    #[cfg(not(feature = "rayon"))]
+    let iter = missing_pieces.iter();
+    #[cfg(feature = "rayon")]
+    let iter = missing_pieces.par_iter();
+    let reconstructed_pieces = iter
+        .map(|(missing_piece_position, _missing_piece)| {
+            reconstructor
+                .reconstruct_piece(&maybe_pieces, *missing_piece_position)
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
 
-        assert_eq!(missing_piece, recovered_piece);
+    for ((_, missing_piece), reconstructed_piece) in
+        missing_pieces.iter().zip(&reconstructed_pieces)
+    {
+        assert_eq!(missing_piece, reconstructed_piece);
     }
 }
 

@@ -22,9 +22,8 @@ use futures::future::Future;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeElseWasmExecutor;
-use sc_network::config::NetworkConfiguration;
+use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::{multiaddr, NetworkStateInfo};
-use sc_network_common::config::TransportConfig;
 use sc_service::config::{
     DatabaseSource, KeystoreConfig, MultiaddrWithPeerId, WasmExecutionMethod,
     WasmtimeInstantiationStrategy,
@@ -108,7 +107,6 @@ pub fn node_config(
         transaction_pool: Default::default(),
         network: network_config,
         keystore: KeystoreConfig::InMemory,
-        keystore_remote: Default::default(),
         database: DatabaseSource::ParityDb {
             path: root.join("paritydb"),
         },
@@ -242,14 +240,14 @@ pub async fn run_validator_node(
         task_manager,
         client,
         backend,
-        network,
+        network_service,
         rpc_handlers,
         network_starter,
         transaction_pool,
         ..
     } = primary_chain_node;
 
-    let peer_id = network.local_peer_id();
+    let peer_id = network_service.local_peer_id();
     let addr = MultiaddrWithPeerId { multiaddr, peer_id };
 
     (

@@ -109,7 +109,6 @@ mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub (super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -615,7 +614,7 @@ mod pallet {
                 Call::submit_fraud_proof { fraud_proof } => {
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domain-registry",
                             "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
                         );
@@ -631,7 +630,7 @@ mod pallet {
                     if let Err(e) =
                         Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
                     {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domain-registry",
                             "Bad bundle equivocation proof: {bundle_equivocation_proof:?}, error: {e:?}",
                         );
@@ -649,7 +648,7 @@ mod pallet {
                     if let Err(e) =
                         Self::validate_invalid_transaction_proof(invalid_transaction_proof)
                     {
-                        log::error!(
+                        log::debug!(
                             target: "runtime::domain-registry",
                             "Bad invalid transaction proof: {invalid_transaction_proof:?}, error: {e:?}",
                         );
@@ -779,7 +778,7 @@ impl<T: Config> Pallet<T> {
                 .unwrap_or(false);
 
         if !bundle_created_on_valid_primary_block {
-            log::error!(
+            log::debug!(
                 target: "runtime::domain-registry",
                 "Bundle of {domain_id:?} is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
                 bundle.header.primary_number,
@@ -805,7 +804,7 @@ impl<T: Config> Pallet<T> {
                 // Missing receipt.
             } else {
                 let missing_receipt_number = new_best_number + One::one();
-                log::error!(
+                log::debug!(
                     target: "runtime::domain-registry",
                     "Receipt for {domain_id:?} #{missing_receipt_number:?} is missing, \
                     head_receipt_number: {head_receipt_number:?}, max_allowed: {max_allowed:?}, received: {:?}",
@@ -817,7 +816,7 @@ impl<T: Config> Pallet<T> {
             let primary_number = receipt.primary_number;
 
             if primary_number <= created_at {
-                log::error!(
+                log::debug!(
                     target: "runtime::domain-registry",
                     "Domain was created at #{created_at:?}, but this receipt points to an earlier block #{:?}", receipt.primary_number,
                 );
@@ -825,7 +824,7 @@ impl<T: Config> Pallet<T> {
             }
 
             if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt) {
-                log::error!(
+                log::debug!(
                     target: "runtime::domain-registry",
                     "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
                     expected: #{primary_number:?},{:?}",
@@ -836,7 +835,7 @@ impl<T: Config> Pallet<T> {
             }
 
             if primary_number > max_allowed {
-                log::error!(
+                log::debug!(
                     target: "runtime::domain-registry",
                     "Receipt for #{primary_number:?} is too far in future, max_allowed: {max_allowed:?}",
                 );
@@ -893,18 +892,18 @@ impl<T: Config> Pallet<T> {
                 ))
                     .ok_or(Error::<T>::StateRootNotFound)
                     .map_err(|err| {
-                        log::error!(
-                        target: "runtime::domain-registry",
-                        "State root for {domain_id:?} #{core_block_number:?},{core_block_hash:?} not found, \
-                        current head receipt: {:?}",
-                        pallet_receipts::Pallet::<T>::receipt_head(domain_id),
-                    );
+                        log::debug!(
+                            target: "runtime::domain-registry",
+                            "State root for {domain_id:?} #{core_block_number:?},{core_block_hash:?} not found, \
+                            current head receipt: {:?}",
+                            pallet_receipts::Pallet::<T>::receipt_head(domain_id),
+                        );
                         err
                     })?,
             };
 
             if expected_state_root != *core_state_root {
-                log::error!(
+                log::debug!(
                     target: "runtime::domains",
                     "Bad state root for {domain_id:?} #{core_block_number:?},{core_block_hash:?}, \
                     expected: {expected_state_root:?}, got: {core_state_root:?}",

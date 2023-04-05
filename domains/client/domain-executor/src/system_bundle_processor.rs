@@ -1,8 +1,8 @@
-use crate::domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
-use crate::state_root_extractor::StateRootExtractorWithSystemDomainClient;
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
+use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
+use domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -11,7 +11,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::ExecutorApi;
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
@@ -25,10 +25,11 @@ where
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    keystore: SyncCryptoStorePtr,
-    system_domain_block_preprocessor: SystemDomainBlockPreprocessor<Block, PBlock, Client, PClient>,
+    keystore: KeystorePtr,
+    system_domain_block_preprocessor:
+        SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    state_root_extractor: StateRootExtractorWithSystemDomainClient<Client>,
+    state_root_extractor: RuntimeApiFull<Client>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -82,11 +83,13 @@ where
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        keystore: SyncCryptoStorePtr,
+        keystore: KeystorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let system_domain_block_preprocessor =
-            SystemDomainBlockPreprocessor::new(client.clone(), primary_chain_client.clone());
+        let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(
+            primary_chain_client.clone(),
+            RuntimeApiFull::new(client.clone()),
+        );
         Self {
             primary_chain_client,
             client: client.clone(),
@@ -94,7 +97,7 @@ where
             keystore,
             system_domain_block_preprocessor,
             domain_block_processor,
-            state_root_extractor: StateRootExtractorWithSystemDomainClient::new(client),
+            state_root_extractor: RuntimeApiFull::new(client),
         }
     }
 
@@ -144,7 +147,7 @@ where
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
-        let (extrinsics, maybe_new_runtime) = self
+        let extrinsics = self
             .system_domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
@@ -172,7 +175,6 @@ where
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                maybe_new_runtime,
                 digests,
             )
             .await?;

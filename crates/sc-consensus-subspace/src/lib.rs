@@ -29,7 +29,7 @@ mod tests;
 
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
-pub use archiver::start_subspace_archiver;
+pub use archiver::create_subspace_archiver;
 use codec::Encode;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -56,8 +56,7 @@ use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, Tr
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
 use sp_consensus::{
-    BlockOrigin, CacheKeyId, Environment, Error as ConsensusError, Proposer, SelectChain,
-    SyncOracle,
+    BlockOrigin, Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
@@ -71,7 +70,6 @@ use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -134,10 +132,12 @@ pub struct ArchivedSegmentNotification {
     pub acknowledgement_sender: TracingUnboundedSender<()>,
 }
 
-/// Notification with imported block header hash that needs to be archived and sender for
-/// segment headers.
+/// Notification with number of the block that is about to be imported and acknowledgement sender
+/// that can be used to pause block production if desired.
+///
+/// NOTE: Block is not fully imported yet!
 #[derive(Debug, Clone)]
-pub struct ImportedBlockNotification<Block>
+pub struct BlockImportingNotification<Block>
 where
     Block: BlockT,
 {
@@ -145,7 +145,7 @@ where
     pub block_number: NumberFor<Block>,
     /// Sender for pausing the block import when executor is not fast enough to process
     /// the primary block.
-    pub block_import_acknowledgement_sender: mpsc::Sender<()>,
+    pub acknowledgement_sender: mpsc::Sender<()>,
 }
 
 /// Errors encountered by the Subspace authorship task.
@@ -446,10 +446,12 @@ pub struct SubspaceLink<Block: BlockT> {
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_sender: SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    imported_block_notification_stream:
-        SubspaceNotificationStream<ImportedBlockNotification<Block>>,
+    block_importing_notification_sender:
+        SubspaceNotificationSender<BlockImportingNotification<Block>>,
+    block_importing_notification_stream:
+        SubspaceNotificationStream<BlockImportingNotification<Block>>,
     /// Segment headers that are expected to appear in the corresponding blocks, used for block
-    /// validation
+    /// production and validation
     segment_headers: Arc<Mutex<LruCache<NumberFor<Block>, Vec<SegmentHeader>>>>,
     kzg: Kzg,
 }
@@ -481,10 +483,10 @@ impl<Block: BlockT> SubspaceLink<Block> {
     }
 
     /// Get stream with notifications about each imported block.
-    pub fn imported_block_notification_stream(
+    pub fn block_importing_notification_stream(
         &self,
-    ) -> SubspaceNotificationStream<ImportedBlockNotification<Block>> {
-        self.imported_block_notification_stream.clone()
+    ) -> SubspaceNotificationStream<BlockImportingNotification<Block>> {
+        self.block_importing_notification_stream.clone()
     }
 
     /// Get blocks that are expected to be included at specified block number.
@@ -605,13 +607,7 @@ where
     async fn verify(
         &mut self,
         mut block: BlockImportParams<Block, ()>,
-    ) -> Result<
-        (
-            BlockImportParams<Block, ()>,
-            Option<Vec<(CacheKeyId, Vec<u8>)>>,
-        ),
-        String,
-    > {
+    ) -> Result<BlockImportParams<Block, ()>, String> {
         trace!(
             target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
@@ -726,7 +722,7 @@ where
                 block.post_digests.push(verified_info.seal);
                 block.post_hash = Some(hash);
 
-                Ok((block, Default::default()))
+                Ok(block)
             }
             CheckedHeader::Deferred(a, b) => {
                 debug!(target: "subspace", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
@@ -753,8 +749,8 @@ where
 pub struct SubspaceBlockImport<Block: BlockT, Client, I, CIDP> {
     inner: I,
     client: Arc<Client>,
-    imported_block_notification_sender:
-        SubspaceNotificationSender<ImportedBlockNotification<Block>>,
+    block_importing_notification_sender:
+        SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
 }
@@ -769,7 +765,7 @@ where
         SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
-            imported_block_notification_sender: self.imported_block_notification_sender.clone(),
+            block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
         }
@@ -786,8 +782,8 @@ where
     fn new(
         client: Arc<Client>,
         block_import: I,
-        imported_block_notification_sender: SubspaceNotificationSender<
-            ImportedBlockNotification<Block>,
+        block_importing_notification_sender: SubspaceNotificationSender<
+            BlockImportingNotification<Block>,
         >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
@@ -795,7 +791,7 @@ where
         SubspaceBlockImport {
             client,
             inner: block_import,
-            imported_block_notification_sender,
+            block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
         }
@@ -1022,7 +1018,6 @@ where
     async fn import_block(
         &mut self,
         mut block: BlockImportParams<Block, Self::Transaction>,
-        new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
@@ -1031,11 +1026,7 @@ where
         match self.client.status(block_hash) {
             Ok(sp_blockchain::BlockStatus::InChain) => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
-                return self
-                    .inner
-                    .import_block(block, new_cache)
-                    .await
-                    .map_err(Into::into);
+                return self.inner.import_block(block).await.map_err(Into::into);
             }
             Ok(sp_blockchain::BlockStatus::Unknown) => {}
             Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
@@ -1159,18 +1150,17 @@ where
         };
         block.fork_choice = Some(fork_choice);
 
-        let import_result = self.inner.import_block(block, new_cache).await?;
-        let (block_import_acknowledgement_sender, mut block_import_acknowledgement_receiver) =
-            mpsc::channel(0);
+        let import_result = self.inner.import_block(block).await?;
+        let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
-        self.imported_block_notification_sender
-            .notify(move || ImportedBlockNotification {
+        self.block_importing_notification_sender
+            .notify(move || BlockImportingNotification {
                 block_number,
-                block_import_acknowledgement_sender,
+                acknowledgement_sender,
             });
 
-        while (block_import_acknowledgement_receiver.next().await).is_some() {
-            // Wait for all the acknowledgements to progress.
+        while (acknowledgement_receiver.next().await).is_some() {
+            // Wait for all the acknowledgements to finish.
         }
 
         Ok(import_result)
@@ -1244,8 +1234,8 @@ where
         notification::channel("subspace_reward_signing_notification_stream");
     let (archived_segment_notification_sender, archived_segment_notification_stream) =
         notification::channel("subspace_archived_segment_notification_stream");
-    let (imported_block_notification_sender, imported_block_notification_stream) =
-        notification::channel("subspace_imported_block_notification_stream");
+    let (block_importing_notification_sender, block_importing_notification_stream) =
+        notification::channel("subspace_block_importing_notification_stream");
 
     let confirmation_depth_k = get_chain_constants(client.as_ref())
         .expect("Must always be able to get chain constants")
@@ -1262,7 +1252,8 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
-        imported_block_notification_stream,
+        block_importing_notification_sender: block_importing_notification_sender.clone(),
+        block_importing_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
             NonZeroUsize::new(confirmation_depth_k as usize)
@@ -1274,7 +1265,7 @@ where
     let import = SubspaceBlockImport::new(
         client,
         wrapped_block_import,
-        imported_block_notification_sender,
+        block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
     );

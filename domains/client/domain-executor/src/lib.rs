@@ -86,7 +86,6 @@ mod core_bundle_processor;
 mod core_domain_worker;
 mod core_executor;
 mod core_gossip_message_validator;
-mod domain_block_preprocessor;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
@@ -94,7 +93,6 @@ mod domain_worker;
 mod fraud_proof;
 mod gossip_message_validator;
 mod parent_chain;
-pub mod state_root_extractor;
 mod system_bundle_processor;
 mod system_domain_worker;
 mod system_executor;
@@ -102,7 +100,6 @@ mod system_gossip_message_validator;
 #[cfg(test)]
 mod tests;
 mod utils;
-pub mod xdm_verifier;
 
 pub use self::core_executor::Executor as CoreExecutor;
 pub use self::core_gossip_message_validator::CoreGossipMessageValidator;
@@ -120,7 +117,7 @@ use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnNamed;
 use sp_domains::{ExecutionReceipt, SignedBundle};
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
@@ -150,14 +147,14 @@ pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
     /// Pause the primary block import when the primary chain client
     /// runs much faster than the domain client.
     pub primary_block_import_throttling_buffer_size: u32,
-    /// Primary block import notification from `sc-consensus-subspace`.
+    /// Notification about to be imported.
     ///
     /// Fired before the completion of entire block import pipeline.
-    pub subspace_imported_block_notification_stream: IBNS,
-    /// Primary block import nofication from the native client.
+    pub block_importing_notification_stream: IBNS,
+    /// Primary block import notification from the client.
     ///
     /// Fired after the completion of entire block import pipeline.
-    pub client_imported_block_notification_stream: CIBNS,
+    pub imported_block_notification_stream: CIBNS,
     /// New slot arrives.
     pub new_slot_notification_stream: NSNS,
     pub _phantom: PhantomData<PBlock>,
@@ -179,7 +176,7 @@ pub struct EssentialExecutorParams<
     PBlock: BlockT,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
 {
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
@@ -188,7 +185,7 @@ pub struct EssentialExecutorParams<
     pub backend: Arc<Backend>,
     pub code_executor: Arc<E>,
     pub is_authority: bool,
-    pub keystore: SyncCryptoStorePtr,
+    pub keystore: KeystorePtr,
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
     pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,

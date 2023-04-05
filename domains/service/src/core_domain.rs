@@ -18,6 +18,7 @@ use sc_client_api::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
+use sc_network_sync::SyncingService;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -102,8 +103,10 @@ pub struct NewFullCore<
     pub backend: Arc<FullBackend>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
-    /// Network.
-    pub network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Network service.
+    pub network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<SyncingService<Block>>,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
@@ -222,7 +225,7 @@ where
     pub domain_id: DomainId,
     pub core_domain_config: DomainConfiguration,
     pub system_domain_client: Arc<SClient>,
-    pub system_domain_network: Arc<NetworkService<SBlock, SBlock::Hash>>,
+    pub system_domain_sync_service: Arc<SyncingService<SBlock>>,
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
@@ -282,7 +285,7 @@ where
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -303,7 +306,7 @@ where
         domain_id,
         mut core_domain_config,
         system_domain_client,
-        system_domain_network,
+        system_domain_sync_service,
         primary_chain_client,
         primary_network_sync_oracle,
         select_chain,
@@ -332,7 +335,7 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(BuildNetworkParams {
             config: &core_domain_config.service_config,
             client: client.clone(),
@@ -369,11 +372,12 @@ where
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
         config: core_domain_config.service_config,
-        keystore: params.keystore_container.sync_keystore(),
+        keystore: params.keystore_container.keystore(),
         backend: backend.clone(),
-        network: network.clone(),
+        network: network_service.clone(),
         system_rpc_tx,
         tx_handler_controller,
+        sync_service: sync_service.clone(),
         telemetry: telemetry.as_mut(),
     })?;
 
@@ -395,7 +399,7 @@ where
             backend: backend.clone(),
             code_executor: code_executor.clone(),
             is_authority,
-            keystore: params.keystore_container.sync_keystore(),
+            keystore: params.keystore_container.keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
@@ -417,7 +421,8 @@ where
 
     let executor_gossip =
         domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-            network: network.clone(),
+            network: network_service.clone(),
+            sync: sync_service.clone(),
             executor: gossip_message_validator,
             bundle_receiver,
         });
@@ -428,12 +433,20 @@ where
             "Starting core domain relayer with relayer_id[{:?}]",
             relayer_id
         );
-        let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages(
+        let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages::<
+            _,
+            _,
+            PBlock,
+            _,
+            _,
+            _,
+            _,
+        >(
             relayer_id,
             client.clone(),
             system_domain_client,
-            system_domain_network,
-            network.clone(),
+            system_domain_sync_service,
+            sync_service.clone(),
             gossip_message_sink.clone(),
         );
 
@@ -491,7 +504,8 @@ where
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         network_starter,
         executor,

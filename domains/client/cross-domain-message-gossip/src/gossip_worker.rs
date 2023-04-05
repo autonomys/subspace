@@ -1,10 +1,11 @@
 use futures::{FutureExt, Stream, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
+use sc_network::config::NonDefaultSetConfig;
 use sc_network::PeerId;
-use sc_network_common::config::NonDefaultSetConfig;
 use sc_network_gossip::{
-    GossipEngine, MessageIntent, ValidationResult, Validator, ValidatorContext,
+    GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
+    ValidatorContext,
 };
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_core::twox_256;
@@ -48,16 +49,19 @@ fn topic<Block: BlockT>() -> Block::Hash {
 }
 
 impl<Block: BlockT> GossipWorker<Block> {
-    pub fn new<Network>(
+    pub fn new<Network, GossipSync>(
         network: Network,
+        sync: Arc<GossipSync>,
         domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
     ) -> Self
     where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
+        GossipSync: GossipSyncing<Block> + 'static,
     {
         let gossip_validator = Arc::new(GossipValidator::default());
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
+            sync,
             PROTOCOL_NAME,
             gossip_validator.clone(),
             None,

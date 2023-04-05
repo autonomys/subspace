@@ -46,7 +46,7 @@ use sc_consensus::{BlockImport, DefaultImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, ImportedBlockNotification, NewSlotNotification,
+    ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
@@ -76,6 +76,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::online_status_informer;
@@ -129,14 +130,19 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
+    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+        SpawnTaskHandle,
+        Hash,
+        PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    >;
+
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
-    Block,
-    FullClient<RuntimeApi, ExecutorDispatch>,
-    NativeElseWasmExecutor<ExecutorDispatch>,
-    SpawnTaskHandle,
-    Hash,
-    subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
 /// Subspace networking instantiation variant
@@ -293,12 +299,14 @@ where
 
     let bundle_validator = BundleValidator::new(client.clone());
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        client.clone(),
-        executor,
-        task_manager.spawn_handle(),
-        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-    );
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+        InvalidStateTransitionProofVerifier::new(
+            client.clone(),
+            executor,
+            task_manager.spawn_handle(),
+            PrePostStateRootVerifier::new(client.clone()),
+        ),
+    ));
     let tx_pre_validator = PrimaryChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
@@ -397,8 +405,10 @@ where
     pub client: Arc<Client>,
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
-    /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Network service.
+    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Full client backend.
@@ -407,9 +417,9 @@ where
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     /// Block signing stream.
     pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
-    /// Imported block stream.
-    pub imported_block_notification_stream:
-        SubspaceNotificationStream<ImportedBlockNotification<Block>>,
+    /// Stream of notifications about blocks about to be imported.
+    pub block_importing_notification_stream:
+        SubspaceNotificationStream<BlockImportingNotification<Block>>,
     /// Archived segment stream.
     pub archived_segment_notification_stream:
         SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -541,11 +551,8 @@ where
                     }
                 });
 
-            let (node, mut node_runner) = create_dsn_instance::<Block, _>(
-                config.clone(),
-                piece_cache,
-                segment_header_cache.clone(),
-            )?;
+            let (node, mut node_runner) =
+                create_dsn_instance(config.clone(), piece_cache, segment_header_cache.clone())?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 
@@ -663,12 +670,15 @@ where
         }
     };
 
-    sc_consensus_subspace::start_subspace_archiver(
+    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
         &subspace_link,
         client.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
-        &task_manager.spawn_essential_handle(),
     );
+
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
     if config.sync_from_dsn {
         import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
@@ -678,7 +688,7 @@ where
             })?;
     }
 
-    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             client: client.clone(),
@@ -689,7 +699,7 @@ where
             warp_sync_params: None,
         })?;
 
-    let sync_oracle = network.clone();
+    let sync_oracle = sync_service.clone();
     let best_hash = client.info().best_hash;
     let mut imported_blocks_stream = client.import_notification_stream();
     task_manager.spawn_handle().spawn(
@@ -712,7 +722,7 @@ where
             &config,
             task_manager.spawn_handle(),
             client.clone(),
-            network.clone(),
+            network_service.clone(),
         );
     }
 
@@ -721,7 +731,7 @@ where
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let reward_signing_notification_stream = subspace_link.reward_signing_notification_stream();
-    let imported_block_notification_stream = subspace_link.imported_block_notification_stream();
+    let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if config.role.is_authority() || config.force_new_slot_notifications {
@@ -738,8 +748,8 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: network.clone(),
-            justification_sync_link: network.clone(),
+            sync_oracle: sync_service.clone(),
+            justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
@@ -788,9 +798,9 @@ where
     }
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
-        network: network.clone(),
+        network: network_service.clone(),
         client: client.clone(),
-        keystore: keystore_container.sync_keystore(),
+        keystore: keystore_container.keystore(),
         task_manager: &mut task_manager,
         transaction_pool: transaction_pool.clone(),
         rpc_builder: if enable_rpc_extensions {
@@ -827,18 +837,20 @@ where
         config: config.into(),
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
+        sync_service: sync_service.clone(),
     })?;
 
     Ok(NewFull {
         task_manager,
         client,
         select_chain,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         backend,
         new_slot_notification_stream,
         reward_signing_notification_stream,
-        imported_block_notification_stream,
+        block_importing_notification_stream,
         archived_segment_notification_stream,
         network_starter,
         transaction_pool,

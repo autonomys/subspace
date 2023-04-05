@@ -1,0 +1,36 @@
+[package]
+name = "domain-block-preprocessor"
+version = "0.1.0"
+authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
+edition = "2021"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Domain block preprocessor"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.4.0", features = [ "derive" ] }
+domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
+sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
+subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
+system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime" }
+tracing = "0.1.37"
+
+[dev-dependencies]
+sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }

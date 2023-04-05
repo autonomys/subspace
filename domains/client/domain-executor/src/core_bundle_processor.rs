@@ -1,8 +1,9 @@
-use crate::domain_block_preprocessor::CoreDomainBlockPreprocessor;
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
+use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
+use domain_block_preprocessor::CoreDomainBlockPreprocessor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -10,7 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
-use sp_keystore::SyncCryptoStorePtr;
+use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::marker::PhantomData;
@@ -29,9 +30,15 @@ where
     parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    keystore: SyncCryptoStorePtr,
-    core_domain_block_preprocessor:
-        CoreDomainBlockPreprocessor<Block, PBlock, SBlock, Client, PClient, SClient>,
+    keystore: KeystorePtr,
+    core_domain_block_preprocessor: CoreDomainBlockPreprocessor<
+        Block,
+        PBlock,
+        SBlock,
+        PClient,
+        SClient,
+        RuntimeApiFull<Client>,
+    >,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
@@ -96,7 +103,7 @@ where
         system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        keystore: SyncCryptoStorePtr,
+        keystore: KeystorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
@@ -105,7 +112,7 @@ where
         );
         let core_domain_block_preprocessor = CoreDomainBlockPreprocessor::new(
             domain_id,
-            client.clone(),
+            RuntimeApiFull::new(client.clone()),
             primary_chain_client.clone(),
             system_domain_client.clone(),
         );
@@ -172,7 +179,7 @@ where
             on top of #{parent_number},{parent_hash}"
         );
 
-        let (extrinsics, maybe_new_runtime) = self
+        let extrinsics = self
             .core_domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
@@ -182,7 +189,6 @@ where
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                maybe_new_runtime,
                 Default::default(),
             )
             .await?;

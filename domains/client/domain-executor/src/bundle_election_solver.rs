@@ -9,7 +9,7 @@ use sp_domains::bundle_election::{
 };
 use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
 use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
-use sp_keystore::{SyncCryptoStore, SyncCryptoStorePtr};
+use sp_keystore::{Keystore, KeystorePtr};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
@@ -19,7 +19,7 @@ use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct BundleElectionSolver<SBlock, PBlock, SClient> {
     system_domain_client: Arc<SClient>,
-    keystore: SyncCryptoStorePtr,
+    keystore: KeystorePtr,
     _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
@@ -49,7 +49,7 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
 {
-    pub(super) fn new(system_domain_client: Arc<SClient>, keystore: SyncCryptoStorePtr) -> Self {
+    pub(super) fn new(system_domain_client: Arc<SClient>, keystore: KeystorePtr) -> Self {
         Self {
             system_domain_client,
             keystore,
@@ -85,7 +85,7 @@ where
         let transcript_data = make_local_randomness_transcript_data(&global_challenge);
 
         for (index, (authority_id, stake_weight)) in authorities.iter().enumerate() {
-            if let Ok(Some(vrf_signature)) = SyncCryptoStore::sr25519_vrf_sign(
+            if let Ok(Some(vrf_signature)) = Keystore::sr25519_vrf_sign(
                 &*self.keystore,
                 ExecutorPublicKey::ID,
                 authority_id.as_ref(),

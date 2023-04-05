@@ -1,7 +1,6 @@
 extern crate alloc;
 
 use crate::archiver::{Segment, SegmentItem};
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::mem;
@@ -100,9 +99,7 @@ impl Reconstructor {
         &mut self,
         segment_pieces: &[Option<Piece>],
     ) -> Result<ReconstructedContents, ReconstructorError> {
-        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
-        // SAFETY: Data structure filled with zeroes is a valid invariant
-        let mut segment_data = unsafe { Box::<RecordedHistorySegment>::new_zeroed().assume_init() };
+        let mut segment_data = RecordedHistorySegment::new_boxed();
 
         if !segment_pieces
             .iter()

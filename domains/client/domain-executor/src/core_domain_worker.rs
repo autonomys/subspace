@@ -116,7 +116,7 @@ pub(super) async fn start_worker<
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
@@ -124,8 +124,8 @@ pub(super) async fn start_worker<
 
     let ExecutorStreams {
         primary_block_import_throttling_buffer_size,
-        subspace_imported_block_notification_stream,
-        client_imported_block_notification_stream,
+        block_importing_notification_stream,
+        imported_block_notification_stream,
         new_slot_notification_stream,
         _phantom,
     } = executor_streams;
@@ -156,8 +156,8 @@ pub(super) async fn start_worker<
                      }| (hash, number),
                 )
                 .collect(),
-            Box::pin(subspace_imported_block_notification_stream),
-            Box::pin(client_imported_block_notification_stream),
+            Box::pin(block_importing_notification_stream),
+            Box::pin(imported_block_notification_stream),
             primary_block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
@@ -173,12 +173,17 @@ pub(super) async fn start_worker<
                 })
                 .boxed()
         },
-        Box::pin(
-            new_slot_notification_stream.map(|(slot, global_challenge)| ExecutorSlotInfo {
-                slot,
-                global_challenge,
-            }),
-        ),
+        Box::pin(new_slot_notification_stream.map(
+            |(slot, global_challenge, acknowledgement_sender)| {
+                (
+                    ExecutorSlotInfo {
+                        slot,
+                        global_challenge,
+                    },
+                    acknowledgement_sender,
+                )
+            },
+        )),
     );
 
     if is_authority {

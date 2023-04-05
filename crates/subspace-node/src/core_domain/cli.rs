@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_domain::core_payments_chain_spec;
+use crate::core_domain::{core_eth_relay_chain_spec, core_payments_chain_spec};
 use crate::parser::parse_relayer_id;
 use clap::Parser;
 use domain_runtime_primitives::RelayerId;
@@ -153,6 +153,7 @@ impl SubstrateCli for CoreDomainCli {
         // TODO: add core domain chain spec an extension of system domain chain spec.
         match self.domain_id {
             DomainId::CORE_PAYMENTS => core_payments_chain_spec::load_chain_spec(id),
+            DomainId::CORE_ETH_RELAY => core_eth_relay_chain_spec::load_chain_spec(id),
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         }
     }
@@ -163,6 +164,7 @@ impl SubstrateCli for CoreDomainCli {
             .expect("Initialized when constructing this struct")
         {
             &DomainId::CORE_PAYMENTS => &core_payments_domain_runtime::VERSION,
+            &DomainId::CORE_ETH_RELAY => &core_eth_relay_runtime::VERSION,
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         }
     }

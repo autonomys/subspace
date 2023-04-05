@@ -68,6 +68,10 @@ impl pallet_balances::Config for MockRuntime {
     type MaxReserves = ();
     type ReserveIdentifier = ();
     type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type HoldIdentifier = ();
+    type MaxHolds = ();
 }
 
 parameter_types! {

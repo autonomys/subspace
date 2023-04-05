@@ -16,7 +16,7 @@ use std::pin::Pin;
 pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
     primary_chain_client: &PClient,
     bundler: BundlerFn,
-    mut slots: impl Stream<Item = ExecutorSlotInfo> + Unpin,
+    mut slots: impl Stream<Item = (ExecutorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
     Block: BlockT,
     PBlock: BlockT,
@@ -36,13 +36,16 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
         > + Send
         + Sync,
 {
-    while let Some(executor_slot_info) = slots.next().await {
+    while let Some((executor_slot_info, slot_acknowledgement_sender)) = slots.next().await {
         if let Err(error) =
             on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
                 .await
         {
             tracing::error!(?error, "Failed to submit bundle");
             break;
+        }
+        if let Some(mut sender) = slot_acknowledgement_sender {
+            let _ = sender.send(()).await;
         }
     }
 }
@@ -53,16 +56,16 @@ pub(crate) async fn handle_block_import_notifications<
     PBlock,
     PClient,
     ProcessorFn,
-    SubspaceBlockImports,
-    ClientBlockImports,
+    BlocksImporting,
+    BlocksImported,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     primary_chain_client: &PClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
     mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
-    mut subspace_block_imports: SubspaceBlockImports,
-    mut client_block_imports: ClientBlockImports,
+    mut blocks_importing: BlocksImporting,
+    mut blocks_imported: BlocksImported,
     primary_block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
@@ -78,8 +81,8 @@ pub(crate) async fn handle_block_import_notifications<
         + Send
         + Sync
         + 'static,
-    SubspaceBlockImports: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
-    ClientBlockImports: Stream<Item = BlockImportNotification<PBlock>> + Unpin,
+    BlocksImporting: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
+    BlocksImported: Stream<Item = BlockImportNotification<PBlock>> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
@@ -114,12 +117,9 @@ pub(crate) async fn handle_block_import_notifications<
         Box::pin(async move {
             while let Some(maybe_block_info) = block_info_receiver.next().await {
                 if let Some(block_info) = maybe_block_info {
-                    if let Err(error) = block_imported::<Block, PBlock, _>(
-                        &processor,
-                        &mut active_leaves,
-                        block_info,
-                    )
-                    .await
+                    if let Err(error) =
+                        block_imported::<PBlock, _>(&processor, &mut active_leaves, block_info)
+                            .await
                     {
                         tracing::error!(?error, "Failed to process primary block");
                         // Bring down the service as bundles processor is an essential task.
@@ -133,20 +133,20 @@ pub(crate) async fn handle_block_import_notifications<
 
     loop {
         tokio::select! {
-            maybe_client_block_import = client_block_imports.next() => {
-                let notification = match maybe_client_block_import {
-                    Some(block_import) => block_import,
+            maybe_block_imported = blocks_imported.next() => {
+                let block_imported = match maybe_block_imported {
+                    Some(block_imported) => block_imported,
                     None => {
                         // Can be None on graceful shutdown.
                         break;
                     }
                 };
-                let header = match primary_chain_client.header(notification.hash) {
+                let header = match primary_chain_client.header(block_imported.hash) {
                     Ok(Some(header)) => header,
                     res => {
                         tracing::error!(
                             result = ?res,
-                            header = ?notification.header,
+                            header = ?block_imported.header,
                             "Imported primary block header not found",
                         );
                         return;
@@ -159,10 +159,10 @@ pub(crate) async fn handle_block_import_notifications<
                 };
                 let _ = block_info_sender.feed(Some(block_info)).await;
             }
-            maybe_subspace_block_import = subspace_block_imports.next() => {
-                let (_block_number, mut block_import_acknowledgement_sender) =
-                    match maybe_subspace_block_import {
-                        Some(block_import) => block_import,
+            maybe_block_importing = blocks_importing.next() => {
+                let (_block_number, mut acknowledgement_sender) =
+                    match maybe_block_importing {
+                        Some(block_importing) => block_importing,
                         None => {
                             // Can be None on graceful shutdown.
                             break;
@@ -170,7 +170,7 @@ pub(crate) async fn handle_block_import_notifications<
                     };
                 // Pause the primary block import when the sink is full.
                 let _ = block_info_sender.feed(None).await;
-                let _ = block_import_acknowledgement_sender.send(()).await;
+                let _ = acknowledgement_sender.send(()).await;
             }
         }
     }
@@ -222,13 +222,12 @@ where
     Ok(())
 }
 
-async fn block_imported<Block, PBlock, ProcessorFn>(
+async fn block_imported<PBlock, ProcessorFn>(
     processor: &ProcessorFn,
     active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
     block_info: BlockInfo<PBlock>,
 ) -> Result<(), ApiError>
 where
-    Block: BlockT,
     PBlock: BlockT,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),

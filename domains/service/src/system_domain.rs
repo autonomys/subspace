@@ -1,7 +1,7 @@
 use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
-use domain_client_executor::state_root_extractor::StateRootExtractorWithSystemDomainClient;
+use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
     SystemGossipMessageValidator,
@@ -39,6 +39,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -90,8 +91,10 @@ where
     pub backend: Arc<FullBackend>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
-    /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Network service.
+    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
@@ -111,19 +114,24 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
         FullClient<RuntimeApi, Executor>,
         FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
         PClient,
-        StateRootExtractorWithSystemDomainClient<FullClient<RuntimeApi, Executor>>,
+        RuntimeApiFull<FullClient<RuntimeApi, Executor>>,
     >,
 >;
 
-type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_fraud_proof::ProofVerifier<
-        Block,
+type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
         PBlock,
         PClient,
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+    >;
+
+type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_fraud_proof::ProofVerifier<
+        Block,
+        InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
     >;
 
 /// Constructs a partial system domain node.
@@ -198,19 +206,21 @@ where
         telemetry
     });
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        primary_chain_client.clone(),
-        executor.clone(),
-        task_manager.spawn_handle(),
-        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-    );
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+        InvalidStateTransitionProofVerifier::new(
+            primary_chain_client.clone(),
+            executor.clone(),
+            task_manager.spawn_handle(),
+            PrePostStateRootVerifier::new(client.clone()),
+        ),
+    ));
 
     let system_domain_tx_pre_validator = SystemDomainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier,
         primary_chain_client,
-        StateRootExtractorWithSystemDomainClient::new(client.clone()),
+        RuntimeApiFull::new(client.clone()),
     );
 
     let transaction_pool = subspace_transaction_pool::new_full(
@@ -276,7 +286,7 @@ where
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -318,7 +328,7 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(BuildNetworkParams {
             config: &system_domain_config.service_config,
             client: client.clone(),
@@ -355,11 +365,12 @@ where
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
         config: system_domain_config.service_config,
-        keystore: params.keystore_container.sync_keystore(),
+        keystore: params.keystore_container.keystore(),
         backend: backend.clone(),
-        network: network.clone(),
+        network: network_service.clone(),
         system_rpc_tx,
         tx_handler_controller,
+        sync_service: sync_service.clone(),
         telemetry: telemetry.as_mut(),
     })?;
 
@@ -379,7 +390,7 @@ where
             backend: backend.clone(),
             code_executor: code_executor.clone(),
             is_authority,
-            keystore: params.keystore_container.sync_keystore(),
+            keystore: params.keystore_container.keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
@@ -396,7 +407,8 @@ where
     );
     let executor_gossip =
         domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-            network: network.clone(),
+            network: network_service.clone(),
+            sync: sync_service.clone(),
             executor: gossip_message_validator,
             bundle_receiver,
         });
@@ -414,7 +426,7 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
             relayer_id,
             client.clone(),
-            network.clone(),
+            sync_service.clone(),
             gossip_message_sink.clone(),
         );
 
@@ -472,7 +484,8 @@ where
         client,
         backend,
         code_executor,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         network_starter,
         executor,
