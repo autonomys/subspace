@@ -34,3 +34,19 @@ where
     /// Handles the additional client messages during the reconcile phase.
     fn on_message(&self);
 }
+
+/// The backend interface to read the relevant data
+pub trait ProtocolBackend<DownloadUnitId, ProtocolUnitId>
+where
+    DownloadUnitId: Encode + Decode,
+    ProtocolUnitId: Encode + Decode,
+{
+    /// Returns all the protocol units for the given download unit.
+    fn download_unit_members(
+        &self,
+        id: &DownloadUnitId,
+    ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, RelayError>;
+
+    /// Returns the protocol unit contents with the given Id.
+    fn protocol_unit(&self, id: &ProtocolUnitId) -> Option<Vec<u8>>;
+}

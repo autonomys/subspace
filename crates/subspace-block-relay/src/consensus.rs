@@ -1,8 +1,8 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::protocol::{ProtocolClient, ProtocolInitialRequest, ProtocolServer};
-use crate::{PoolBackend, RelayClient, RelayError, RelayServer, RelayServerMessage, LOG_TARGET};
+use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer};
+use crate::{RelayClient, RelayError, RelayServer, RelayServerMessage, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
@@ -153,7 +153,7 @@ where
     }
 }
 
-struct ConsensusPoolBackend<Block, Client, Pool>
+struct ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
@@ -164,8 +164,8 @@ where
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
-impl<Block, Client, Pool> PoolBackend<BlockIndex<Block>, TxnIndex<Pool>>
-    for ConsensusPoolBackend<Block, Client, Pool>
+impl<Block, Client, Pool> ProtocolBackend<BlockIndex<Block>, TxnIndex<Pool>>
+    for ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
@@ -203,7 +203,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + 'static,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    let backend = Arc::new(ConsensusPoolBackend {
+    let backend = Arc::new(ConsensusBackend {
         client: client.clone(),
         transaction_pool: pool.clone(),
         _phantom_data: Default::default(),

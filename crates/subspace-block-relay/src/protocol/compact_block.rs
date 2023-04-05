@@ -1,7 +1,7 @@
 //! Compact block implementation.
 
-use crate::protocol::{ProtocolClient, ProtocolInitialRequest, ProtocolServer};
-use crate::{PoolBackend, RelayError};
+use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer};
+use crate::RelayError;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
@@ -19,7 +19,7 @@ where
     ProtocolUnitId: Encode + Decode,
 {
     pub(crate) backend:
-        Arc<dyn PoolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
+        Arc<dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
 }
 
 #[async_trait]
@@ -52,7 +52,7 @@ where
     ProtocolUnitId: Encode + Decode,
 {
     pub(crate) backend:
-        Arc<dyn PoolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
+        Arc<dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
 }
 
 #[async_trait]
