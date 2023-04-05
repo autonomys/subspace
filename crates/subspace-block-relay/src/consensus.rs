@@ -1,10 +1,8 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::{
-    PoolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer, RelayClient, RelayError,
-    RelayServer, RelayServerMessage, LOG_TARGET,
-};
+use crate::protocol::{ProtocolClient, ProtocolInitialRequest, ProtocolServer};
+use crate::{PoolBackend, RelayClient, RelayError, RelayServer, RelayServerMessage, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
@@ -21,7 +19,7 @@ use tracing::warn;
 /// The block Id for the backend APIs
 type BlockIndex<Block> = <Block as BlockT>::Hash;
 
-/// The transaction id for the backend APIs
+/// The transaction Id for the backend APIs
 type TxnIndex<Pool> = TxHash<Pool>;
 
 #[derive(Encode, Decode)]
@@ -74,7 +72,7 @@ where
         let block_hash = self.block_hash(&req.block_request.from)?;
         let _protocol_response = self
             .protocol
-            .build_response(&block_hash, req.protocol_request);
+            .build_response(&block_hash, req.protocol_request)?;
 
         // Fill the rest of the block request
         // Call proto to fill the protocol entries
@@ -171,13 +169,21 @@ impl<Block, Client, Pool> PoolBackend<BlockIndex<Block>, TxnIndex<Pool>>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
-    Pool: TransactionPool,
+    Pool: TransactionPool<Block = Block>,
 {
     fn download_unit_members(
         &self,
         id: &BlockIndex<Block>,
-    ) -> Result<Vec<(TxnIndex<Pool>, Vec<u8>)>, String> {
-        Ok(vec![])
+    ) -> Result<Vec<(TxnIndex<Pool>, Vec<u8>)>, RelayError> {
+        let extrinsics = self
+            .client
+            .block_body(*id)
+            .map_err(|err| RelayError::BlockBackendError(format!("block_body(): {id:?}, {err:?}")))?
+            .unwrap_or_default();
+        Ok(extrinsics
+            .iter()
+            .map(|extrinsic| (self.transaction_pool.hash_of(extrinsic), extrinsic.encode()))
+            .collect())
     }
 
     fn protocol_unit(&self, id: &TxnIndex<Pool>) -> Option<Vec<u8>> {
@@ -195,23 +201,23 @@ fn build_consensus_relay<Block, Client, Pool>(
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + 'static,
-    Pool: TransactionPool + 'static,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
-    let backend: ConsensusPoolBackend<Block, Client, Pool> = ConsensusPoolBackend {
+    let backend = Arc::new(ConsensusPoolBackend {
         client: client.clone(),
         transaction_pool: pool.clone(),
         _phantom_data: Default::default(),
-    };
-    let relay_client: ConsensusRelayClient<Block> = ConsensusRelayClient {
+    });
+    let relay_client = ConsensusRelayClient {
         protocol: Arc::new(CompactBlockClient {
-            backend: Arc::new(backend),
+            backend: backend.clone(),
         }),
         _phantom_data: Default::default(),
     };
 
-    let relay_server: ConsensusRelayServer<Block, Client> = ConsensusRelayServer {
+    let relay_server = ConsensusRelayServer {
         client,
-        protocol: Box::new(CompactBlockServer),
+        protocol: Box::new(CompactBlockServer { backend }),
         _phantom_data: Default::default(),
     };
 

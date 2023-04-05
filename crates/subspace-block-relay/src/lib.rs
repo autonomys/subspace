@@ -55,8 +55,6 @@ pub(crate) enum RelayServerMessage<T: Encode + Decode> {
     ProtocolRequest(Vec<u8>),
 }
 
-type ProtocolInitialRequest = Option<Vec<u8>>;
-
 /// The relay client stub
 pub trait RelayClient {
     type Request;
@@ -65,39 +63,10 @@ pub trait RelayClient {
     fn download(&self, who: PeerId, request: &Self::Request, network: NetworkServiceHandle);
 }
 
-/// The client side of the protocol used by RelayClient
-#[async_trait]
-pub trait ProtocolClient<DownloadUnitId>
-where
-    DownloadUnitId: Encode + Decode,
-{
-    /// Builds the protocol portion of the initial request
-    fn build_request(&self) -> ProtocolInitialRequest;
-
-    /// Resolve the initial response to produce the protocol units.
-    async fn resolve(&self) -> Vec<u8>;
-}
-
 /// The relay server
 #[async_trait]
 pub trait RelayServer {
     async fn on_request(&mut self, request: IncomingRequest);
-}
-
-/// The server side of the protocol used by RelayServer
-pub trait ProtocolServer<DownloadUnitId>
-where
-    DownloadUnitId: Encode + Decode,
-{
-    /// Builds the protocol response for the request from the protocol client.
-    fn build_response(
-        &self,
-        id: &DownloadUnitId,
-        protocol_request: ProtocolInitialRequest,
-    ) -> Result<Vec<u8>, RelayError>;
-
-    /// Handles the additional client messages during the reconcile phase.
-    fn on_message(&self);
 }
 
 /// The pool backend used by the protocol client/server sides.
@@ -110,18 +79,24 @@ where
     fn download_unit_members(
         &self,
         id: &DownloadUnitId,
-    ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, String>;
+    ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, RelayError>;
 
     /// Returns the protocol unit contents with the given Id.
     fn protocol_unit(&self, id: &ProtocolUnitId) -> Option<Vec<u8>>;
 }
 
 /// Errors returned by the server side.
-#[derive(Encode, Decode)]
+#[derive(Debug, Encode, Decode)]
 pub enum RelayError {
     /// Failed to decode the incoming request
     InvalidIncomingRequest(String),
 
     /// Invalid block hash in the block request
     InvalidBlockHash(String),
+
+    /// Invalid initial response from the server
+    InvalidInitialResponse(String),
+
+    /// Backend error
+    BlockBackendError(String),
 }

@@ -1,6 +1,7 @@
 //! Compact block implementation.
 
-use crate::{PoolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer, RelayError};
+use crate::protocol::{ProtocolClient, ProtocolInitialRequest, ProtocolServer};
+use crate::{PoolBackend, RelayError};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
@@ -9,11 +10,9 @@ use std::sync::Arc;
 #[derive(Encode, Decode)]
 struct CompactResponse {
     /// List of the protocol units Ids.
-    protocol_unit_id: Vec<Vec<u8>>,
+    protocol_unit_ids: Vec<Vec<u8>>,
 }
 
-//type DownloadUnitId: Encode + Decode;
-//type ProtocolUnitId: Encode + Decode;
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId>
 where
     DownloadUnitId: Encode + Decode,
@@ -35,28 +34,45 @@ where
         None
     }
 
-    async fn resolve(&self) -> Vec<u8> {
-        // look up the list of hashes
-        // send request for missing hashes
-        // make union of both
-        unimplemented!()
+    async fn resolve(&self, response: Vec<u8>) -> Result<Vec<u8>, RelayError> {
+        let compact_response: CompactResponse =
+            Decode::decode(&mut response.as_ref()).map_err(|err| {
+                RelayError::InvalidInitialResponse(format!("Failed to decode: {err:?}"))
+            })?;
+
+        // Look up the protocol units from the backend
+        for protocol_unit_id in compact_response.protocol_unit_ids {}
+        Ok(vec![])
     }
 }
 
-pub(crate) struct CompactBlockServer;
-
-#[async_trait]
-impl<DownloadUnitId> ProtocolServer<DownloadUnitId> for CompactBlockServer
+pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId>
 where
     DownloadUnitId: Encode + Decode,
+    ProtocolUnitId: Encode + Decode,
+{
+    pub(crate) backend:
+        Arc<dyn PoolBackend<DownloadUnitId, ProtocolUnitId> + Send + Sync + 'static>,
+}
+
+#[async_trait]
+impl<DownloadUnitId, ProtocolUnitId> ProtocolServer<DownloadUnitId>
+    for CompactBlockServer<DownloadUnitId, ProtocolUnitId>
+where
+    DownloadUnitId: Encode + Decode,
+    ProtocolUnitId: Encode + Decode,
 {
     fn build_response(
         &self,
         id: &DownloadUnitId,
         _protocol_request: ProtocolInitialRequest,
     ) -> Result<Vec<u8>, RelayError> {
-        // Walk the extrinsics in the block, fill the list of hashes.
-        panic!("xxx");
+        // Return the hash of the members in the download unit.
+        let members = self.backend.download_unit_members(id)?;
+        let response = CompactResponse {
+            protocol_unit_ids: members.iter().map(|(id, _)| id.encode()).collect(),
+        };
+        Ok(response.encode())
     }
 
     fn on_message(&self) {
