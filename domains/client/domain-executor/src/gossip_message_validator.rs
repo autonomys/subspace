@@ -9,7 +9,6 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorPublicKey};
-use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
@@ -96,22 +95,28 @@ where
     /// The background is that a receipt received from the network points to a future block
     /// from the local view, so we need to wait for the receipt for the block at the same
     /// height to be produced locally in order to check the validity of the external receipt.
+    #[allow(clippy::never_loop)]
     async fn wait_for_local_future_receipt(
         &self,
-        block_hash: Block::Hash,
-        block_number: <Block::Header as HeaderT>::Number,
+        primary_block_hash: PBlock::Hash,
+        _block_number: <Block::Header as HeaderT>::Number,
         tx: crossbeam::channel::Sender<
             sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>,
         >,
     ) -> Result<(), GossipMessageError> {
         loop {
-            match crate::aux_schema::load_execution_receipt(&*self.client, block_hash) {
+            match crate::aux_schema::load_execution_receipt(&*self.client, primary_block_hash) {
                 Ok(Some(local_receipt)) => {
                     return tx
                         .send(Ok(local_receipt))
                         .map_err(|_| GossipMessageError::SendError)
                 }
                 Ok(None) => {
+                    unimplemented!(
+                        "TODO: rework the following logic once the compact bundle is a thing"
+                    )
+
+                    /*
                     // TODO: test how this works under the primary forks.
                     //       ref https://github.com/subspace/subspace/pull/250#discussion_r804247551
                     //
@@ -138,6 +143,7 @@ where
                     } else {
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     }
+                    */
                 }
                 Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
             }
@@ -185,12 +191,12 @@ where
             return Ok(None);
         }
 
-        let block_hash = execution_receipt.domain_hash;
+        let primary_block_hash = execution_receipt.primary_hash;
         let block_number = primary_number.into();
 
         // TODO: more efficient execution receipt checking strategy?
         let local_receipt = if let Some(local_receipt) =
-            crate::aux_schema::load_execution_receipt(&*self.client, block_hash)?
+            crate::aux_schema::load_execution_receipt(&*self.client, primary_block_hash)?
         {
             local_receipt
         } else {
@@ -204,7 +210,7 @@ where
                 None,
                 async move {
                     if let Err(err) = executor
-                        .wait_for_local_future_receipt(block_hash, block_number, tx)
+                        .wait_for_local_future_receipt(primary_block_hash, block_number, tx)
                         .await
                     {
                         tracing::error!(?err, "Error occurred while waiting for the local receipt");

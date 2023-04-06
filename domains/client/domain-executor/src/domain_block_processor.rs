@@ -401,6 +401,7 @@ where
         self.create_fraud_proof_for_first_unconfirmed_bad_receipt::<PCB>()
     }
 
+    #[allow(clippy::single_match)]
     fn check_receipts_in_primary_block(
         &self,
         primary_hash: PBlock::Hash,
@@ -423,13 +424,13 @@ where
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
-            let block_hash = execution_receipt.domain_hash;
+            let primary_block_hash = execution_receipt.primary_hash;
             match crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
                 NumberFor<PBlock>,
                 PBlock::Hash,
-            >(&*self.client, block_hash)?
+            >(&*self.client, primary_block_hash)?
             {
                 Some(local_receipt) => {
                     if let Some(trace_mismatch_index) =
@@ -438,11 +439,13 @@ where
                         bad_receipts_to_write.push((
                             execution_receipt.primary_number,
                             execution_receipt.hash(),
-                            (trace_mismatch_index, block_hash),
+                            (trace_mismatch_index, primary_block_hash),
                         ));
                     }
                 }
                 None => {
+                    /* TODO: https://github.com/subspace/subspace/issues/1254
+
                     let block_number = to_number_primitive(execution_receipt.primary_number);
 
                     // TODO: Ensure the `block_hash` aligns with the one returned in
@@ -462,6 +465,7 @@ where
                         execution_receipt.hash(),
                         (0u32, block_hash),
                     ));
+                    */
                 }
             }
         }
@@ -498,7 +502,7 @@ where
             .collect::<Vec<_>>();
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
-            crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
+            crate::aux_schema::write_bad_receipt::<_, PBlock>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -530,18 +534,18 @@ where
     where
         PCB: BlockT,
     {
-        if let Some((bad_receipt_hash, trace_mismatch_index, block_hash)) =
-            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
+        if let Some((bad_receipt_hash, trace_mismatch_index, primary_block_hash)) =
+            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, PBlock>(
                 &*self.client,
             )?
         {
-            let local_receipt = crate::aux_schema::load_execution_receipt(
-                &*self.client,
-                block_hash,
-            )?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("Receipt for {block_hash:?} not found"))
-            })?;
+            let local_receipt =
+                crate::aux_schema::load_execution_receipt(&*self.client, primary_block_hash)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Receipt for primary block {primary_block_hash} not found"
+                        ))
+                    })?;
 
             let fraud_proof = self
                 .fraud_proof_generator
