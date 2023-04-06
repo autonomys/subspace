@@ -79,6 +79,10 @@ impl pallet_balances::Config for Test {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type HoldIdentifier = ();
+    type MaxHolds = ();
 }
 
 parameter_types! {
@@ -180,7 +184,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
                 wasm_runtime_hash: Hash::repeat_byte(1),
                 bundle_slot_probability: (1, 1),
                 max_bundle_size: 1024 * 1024,
-                max_bundle_weight: Weight::from_ref_time(100_000_000_000),
+                max_bundle_weight: Weight::from_parts(100_000_000_000, 0),
                 min_operator_stake: 20,
             },
             1,
@@ -201,7 +205,7 @@ fn create_domain_should_work() {
             wasm_runtime_hash: Hash::repeat_byte(1),
             bundle_slot_probability: (1, 1),
             max_bundle_size: 1024 * 1024,
-            max_bundle_weight: Weight::from_ref_time(100_000_000_000),
+            max_bundle_weight: Weight::from_parts(100_000_000_000, 0),
             min_operator_stake: 20,
         };
         assert_eq!(
@@ -218,7 +222,7 @@ fn create_domain_should_work() {
             wasm_runtime_hash: Hash::random(),
             bundle_slot_probability: (1, 1),
             max_bundle_size: 1024 * 1024,
-            max_bundle_weight: Weight::from_ref_time(100_000_000_000),
+            max_bundle_weight: Weight::from_parts(100_000_000_000, 0),
             min_operator_stake: 20,
         };
 
@@ -258,8 +262,8 @@ fn create_domain_should_work() {
             AccountData {
                 free: 2000,
                 reserved: 0,
-                misc_frozen: deposit,
-                fee_frozen: deposit,
+                frozen: deposit,
+                ..AccountData::default()
             }
         );
 
@@ -308,7 +312,7 @@ fn register_domain_operator_and_update_domain_stake_should_work() {
                 wasm_runtime_hash: Hash::random(),
                 bundle_slot_probability: (1, 1),
                 max_bundle_size: 1024 * 1024,
-                max_bundle_weight: Weight::from_ref_time(100_000_000_000),
+                max_bundle_weight: Weight::from_parts(100_000_000_000, 0),
                 min_operator_stake: 20,
             }
         ));

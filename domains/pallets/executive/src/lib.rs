@@ -64,7 +64,6 @@ mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -102,7 +101,7 @@ mod pallet {
             // Reset the intermediate storage roots from last block.
             IntermediateRoots::<T>::kill();
             // TODO: Probably needs a different value
-            Weight::from_ref_time(1)
+            Weight::from_parts(1, 0)
         }
     }
 

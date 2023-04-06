@@ -1,10 +1,10 @@
 use crate::runtime_api::{
-    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SignerExtractor,
-    StateRootExtractor,
+    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor,
 };
 use crate::utils::extract_xdm_proof_state_roots_with_client;
 use codec::Codec;
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::SignedOpaqueBundle;
@@ -83,5 +83,21 @@ where
     ) -> Result<ExtractSignerResult<Block, AccountId>, ApiError> {
         let api = self.client.runtime_api();
         api.extract_signer(at, extrinsics)
+    }
+}
+
+impl<Client, Block> SetCodeConstructor<Block> for RuntimeApiFull<Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: DomainCoreApi<Block, AccountId>,
+{
+    fn construct_set_code_extrinsic(
+        &self,
+        at: Block::Hash,
+        runtime_code: Vec<u8>,
+    ) -> Result<Vec<u8>, ApiError> {
+        let api = self.client.runtime_api();
+        api.construct_set_code_extrinsic(at, runtime_code)
     }
 }

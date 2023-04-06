@@ -24,6 +24,7 @@ pub mod trait_tests;
 mod block_builder_ext;
 
 pub use sc_consensus::LongestChain;
+use sc_service::construct_genesis_block;
 use std::sync::Arc;
 pub use substrate_test_client::*;
 pub use substrate_test_runtime as runtime;
@@ -135,7 +136,7 @@ impl substrate_test_client::GenesisInit for GenesisParameters {
 				storage.top.clone().into_iter().chain(child_roots).collect(),
 				sp_runtime::StateVersion::V1,
 			);
-		let block: runtime::Block = client::genesis::construct_genesis_block(state_root);
+		let block: runtime::Block = construct_genesis_block(state_root, sp_runtime::StateVersion::V1);
 		storage.top.extend(additional_storage_with_genesis(&block));
 
 		storage

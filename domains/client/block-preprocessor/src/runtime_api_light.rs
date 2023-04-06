@@ -1,7 +1,11 @@
-use crate::runtime_api::{CoreBundleConstructor, ExtractedStateRoots, StateRootExtractor};
+use crate::runtime_api::{
+    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor,
+};
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
-use sc_executor::RuntimeVersionOf;
+use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::ExecutionContext;
@@ -25,7 +29,23 @@ pub struct RuntimeApiLight<Executor> {
 impl<Block, Executor> Core<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        _context: ExecutionContext,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
+impl<Block, Executor> DomainCoreApi<Block, AccountId> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
 {
     fn __runtime_api_internal_call_api_at(
         &self,
@@ -42,7 +62,7 @@ impl<Block, Executor> MessengerApi<Block, NumberFor<Block>> for RuntimeApiLight<
 where
     Block: BlockT,
     NumberFor<Block>: Codec,
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
 {
     fn __runtime_api_internal_call_api_at(
         &self,
@@ -63,7 +83,7 @@ impl<Executor> FetchRuntimeCode for RuntimeApiLight<Executor> {
 
 impl<Executor> RuntimeApiLight<Executor>
 where
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
 {
     #[allow(unused)]
     pub fn new(executor: Arc<Executor>, runtime_code: Cow<'static, [u8]>) -> Self {
@@ -83,10 +103,14 @@ where
     }
 
     fn runtime_version(&self) -> Result<RuntimeVersion, ApiError> {
-        let mut ext = BasicExternalities::new_empty();
-        self.executor
-            .runtime_version(&mut ext, &self.runtime_code())
-            .map_err(|err| ApiError::Application(Box::new(err)))
+        let runtime_blob = RuntimeBlob::new(&self.runtime_code).map_err(|err| {
+            ApiError::Application(Box::from(format!("invalid runtime code: {err}")))
+        })?;
+        sc_executor::read_embedded_version(&runtime_blob)
+            .map_err(|err| ApiError::Application(Box::new(err)))?
+            .ok_or(ApiError::Application(Box::from(
+                "domain runtime version not found".to_string(),
+            )))
     }
 
     fn dispatch_call(
@@ -116,7 +140,7 @@ where
 impl<Block, Executor> StateRootExtractor<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
 {
     fn extract_state_roots(
         &self,
@@ -140,7 +164,7 @@ where
     Block: BlockT,
     PNumber: Codec,
     PHash: Codec,
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
 {
     fn __runtime_api_internal_call_api_at(
         &self,
@@ -157,7 +181,7 @@ impl<PBlock, Executor, Block> CoreBundleConstructor<PBlock, Block> for RuntimeAp
 where
     PBlock: BlockT,
     Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
 {
     fn construct_submit_core_bundle_extrinsics(
         &self,
@@ -168,6 +192,38 @@ where
     ) -> Result<Vec<Vec<u8>>, ApiError> {
         <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>>::construct_submit_core_bundle_extrinsics(
             self, at, signed_opaque_bundles,
+        )
+    }
+}
+
+impl<Executor, Block> SignerExtractor<Block, AccountId> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
+{
+    fn extract_signer(
+        &self,
+        at: Block::Hash,
+        extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+    ) -> Result<ExtractSignerResult<Block, AccountId>, ApiError> {
+        <Self as DomainCoreApi<Block, AccountId>>::extract_signer(self, at, extrinsics)
+    }
+}
+
+impl<Executor, Block> SetCodeConstructor<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
+{
+    fn construct_set_code_extrinsic(
+        &self,
+        at: Block::Hash,
+        runtime_code: Vec<u8>,
+    ) -> Result<Vec<u8>, ApiError> {
+        <Self as DomainCoreApi<Block, AccountId>>::construct_set_code_extrinsic(
+            self,
+            at,
+            runtime_code,
         )
     }
 }

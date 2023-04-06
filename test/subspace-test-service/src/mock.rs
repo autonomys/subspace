@@ -14,7 +14,7 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnbound
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockOrigin, CacheKeyId, Error as ConsensusError, NoNetwork, SyncOracle};
+use sp_consensus::{BlockOrigin, Error as ConsensusError, NoNetwork, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
@@ -25,11 +25,13 @@ use sp_runtime::generic::Digest;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
 use sp_runtime::DigestItem;
 use sp_timestamp::Timestamp;
-use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, Solution};
+use subspace_fraud_proof::invalid_state_transition_proof::{
+    InvalidStateTransitionProofVerifier, PrePostStateRootVerifier,
+};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
 use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
@@ -98,12 +100,15 @@ impl MockPrimaryNode {
 
         let bundle_validator = BundleValidator::new(client.clone());
 
-        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-            client.clone(),
-            executor.clone(),
-            task_manager.spawn_handle(),
-            subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-        );
+        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+            InvalidStateTransitionProofVerifier::new(
+                client.clone(),
+                executor.clone(),
+                task_manager.spawn_handle(),
+                PrePostStateRootVerifier::new(client.clone()),
+            ),
+        ));
+
         let tx_pre_validator = PrimaryChainTxPreValidator::new(
             client.clone(),
             Box::new(task_manager.spawn_handle()),
@@ -326,10 +331,7 @@ impl MockPrimaryNode {
             import_block
         };
 
-        let import_result = self
-            .block_import
-            .import_block(block_import_params, Default::default())
-            .await?;
+        let import_result = self.block_import.import_block(block_import_params).await?;
 
         match import_result {
             ImportResult::Imported(_) | ImportResult::AlreadyInChain => Ok(()),
@@ -413,7 +415,6 @@ where
     async fn import_block(
         &mut self,
         mut block: BlockImportParams<Block, Self::Transaction>,
-        new_cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         let block_number = *block.header.number();
         let current_best_number = self.client.info().best_number;
@@ -421,7 +422,7 @@ where
             block_number > current_best_number,
         ));
 
-        let import_result = self.inner.import_block(block, new_cache).await?;
+        let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `block_import_acknowledgement_sender` after the notification otherwise the receiver

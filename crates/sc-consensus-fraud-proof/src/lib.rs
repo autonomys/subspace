@@ -19,10 +19,9 @@
 use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_api::{ProvideRuntimeApi, TransactionFor};
-use sp_consensus::{CacheKeyId, Error as ConsensusError};
+use sp_consensus::Error as ConsensusError;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -82,7 +81,6 @@ where
     async fn import_block(
         &mut self,
         block: BlockImportParams<Block, Self::Transaction>,
-        cache: HashMap<CacheKeyId, Vec<u8>>,
     ) -> Result<ImportResult, Self::Error> {
         let parent_hash = *block.header.parent_hash();
 
@@ -102,7 +100,7 @@ where
             }
         }
 
-        self.inner.import_block(block, cache).await
+        self.inner.import_block(block).await
     }
 }
 

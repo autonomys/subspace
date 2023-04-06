@@ -43,7 +43,6 @@ mod pallet {
 
     /// Pallet object-store, used for storing arbitrary user-provided data combined into object-store.
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
     /// `pallet-object-store` events

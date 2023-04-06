@@ -76,8 +76,10 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::utils::online_status_informer;
 use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
@@ -128,14 +130,19 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
+    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+        SpawnTaskHandle,
+        Hash,
+        PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    >;
+
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
-    Block,
-    FullClient<RuntimeApi, ExecutorDispatch>,
-    NativeElseWasmExecutor<ExecutorDispatch>,
-    SpawnTaskHandle,
-    Hash,
-    subspace_fraud_proof::PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
 /// Subspace networking instantiation variant
@@ -292,12 +299,14 @@ where
 
     let bundle_validator = BundleValidator::new(client.clone());
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        client.clone(),
-        executor,
-        task_manager.spawn_handle(),
-        subspace_fraud_proof::PrePostStateRootVerifier::new(client.clone()),
-    );
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
+        InvalidStateTransitionProofVerifier::new(
+            client.clone(),
+            executor,
+            task_manager.spawn_handle(),
+            PrePostStateRootVerifier::new(client.clone()),
+        ),
+    ));
     let tx_pre_validator = PrimaryChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
@@ -396,8 +405,10 @@ where
     pub client: Arc<Client>,
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
-    /// Network.
-    pub network: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Network service.
+    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Full client backend.
@@ -540,11 +551,8 @@ where
                     }
                 });
 
-            let (node, mut node_runner) = create_dsn_instance::<Block, _>(
-                config.clone(),
-                piece_cache,
-                segment_header_cache.clone(),
-            )?;
+            let (node, mut node_runner) =
+                create_dsn_instance(config.clone(), piece_cache, segment_header_cache.clone())?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 
@@ -559,6 +567,18 @@ where
                 }
             }))
             .detach();
+
+            let status_informer_fut = online_status_informer(&node);
+            task_manager.spawn_handle().spawn(
+                "status-observer",
+                Some("subspace-networking"),
+                Box::pin(
+                    async move {
+                        status_informer_fut.await;
+                    }
+                    .in_current_span(),
+                ),
+            );
 
             task_manager.spawn_essential_handle().spawn_essential(
                 "node-runner",
@@ -668,7 +688,7 @@ where
             })?;
     }
 
-    let (network, system_rpc_tx, tx_handler_controller, network_starter) =
+    let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
             client: client.clone(),
@@ -679,7 +699,7 @@ where
             warp_sync_params: None,
         })?;
 
-    let sync_oracle = network.clone();
+    let sync_oracle = sync_service.clone();
     let best_hash = client.info().best_hash;
     let mut imported_blocks_stream = client.import_notification_stream();
     task_manager.spawn_handle().spawn(
@@ -702,7 +722,7 @@ where
             &config,
             task_manager.spawn_handle(),
             client.clone(),
-            network.clone(),
+            network_service.clone(),
         );
     }
 
@@ -728,8 +748,8 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: network.clone(),
-            justification_sync_link: network.clone(),
+            sync_oracle: sync_service.clone(),
+            justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
@@ -778,9 +798,9 @@ where
     }
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
-        network: network.clone(),
+        network: network_service.clone(),
         client: client.clone(),
-        keystore: keystore_container.sync_keystore(),
+        keystore: keystore_container.keystore(),
         task_manager: &mut task_manager,
         transaction_pool: transaction_pool.clone(),
         rpc_builder: if enable_rpc_extensions {
@@ -817,13 +837,15 @@ where
         config: config.into(),
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
+        sync_service: sync_service.clone(),
     })?;
 
     Ok(NewFull {
         task_manager,
         client,
         select_chain,
-        network,
+        network_service,
+        sync_service,
         rpc_handlers,
         backend,
         new_slot_notification_stream,

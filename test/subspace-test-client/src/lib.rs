@@ -22,7 +22,7 @@ pub mod chain_spec;
 
 use async_trait::async_trait;
 use futures::executor::block_on;
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
@@ -105,7 +105,7 @@ pub fn start_farmer(new_full: &NewFull<Client, TxPreValidator>) {
 
             while let Some(RewardSigningNotification {
                 hash: header_hash,
-                mut signature_sender,
+                signature_sender,
                 ..
             }) = reward_signing_notification_stream.next().await
             {
@@ -115,11 +115,10 @@ pub fn start_farmer(new_full: &NewFull<Client, TxPreValidator>) {
                     .to_bytes()
                     .into();
                 signature_sender
-                    .send(
+                    .unbounded_send(
                         FarmerSignature::decode(&mut signature.encode().as_ref())
                             .expect("Failed to decode schnorrkel block signature"),
                     )
-                    .await
                     .unwrap();
             }
         });
@@ -162,7 +161,7 @@ async fn start_farming<Client>(
 
     while let Some(NewSlotNotification {
         new_slot_info,
-        mut solution_sender,
+        solution_sender,
     }) = new_slot_notification_stream.next().await
     {
         if u64::from(new_slot_info.slot) % 2 == 0 {
@@ -192,7 +191,7 @@ async fn start_farming<Client>(
                 &mut solution.encode().as_slice(),
             )
             .unwrap();
-            let _ = solution_sender.send(solution).await;
+            let _ = solution_sender.unbounded_send(solution);
         }
     }
 }

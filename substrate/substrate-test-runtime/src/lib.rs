@@ -579,7 +579,7 @@ parameter_types! {
     pub RuntimeBlockLength: BlockLength =
         BlockLength::max(4 * 1024 * 1024);
     pub RuntimeBlockWeights: BlockWeights =
-        BlockWeights::with_sensible_defaults(Weight::from_ref_time(4 * 1024 * 1024), Perbill::from_percent(75));
+        BlockWeights::with_sensible_defaults(Weight::from_parts(4 * 1024 * 1024, 0), Perbill::from_percent(75));
 }
 
 impl From<frame_system::Call<Runtime>> for Extrinsic {
@@ -715,6 +715,14 @@ cfg_if! {
 
             impl sp_api::Metadata<Block> for Runtime {
                 fn metadata() -> OpaqueMetadata {
+                    unimplemented!()
+                }
+
+                fn metadata_at_version(_version: u32) -> Option<OpaqueMetadata> {
+                    unimplemented!()
+                }
+
+                fn metadata_versions() -> sp_std::vec::Vec<u32> {
                     unimplemented!()
                 }
             }
@@ -960,6 +968,14 @@ cfg_if! {
             impl sp_api::Metadata<Block> for Runtime {
                 fn metadata() -> OpaqueMetadata {
                     unimplemented!()
+                }
+
+                fn metadata_at_version(version: u32) -> Option<OpaqueMetadata> {
+                    Runtime::metadata_at_version(version)
+                }
+
+                fn metadata_versions() -> sp_std::vec::Vec<u32> {
+                    Runtime::metadata_versions()
                 }
             }
 

@@ -3,12 +3,14 @@ use domain_runtime_primitives::RelayerId;
 use futures::StreamExt;
 use parity_scale_codec::FullCodec;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
+use sp_domains::DomainId;
 use sp_messenger::RelayerApi;
 use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
 use std::sync::Arc;
+use system_runtime_primitives::SystemDomainApi;
 
 /// Starts relaying system domain messages to other domains.
 /// If the node is in major sync, worker waits waits until the sync is finished.
@@ -42,6 +44,12 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
             )
         },
         system_domain_sync_oracle,
+        |_domain_id, _block_number| -> Result<bool, ApiError> {
+            // since we just need to provide a storage proof with the state root of system domain
+            // proof can always be generated for any system domain block.
+            // So we can always relay messages.
+            Ok(true)
+        },
     )
     .await;
 
@@ -57,7 +65,7 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
 /// Starts relaying core domain messages to other domains.
 /// If the either system domain or core domain node is in major sync,
 /// worker waits waits until the sync is finished.
-pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
+pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, CDSO>(
     relayer_id: RelayerId,
     core_domain_client: Arc<CDC>,
     system_domain_client: Arc<SDC>,
@@ -66,6 +74,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
     gossip_message_sink: GossipMessageSink,
 ) where
     Block: BlockT,
+    PBlock: BlockT,
     SBlock: BlockT,
     Block::Hash: FullCodec,
     NumberFor<Block>: FullCodec + TypeInfo,
@@ -78,7 +87,8 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
         + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
+    SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
 {
@@ -108,6 +118,13 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
             )
         },
         combined_sync_oracle,
+        |domain_id, block_number| -> Result<bool, ApiError> {
+            let api = system_domain_client.runtime_api();
+            let at = system_domain_client.info().best_hash;
+            let oldest_tracked_number = api.oldest_receipt_number(at, domain_id)?;
+            // ensure block number is at least the oldest tracked number
+            Ok(block_number >= oldest_tracked_number.into())
+        },
     )
     .await;
     if let Err(err) = result {
@@ -119,12 +136,13 @@ pub async fn relay_core_domain_messages<CDC, SDC, SBlock, Block, SDSO, CDSO>(
     }
 }
 
-async fn relay_domain_messages<Client, Block, MP, SO>(
+async fn relay_domain_messages<Client, Block, MP, SO, SRM>(
     relayer_id: RelayerId,
     relay_confirmation_depth: NumberFor<Block>,
     domain_client: Arc<Client>,
     message_processor: MP,
     sync_oracle: SO,
+    can_relay_message_from_block: SRM,
 ) -> Result<(), Error>
 where
     Block: BlockT,
@@ -136,6 +154,7 @@ where
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
     SO: SyncOracle,
+    SRM: Fn(DomainId, NumberFor<Block>) -> Result<bool, ApiError>,
 {
     let domain_id = Relayer::domain_id(&domain_client)?;
     tracing::info!(
@@ -183,14 +202,22 @@ where
                 "Checking messages to be submitted from domain: {domain_id:?} at block: ({number:?}, {hash:?})",
             );
 
-            if let Err(err) = message_processor(relayer_id.clone(), &domain_client, hash) {
-                tracing::error!(
+            // check if the message is ready to be relayed.
+            // if not, the node is lagging behind and/or there is no way to generate a proof.
+            // mark this block processed and continue to next one.
+            if !can_relay_message_from_block(domain_id, number)? {
+                tracing::info!(
                     target: LOG_TARGET,
-                    ?err,
-                    "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
+                    "Domain({domain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
                 );
+            } else if let Err(err) = message_processor(relayer_id.clone(), &domain_client, hash) {
+                tracing::error!(
+                target: LOG_TARGET,
+                ?err,
+                "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
+            );
                 break;
-            };
+            }
 
             // TODO: at the moment the aux storage grows as the chain grows
             // We can prune the the storage by doing another round of check for any undelivered messages
