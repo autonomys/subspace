@@ -114,8 +114,8 @@ where
             FromBlock::Hash(h) => Ok(h.clone()),
             FromBlock::Number(n) => match self.client.block_hash(*n) {
                 Ok(Some(hash)) => Ok(hash),
-                Ok(None) => Err(RelayError::InvalidBlockHash(format!("{from:?}: None"))),
-                Err(err) => Err(RelayError::InvalidBlockHash(format!("{from:?}: {err:?}"))),
+                Ok(None) => Err(format!("Invalid block hash: {from:?}: None")),
+                Err(err) => Err(format!("Invalid block hash: {from:?}: {err:?}")),
             },
         }
     }
@@ -157,7 +157,7 @@ where
             Err(err) => {
                 self.send_response(
                     peer,
-                    Err(RelayError::InvalidIncomingRequest(format!("{err:?}"))),
+                    Err(format!("server: decode request: {err:?}")),
                     pending_response,
                 );
                 return;
@@ -200,7 +200,7 @@ where
         let extrinsics = self
             .client
             .block_body(*id)
-            .map_err(|err| RelayError::BlockBackendError(format!("block_body(): {id:?}, {err:?}")))?
+            .map_err(|err| format!("download_unit_members:block_body: {id:?}, {err:?}"))?
             .unwrap_or_default();
         Ok(extrinsics
             .iter()

@@ -54,27 +54,19 @@ where
     }
 
     async fn resolve(&self, response: Vec<u8>) -> Result<Vec<ProtocolUnit>, RelayError> {
-        let compact_response: CompactResponse =
-            Decode::decode(&mut response.as_ref()).map_err(|err| {
-                RelayError::InvalidResponse(format!("resolve: initial response: {err:?}"))
-            })?;
+        let compact_response: CompactResponse = Decode::decode(&mut response.as_ref())
+            .map_err(|err| format!("resolve: decode compact_response: {err:?}"))?;
 
         // Look up the protocol units from the backend
         let mut protocol_units = Vec::new();
         let mut missing_ids = Vec::new();
         for protocol_unit_id in compact_response.protocol_unit_ids {
-            let id: ProtocolUnitId =
-                Decode::decode(&mut protocol_unit_id.as_ref()).map_err(|err| {
-                    RelayError::InvalidProtocolUnitId(format!("resolve: invalid id {err:?}"))
-                })?;
+            let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
+                .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
             match self.backend.protocol_unit(&id) {
                 Ok(Some(ret)) => protocol_units.push(ret),
                 Ok(None) => missing_ids.push(id.encode()),
-                Err(err) => {
-                    return Err(RelayError::ProtocolUnitResolveFailed(format!(
-                        "resolve: protocol unit lookup failed: {err:?}"
-                    )))
-                }
+                Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}")),
             }
         }
 
@@ -92,21 +84,18 @@ where
 
         let mut response = Vec::<u8>::new();
         let missing_entries_response: MissingEntriesResponse =
-            Decode::decode(&mut response.as_ref()).map_err(|err| {
-                RelayError::InvalidResponse(format!("resolve: missing entry response: {err:?}"))
-            })?;
+            Decode::decode(&mut response.as_ref())
+                .map_err(|err| format!("resolve: decode missing_entries_response: {err:?}"))?;
         if missing_entries_response.protocol_units.len() != missing_ids.len() {
-            return Err(RelayError::InvalidResponse(format!(
+            return Err(format!(
                 "resolve: missing entries response mismatch: {}, {}",
                 missing_entries_response.protocol_units.len(),
                 missing_ids.len()
-            )));
+            ));
         }
         for entry in missing_entries_response.protocol_units {
-            let protocol_unit: ProtocolUnit =
-                Decode::decode(&mut entry.as_ref()).map_err(|err| {
-                    RelayError::InvalidResponse(format!("resolve: invalid missing entry {err:?}"))
-                })?;
+            let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())
+                .map_err(|err| format!("resolve: decode protocol_unit: {err:?}"))?;
             protocol_units.push(protocol_unit);
         }
 

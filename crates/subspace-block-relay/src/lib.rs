@@ -45,6 +45,8 @@ mod protocol;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
 
+pub(crate) type RelayError = String;
+
 /// The relay client stub
 pub trait RelayClient {
     type Request;
@@ -57,26 +59,4 @@ pub trait RelayClient {
 #[async_trait]
 pub trait RelayServer {
     async fn on_request(&mut self, request: IncomingRequest);
-}
-
-/// Errors returned by the server side.
-#[derive(Debug, Encode, Decode)]
-pub enum RelayError {
-    /// Failed to decode the incoming request
-    InvalidIncomingRequest(String),
-
-    /// Invalid block hash in the block request
-    InvalidBlockHash(String),
-
-    /// Invalid response from the server
-    InvalidResponse(String),
-
-    /// Invalid protocol unit Id
-    InvalidProtocolUnitId(String),
-
-    /// Failed to resolve protocol unit
-    ProtocolUnitResolveFailed(String),
-
-    /// Backend error
-    BlockBackendError(String),
 }
