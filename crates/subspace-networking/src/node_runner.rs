@@ -348,6 +348,16 @@ where
                 num_established,
                 ..
             } => {
+                // Save known addresses that were successfully dialed.
+                if let ConnectedPoint::Dialer { address, .. } = &endpoint {
+                    // filter non-global addresses when non-globals addresses are disabled
+                    if is_global_address_or_dns(address) || self.allow_non_global_addresses_in_dht {
+                        self.networking_parameters_registry
+                            .add_known_peer(peer_id, vec![address.clone()])
+                            .await;
+                    }
+                };
+
                 // Remove temporary ban if there was any
                 self.temporary_bans.lock().remove(&peer_id);
 
@@ -507,24 +517,6 @@ where
                     info.protocol_version, info.agent_version
                 );
                 info.listen_addrs.truncate(30);
-            }
-
-            let addresses = info
-                .listen_addrs
-                .iter()
-                .filter(|addr| {
-                    // filter non-global addresses when non-globals addresses are disabled
-                    is_global_address_or_dns(addr) || self.allow_non_global_addresses_in_dht
-                })
-                .cloned()
-                .collect::<HashSet<_>>() // deduplication
-                .into_iter()
-                .collect::<Vec<_>>();
-
-            if !addresses.is_empty() {
-                self.networking_parameters_registry
-                    .add_known_peer(peer_id, addresses)
-                    .await;
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
