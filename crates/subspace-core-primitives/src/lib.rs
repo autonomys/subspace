@@ -20,9 +20,11 @@
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(
     array_chunks,
+    const_convert,
     const_num_from_num,
     const_option,
     const_trait_impl,
+    const_try,
     new_uninit,
     slice_flatten,
     step_trait
@@ -51,8 +53,8 @@ use derive_more::{Add, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub}
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, RawRecord, Record, RecordCommitment,
-    RecordWitness,
+    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, PieceOffset, RawRecord, Record,
+    RecordCommitment, RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
 pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
@@ -66,20 +68,7 @@ pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
 // TODO: This should become consensus parameter rather than a constant
 /// How many pieces we have in a sector
-pub const PIECES_IN_SECTOR: u32 = 1300;
-// TODO: Remove constant, it is derived dynamically from above consensus parameter
-/// Size of one plotted sector.
-///
-/// NOTE: This only accounts for plot, ignoring extra metadata (witnesses, optional commitments,
-/// etc.) that might be necessary to store as well.
-#[deprecated]
-pub const PLOT_SECTOR_SIZE: u64 = u64::from(PIECES_IN_SECTOR) * Record::SIZE as u64;
-/// Number of s-buckets contained within one sector.
-///
-/// Essentially we chunk records into scalars and erasure code them, hence formula used.
-pub const S_BUCKETS_IN_SECTOR: usize = Record::NUM_CHUNKS
-    * RecordedHistorySegment::ERASURE_CODING_RATE.1
-    / RecordedHistorySegment::ERASURE_CODING_RATE.0;
+pub const PIECES_IN_SECTOR: u16 = 1300;
 
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
@@ -420,7 +409,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Size of the blockchain history at time of sector creation
     pub history_size: HistorySize,
     /// Pieces offset within sector
-    pub piece_offset: PieceIndex,
+    pub piece_offset: PieceOffset,
     /// Piece commitment that can use used to verify that piece was included in blockchain history
     pub record_commitment_hash: Scalar,
     /// Witness for above piece commitment
@@ -478,7 +467,7 @@ impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
             reward_address,
             sector_index: 0,
             history_size: HistorySize::from(NonZeroU64::new(1).expect("1 is not 0; qed")),
-            piece_offset: PieceIndex::default(),
+            piece_offset: PieceOffset::default(),
             record_commitment_hash: Scalar::default(),
             piece_witness: Witness::default(),
             chunk_offset: 0,
@@ -726,7 +715,7 @@ impl LegacySectorId {
     /// blockchain history
     pub fn derive_piece_index(
         &self,
-        piece_offset: PieceIndex,
+        piece_offset: PieceOffset,
         history_size: HistorySize,
     ) -> PieceIndex {
         let piece_index =
@@ -745,5 +734,71 @@ impl LegacySectorId {
         SolutionRange::from_be_bytes([
             hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ])
+    }
+}
+
+/// Data structure representing sector ID in farmer's plot
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
+
+impl AsRef<[u8]> for SectorId {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl SectorId {
+    /// Create new sector ID by deriving it from public key and sector index
+    pub fn new(mut public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
+        public_key_hash
+            .iter_mut()
+            .zip(&sector_index.to_le_bytes())
+            .for_each(|(a, b)| {
+                *a ^= *b;
+            });
+        Self(public_key_hash)
+    }
+
+    /// Derive piece index that should be stored in sector at `piece_offset` for specified size of
+    /// blockchain history
+    pub fn derive_piece_index(
+        &self,
+        piece_offset: PieceOffset,
+        history_size: HistorySize,
+    ) -> PieceIndex {
+        let piece_index =
+            U256::from_le_bytes(blake2b_256_hash_with_key(&self.0, &piece_offset.to_bytes()))
+                % U256::from(history_size.in_pieces().get());
+
+        PieceIndex::from(u64::try_from(piece_index).expect(
+            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
+        ))
+    }
+
+    /// Derive local challenge for this sector from provided global challenge
+    pub fn derive_local_challenge(&self, global_challenge: &Blake2b256Hash) -> SolutionRange {
+        let hash = blake2b_256_hash_with_key(global_challenge, &self.0);
+
+        SolutionRange::from_be_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ])
+    }
+
+    /// Derive evaluation seed
+    pub fn evaluation_seed(&self, piece_offset: PieceOffset, history_size: HistorySize) -> PosSeed {
+        let mut evaluation_seed = self.0;
+
+        for (output, input) in evaluation_seed.iter_mut().zip(piece_offset.to_bytes()) {
+            *output ^= input;
+        }
+        for (output, input) in evaluation_seed
+            .iter_mut()
+            .zip(history_size.get().to_le_bytes())
+        {
+            *output ^= input;
+        }
+
+        PosSeed::from(evaluation_seed)
     }
 }

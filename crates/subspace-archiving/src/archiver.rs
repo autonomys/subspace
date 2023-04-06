@@ -258,7 +258,7 @@ impl Archiver {
 
         let erasure_coding = ErasureCoding::new(
             NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
-                .expect("Recorded history segment contains at very least one record; qed"),
+                .expect("Archived history segment contains at very least one piece; qed"),
         )
         .map_err(ArchiverInstantiationError::FailedToInitializeErasureCoding)?;
 

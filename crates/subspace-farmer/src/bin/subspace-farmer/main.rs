@@ -13,8 +13,9 @@ use std::fs;
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::path::PathBuf;
 use std::str::FromStr;
-use subspace_core_primitives::{PublicKey, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::{PublicKey, PIECES_IN_SECTOR};
 use subspace_farmer::single_disk_plot::SingleDiskPlot;
+use subspace_farmer_components::sector::sector_size;
 use subspace_networking::libp2p::Multiaddr;
 use tempfile::TempDir;
 use tracing::info;
@@ -280,7 +281,8 @@ async fn main() -> Result<()> {
                 }
 
                 let plot_size = farming_args.plot_size.as_u64();
-                let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
+                let sector_size = sector_size(PIECES_IN_SECTOR);
+                let minimum_plot_size = get_required_plot_space_with_overhead(sector_size as u64);
 
                 if plot_size < minimum_plot_size {
                     return Err(anyhow::anyhow!(

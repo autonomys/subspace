@@ -28,7 +28,7 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
 use subspace_core_primitives::{
-    BlockNumber, ChunkSignature, LegacySectorId, PieceIndex, PublicKey, Randomness,
+    BlockNumber, ChunkSignature, LegacySectorId, PieceOffset, PublicKey, Randomness,
     RewardSignature, SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR,
     RANDOMNESS_CONTEXT,
 };
@@ -179,7 +179,10 @@ where
     // TODO: Check if sector already expired once we have such notion
 
     if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
-        let audit_piece_offset = PieceIndex::from(local_challenge % u64::from(PIECES_IN_SECTOR));
+        let audit_piece_offset = PieceOffset::from(
+            u16::try_from(local_challenge % u64::from(PIECES_IN_SECTOR))
+                .expect("Remainder of division by u16 fits into u16; qed"),
+        );
         let position = sector_id
             .derive_piece_index(audit_piece_offset, solution.history_size)
             .position();

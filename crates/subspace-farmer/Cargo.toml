@@ -40,10 +40,12 @@ static_assertions = "1.1.0"
 std-semaphore = "0.1.0"
 ss58-registry = "1.39.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.4.4"
 tempfile = "3.5.0"

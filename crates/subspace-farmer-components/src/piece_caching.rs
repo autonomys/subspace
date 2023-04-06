@@ -2,10 +2,11 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndexHash, PIECES_IN_SECTOR};
 use tracing::trace;
 
-const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(10000).expect("Manually set value > 0."); // TODO: adjust after piece size change
+const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(usize::from(PIECES_IN_SECTOR))
+    .expect("Archived history segment contains at very least one piece; qed");
 
 #[derive(Clone)]
 pub struct PieceMemoryCache {

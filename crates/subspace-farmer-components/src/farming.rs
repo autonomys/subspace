@@ -1,4 +1,4 @@
-use crate::SectorMetadata;
+use crate::sector::{sector_size, SectorMetadata};
 use parity_scale_codec::{Decode, IoReader};
 use schnorrkel::Keypair;
 use std::io;
@@ -7,8 +7,8 @@ use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Blake2b256Hash, LegacySectorId, Piece, PieceIndex, PublicKey, SectorIndex, Solution,
-    SolutionRange, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
+    Blake2b256Hash, LegacySectorId, Piece, PieceOffset, PublicKey, SectorIndex, Solution,
+    SolutionRange, PIECES_IN_SECTOR,
 };
 use subspace_solving::create_chunk_signature;
 use subspace_verification::{derive_audit_chunk, is_within_solution_range};
@@ -54,7 +54,7 @@ pub struct EligibleSector {
     /// Chunks at audited piece that are within desired solution range
     pub chunks: Vec<EligibleChunk>,
     /// Offset of the piece in sector
-    pub audit_piece_offset: PieceIndex,
+    pub audit_piece_offset: PieceOffset,
 }
 
 impl EligibleSector {
@@ -76,7 +76,7 @@ impl EligibleSector {
         }
 
         let mut sector_scalars = {
-            let mut sector_bytes = vec![0; PLOT_SECTOR_SIZE as usize];
+            let mut sector_bytes = vec![0; sector_size(PIECES_IN_SECTOR)];
             sector.read_exact(&mut sector_bytes)?;
 
             sector_bytes
@@ -104,7 +104,7 @@ impl EligibleSector {
             .zip(
                 sector_scalars
                     .into_iter()
-                    .skip(scalars_in_piece * u64::from(self.audit_piece_offset) as usize)
+                    .skip(scalars_in_piece * usize::from(self.audit_piece_offset))
                     .take(scalars_in_piece),
             )
             .for_each(|(output, input)| {
@@ -121,8 +121,9 @@ impl EligibleSector {
                 let piece_index = self
                     .sector_id
                     .derive_piece_index(self.audit_piece_offset, sector_metadata.history_size);
-                let audit_piece_bytes_offset = self.audit_piece_offset
-                    * (Piece::SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
+                let audit_piece_bytes_offset = usize::from(self.audit_piece_offset) * Piece::SIZE
+                    / ScalarLegacy::SAFE_BYTES
+                    * ScalarLegacy::FULL_BYTES;
                 error!(
                     ?error,
                     sector_id = ?self.sector_id,
@@ -170,14 +171,18 @@ where
     let sector_id = LegacySectorId::new(public_key, sector_index);
 
     let local_challenge = sector_id.derive_local_challenge(global_challenge);
-    let audit_piece_offset = PieceIndex::from(local_challenge % u64::from(PIECES_IN_SECTOR));
+    let audit_piece_offset = PieceOffset::from(
+        u16::try_from(local_challenge % u64::from(PIECES_IN_SECTOR))
+            .expect("Remainder of division by u16 fits into u16; qed"),
+    );
     // Offset of the piece in sector (in bytes, accounts for the fact that encoded piece has its
     // chunks expanded with zero byte padding)
-    let audit_piece_bytes_offset = audit_piece_offset
-        * (Piece::SIZE / ScalarLegacy::SAFE_BYTES * ScalarLegacy::FULL_BYTES) as u64;
+    let audit_piece_bytes_offset = usize::from(audit_piece_offset) * Piece::SIZE
+        / ScalarLegacy::SAFE_BYTES
+        * ScalarLegacy::FULL_BYTES;
 
     let mut piece = Piece::default();
-    sector.seek(SeekFrom::Current(u64::from(audit_piece_bytes_offset) as i64))?;
+    sector.seek(SeekFrom::Current(audit_piece_bytes_offset as i64))?;
     sector.read_exact(piece.as_mut())?;
 
     let chunks = piece

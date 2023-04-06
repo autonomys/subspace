@@ -1,9 +1,11 @@
 #[cfg(feature = "serde")]
 mod serde;
+#[cfg(test)]
+mod tests;
 
 use crate::crypto::{blake2b_256_hash, Scalar};
 use crate::segments::{ArchivedHistorySegment, SegmentIndex};
-use crate::Blake2b256Hash;
+use crate::{Blake2b256Hash, RecordedHistorySegment};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
@@ -12,6 +14,7 @@ use alloc::vec::Vec;
 use core::array::TryFromSliceError;
 use core::iter::Step;
 use core::mem;
+use core::num::TryFromIntError;
 use core::ops::{Deref, DerefMut};
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
@@ -21,6 +24,88 @@ use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use scale_info::TypeInfo;
+
+/// S-bucket used in consensus
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct SBucket(u16);
+
+impl Step for SBucket {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u16::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u16::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u16::backward_checked(start.0, count).map(Self)
+    }
+}
+
+impl const TryFrom<usize> for SBucket {
+    type Error = TryFromIntError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        Ok(Self(u16::try_from(value)?))
+    }
+}
+
+impl const From<u16> for SBucket {
+    fn from(original: u16) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<SBucket> for u16 {
+    fn from(original: SBucket) -> Self {
+        original.0
+    }
+}
+
+impl const From<SBucket> for u32 {
+    fn from(original: SBucket) -> Self {
+        u32::from(original.0)
+    }
+}
+
+impl const From<SBucket> for usize {
+    fn from(original: SBucket) -> Self {
+        usize::from(original.0)
+    }
+}
+
+impl SBucket {
+    /// S-bucket 0.
+    pub const ZERO: SBucket = SBucket(0);
+    /// Max s-bucket index
+    pub const MAX: SBucket = SBucket((Record::NUM_S_BUCKETS - 1) as u16);
+}
 
 /// Piece index in consensus
 #[derive(
@@ -88,8 +173,8 @@ impl PieceIndex {
         PieceIndexHash::from(blake2b_256_hash(&self.to_bytes()))
     }
 
-    /// Convert piece index into bytes.
-    pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
+    /// Convert piece index to bytes.
+    pub const fn to_bytes(self) -> [u8; mem::size_of::<u64>()] {
         self.0.to_le_bytes()
     }
 
@@ -102,6 +187,79 @@ impl PieceIndex {
     pub const fn position(&self) -> u32 {
         // Position is statically guaranteed to fit into u32
         (self.0 % ArchivedHistorySegment::NUM_PIECES as u64) as u32
+    }
+}
+
+/// Piece offset in sector
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct PieceOffset(u16);
+
+impl Step for PieceOffset {
+    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+        u16::steps_between(&start.0, &end.0)
+    }
+
+    fn forward_checked(start: Self, count: usize) -> Option<Self> {
+        u16::forward_checked(start.0, count).map(Self)
+    }
+
+    fn backward_checked(start: Self, count: usize) -> Option<Self> {
+        u16::backward_checked(start.0, count).map(Self)
+    }
+}
+
+impl const From<u16> for PieceOffset {
+    fn from(original: u16) -> Self {
+        Self(original)
+    }
+}
+
+impl const From<PieceOffset> for u16 {
+    fn from(original: PieceOffset) -> Self {
+        original.0
+    }
+}
+
+impl const From<PieceOffset> for usize {
+    fn from(original: PieceOffset) -> Self {
+        usize::from(original.0)
+    }
+}
+
+impl PieceOffset {
+    /// Piece index 0.
+    pub const ZERO: PieceOffset = PieceOffset(0);
+    /// Piece index 1.
+    pub const ONE: PieceOffset = PieceOffset(1);
+
+    /// Convert piece offset to bytes.
+    pub const fn to_bytes(self) -> [u8; mem::size_of::<u16>()] {
+        self.0.to_le_bytes()
     }
 }
 
@@ -170,6 +328,12 @@ impl RawRecord {
 #[repr(transparent)]
 pub struct Record([[u8; Scalar::FULL_BYTES]; Self::NUM_CHUNKS]);
 
+impl Default for Record {
+    fn default() -> Self {
+        Self([Default::default(); Self::NUM_CHUNKS])
+    }
+}
+
 impl AsRef<[u8]> for Record {
     fn as_ref(&self) -> &[u8] {
         self.0.flatten()
@@ -185,6 +349,12 @@ impl AsMut<[u8]> for Record {
 impl Record {
     /// Number of chunks (scalars) within one record.
     pub const NUM_CHUNKS: usize = RawRecord::NUM_CHUNKS;
+    /// Number of s-buckets contained within one record (and by extension sector).
+    ///
+    /// Essentially we chunk records into scalars and erasure code them.
+    pub const NUM_S_BUCKETS: usize = Self::NUM_CHUNKS
+        * RecordedHistorySegment::ERASURE_CODING_RATE.1
+        / RecordedHistorySegment::ERASURE_CODING_RATE.0;
     /// Size of a segment record given the global piece size (in bytes) after erasure coding
     /// [`RawRecord`], is guaranteed to be a multiple of [`Scalar::FULL_BYTES`].
     pub const SIZE: usize = Scalar::FULL_BYTES * Self::NUM_CHUNKS;
@@ -227,10 +397,36 @@ impl Record {
 
 /// Record commitment contained within a piece.
 #[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 #[repr(transparent)]
-pub struct RecordCommitment([u8; Self::SIZE]);
+pub struct RecordCommitment([u8; RecordCommitment::SIZE]);
+
+impl Default for RecordCommitment {
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
+
+impl TryFrom<&[u8]> for RecordCommitment {
+    type Error = TryFromSliceError;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; Self::SIZE]>::try_from(slice).map(Self)
+    }
+}
 
 impl AsRef<[u8]> for RecordCommitment {
     fn as_ref(&self) -> &[u8] {
@@ -251,10 +447,36 @@ impl RecordCommitment {
 
 /// Record witness contained within a piece.
 #[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 #[repr(transparent)]
-pub struct RecordWitness([u8; Self::SIZE]);
+pub struct RecordWitness([u8; RecordWitness::SIZE]);
+
+impl Default for RecordWitness {
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
+
+impl TryFrom<&[u8]> for RecordWitness {
+    type Error = TryFromSliceError;
+
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; Self::SIZE]>::try_from(slice).map(Self)
+    }
+}
 
 impl AsRef<[u8]> for RecordWitness {
     fn as_ref(&self) -> &[u8] {

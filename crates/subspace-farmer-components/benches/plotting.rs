@@ -1,29 +1,36 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
 use rand::{thread_rng, Rng};
-use rayon::current_num_threads;
-use rayon::prelude::*;
-use std::io;
-use std::num::NonZeroU64;
-use std::time::Instant;
+use std::num::{NonZeroU64, NonZeroUsize};
+use std::{env, io};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    HistorySize, PublicKey, RecordedHistorySegment, SegmentIndex, PLOT_SECTOR_SIZE,
+    HistorySize, PublicKey, Record, RecordedHistorySegment, SegmentIndex, PIECES_IN_SECTOR,
 };
+use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
+use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_proof_of_space::chia::ChiaTable;
 
 fn criterion_benchmark(c: &mut Criterion) {
+    println!("Initializing...");
+    let pieces_in_sector = env::var("PIECES_IN_SECTOR")
+        .map(|base_path| base_path.parse().unwrap())
+        .unwrap_or_else(|_error| PIECES_IN_SECTOR);
+
     let public_key = PublicKey::default();
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
-    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+    )
+    .unwrap();
     let archived_history_segment = archiver
         .add_block(
             AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
@@ -39,52 +46,27 @@ fn criterion_benchmark(c: &mut Criterion) {
         sector_expiration: SegmentIndex::ONE,
     };
 
-    let mut group = c.benchmark_group("sector-plotting");
-    group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE));
-    group.bench_function("no-writes-single-thread", |b| {
+    let mut group = c.benchmark_group("plotting");
+    group.throughput(Throughput::Bytes(sector_size(pieces_in_sector) as u64));
+    group.bench_function("no-writes", |b| {
         b.iter(|| {
-            block_on(plot_sector(
+            block_on(plot_sector::<_, _, _, ChiaTable>(
                 black_box(&public_key),
                 black_box(sector_index),
                 black_box(&archived_history_segment),
                 black_box(PieceGetterRetryPolicy::default()),
                 black_box(&farmer_protocol_info),
                 black_box(&kzg),
-                black_box(&sector_codec),
-                black_box(io::sink()),
-                black_box(io::sink()),
+                black_box(&erasure_coding),
+                black_box(pieces_in_sector),
+                black_box(&mut io::sink()),
+                black_box(&mut io::sink()),
                 Default::default(),
             ))
             .unwrap();
         })
     });
 
-    let thread_count = current_num_threads() as u64;
-    group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE * thread_count));
-    group.bench_function("no-writes-multi-thread", |b| {
-        b.iter_custom(|iters| {
-            let sectors = (0..thread_count).collect::<Vec<_>>();
-            let start = Instant::now();
-            for _i in 0..iters {
-                sectors.par_iter().for_each(|&sector_index| {
-                    block_on(plot_sector(
-                        black_box(&public_key),
-                        black_box(sector_index),
-                        black_box(&archived_history_segment),
-                        black_box(PieceGetterRetryPolicy::default()),
-                        black_box(&farmer_protocol_info),
-                        black_box(&kzg),
-                        black_box(&sector_codec),
-                        black_box(io::sink()),
-                        black_box(io::sink()),
-                        Default::default(),
-                    ))
-                    .unwrap();
-                });
-            }
-            start.elapsed()
-        })
-    });
     group.finish();
 }
 

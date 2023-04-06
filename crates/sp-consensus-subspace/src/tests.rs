@@ -8,7 +8,7 @@ use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
 use std::num::NonZeroU64;
-use subspace_core_primitives::{ChunkSignature, HistorySize, PieceIndex, Solution};
+use subspace_core_primitives::{ChunkSignature, HistorySize, PieceOffset, Solution};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
@@ -24,7 +24,7 @@ fn test_is_equivocation_proof_valid() {
         reward_address: (),
         sector_index: 0,
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
-        piece_offset: PieceIndex::default(),
+        piece_offset: PieceOffset::default(),
         record_commitment_hash: Default::default(),
         piece_witness: Default::default(),
         chunk_offset: 0,

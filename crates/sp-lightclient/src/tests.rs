@@ -21,18 +21,21 @@ use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
 use std::io::Cursor;
-use std::num::NonZeroU64;
+use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    HistorySize, LegacySectorId, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
+    HistorySize, LegacySectorId, PublicKey, Randomness, Record, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex, Solution, SolutionRange, PIECES_IN_SECTOR,
 };
+use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_proof_of_space::chia::ChiaTable;
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{derive_audit_chunk, derive_randomness};
 
@@ -91,7 +94,7 @@ impl Farmer {
         let segment_header = archived_segment.segment_header;
         let history_size =
             HistorySize::from(NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap());
-        let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+        let mut sector = vec![0u8; sector_size(PIECES_IN_SECTOR)];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
         let sector_index = 0;
         let public_key = PublicKey::from(keypair.public.to_bytes());
@@ -99,18 +102,22 @@ impl Farmer {
             history_size,
             sector_expiration: SegmentIndex::from(100),
         };
-        let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
 
-        block_on(plot_sector(
+        block_on(plot_sector::<_, _, _, ChiaTable>(
             &public_key,
             sector_index,
             &archived_segment.pieces,
             PieceGetterRetryPolicy::default(),
             &farmer_protocol_info,
             &kzg,
-            &sector_codec,
-            Cursor::new(sector.as_mut_slice()),
-            Cursor::new(sector_metadata.as_mut_slice()),
+            &erasure_coding,
+            PIECES_IN_SECTOR,
+            &mut Cursor::new(sector.as_mut_slice()),
+            &mut Cursor::new(sector_metadata.as_mut_slice()),
             Default::default(),
         ))
         .unwrap();
@@ -148,7 +155,7 @@ fn valid_header(
     let segment_commitment = farmer.segment_header.segment_commitment();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
-    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+    let sector_codec = SectorCodec::new(sector_size(PIECES_IN_SECTOR)).unwrap();
 
     let global_challenge = derive_global_challenge(&randomness, slot);
     let eligible_sector = audit_sector(

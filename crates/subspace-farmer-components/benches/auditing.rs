@@ -4,21 +4,23 @@ use memmap2::Mmap;
 use rand::{thread_rng, Rng};
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::num::NonZeroU64;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::time::Instant;
 use std::{env, fs, io};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, RecordedHistorySegment, SegmentIndex,
-    SolutionRange, PLOT_SECTOR_SIZE,
+    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SegmentIndex,
+    SolutionRange, PIECES_IN_SECTOR,
 };
+use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
+use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_proof_of_space::chia::ChiaTable;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let base_path = env::var("BASE_PATH")
@@ -34,7 +36,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
-    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+    )
+    .unwrap();
     let archived_history_segment = archiver
         .add_block(
             AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
@@ -52,19 +57,22 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
 
-    let plotted_sector = {
-        let mut plotted_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+    let sector_size = sector_size(PIECES_IN_SECTOR);
 
-        block_on(plot_sector(
+    let plotted_sector = {
+        let mut plotted_sector = vec![0u8; sector_size];
+
+        block_on(plot_sector::<_, _, _, ChiaTable>(
             &public_key,
             sector_index,
             &archived_history_segment,
             PieceGetterRetryPolicy::default(),
             &farmer_protocol_info,
             &kzg,
-            &sector_codec,
-            plotted_sector.as_mut_slice(),
-            io::sink(),
+            &erasure_coding,
+            PIECES_IN_SECTOR,
+            &mut plotted_sector,
+            &mut io::sink(),
             Default::default(),
         ))
         .unwrap();
@@ -99,7 +107,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .unwrap();
 
         plot_file
-            .preallocate(PLOT_SECTOR_SIZE * sectors_count)
+            .preallocate(sector_size as u64 * sectors_count)
             .unwrap();
         plot_file.advise_random_access().unwrap();
 
@@ -118,7 +126,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             let start = Instant::now();
             for _i in 0..iters {
                 for (sector_index, sector) in plot_mmap
-                    .chunks_exact(PLOT_SECTOR_SIZE as usize)
+                    .chunks_exact(sector_size)
                     .enumerate()
                     .map(|(sector_index, sector)| (sector_index as u64, sector))
                 {
