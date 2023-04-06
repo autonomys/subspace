@@ -374,7 +374,6 @@ where
 
         crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
             &*self.client,
-            (header_hash, header_number),
             head_receipt_number,
             &execution_receipt,
         )?;

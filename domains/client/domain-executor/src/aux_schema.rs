@@ -49,22 +49,30 @@ fn load_decode<Backend: AuxStore, T: Decode>(
     }
 }
 
-/// Write the execution receipt of a block to aux storage, optionally prune the receipts that are
+/// Write an execution receipt to aux storage, optionally prune the receipts that are
 /// too old.
-pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: BlockT>(
+pub(super) fn write_execution_receipt<Backend, Block, PBlock>(
     backend: &Backend,
-    (block_hash, block_number): (Block::Hash, NumberFor<Block>),
     head_receipt_number: NumberFor<Block>,
     execution_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-) -> Result<(), sp_blockchain::Error> {
+) -> Result<(), sp_blockchain::Error>
+where
+    Backend: AuxStore,
+    Block: BlockT,
+    PBlock: BlockT,
+{
+    let block_number = execution_receipt.primary_number;
+    let primary_hash = execution_receipt.primary_hash;
+
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
     let mut hashes_at_block_number =
-        load_decode::<_, Vec<Block::Hash>>(backend, block_number_key.as_slice())?
+        load_decode::<_, Vec<PBlock::Hash>>(backend, block_number_key.as_slice())?
             .unwrap_or_default();
-    hashes_at_block_number.push(block_hash);
+    hashes_at_block_number.push(primary_hash);
 
-    let first_saved_receipt = load_decode::<_, NumberFor<Block>>(backend, EXECUTION_RECEIPT_START)?
-        .unwrap_or(block_number);
+    let first_saved_receipt =
+        load_decode::<_, NumberFor<PBlock>>(backend, EXECUTION_RECEIPT_START)?
+            .unwrap_or(block_number);
 
     let mut new_first_saved_receipt = first_saved_receipt;
 
@@ -74,13 +82,13 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: 
         .saturated_into::<BlockNumber>()
         .checked_sub(PRUNING_DEPTH)
     {
-        new_first_saved_receipt = Into::<NumberFor<Block>>::into(delete_receipts_to) + One::one();
+        new_first_saved_receipt = Into::<NumberFor<PBlock>>::into(delete_receipts_to) + One::one();
         for receipt_to_delete in first_saved_receipt.saturated_into()..=delete_receipts_to {
             let delete_block_number_key =
                 (EXECUTION_RECEIPT_BLOCK_NUMBER, receipt_to_delete).encode();
 
             if let Some(hashes_to_delete) =
-                load_decode::<_, Vec<Block::Hash>>(backend, delete_block_number_key.as_slice())?
+                load_decode::<_, Vec<PBlock::Hash>>(backend, delete_block_number_key.as_slice())?
             {
                 keys_to_delete.extend(
                     hashes_to_delete
@@ -95,7 +103,7 @@ pub(super) fn write_execution_receipt<Backend: AuxStore, Block: BlockT, PBlock: 
     backend.insert_aux(
         &[
             (
-                execution_receipt_key(block_hash).as_slice(),
+                execution_receipt_key(primary_hash).as_slice(),
                 execution_receipt.encode().as_slice(),
             ),
             (
@@ -419,10 +427,9 @@ mod tests {
 
         let receipt_at = |block_hash: Hash| load_execution_receipt(&client, block_hash).unwrap();
 
-        let write_receipt_at = |hash: Hash, number: BlockNumber, receipt: &ExecutionReceipt| {
+        let write_receipt_at = |number: BlockNumber, receipt: &ExecutionReceipt| {
             write_execution_receipt::<_, Block, PBlock>(
                 &client,
-                (hash, number),
                 number - 1, // Ideally, the receipt of previous block has been included when writing the receipt of current block.
                 receipt,
             )
@@ -435,35 +442,27 @@ mod tests {
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let block_hash = Hash::random();
-                write_receipt_at(block_hash, block_number, &receipt);
-                assert_eq!(receipt_at(block_hash), Some(receipt));
-                assert_eq!(hashes_at(block_number), Some(vec![block_hash]));
+                let primary_hash = receipt.primary_hash;
+                write_receipt_at(block_number, &receipt);
+                assert_eq!(receipt_at(primary_hash), Some(receipt));
+                assert_eq!(hashes_at(block_number), Some(vec![primary_hash]));
                 assert_eq!(receipt_start(), Some(1));
-                block_hash
+                primary_hash
             })
             .collect::<Vec<_>>();
 
         assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
 
         // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is PRUNING_DEPTH.
-        let block_hash = Hash::random();
-        assert!(receipt_at(block_hash).is_none());
-        write_receipt_at(
-            block_hash,
-            PRUNING_DEPTH + 1,
-            &create_execution_receipt(PRUNING_DEPTH + 1),
-        );
-        assert!(receipt_at(block_hash).is_some());
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
+        assert!(receipt_at(receipt.primary_hash).is_none());
+        write_receipt_at(PRUNING_DEPTH + 1, &receipt);
+        assert!(receipt_at(receipt.primary_hash).is_some());
 
         // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is PRUNING_DEPTH + 1.
-        let block_hash = Hash::random();
-        write_receipt_at(
-            block_hash,
-            PRUNING_DEPTH + 2,
-            &create_execution_receipt(PRUNING_DEPTH + 2),
-        );
-        assert!(receipt_at(block_hash).is_some());
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 2);
+        write_receipt_at(PRUNING_DEPTH + 2, &receipt);
+        assert!(receipt_at(receipt.primary_hash).is_some());
 
         // ER of block #1 should be pruned.
         assert!(receipt_at(block_hash_list[0]).is_none());
@@ -473,13 +472,10 @@ mod tests {
         assert_eq!(receipt_start(), Some(2));
 
         // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is PRUNING_DEPTH + 2.
-        let block_hash = Hash::random();
-        write_receipt_at(
-            block_hash,
-            PRUNING_DEPTH + 3,
-            &create_execution_receipt(PRUNING_DEPTH + 3),
-        );
-        assert!(receipt_at(block_hash).is_some());
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
+        let primary_hash1 = receipt.primary_hash;
+        write_receipt_at(PRUNING_DEPTH + 3, &receipt);
+        assert!(receipt_at(primary_hash1).is_some());
         // ER of block #2 should be pruned.
         assert!(receipt_at(block_hash_list[1]).is_none());
         assert!(target_receipt_is_pruned(PRUNING_DEPTH + 2, 2));
@@ -487,16 +483,13 @@ mod tests {
         assert_eq!(receipt_start(), Some(3));
 
         // Multiple hashes attached to the block #(PRUNING_DEPTH + 3)
-        let block_hash2 = Hash::random();
-        write_receipt_at(
-            block_hash2,
-            PRUNING_DEPTH + 3,
-            &create_execution_receipt(PRUNING_DEPTH + 3),
-        );
-        assert!(receipt_at(block_hash2).is_some());
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
+        let primary_hash2 = receipt.primary_hash;
+        write_receipt_at(PRUNING_DEPTH + 3, &receipt);
+        assert!(receipt_at(primary_hash2).is_some());
         assert_eq!(
             hashes_at(PRUNING_DEPTH + 3),
-            Some(vec![block_hash, block_hash2])
+            Some(vec![primary_hash1, primary_hash2])
         );
     }
 
@@ -519,16 +512,9 @@ mod tests {
 
         let receipt_at = |block_hash: Hash| load_execution_receipt(&client, block_hash).unwrap();
 
-        let write_receipt_at = |(hash, number): (Hash, BlockNumber),
-                                head_receipt_number: BlockNumber,
-                                receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, PBlock>(
-                &client,
-                (hash, number),
-                head_receipt_number,
-                receipt,
-            )
-            .unwrap()
+        let write_receipt_at = |head_receipt_number: BlockNumber, receipt: &ExecutionReceipt| {
+            write_execution_receipt::<_, Block, PBlock>(&client, head_receipt_number, receipt)
+                .unwrap()
         };
 
         assert_eq!(receipt_start(), None);
@@ -538,33 +524,25 @@ mod tests {
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let block_hash = Hash::random();
-                write_receipt_at((block_hash, block_number), 0, &receipt);
-                assert_eq!(receipt_at(block_hash), Some(receipt));
-                assert_eq!(hashes_at(block_number), Some(vec![block_hash]));
+                let primary_hash = receipt.primary_hash;
+                write_receipt_at(0, &receipt);
+                assert_eq!(receipt_at(primary_hash), Some(receipt));
+                assert_eq!(hashes_at(block_number), Some(vec![primary_hash]));
                 assert_eq!(receipt_start(), Some(1));
-                block_hash
+                primary_hash
             })
             .collect::<Vec<_>>();
 
         assert!(!target_receipt_is_pruned(PRUNING_DEPTH, 1));
 
         // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is 0.
-        let block_hash = Hash::random();
-        assert!(receipt_at(block_hash).is_none());
-        write_receipt_at(
-            (block_hash, PRUNING_DEPTH + 1),
-            0,
-            &create_execution_receipt(PRUNING_DEPTH + 1),
-        );
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
+        assert!(receipt_at(receipt.primary_hash).is_none());
+        write_receipt_at(0, &receipt);
 
         // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is 0.
-        let block_hash = Hash::random();
-        write_receipt_at(
-            (block_hash, PRUNING_DEPTH + 2),
-            0,
-            &create_execution_receipt(PRUNING_DEPTH + 2),
-        );
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 2);
+        write_receipt_at(0, &receipt);
 
         // ER of block #1 should not be pruned even the size of stored receipts exceeds the pruning depth.
         assert!(receipt_at(block_hash_list[0]).is_some());
@@ -574,19 +552,14 @@ mod tests {
         assert_eq!(receipt_start(), Some(1));
 
         // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is 0.
-        let block_hash = Hash::random();
-        write_receipt_at(
-            (block_hash, PRUNING_DEPTH + 3),
-            0,
-            &create_execution_receipt(PRUNING_DEPTH + 3),
-        );
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
+        write_receipt_at(0, &receipt);
 
         // Create PRUNING_DEPTH + 4 receipt, head_receipt_number is PRUNING_DEPTH + 3.
-        let block_hash = Hash::random();
+        let receipt = create_execution_receipt(PRUNING_DEPTH + 4);
         write_receipt_at(
-            (block_hash, PRUNING_DEPTH + 4),
             PRUNING_DEPTH + 3, // Now assuming all the missing receipts are included.
-            &create_execution_receipt(PRUNING_DEPTH + 4),
+            &receipt,
         );
         assert!(receipt_at(block_hash_list[0]).is_none());
         // receipt and block number mapping for [1, 2, 3] should be pruned.
