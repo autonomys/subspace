@@ -184,8 +184,17 @@ impl MockPrimaryNode {
                 .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
         }
 
-        while (slot_acknowledgement_receiver.next().await).is_some() {
-            // Wait for all the acknowledgements to progress.
+        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
+        loop {
+            select! {
+                res = slot_acknowledgement_receiver.next() => if res.is_none() {
+                    break;
+                },
+                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
+                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
+                    self.new_slot_notification_subscribers.retain(|subscriber| !subscriber.is_closed());
+                }
+            }
         }
 
         slot
@@ -433,8 +442,17 @@ where
                 .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
         }
 
-        while (acknowledgement_receiver.next().await).is_some() {
-            // Wait for all the acknowledgements to progress.
+        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
+        loop {
+            select! {
+                res = acknowledgement_receiver.next() => if res.is_none() {
+                    break;
+                },
+                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
+                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
+                    self.block_importing_notification_subscribers.retain(|subscriber| !subscriber.is_closed());
+                }
+            }
         }
 
         Ok(import_result)
