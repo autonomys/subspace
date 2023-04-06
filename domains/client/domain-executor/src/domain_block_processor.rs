@@ -137,19 +137,15 @@ where
 
         let best_hash = self.client.info().best_hash;
         let best_number = self.client.info().best_number;
-        let best_receipt = crate::aux_schema::load_execution_receipt::<
-            _,
-            Block::Hash,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-        >(&*self.client, best_hash)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!(
-                "Receipt for #{best_number},{best_hash:?} not found"
-            ))
-        })?;
 
-        let primary_from = best_receipt.primary_hash;
+        let primary_hash_for_best_domain_hash =
+            crate::aux_schema::primary_hash_for(&*self.backend, best_hash)?.ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Primary hash for domain hash #{best_hash} not found"
+                ))
+            })?;
+
+        let primary_from = primary_hash_for_best_domain_hash;
         let primary_to = primary_hash;
 
         if primary_from == primary_to {
@@ -175,7 +171,7 @@ where
             (true, false) => {
                 // New tip, A -> B
                 Ok(Some(PendingPrimaryBlocks {
-                    initial_parent: (self.client.info().best_hash, self.client.info().best_number),
+                    initial_parent: (best_hash, best_number),
                     primary_imports: enacted.to_vec(),
                 }))
             }
@@ -376,6 +372,12 @@ where
             &*self.client,
             head_receipt_number,
             &execution_receipt,
+        )?;
+
+        crate::aux_schema::track_domain_hash_to_primary_hash(
+            &*self.client,
+            header_hash,
+            primary_hash,
         )?;
 
         // TODO: The applied txs can be fully removed from the transaction pool

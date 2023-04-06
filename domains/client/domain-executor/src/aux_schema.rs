@@ -24,6 +24,9 @@ const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 /// NOTE: Unbounded but the size is not expected to be large.
 const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
 
+/// domain_block_hash => primary_block_hash
+const PRIMARY_HASH: &[u8] = b"primary_hash";
+
 /// Prune the execution receipts when they reach this number.
 const PRUNING_DEPTH: BlockNumber = 1000;
 
@@ -122,6 +125,7 @@ where
     )
 }
 
+// TODO: update to `primary_block_hash`
 /// Load the execution receipt associated with a block.
 pub(super) fn load_execution_receipt<Backend, Hash, Number, PHash>(
     backend: &Backend,
@@ -134,6 +138,39 @@ where
     PHash: Decode,
 {
     load_decode(backend, execution_receipt_key(block_hash).as_slice())
+}
+
+pub(super) fn track_domain_hash_to_primary_hash<Backend, Hash, PHash>(
+    backend: &Backend,
+    domain_hash: Hash,
+    primary_hash: PHash,
+) -> ClientResult<()>
+where
+    Backend: AuxStore,
+    Hash: Encode,
+    PHash: Encode,
+{
+    // TODO: prune the stale mappings.
+
+    backend.insert_aux(
+        &[(
+            (PRIMARY_HASH, domain_hash).encode().as_slice(),
+            primary_hash.encode().as_slice(),
+        )],
+        vec![],
+    )
+}
+
+pub(super) fn primary_hash_for<Backend, Hash, PHash>(
+    backend: &Backend,
+    domain_hash: Hash,
+) -> ClientResult<Option<PHash>>
+where
+    Backend: AuxStore,
+    Hash: Encode,
+    PHash: Decode,
+{
+    load_decode(backend, (PRIMARY_HASH, domain_hash).encode().as_slice())
 }
 
 pub(super) fn target_receipt_is_pruned(
