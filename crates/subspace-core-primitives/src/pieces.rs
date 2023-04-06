@@ -98,6 +98,11 @@ impl PieceIndex {
     /// Piece index 1.
     pub const ONE: PieceIndex = PieceIndex(1);
 
+    /// Derive piece index hash
+    pub fn hash(&self) -> PieceIndexHash {
+        PieceIndexHash::from(blake2b_256_hash(&self.to_bytes()))
+    }
+
     /// Convert piece index into bytes.
     pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
         self.0.to_le_bytes()
@@ -127,9 +132,10 @@ impl AsRef<[u8]> for PieceIndexHash {
 }
 
 impl PieceIndexHash {
+    // TODO: Remove and replace uses with `index.hash()`
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(blake2b_256_hash(&index.to_bytes()))
+        index.hash()
     }
 }
 
@@ -201,6 +207,34 @@ impl Record {
         unsafe { Box::new_zeroed().assume_init() }
     }
 
+    /// Convenient conversion from slice of record to underlying representation for efficiency
+    /// purposes.
+    pub fn slice_to_repr(value: &[Self]) -> &[[u8; Self::SIZE]] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of underlying representation to record for efficiency
+    /// purposes.
+    pub fn slice_from_repr(value: &[[u8; Self::SIZE]]) -> &[Self] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of record to underlying representation for
+    /// efficiency purposes.
+    pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [[u8; Self::SIZE]] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of underlying representation to record for
+    /// efficiency purposes.
+    pub fn slice_mut_from_repr(value: &mut [[u8; Self::SIZE]]) -> &mut [Self] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
     /// Get a stream of arrays, each containing scalar bytes.
     pub fn full_scalar_arrays(
         &self,
@@ -217,7 +251,9 @@ impl Record {
 }
 
 /// Record commitment contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(
+    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 #[repr(transparent)]
 pub struct RecordCommitment([u8; Self::SIZE]);
 
@@ -239,7 +275,9 @@ impl RecordCommitment {
 }
 
 /// Record witness contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(
+    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 #[repr(transparent)]
 pub struct RecordWitness([u8; Self::SIZE]);
 
