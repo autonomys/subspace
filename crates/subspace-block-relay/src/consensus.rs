@@ -27,17 +27,22 @@ type TxnIndex<Pool> = TxHash<Pool>;
 /// The transaction
 type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
+/// Messages to server
 #[derive(Encode, Decode)]
-enum ConsensusMessage<Block: BlockT> {
+enum ServerMessage<Block: BlockT> {
     /// Initial request from the client. This has both the block request
     /// and the protocol specific part
     InitialRequest(BlockRequest<Block>, Option<ProtocolRequest>),
 
-    /// Initial response from the server
-    InitialResponse,
-
     /// Subsequent requests from the client during the resolve phase
     ProtocolRequest(ProtocolRequest),
+}
+
+/// Messages from server
+#[derive(Encode, Decode)]
+enum ClientMessage {
+    /// Initial response from the server
+    InitialResponse,
 
     /// Server response during the resolve phase
     ProtocolResponse(ProtocolResponse),
@@ -53,10 +58,8 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
 
     fn download(&self, _who: PeerId, request: &Self::Request, _network: NetworkServiceHandle) {
         // Send initial message
-        let request = ConsensusMessage::<Block>::InitialRequest(
-            request.clone(),
-            self.protocol.build_request(),
-        );
+        let request =
+            ServerMessage::<Block>::InitialRequest(request.clone(), self.protocol.build_request());
         let bytes = request.encode();
 
         // let response = _network.send(bytes).await;
@@ -149,7 +152,7 @@ where
             mut payload,
             pending_response,
         } = request;
-        let msg: ConsensusMessage<Block> = match Decode::decode(&mut payload.as_ref()) {
+        let msg: ServerMessage<Block> = match Decode::decode(&mut payload.as_ref()) {
             Ok(msg) => msg,
             Err(err) => {
                 self.send_response(
@@ -162,12 +165,11 @@ where
         };
 
         let ret = match msg {
-            ConsensusMessage::InitialRequest(block_request, protocol_request) => {
+            ServerMessage::InitialRequest(block_request, protocol_request) => {
                 self.on_initial_request(block_request, protocol_request)
                     .await
             }
-            ConsensusMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
-            _ => panic!("Unexpected response"),
+            ServerMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
         };
         self.send_response(peer, ret, pending_response);
     }
