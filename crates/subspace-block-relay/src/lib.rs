@@ -78,8 +78,14 @@ pub enum RelayError {
     /// Invalid block hash in the block request
     InvalidBlockHash(String),
 
-    /// Invalid initial response from the server
-    InvalidInitialResponse(String),
+    /// Invalid response from the server
+    InvalidResponse(String),
+
+    /// Invalid protocol unit Id
+    InvalidProtocolUnitId(String),
+
+    /// Failed to resolve protocol unit
+    ProtocolUnitResolveFailed(String),
 
     /// Backend error
     BlockBackendError(String),

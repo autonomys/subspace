@@ -1,7 +1,7 @@
 //! Compact block implementation.
 
 use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer};
-use crate::RelayError;
+use crate::{RelayError, RelayServerMessage};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
@@ -11,6 +11,20 @@ use std::sync::Arc;
 struct CompactResponse {
     /// List of the protocol units Ids.
     protocol_unit_ids: Vec<Vec<u8>>,
+}
+
+/// Request for missing transactions
+#[derive(Encode, Decode)]
+struct MissingEntriesRequest {
+    /// List of the protocol units Ids.
+    protocol_unit_ids: Vec<Vec<u8>>,
+}
+
+/// Response for missing transactions
+#[derive(Encode, Decode)]
+struct MissingEntriesResponse {
+    /// List of the protocol units.
+    protocol_units: Vec<Vec<u8>>,
 }
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
@@ -25,7 +39,7 @@ where
 }
 
 #[async_trait]
-impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolClient<DownloadUnitId>
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolClient<DownloadUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
@@ -37,15 +51,64 @@ where
         None
     }
 
-    async fn resolve(&self, response: Vec<u8>) -> Result<Vec<u8>, RelayError> {
+    async fn resolve(&self, response: Vec<u8>) -> Result<Vec<ProtocolUnit>, RelayError> {
         let compact_response: CompactResponse =
             Decode::decode(&mut response.as_ref()).map_err(|err| {
-                RelayError::InvalidInitialResponse(format!("Failed to decode: {err:?}"))
+                RelayError::InvalidResponse(format!("resolve: initial response: {err:?}"))
             })?;
 
         // Look up the protocol units from the backend
-        for protocol_unit_id in compact_response.protocol_unit_ids {}
-        Ok(vec![])
+        let mut protocol_units = Vec::new();
+        let mut missing_ids = Vec::new();
+        for protocol_unit_id in compact_response.protocol_unit_ids {
+            let id: ProtocolUnitId =
+                Decode::decode(&mut protocol_unit_id.as_ref()).map_err(|err| {
+                    RelayError::InvalidProtocolUnitId(format!("resolve: invalid id {err:?}"))
+                })?;
+            match self.backend.protocol_unit(&id) {
+                Ok(Some(ret)) => protocol_units.push(ret),
+                Ok(None) => missing_ids.push(id.encode()),
+                Err(err) => {
+                    return Err(RelayError::ProtocolUnitResolveFailed(format!(
+                        "resolve: protocol unit lookup failed: {err:?}"
+                    )))
+                }
+            }
+        }
+
+        // All the entries could be resolved locally
+        if missing_ids.is_empty() {
+            return Ok(protocol_units);
+        }
+
+        // Slow path, request the missing entries
+        let request = MissingEntriesRequest {
+            protocol_unit_ids: missing_ids.clone(),
+        }
+        .encode();
+        // Send the request, wait for response
+
+        let mut response = Vec::<u8>::new();
+        let missing_entries_response: MissingEntriesResponse =
+            Decode::decode(&mut response.as_ref()).map_err(|err| {
+                RelayError::InvalidResponse(format!("resolve: missing entry response: {err:?}"))
+            })?;
+        if missing_entries_response.protocol_units.len() != missing_ids.len() {
+            return Err(RelayError::InvalidResponse(format!(
+                "resolve: missing entries response mismatch: {}, {}",
+                missing_entries_response.protocol_units.len(),
+                missing_ids.len()
+            )));
+        }
+        for entry in missing_entries_response.protocol_units {
+            let protocol_unit: ProtocolUnit =
+                Decode::decode(&mut entry.as_ref()).map_err(|err| {
+                    RelayError::InvalidResponse(format!("resolve: invalid missing entry {err:?}"))
+                })?;
+            protocol_units.push(protocol_unit);
+        }
+
+        Ok(protocol_units)
     }
 }
 

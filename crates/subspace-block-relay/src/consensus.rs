@@ -11,7 +11,7 @@ use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network_common::sync::message::{BlockRequest, FromBlock};
 use sc_network_sync::service::network::NetworkServiceHandle;
-use sc_transaction_pool_api::{TransactionPool, TxHash};
+use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 use tracing::warn;
@@ -32,7 +32,7 @@ struct InitialRequest<Block: BlockT> {
 }
 
 struct ConsensusRelayClient<Block: BlockT> {
-    protocol: Arc<dyn ProtocolClient<BlockIndex<Block>>>,
+    protocol: Arc<dyn ProtocolClient<BlockIndex<Block>, Extrinsic<Block>>>,
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
@@ -190,7 +190,10 @@ where
     }
 
     fn protocol_unit(&self, id: &TxnIndex<Pool>) -> Result<Option<Extrinsic<Block>>, RelayError> {
-        unimplemented!()
+        Ok(self
+            .transaction_pool
+            .ready_transaction(id)
+            .map(|in_pool_transaction| in_pool_transaction.data().clone()))
     }
 }
 
