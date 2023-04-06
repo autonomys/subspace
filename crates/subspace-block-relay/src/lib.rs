@@ -45,16 +45,6 @@ mod protocol;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
 
-/// The client to server message
-#[derive(Encode, Decode)]
-pub(crate) enum RelayServerMessage<T: Encode + Decode> {
-    /// The initial request
-    InitialRequest(T),
-
-    /// The additional protocol specific messages
-    ProtocolRequest(Vec<u8>),
-}
-
 /// The relay client stub
 pub trait RelayClient {
     type Request;

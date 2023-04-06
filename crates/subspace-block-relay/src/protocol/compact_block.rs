@@ -1,7 +1,9 @@
 //! Compact block implementation.
 
-use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer};
-use crate::{RelayError, RelayServerMessage};
+use crate::protocol::{
+    ProtocolBackend, ProtocolClient, ProtocolRequest, ProtocolResponse, ProtocolServer,
+};
+use crate::RelayError;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
@@ -46,7 +48,7 @@ where
     ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode,
 {
-    fn build_request(&self) -> ProtocolInitialRequest {
+    fn build_request(&self) -> Option<ProtocolRequest> {
         // Nothing to do for compact blocks
         None
     }
@@ -134,7 +136,7 @@ where
     fn build_response(
         &self,
         id: &DownloadUnitId,
-        _protocol_request: ProtocolInitialRequest,
+        _initial_request: Option<ProtocolRequest>,
     ) -> Result<Vec<u8>, RelayError> {
         // Return the hash of the members in the download unit.
         let members = self.backend.download_unit_members(id)?;

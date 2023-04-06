@@ -1,8 +1,10 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolInitialRequest, ProtocolServer};
-use crate::{RelayClient, RelayError, RelayServer, RelayServerMessage, LOG_TARGET};
+use crate::protocol::{
+    ProtocolBackend, ProtocolClient, ProtocolRequest, ProtocolResponse, ProtocolServer,
+};
+use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
@@ -26,9 +28,19 @@ type TxnIndex<Pool> = TxHash<Pool>;
 type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
 #[derive(Encode, Decode)]
-struct InitialRequest<Block: BlockT> {
-    block_request: BlockRequest<Block>,
-    protocol_request: ProtocolInitialRequest,
+enum ConsensusMessage<Block: BlockT> {
+    /// Initial request from the client. This has both the block request
+    /// and the protocol specific part
+    InitialRequest(BlockRequest<Block>, Option<ProtocolRequest>),
+
+    /// Initial response from the server
+    InitialResponse,
+
+    /// Subsequent requests from the client during the resolve phase
+    ProtocolRequest(ProtocolRequest),
+
+    /// Server response during the resolve phase
+    ProtocolResponse(ProtocolResponse),
 }
 
 struct ConsensusRelayClient<Block: BlockT> {
@@ -41,11 +53,12 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
 
     fn download(&self, _who: PeerId, request: &Self::Request, _network: NetworkServiceHandle) {
         // Send initial message
-        let _bytes = RelayServerMessage::<InitialRequest<Block>>::InitialRequest(InitialRequest {
-            block_request: request.clone(),
-            protocol_request: self.protocol.build_request(),
-        })
-        .encode();
+        let request = ConsensusMessage::<Block>::InitialRequest(
+            request.clone(),
+            self.protocol.build_request(),
+        );
+        let bytes = request.encode();
+
         // let response = _network.send(bytes).await;
         // let transactions = self.protocol.resolve(response.protocol_data);
 
@@ -70,12 +83,13 @@ where
 {
     async fn on_initial_request(
         &mut self,
-        req: InitialRequest<Block>,
+        block_request: BlockRequest<Block>,
+        protocol_request: Option<ProtocolRequest>,
     ) -> Result<Vec<u8>, RelayError> {
-        let block_hash = self.block_hash(&req.block_request.from)?;
+        let block_hash = self.block_hash(&block_request.from)?;
         let _protocol_response = self
             .protocol
-            .build_response(&block_hash, req.protocol_request)?;
+            .build_response(&block_hash, protocol_request)?;
 
         // Fill the rest of the block request
         // Call proto to fill the protocol entries
@@ -135,22 +149,25 @@ where
             mut payload,
             pending_response,
         } = request;
-        let msg: RelayServerMessage<InitialRequest<Block>> =
-            match Decode::decode(&mut payload.as_ref()) {
-                Ok(msg) => msg,
-                Err(err) => {
-                    self.send_response(
-                        peer,
-                        Err(RelayError::InvalidIncomingRequest(format!("{err:?}"))),
-                        pending_response,
-                    );
-                    return;
-                }
-            };
+        let msg: ConsensusMessage<Block> = match Decode::decode(&mut payload.as_ref()) {
+            Ok(msg) => msg,
+            Err(err) => {
+                self.send_response(
+                    peer,
+                    Err(RelayError::InvalidIncomingRequest(format!("{err:?}"))),
+                    pending_response,
+                );
+                return;
+            }
+        };
 
         let ret = match msg {
-            RelayServerMessage::InitialRequest(req) => self.on_initial_request(req).await,
-            RelayServerMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
+            ConsensusMessage::InitialRequest(block_request, protocol_request) => {
+                self.on_initial_request(block_request, protocol_request)
+                    .await
+            }
+            ConsensusMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
+            _ => panic!("Unexpected response"),
         };
         self.send_response(peer, ret, pending_response);
     }
