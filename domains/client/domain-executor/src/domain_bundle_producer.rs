@@ -32,6 +32,7 @@ pub(super) struct DomainBundleProducer<
     ParentChainBlock,
     Client,
     SClient,
+    PClient,
     ParentChain,
     TransactionPool,
 > where
@@ -46,11 +47,21 @@ pub(super) struct DomainBundleProducer<
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     keystore: KeystorePtr,
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
-    domain_bundle_proposer: DomainBundleProposer<Block, Client, TransactionPool>,
-    _phantom_data: PhantomData<(SBlock, PBlock, ParentChainBlock)>,
+    domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
+    _phantom_data: PhantomData<(SBlock, ParentChainBlock)>,
 }
 
-impl<Block, SBlock, PBlock, ParentChainBlock, Client, SClient, ParentChain, TransactionPool> Clone
+impl<
+        Block,
+        SBlock,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        SClient,
+        PClient,
+        ParentChain,
+        TransactionPool,
+    > Clone
     for DomainBundleProducer<
         Block,
         SBlock,
@@ -58,6 +69,7 @@ impl<Block, SBlock, PBlock, ParentChainBlock, Client, SClient, ParentChain, Tran
         ParentChainBlock,
         Client,
         SClient,
+        PClient,
         ParentChain,
         TransactionPool,
     >
@@ -82,7 +94,17 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, ParentChainBlock, Client, SClient, ParentChain, TransactionPool>
+impl<
+        Block,
+        SBlock,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        SClient,
+        PClient,
+        ParentChain,
+        TransactionPool,
+    >
     DomainBundleProducer<
         Block,
         SBlock,
@@ -90,6 +112,7 @@ impl<Block, SBlock, PBlock, ParentChainBlock, Client, SClient, ParentChain, Tran
         ParentChainBlock,
         Client,
         SClient,
+        PClient,
         ParentChain,
         TransactionPool,
     >
@@ -103,16 +126,22 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
     SClient::Api:
         DomainCoreApi<SBlock, AccountId> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    PClient: HeaderBackend<PBlock>,
     ParentChain: ParentChainInterface<ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         parent_chain: ParentChain,
-        transaction_pool: Arc<TransactionPool>,
+        domain_bundle_proposer: DomainBundleProposer<
+            Block,
+            Client,
+            PBlock,
+            PClient,
+            TransactionPool,
+        >,
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
@@ -120,7 +149,6 @@ where
             system_domain_client.clone(),
             keystore.clone(),
         );
-        let domain_bundle_proposer = DomainBundleProposer::new(client.clone(), transaction_pool);
         Self {
             domain_id,
             system_domain_client,
@@ -174,7 +202,7 @@ where
 
             let bundle = self
                 .domain_bundle_proposer
-                .propose_bundle_at::<PBlock, _, _>(slot, primary_info, self.parent_chain.clone())
+                .propose_bundle_at(slot, primary_info, self.parent_chain.clone())
                 .await?;
 
             let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
