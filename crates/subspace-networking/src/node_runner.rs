@@ -368,6 +368,16 @@ where
             } => {
                 self.signal_online_status();
 
+                // Save known addresses that were successfully dialed.
+                if let ConnectedPoint::Dialer { address, .. } = &endpoint {
+                    // filter non-global addresses when non-globals addresses are disabled
+                    if self.allow_non_global_addresses_in_dht || is_global_address_or_dns(address) {
+                        self.networking_parameters_registry
+                            .add_known_peer(peer_id, vec![address.clone()])
+                            .await;
+                    }
+                };
+
                 // Remove temporary ban if there was any
                 self.temporary_bans.lock().remove(&peer_id);
 
