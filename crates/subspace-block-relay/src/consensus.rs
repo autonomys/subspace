@@ -6,19 +6,22 @@ use crate::utils::{RequestResponseStub, ServerMessage};
 use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
+use futures::stream::StreamExt;
 use prost::Message;
 use sc_client_api::{BlockBackend, HeaderBackend};
-use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
+use sc_network::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 use sc_network::types::ProtocolName;
 use sc_network::{PeerId, RequestFailure};
 use sc_network_common::sync::message::BlockAttributes;
+use sc_network_sync::block_relay_protocol::{BlockDownloader, BlockRelayParams, BlockServer};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::{BlockDataSchema, BlockRequestSchema, BlockResponseSchema, FromBlockSchema};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::warn;
 
 /// The block Id for the backend APIs
@@ -68,7 +71,7 @@ struct ConsensusRelayClient<Block: BlockT> {
 
 #[async_trait]
 impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
-    type Request = BlockRequestSchema;
+    type Request = Vec<u8>;
 
     async fn download(
         &self,
@@ -80,7 +83,7 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
 
         // Perform the initial request/response
         let initial_request = InitialRequest {
-            block_request: request.encode_to_vec(),
+            block_request: request,
             protocol_request: self.protocol.build_request(),
         };
         let initial_response = match stub
@@ -131,6 +134,18 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
     }
 }
 
+#[async_trait]
+impl<Block: BlockT> BlockDownloader for ConsensusRelayClient<Block> {
+    async fn download_block(
+        &self,
+        who: PeerId,
+        request: Vec<u8>,
+        network: NetworkServiceHandle,
+    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+        self.download(who, request, network).await
+    }
+}
+
 struct ConsensusRelayServer<Block, Client>
 where
     Block: BlockT,
@@ -138,6 +153,7 @@ where
 {
     client: Arc<Client>,
     protocol: Box<dyn ProtocolServer<BlockIndex<Block>> + Send>,
+    request_receiver: mpsc::Receiver<IncomingRequest>,
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
@@ -312,6 +328,19 @@ where
     }
 }
 
+#[async_trait]
+impl<Block, Client> BlockServer<Block> for ConsensusRelayServer<Block, Client>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block>,
+{
+    async fn run(&mut self) {
+        while let Some(request) = self.request_receiver.next().await {
+            self.on_request(request).await;
+        }
+    }
+}
+
 struct ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
@@ -356,21 +385,21 @@ where
 fn build_consensus_relay<Block, Client, Pool>(
     client: Arc<Client>,
     pool: Arc<Pool>,
-) -> (
-    Arc<ConsensusRelayClient<Block>>,
-    Box<ConsensusRelayServer<Block, Client>>,
-)
+    num_peer_hint: usize,
+) -> BlockRelayParams<Block>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + 'static,
     Pool: TransactionPool<Block = Block> + 'static,
 {
+    let (tx, request_receiver) = mpsc::channel(num_peer_hint);
+
     let backend = Arc::new(ConsensusBackend {
         client: client.clone(),
         transaction_pool: pool.clone(),
         _phantom_data: Default::default(),
     });
-    let relay_client = ConsensusRelayClient {
+    let relay_client: ConsensusRelayClient<Block> = ConsensusRelayClient {
         protocol: Arc::new(CompactBlockClient {
             backend: backend.clone(),
         }),
@@ -381,8 +410,23 @@ where
     let relay_server = ConsensusRelayServer {
         client,
         protocol: Box::new(CompactBlockServer { backend }),
+        request_receiver,
         _phantom_data: Default::default(),
     };
 
-    (Arc::new(relay_client), Box::new(relay_server))
+    let mut protocol_config = ProtocolConfig {
+        name: SYNC_PROTOCOL.into(),
+        fallback_names: Vec::new(),
+        max_request_size: 1024 * 1024,
+        max_response_size: 16 * 1024 * 1024,
+        request_timeout: Duration::from_secs(20),
+        inbound_queue: None,
+    };
+    protocol_config.inbound_queue = Some(tx);
+
+    BlockRelayParams {
+        server: Box::new(relay_server),
+        downloader: Arc::new(relay_client),
+        request_response_config: protocol_config,
+    }
 }
