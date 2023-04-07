@@ -10634,6 +10634,7 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "subspace-archiving",
+ "subspace-block-relay",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-networking",

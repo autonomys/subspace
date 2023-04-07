@@ -11,6 +11,8 @@ mod consensus;
 mod protocol;
 mod utils;
 
+pub use crate::consensus::build_consensus_relay;
+
 /// Nodes advertise/exchange DownloadUnits with each other. DownloadUnit has
 /// two parts:
 /// 1. ProtocolUnits: the part fetched by the relay protocol

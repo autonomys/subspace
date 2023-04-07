@@ -75,6 +75,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+use subspace_block_relay::build_consensus_relay;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -676,7 +677,11 @@ where
             import_queue,
             block_announce_validator_builder: None,
             warp_sync_params: None,
-            block_relay: None,
+            block_relay: Some(build_consensus_relay(
+                client.clone(),
+                transaction_pool.clone(),
+                100,
+            )),
         })?;
 
     let sync_oracle = sync_service.clone();

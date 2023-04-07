@@ -382,7 +382,7 @@ where
     }
 }
 
-fn build_consensus_relay<Block, Client, Pool>(
+pub fn build_consensus_relay<Block, Client, Pool>(
     client: Arc<Client>,
     pool: Arc<Pool>,
     num_peer_hint: usize,
