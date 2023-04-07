@@ -13,18 +13,16 @@ pub struct RequestResponseStub {
     network: NetworkServiceHandle,
 }
 
-pub enum RequestResponseStatus<RspType> {
-    Ok(RspType),
-    Err(Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>),
+pub enum RequestResponseErr {
+    RequestFailure(RequestFailure),
+    Canceled,
 }
 
-impl<RspType> RequestResponseStatus<RspType> {
-    pub(crate) fn unwrap_or(
-        self,
-    ) -> Result<RspType, Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>> {
-        match self {
-            Self::Ok(response) => Ok(response),
-            Self::Err(err) => Err(err),
+impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+    fn from(response_err: RequestResponseErr) -> Self {
+        match response_err {
+            RequestResponseErr::RequestFailure(err) => Ok(Err(err)),
+            RequestResponseErr::Canceled => Err(oneshot::Canceled),
         }
     }
 }
@@ -46,7 +44,7 @@ impl RequestResponseStub {
     pub(crate) async fn request_response<ReqType, RspType>(
         &self,
         request: ReqType,
-    ) -> RequestResponseStatus<RspType>
+    ) -> Result<RspType, RequestResponseErr>
     where
         ReqType: Encode,
         RspType: Decode,
@@ -64,14 +62,14 @@ impl RequestResponseStub {
         match ret {
             Ok(Ok(bytes)) => {
                 let response: Result<RspType, _> = Decode::decode(&mut bytes.as_ref());
-                match response {
-                    Ok(response) => RequestResponseStatus::Ok(response),
-                    _ => RequestResponseStatus::Err(Ok(Err(RequestFailure::Network(
+                response.map_err(|_| {
+                    RequestResponseErr::RequestFailure(RequestFailure::Network(
                         OutboundFailure::Timeout,
-                    )))),
-                }
+                    ))
+                })
             }
-            _ => RequestResponseStatus::Err(ret),
+            Ok(Err(err)) => Err(RequestResponseErr::RequestFailure(err)),
+            Err(err) => Err(RequestResponseErr::Canceled),
         }
     }
 }

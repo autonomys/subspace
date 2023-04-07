@@ -122,10 +122,9 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
         let initial_response = match stub
             .request_response::<InitialRequest<Block>, PartialBlock>(initial_request)
             .await
-            .unwrap_or()
         {
             Ok(response) => response,
-            Err(err) => return err,
+            Err(err) => return err.into(),
         };
 
         // Resolve the protocol response
