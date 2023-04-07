@@ -85,7 +85,11 @@ impl MockPrimaryNode {
     ) -> MockPrimaryNode {
         let log_prefix = key.into();
 
-        let config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+        let mut config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+
+        // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
+        // by `TemporarilyBanned`
+        config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
         let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
             config.wasm_method,
