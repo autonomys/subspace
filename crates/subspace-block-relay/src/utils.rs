@@ -7,10 +7,26 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 
 /// Helper to perform the request response sequence.
 #[derive(Clone)]
-pub(crate) struct RequestResponseStub {
+pub struct RequestResponseStub {
     protocol_name: ProtocolName,
     who: PeerId,
     network: NetworkServiceHandle,
+}
+
+pub enum RequestResponseStatus<RspType> {
+    Ok(RspType),
+    Err(Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>),
+}
+
+impl<RspType> RequestResponseStatus<RspType> {
+    pub(crate) fn unwrap_or(
+        self,
+    ) -> Result<RspType, Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>> {
+        match self {
+            Self::Ok(response) => Ok(response),
+            Self::Err(err) => Err(err),
+        }
+    }
 }
 
 impl RequestResponseStub {
@@ -30,7 +46,7 @@ impl RequestResponseStub {
     pub(crate) async fn request_response<ReqType, RspType>(
         &self,
         request: ReqType,
-    ) -> Result<Result<RspType, RequestFailure>, oneshot::Canceled>
+    ) -> RequestResponseStatus<RspType>
     where
         ReqType: Encode,
         RspType: Decode,
@@ -47,44 +63,15 @@ impl RequestResponseStub {
         let ret = rx.await;
         match ret {
             Ok(Ok(bytes)) => {
-                let response: RspType = match Decode::decode(&mut bytes.as_ref()) {
-                    Ok(response) => response,
-                    _ => return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout))),
-                };
-                Ok(Ok(response))
+                let response: Result<RspType, _> = Decode::decode(&mut bytes.as_ref());
+                match response {
+                    Ok(response) => RequestResponseStatus::Ok(response),
+                    _ => RequestResponseStatus::Err(Ok(Err(RequestFailure::Network(
+                        OutboundFailure::Timeout,
+                    )))),
+                }
             }
-            Ok(Err(err)) => {
-                return Ok(Err(err)) as Result<Result<RspType, RequestFailure>, oneshot::Canceled>;
-            }
-            Err(err) => {
-                return Err(err) as Result<Result<RspType, RequestFailure>, oneshot::Canceled>;
-            }
+            _ => RequestResponseStatus::Err(ret),
         }
     }
-}
-
-/// Helper to perform request/response.
-pub(crate) fn request_response<ReqType, RspType>(
-    who: PeerId,
-    request: ReqType,
-    network: NetworkServiceHandle,
-) -> Result<Result<RspType, RequestFailure>, oneshot::Canceled>
-where
-    ReqType: Encode,
-    RspType: Decode,
-{
-    /*
-    let (tx, rx) = oneshot::channel();
-    network.start_request(
-        who,
-        self.protocol_name.clone(),
-        request,
-        tx,
-        IfDisconnected::ImmediateError,
-    );
-    rx.await
-
-     */
-
-    Err(oneshot::Canceled)
 }

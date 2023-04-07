@@ -3,6 +3,7 @@
 use crate::protocol::{
     ProtocolBackend, ProtocolClient, ProtocolRequest, ProtocolResponse, ProtocolServer,
 };
+use crate::utils::RequestResponseStub;
 use crate::RelayError;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -53,7 +54,11 @@ where
         None
     }
 
-    async fn resolve(&self, response: Vec<u8>) -> Result<Vec<ProtocolUnit>, RelayError> {
+    async fn resolve(
+        &self,
+        response: Vec<u8>,
+        stub: RequestResponseStub,
+    ) -> Result<Vec<ProtocolUnit>, RelayError> {
         let compact_response: CompactResponse = Decode::decode(&mut response.as_ref())
             .map_err(|err| format!("resolve: decode compact_response: {err:?}"))?;
 

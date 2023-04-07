@@ -1,3 +1,4 @@
+use crate::utils::RequestResponseStub;
 use crate::RelayError;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -18,7 +19,11 @@ where
     fn build_request(&self) -> Option<ProtocolRequest>;
 
     /// Resolve the initial response to produce the protocol units.
-    async fn resolve(&self, response: Vec<u8>) -> Result<Vec<ProtocolUnit>, RelayError>;
+    async fn resolve(
+        &self,
+        response: Vec<u8>,
+        stub: RequestResponseStub,
+    ) -> Result<Vec<ProtocolUnit>, RelayError>;
 }
 
 /// The server side of the protocol used by RelayServer

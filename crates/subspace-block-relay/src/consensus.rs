@@ -4,6 +4,7 @@ use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::protocol::{
     ProtocolBackend, ProtocolClient, ProtocolRequest, ProtocolResponse, ProtocolServer,
 };
+use crate::utils::RequestResponseStub;
 use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -30,6 +31,20 @@ type TxnIndex<Pool> = TxHash<Pool>;
 type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
 const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
+
+/// Initial request to server
+#[derive(Encode, Decode)]
+struct InitialRequest<Block: BlockT> {
+    block_request: BlockRequest<Block>,
+    protocol_request: Option<Vec<u8>>,
+}
+
+/// Initial response from server
+#[derive(Encode, Decode)]
+struct InitialResponse {
+    partial_block: PartialBlock,
+    protocol_response: Vec<u8>,
+}
 
 /// Messages from client
 #[derive(Encode, Decode)]
@@ -97,7 +112,26 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
         request: &Self::Request,
         network: NetworkServiceHandle,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+        let stub = RequestResponseStub::new(self.protocol_name.clone(), who, network);
+
         // Perform the initial request/response.
+        let initial_request: InitialRequest<Block> = InitialRequest {
+            block_request: request.clone(),
+            protocol_request: self.protocol.build_request(),
+        };
+        let initial_response = match stub
+            .request_response::<InitialRequest<Block>, PartialBlock>(initial_request)
+            .await
+            .unwrap_or()
+        {
+            Ok(response) => response,
+            Err(err) => return err,
+        };
+
+        // Resolve the protocol response
+
+        /*
+        let response = stub.request_response::<(>
         let initial_request =
             ClientMessage::<Block>::InitialRequest(request.clone(), self.protocol.build_request());
         let ret = self
@@ -145,6 +179,9 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
         // let response = _network.send(bytes).await;
         // let transactions = self.protocol.resolve(response.protocol_data);
 
+        Ok(Ok(vec![]))
+
+         */
         Ok(Ok(vec![]))
     }
 }
