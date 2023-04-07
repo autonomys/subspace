@@ -32,7 +32,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::sync::watch;
@@ -44,6 +44,8 @@ use tracing::{debug, error, info, trace, warn};
 /// 1 means boosting starts with second peer.
 const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
     NonZeroUsize::new(5).expect("Not zero; qed");
+/// How many successful status checks do we need to consider DSN online.
+const STATUS_CHECK_NUMBER_FOR_RESTORING_OPERATIONS: u64 = 2;
 
 enum QueryResultSender {
     Value {
@@ -110,6 +112,9 @@ where
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
     /// DSN connection observer. Turns on/off DSN operations like piece retrieval.
     online_status_observer_tx: watch::Sender<bool>,
+    /// How many checks did we pass for the current established connection. Every total DSN
+    /// connection loss sets it to zero, every successful check increments it.
+    successful_online_status_check_number: AtomicU64,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -169,6 +174,7 @@ where
             metrics,
             established_connections: HashMap::new(),
             online_status_observer_tx,
+            successful_online_status_check_number: Default::default(),
         }
     }
 
@@ -214,18 +220,36 @@ where
     }
 
     // Handle DSN online status signaling
-    fn signal_online_status(&mut self) {
+    fn signal_online_status(&mut self) -> bool {
         let current_online_status = self.swarm.connected_peers().next().is_some();
         let previous_online_status = *self.online_status_observer_tx.borrow();
 
         if previous_online_status != current_online_status {
-            if let Err(err) = self.online_status_observer_tx.send(current_online_status) {
-                error!("DSN connection observer channel failed: {err}")
+            let online_checks_number = self
+                .successful_online_status_check_number
+                .load(Ordering::SeqCst);
+
+            // We send 'offline' status immediately or wait for several successful checks before
+            // sending 'online' status to counter connection establishing/closing events on
+            // hitting the connection limits.
+            if !current_online_status
+                || online_checks_number >= STATUS_CHECK_NUMBER_FOR_RESTORING_OPERATIONS
+            {
+                if let Err(err) = self.online_status_observer_tx.send(current_online_status) {
+                    error!("DSN connection observer channel failed: {err}")
+                }
             }
         }
+
+        current_online_status
     }
 
     async fn handle_peer_dialing(&mut self) {
+        if self.signal_online_status() {
+            self.successful_online_status_check_number
+                .fetch_add(1, Ordering::SeqCst);
+        }
+
         let local_peer_id = *self.swarm.local_peer_id();
         let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
 
@@ -368,8 +392,6 @@ where
                 num_established,
                 ..
             } => {
-                self.signal_online_status();
-
                 // Save known addresses that were successfully dialed.
                 if let ConnectedPoint::Dialer { address, .. } = &endpoint {
                     // filter non-global addresses when non-globals addresses are disabled
@@ -429,7 +451,14 @@ where
                 num_established,
                 ..
             } => {
-                self.signal_online_status();
+                if num_established == 0 {
+                    let is_online = self.signal_online_status();
+                    if !is_online {
+                        // Reset successful online status checks for the current connections
+                        self.successful_online_status_check_number
+                            .store(0, Ordering::SeqCst);
+                    }
+                }
 
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
