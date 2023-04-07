@@ -85,7 +85,7 @@ where
             protocol_unit_ids: missing_ids.clone(),
         };
         let missing_entries_response = stub
-            .request_response::<MissingEntriesRequest, MissingEntriesResponse>(request)
+            .request_response::<MissingEntriesRequest, MissingEntriesResponse>(request, true)
             .await?;
 
         if missing_entries_response.protocol_units.len() != missing_ids.len() {

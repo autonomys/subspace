@@ -124,7 +124,7 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
             protocol_request: self.protocol.build_request(),
         };
         let initial_response = match stub
-            .request_response::<InitialRequest<Block>, InitialResponse>(initial_request)
+            .request_response::<InitialRequest<Block>, InitialResponse>(initial_request, false)
             .await
         {
             Ok(response) => response,
