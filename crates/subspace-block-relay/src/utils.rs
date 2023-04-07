@@ -13,7 +13,9 @@ pub struct RequestResponseStub {
     network: NetworkServiceHandle,
 }
 
+#[derive(Debug)]
 pub enum RequestResponseErr {
+    DecodeFailed(String),
     RequestFailure(RequestFailure),
     Canceled,
 }
@@ -21,6 +23,9 @@ pub enum RequestResponseErr {
 impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
     fn from(response_err: RequestResponseErr) -> Self {
         match response_err {
+            RequestResponseErr::DecodeFailed(_) => {
+                Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)))
+            }
             RequestResponseErr::RequestFailure(err) => Ok(Err(err)),
             RequestResponseErr::Canceled => Err(oneshot::Canceled),
         }
@@ -62,11 +67,7 @@ impl RequestResponseStub {
         match ret {
             Ok(Ok(bytes)) => {
                 let response: Result<RspType, _> = Decode::decode(&mut bytes.as_ref());
-                response.map_err(|_| {
-                    RequestResponseErr::RequestFailure(RequestFailure::Network(
-                        OutboundFailure::Timeout,
-                    ))
-                })
+                response.map_err(|err| RequestResponseErr::DecodeFailed(format!("{err:?}")))
             }
             Ok(Err(err)) => Err(RequestResponseErr::RequestFailure(err)),
             Err(err) => Err(RequestResponseErr::Canceled),
