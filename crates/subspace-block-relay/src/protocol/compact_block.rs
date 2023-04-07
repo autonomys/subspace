@@ -1,13 +1,12 @@
 //! Compact block implementation.
 
-use crate::protocol::{
-    ProtocolBackend, ProtocolClient, ProtocolRequest, ProtocolResponse, ProtocolServer,
-};
+use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolServer};
 use crate::utils::RequestResponseStub;
-use crate::RelayError;
+use crate::{RelayError, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
+use tracing::warn;
 
 /// The compact response
 #[derive(Encode, Decode)]
@@ -49,7 +48,7 @@ where
     ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode + Send,
 {
-    fn build_request(&self) -> Option<ProtocolRequest> {
+    fn build_request(&self) -> Option<Vec<u8>> {
         // Nothing to do for compact blocks
         None
     }
@@ -129,7 +128,7 @@ where
     fn build_response(
         &self,
         id: &DownloadUnitId,
-        _initial_request: Option<ProtocolRequest>,
+        _initial_request: Option<Vec<u8>>,
     ) -> Result<Vec<u8>, RelayError> {
         // Return the hash of the members in the download unit.
         let members = self.backend.download_unit_members(id)?;
@@ -139,8 +138,37 @@ where
         Ok(response.encode())
     }
 
-    fn on_message(&self) {
-        // look up the missing hashes for the block, send back the contents
-        unimplemented!()
+    fn on_request(&self, request: Vec<u8>) -> Result<Vec<u8>, RelayError> {
+        let req: MissingEntriesRequest = match Decode::decode(&mut request.as_ref()) {
+            Ok(req) => req,
+            Err(err) => {
+                return Err(RelayError::from(format!(
+                    "compact blocks: decode missing entries request: {err:?}"
+                )))
+            }
+        };
+
+        let mut protocol_units = Vec::new();
+        for protocol_unit_id in req.protocol_unit_ids {
+            let id: ProtocolUnitId =
+                Decode::decode(&mut protocol_unit_id.as_ref()).map_err(|err| {
+                    format!("compact blocks: decode missing protocol_unit_id: {err:?}")
+                })?;
+            match self.backend.protocol_unit(&id) {
+                Ok(Some(ret)) => protocol_units.push(ret.encode()),
+                Ok(None) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "compact blocks: missing entry not found"
+                    );
+                }
+                Err(err) => {
+                    return Err(format!("compact blocks:: missing entry lookup: {err:?}").into())
+                }
+            }
+        }
+        let response = MissingEntriesResponse { protocol_units };
+
+        Ok(response.encode())
     }
 }

@@ -2,10 +2,9 @@
 
 use crate::utils::RelayError;
 use async_trait::async_trait;
-use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use sc_network::request_responses::IncomingRequest;
-use sc_network::{OutboundFailure, PeerId, RequestFailure};
+use sc_network::{PeerId, RequestFailure};
 use sc_network_sync::service::network::NetworkServiceHandle;
 
 mod consensus;

@@ -1,22 +1,20 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::protocol::{
-    ProtocolBackend, ProtocolClient, ProtocolRequest, ProtocolResponse, ProtocolServer,
-};
-use crate::utils::RequestResponseStub;
+use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolServer};
+use crate::utils::{RequestResponseStub, ServerMessage};
 use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use prost::Message;
 use sc_client_api::{BlockBackend, HeaderBackend};
-use sc_network::request_responses::{IfDisconnected, IncomingRequest, OutgoingResponse};
+use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::types::ProtocolName;
-use sc_network::{OutboundFailure, PeerId, RequestFailure};
+use sc_network::{PeerId, RequestFailure};
 use sc_network_common::sync::message::{BlockAttributes, BlockRequest, FromBlock};
 use sc_network_sync::service::network::NetworkServiceHandle;
-use sc_network_sync::{BlockDataSchema, BlockResponseSchema, DirectionSchema};
+use sc_network_sync::{BlockDataSchema, BlockResponseSchema};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
@@ -47,27 +45,6 @@ struct InitialResponse {
     protocol_response: Vec<u8>,
 }
 
-/// Messages from client
-#[derive(Encode, Decode)]
-enum ClientMessage<Block: BlockT> {
-    /// Initial request from the client. This has both the block request
-    /// and the protocol specific part
-    InitialRequest(BlockRequest<Block>, Option<ProtocolRequest>),
-
-    /// Subsequent requests from the client during the resolve phase
-    ProtocolRequest(ProtocolRequest),
-}
-
-/// Messages from server
-#[derive(Encode, Decode)]
-enum ServerMessage {
-    /// Initial response: serialized BlockResponseSchema + protocol bytes
-    InitialResponse(Vec<u8>, ProtocolResponse),
-
-    /// Protocol bytes during the resolve phase
-    ProtocolResponse(ProtocolResponse),
-}
-
 /// The partial block request from the server, it has all the fields
 /// except the extrinsics. The extrinsics come from the protocol.
 /// This is a subset of BlockResponseSchema
@@ -85,25 +62,6 @@ struct ConsensusRelayClient<Block: BlockT> {
     protocol: Arc<dyn ProtocolClient<BlockIndex<Block>, Extrinsic<Block>>>,
     protocol_name: ProtocolName,
     _phantom_data: std::marker::PhantomData<Block>,
-}
-
-impl<Block: BlockT> ConsensusRelayClient<Block> {
-    async fn send_request(
-        &self,
-        who: PeerId,
-        request: Vec<u8>,
-        network: NetworkServiceHandle,
-    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-        let (tx, rx) = oneshot::channel();
-        network.start_request(
-            who,
-            self.protocol_name.clone(),
-            request,
-            tx,
-            IfDisconnected::ImmediateError,
-        );
-        rx.await
-    }
 }
 
 #[async_trait]
@@ -186,26 +144,22 @@ where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
-    async fn on_initial_request(
-        &mut self,
-        block_request: BlockRequest<Block>,
-        protocol_request: Option<ProtocolRequest>,
-    ) -> Result<Vec<u8>, RelayError> {
-        let block_hash = self.block_hash(&block_request.from)?;
-        let partial_block = self
-            .get_partial_block(&block_hash, &block_request)?
-            .encode();
+    fn on_consensus_request(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, RelayError> {
+        let req: InitialRequest<Block> = match Decode::decode(&mut msg.as_ref()) {
+            Ok(initial_request) => initial_request,
+            Err(err) => return Err(RelayError::from(format!("decode initial request: {err:?}"))),
+        };
+
+        let block_hash = self.block_hash(&req.block_request.from)?;
+        let partial_block = self.get_partial_block(&block_hash, &req.block_request)?;
         let protocol_response = self
             .protocol
-            .build_response(&block_hash, protocol_request)?;
-        let initial_response = ServerMessage::InitialResponse(partial_block, protocol_response);
+            .build_response(&block_hash, req.protocol_request)?;
+        let initial_response = InitialResponse {
+            partial_block,
+            protocol_response,
+        };
         Ok(initial_response.encode())
-    }
-
-    async fn on_protocol_request(&mut self, req: Vec<u8>) -> Result<Vec<u8>, RelayError> {
-        // Call proto to process the request
-        // Encode and send
-        Ok(vec![])
     }
 
     fn get_partial_block(
@@ -312,26 +266,24 @@ where
         // This is the behavior of the current substrate block handler.
         let IncomingRequest {
             peer,
-            mut payload,
+            payload,
             pending_response,
         } = request;
-        let msg: ClientMessage<Block> = match Decode::decode(&mut payload.as_ref()) {
+        let server_msg: ServerMessage = match Decode::decode(&mut payload.as_ref()) {
             Ok(msg) => msg,
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "on request: decode request: {peer}: {err:?}"
+                    "on request: decode incoming request: {peer}: {err:?}"
                 );
                 return;
             }
         };
 
-        let ret = match msg {
-            ClientMessage::InitialRequest(block_request, protocol_request) => {
-                self.on_initial_request(block_request, protocol_request)
-                    .await
-            }
-            ClientMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
+        let ret = if !server_msg.is_protocol_message {
+            self.on_consensus_request(server_msg.message)
+        } else {
+            self.protocol.on_request(server_msg.message)
         };
         match ret {
             Ok(response) => {

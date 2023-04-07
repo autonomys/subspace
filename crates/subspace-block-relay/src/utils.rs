@@ -9,10 +9,10 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 #[derive(Encode, Decode)]
 pub(crate) struct ServerMessage {
     /// The serialized messages
-    message: Vec<u8>,
+    pub(crate) message: Vec<u8>,
 
     /// If the message is meant for the protocol component on the server side.
-    is_protocol_message: bool,
+    pub(crate) is_protocol_message: bool,
 }
 
 /// Helper to perform the request response sequence.
@@ -67,7 +67,7 @@ impl RequestResponseStub {
                 response.map_err(|err| RequestResponseErr::DecodeFailed(format!("{err:?}")))
             }
             Ok(Err(err)) => Err(RequestResponseErr::RequestFailure(err)),
-            Err(err) => Err(RequestResponseErr::Canceled),
+            Err(_) => Err(RequestResponseErr::Canceled),
         }
     }
 }
