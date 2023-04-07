@@ -269,6 +269,8 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 // TODO: Add a new test which simulates a situation that an executor produces a fraud proof
 // when an invalid receipt is received.
 
+// TODO: construct a minimal primary runtime code and use the `set_code` extrinsic to actually
+// cover the case that the new domain runtime are updated accordingly upon the new primary runtime.
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn set_new_code_should_work() {
@@ -281,14 +283,11 @@ async fn set_new_code_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
         tokio_handle.clone(),
         Ferdie,
-        vec![],
         BasePath::new(directory.path().join("ferdie")),
-    )
-    .await;
-    ferdie_network_starter.start_network();
+    );
 
     // Run Alice (a system domain authority node)
     let alice = domain_test_service::SystemDomainNodeBuilder::new(
@@ -296,11 +295,12 @@ async fn set_new_code_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .connect_to_primary_chain_node(&ferdie)
-    .build(Role::Authority, false, false)
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    ferdie.wait_for_blocks(1).await;
+    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
+        .1
+        .unwrap();
 
     let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
