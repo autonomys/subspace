@@ -10231,7 +10231,7 @@ dependencies = [
 [[package]]
 name = "subspace-chiapos"
 version = "0.1.0"
-source = "git+https://github.com/subspace/chiapos?rev=a239ddf83b4d8420f23616d604af83c756c40116#a239ddf83b4d8420f23616d604af83c756c40116"
+source = "git+https://github.com/subspace/chiapos?rev=7eeb29380eb6f8036d4f980e8d15038bda1184f7#7eeb29380eb6f8036d4f980e8d15038bda1184f7"
 dependencies = [
  "cc",
 ]
