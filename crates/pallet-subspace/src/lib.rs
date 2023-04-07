@@ -57,7 +57,7 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, PublicKey, Randomness, RewardSignature, SectorId, SectorIndex,
+    ArchivedHistorySegment, LegacySectorId, PublicKey, Randomness, RewardSignature, SectorIndex,
     SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -1345,7 +1345,7 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
+    let sector_id = LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
     let segment_index = sector_id
         .derive_piece_index(solution.piece_offset, solution.total_pieces)

@@ -36,6 +36,11 @@ impl ErasureCoding {
         Ok(Self { fft_settings })
     }
 
+    /// Max number of shards supported (both source and parity together)
+    pub fn max_shards(&self) -> usize {
+        self.fft_settings.max_width
+    }
+
     /// Extend sources using erasure coding.
     ///
     /// Returns parity data.
@@ -54,8 +59,7 @@ impl ErasureCoding {
     pub fn recover(&self, shards: &[Option<Scalar>]) -> Result<Vec<Scalar>, String> {
         // TODO This is only necessary because upstream silently doesn't recover anything:
         //  https://github.com/sifraitech/rust-kzg/issues/195
-        if shards.iter().filter(|scalar| scalar.is_some()).count() < self.fft_settings.max_width / 2
-        {
+        if shards.iter().filter(|scalar| scalar.is_none()).count() > shards.len() / 2 {
             return Err("Impossible to recover, too many shards are missing".to_string());
         }
         let poly = <FsPoly as PolyRecover<FsFr, FsPoly, _>>::recover_poly_from_samples(

@@ -110,10 +110,13 @@ impl Reconstructor {
                 if let Some(piece) = maybe_piece {
                     piece
                         .record()
-                        .safe_scalar_arrays()
+                        .full_scalar_arrays()
                         .zip(raw_record.iter_mut())
                         .for_each(|(source, target)| {
-                            *target = *source;
+                            *target = *source
+                                .array_chunks()
+                                .next()
+                                .expect("Target is smaller than source; qed");
                         });
                     true
                 } else {

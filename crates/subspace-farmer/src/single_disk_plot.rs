@@ -33,7 +33,8 @@ use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    PieceIndex, PublicKey, SectorId, SectorIndex, Solution, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
+    LegacySectorId, PieceIndex, PublicKey, SectorIndex, Solution, PIECES_IN_SECTOR,
+    PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
@@ -1071,7 +1072,7 @@ impl SingleDiskPlot {
             .take(sector_count as usize)
             .map(move |(sector_index, mut sector_metadata)| {
                 let sector_metadata = SectorMetadata::decode(&mut sector_metadata)?;
-                let sector_id = SectorId::new(public_key, sector_index);
+                let sector_id = LegacySectorId::new(public_key, sector_index);
 
                 let piece_indexes = (PieceIndex::ZERO..)
                     .take(PIECES_IN_SECTOR as usize)
