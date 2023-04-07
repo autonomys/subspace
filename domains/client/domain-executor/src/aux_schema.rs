@@ -6,7 +6,8 @@ use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
 use sp_domains::ExecutionReceipt;
-use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, SaturatedConversion};
+use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
@@ -343,15 +344,47 @@ where
     Ok(())
 }
 
+// TODO: improve the canonical block hash searching in the future.
+// ref https://substrate.stackexchange.com/questions/7970/whats-the-best-practice-to-check-whether-a-block-hash-is-in-the-canonical-chain
+pub(super) fn canonical_primary_hash_at<PBlock, PClient>(
+    primary_chain_client: &Arc<PClient>,
+    height: NumberFor<PBlock>,
+) -> ClientResult<PBlock::Hash>
+where
+    PBlock: BlockT,
+    PClient: HeaderBackend<PBlock>,
+{
+    let primary_chain_best_hash = primary_chain_client.info().best_hash;
+    let primary_chain_best_header = primary_chain_client
+        .header(primary_chain_best_hash)?
+        .ok_or_else(|| {
+            ClientError::Backend(format!(
+                "Primary header for {primary_chain_best_hash} not found"
+            ))
+        })?;
+
+    let mut start = primary_chain_best_header;
+
+    while *start.number() > height {
+        let parent_hash = *start.parent_hash();
+        start = primary_chain_client.header(parent_hash)?.ok_or_else(|| {
+            ClientError::Backend(format!("Primary header for {parent_hash} not found",))
+        })?;
+    }
+
+    Ok(start.hash())
+}
+
 /// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
-#[allow(clippy::never_loop)]
-pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, PBlock>(
+pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, PBlock, F>(
     backend: &Backend,
+    canonical_primary_hash_at: F,
 ) -> Result<Option<(H256, u32, PBlock::Hash)>, ClientError>
 where
     Backend: AuxStore + HeaderBackend<Block>,
     Block: BlockT,
     PBlock: BlockT,
+    F: Fn(NumberFor<PBlock>) -> sp_blockchain::Result<PBlock::Hash>,
 {
     let bad_receipt_numbers: Vec<NumberFor<PBlock>> =
         load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
@@ -360,6 +393,8 @@ where
         let bad_receipt_hashes_key = (BAD_RECEIPT_HASHES, bad_receipt_number).encode();
         let bad_receipt_hashes: Vec<H256> =
             load_decode(backend, bad_receipt_hashes_key.as_slice())?.unwrap_or_default();
+
+        let canonical_primary_hash = canonical_primary_hash_at(bad_receipt_number)?;
 
         // let mut fork_receipt_hashes = vec![];
         for bad_receipt_hash in bad_receipt_hashes.iter() {
@@ -373,11 +408,13 @@ where
                 ))
             })?;
 
-            return Ok(Some((
-                *bad_receipt_hash,
-                trace_mismatch_index,
-                primary_block_hash,
-            )));
+            if primary_block_hash == canonical_primary_hash {
+                return Ok(Some((
+                    *bad_receipt_hash,
+                    trace_mismatch_index,
+                    primary_block_hash,
+                )));
+            }
 
             /*
             // TODO: Ensure the block from which the trace mismatch index was generated is still on the
@@ -418,6 +455,7 @@ mod tests {
     use sp_core::hash::H256;
     use sp_runtime::traits::Header as HeaderT;
     use std::collections::HashSet;
+    use std::sync::Mutex;
     use subspace_runtime_primitives::{BlockNumber, Hash};
     use subspace_test_runtime::Block as PBlock;
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
@@ -621,8 +659,31 @@ mod tests {
 
     #[test]
     fn write_delete_prune_bad_receipt_works() {
+        struct PrimaryNumberHashMappings(Mutex<Vec<(u32, Hash)>>);
+
+        impl PrimaryNumberHashMappings {
+            fn insert_number_to_hash_mapping(&self, block_number: u32, block_hash: Hash) {
+                let mut mappings = self.0.lock().unwrap();
+                if !mappings.contains(&(block_number, block_hash)) {
+                    mappings.push((block_number, block_hash));
+                }
+            }
+
+            fn canonical_hash(&self, block_number: u32) -> Option<Hash> {
+                self.0.lock().unwrap().iter().find_map(|(number, hash)| {
+                    if *number == block_number {
+                        Some(*hash)
+                    } else {
+                        None
+                    }
+                })
+            }
+        }
+
         let (client, backend) =
             substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();
+
+        let primary_chain_client = PrimaryNumberHashMappings(Mutex::new(Vec::new()));
 
         let bad_receipts_at = |number: BlockNumber| -> Option<HashSet<Hash>> {
             let bad_receipt_hashes_key = (BAD_RECEIPT_HASHES, number).encode();
@@ -647,7 +708,10 @@ mod tests {
             |oldest_receipt_number: BlockNumber| -> Option<(H256, u32, Hash)> {
                 // Always check and prune the expired bad receipts before loading the first unconfirmed one.
                 prune_expired_bad_receipts(&client, oldest_receipt_number).unwrap();
-                find_first_unconfirmed_bad_receipt_info::<_, _, PBlock>(&client).unwrap()
+                find_first_unconfirmed_bad_receipt_info::<_, _, PBlock, _>(&client, |height| {
+                    Ok(primary_chain_client.canonical_hash(height).unwrap())
+                })
+                .unwrap()
             };
 
         let (bad_receipt_hash1, block_hash1) = (
@@ -663,10 +727,13 @@ mod tests {
             insert_header(backend.as_ref(), 3u64, block_hash2),
         );
 
+        primary_chain_client.insert_number_to_hash_mapping(10, block_hash1);
         write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash1, (1, block_hash1)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
+        primary_chain_client.insert_number_to_hash_mapping(10, block_hash2);
         write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash2, (2, block_hash2)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
+        primary_chain_client.insert_number_to_hash_mapping(10, block_hash3);
         write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash3, (3, block_hash3)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
 
@@ -674,6 +741,7 @@ mod tests {
             Hash::random(),
             insert_header(backend.as_ref(), 4u64, block_hash3),
         );
+        primary_chain_client.insert_number_to_hash_mapping(20, block_hash4);
         write_bad_receipt::<_, PBlock>(&client, 20, bad_receipt_hash4, (1, block_hash4)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
 
@@ -729,6 +797,7 @@ mod tests {
             Hash::random(),
             insert_header(backend.as_ref(), 5u64, block_hash4),
         );
+        primary_chain_client.insert_number_to_hash_mapping(30, block_hash5);
         write_bad_receipt::<_, PBlock>(&client, 30, bad_receipt_hash5, (1, block_hash5)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![30]));
         assert_eq!(bad_receipts_at(30).unwrap(), [bad_receipt_hash5].into());

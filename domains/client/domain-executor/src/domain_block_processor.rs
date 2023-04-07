@@ -535,8 +535,11 @@ where
         PCB: BlockT,
     {
         if let Some((bad_receipt_hash, trace_mismatch_index, primary_block_hash)) =
-            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, PBlock>(
+            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, PBlock, _>(
                 &*self.client,
+                |height| {
+                    crate::aux_schema::canonical_primary_hash_at(&self.primary_chain_client, height)
+                },
             )?
         {
             let local_receipt =
