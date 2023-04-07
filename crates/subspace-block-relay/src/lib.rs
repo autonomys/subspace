@@ -9,6 +9,7 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 
 mod consensus;
 mod protocol;
+mod utils;
 
 /// Nodes advertise/exchange DownloadUnits with each other. DownloadUnit has
 /// two parts:
