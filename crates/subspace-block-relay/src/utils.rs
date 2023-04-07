@@ -27,7 +27,7 @@ impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, onesho
 #[derive(Debug)]
 pub enum RelayError {
     Internal(String),
-    RequestResponseErr,
+    RequestResponse(RequestResponseErr),
 }
 
 impl From<String> for RelayError {
@@ -36,11 +36,17 @@ impl From<String> for RelayError {
     }
 }
 
+impl From<RequestResponseErr> for RelayError {
+    fn from(err: RequestResponseErr) -> Self {
+        Self::RequestResponse(err)
+    }
+}
+
 impl From<RelayError> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
     fn from(err: RelayError) -> Self {
         match err {
             RelayError::Internal(_) => Ok(Err(RequestFailure::Network(OutboundFailure::Timeout))),
-            RelayError::RequestResponseErr => err.into(),
+            RelayError::RequestResponse(rr_err) => rr_err.into(),
         }
     }
 }

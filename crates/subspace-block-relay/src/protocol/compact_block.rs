@@ -47,7 +47,7 @@ impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolClient<DownloadUnitId
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
+    ProtocolUnit: Encode + Decode + Send,
 {
     fn build_request(&self) -> Option<ProtocolRequest> {
         // Nothing to do for compact blocks
@@ -70,7 +70,7 @@ where
                 .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
             match self.backend.protocol_unit(&id) {
                 Ok(Some(ret)) => protocol_units.push(ret),
-                Ok(None) => missing_ids.push(id.encode()),
+                Ok(None) => missing_ids.push(protocol_unit_id),
                 Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
             }
         }
@@ -80,17 +80,14 @@ where
             return Ok(protocol_units);
         }
 
-        // Slow path, request the missing entries
+        // Request the missing entries
         let request = MissingEntriesRequest {
             protocol_unit_ids: missing_ids.clone(),
-        }
-        .encode();
-        // Send the request, wait for response
+        };
+        let missing_entries_response = stub
+            .request_response::<MissingEntriesRequest, MissingEntriesResponse>(request)
+            .await?;
 
-        let mut response = Vec::<u8>::new();
-        let missing_entries_response: MissingEntriesResponse =
-            Decode::decode(&mut response.as_ref())
-                .map_err(|err| format!("resolve: decode missing_entries_response: {err:?}"))?;
         if missing_entries_response.protocol_units.len() != missing_ids.len() {
             return Err(format!(
                 "resolve: missing entries response mismatch: {}, {}",
@@ -99,6 +96,7 @@ where
             )
             .into());
         }
+        // TODO: reorder to match the order in compact_response
         for entry in missing_entries_response.protocol_units {
             let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())
                 .map_err(|err| format!("resolve: decode protocol_unit: {err:?}"))?;

@@ -10237,6 +10237,7 @@ dependencies = [
  "futures",
  "libp2p 0.51.0",
  "parity-scale-codec",
+ "prost",
  "sc-client-api",
  "sc-network",
  "sc-network-common",

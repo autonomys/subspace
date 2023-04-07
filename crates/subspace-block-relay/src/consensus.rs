@@ -9,15 +9,16 @@ use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
+use prost::Message;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IfDisconnected, IncomingRequest, OutgoingResponse};
 use sc_network::types::ProtocolName;
 use sc_network::{OutboundFailure, PeerId, RequestFailure};
 use sc_network_common::sync::message::{BlockAttributes, BlockRequest, FromBlock};
 use sc_network_sync::service::network::NetworkServiceHandle;
-use sc_network_sync::{BlockResponseSchema, DirectionSchema};
+use sc_network_sync::{BlockDataSchema, BlockResponseSchema, DirectionSchema};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -72,7 +73,10 @@ enum ServerMessage {
 /// This is a subset of BlockResponseSchema
 #[derive(Encode, Decode)]
 struct PartialBlock {
+    hash: Vec<u8>,
     hdr: Vec<u8>,
+    justification: Vec<u8>,
+    is_empty_justification: bool,
     justifications: Vec<u8>,
     indexed_body: Vec<Vec<u8>>,
 }
@@ -114,74 +118,56 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
         let stub = RequestResponseStub::new(self.protocol_name.clone(), who, network);
 
-        // Perform the initial request/response.
+        // Perform the initial request/response
         let initial_request: InitialRequest<Block> = InitialRequest {
             block_request: request.clone(),
             protocol_request: self.protocol.build_request(),
         };
         let initial_response = match stub
-            .request_response::<InitialRequest<Block>, PartialBlock>(initial_request)
+            .request_response::<InitialRequest<Block>, InitialResponse>(initial_request)
             .await
         {
             Ok(response) => response,
             Err(err) => return err.into(),
         };
 
-        // Resolve the protocol response
-
-        /*
-        let response = stub.request_response::<(>
-        let initial_request =
-            ClientMessage::<Block>::InitialRequest(request.clone(), self.protocol.build_request());
-        let ret = self
-            .send_request(who, initial_request.encode(), network.clone())
-            .await;
-        let bytes = match ret {
-            Err(_) | Ok(Err(_)) => return ret,
-            Ok(Ok(bytes)) => bytes,
+        // Resolve the protocol response to get the extrinsics
+        let mut extrinsics = match self
+            .protocol
+            .resolve(initial_response.protocol_response, stub.clone())
+            .await
+        {
+            Ok(extrinsics) => extrinsics,
+            Err(err) => return err.into(),
         };
 
-        // Parse the initial response
-        let initial_response: ServerMessage = match Decode::decode(&mut bytes.as_ref()) {
-            Ok(initial_response) => initial_response,
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "download: decode initial response: {err:?}"
-                );
-                return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)));
-            }
+        // Assemble the final response
+        let block_data = BlockDataSchema {
+            hash: initial_response.partial_block.hash,
+            header: initial_response.partial_block.hdr,
+            body: extrinsics
+                .iter_mut()
+                .map(|extrinsic| extrinsic.encode())
+                .collect(),
+            receipt: Vec::new(),
+            message_queue: Vec::new(),
+            justification: initial_response.partial_block.justification,
+            is_empty_justification: initial_response.partial_block.is_empty_justification,
+            justifications: initial_response.partial_block.justifications,
+            indexed_body: initial_response.partial_block.indexed_body,
         };
-        let (partial_block, protocol_response) = match initial_response {
-            ServerMessage::InitialResponse(partial_block, protocol_response) => {
-                (partial_block, protocol_response)
-            }
-            _ => {
-                warn!(target: LOG_TARGET, "download: invalid initial response");
-                return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)));
-            }
+        let block_response = BlockResponseSchema {
+            blocks: vec![block_data],
         };
+        let mut data = Vec::with_capacity(block_response.encoded_len());
 
-        let partial_block: PartialBlock = match Decode::decode(&mut partial_block.as_ref()) {
-            Ok(partial_block) => partial_block,
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "download: decode partial block: {err:?}"
-                );
-                return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)));
-            }
-        };
-
-        // Resolve the protocol response to get the extrinsics.
-
-        // let response = _network.send(bytes).await;
-        // let transactions = self.protocol.resolve(response.protocol_data);
-
-        Ok(Ok(vec![]))
-
-         */
-        Ok(Ok(vec![]))
+        if let Err(err) = block_response.encode(&mut data) {
+            let relay_err: RelayError =
+                format!("download: failed to encode response: {err:?}").into();
+            relay_err.into()
+        } else {
+            Ok(Ok(data))
+        }
     }
 }
 
@@ -227,10 +213,15 @@ where
         block_hash: &BlockIndex<Block>,
         block_request: &BlockRequest<Block>,
     ) -> Result<PartialBlock, RelayError> {
-        let block_hdr = self
-            .client
-            .header(*block_hash)
-            .map_err(|err| format!("partial block: failed to get hdr: {block_hash:?}, {err:?}"))?;
+        let block_hdr = match self.client.header(*block_hash) {
+            Ok(Some(hdr)) => hdr,
+            Ok(None) => return Err(format!("partial block: missing hdr: {block_hash:?}").into()),
+            Err(err) => {
+                return Err(
+                    format!("partial block: failed to get hdr: {block_hash:?}, {err:?}").into(),
+                )
+            }
+        };
 
         // Header
         let hdr = if block_request.fields.contains(BlockAttributes::HEADER) {
@@ -267,7 +258,10 @@ where
         };
 
         Ok(PartialBlock {
+            hash: block_hdr.hash().encode(),
             hdr,
+            justification: Vec::new(),
+            is_empty_justification: false,
             justifications,
             indexed_body,
         })
@@ -294,7 +288,7 @@ where
         sender: oneshot::Sender<OutgoingResponse>,
     ) {
         let response = OutgoingResponse {
-            result: Ok(response.encode()),
+            result: Ok(Encode::encode(&response)),
             reputation_changes: Vec::new(),
             sent_feedback: None,
         };
