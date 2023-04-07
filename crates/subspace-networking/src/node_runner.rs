@@ -252,6 +252,8 @@ where
             let network_info = self.swarm.network_info();
             let connections = network_info.connection_counters();
 
+            debug!(?connections, "Current connections and limits.");
+
             (
                 connections.num_pending_outgoing()
                     + connections.num_established_outgoing()
@@ -389,7 +391,12 @@ where
                 };
 
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
-                debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
+                debug!(
+                    %peer_id,
+                    %is_reserved_peer,
+                    ?endpoint,
+                    "Connection established [{num_established} from peer]"
+                );
 
                 // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
                 self.established_connections
