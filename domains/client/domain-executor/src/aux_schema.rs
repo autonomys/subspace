@@ -415,32 +415,7 @@ where
                     primary_block_hash,
                 )));
             }
-
-            /*
-            // TODO: Ensure the block from which the trace mismatch index was generated is still on the
-            // canonical chain.
-            if backend.header(block_hash)?.is_some() {
-                if !fork_receipt_hashes.is_empty() {
-                    // TODO: Handle the receipts on the fork properly once the executor is primary-chain-fork-aware.
-                    tracing::debug!(
-                        ?bad_receipt_number,
-                        ?fork_receipt_hashes,
-                        "Bad receipts are not on the canonical chain"
-                    );
-                }
-                return Ok(Some((*bad_receipt_hash, trace_mismatch_index, block_hash)));
-            } else {
-                fork_receipt_hashes.push(bad_receipt_hash);
-            }
-            */
         }
-
-        // TODO: Handle the receipts on the fork properly once the executor is primary-chain-fork-aware.
-        // tracing::debug!(
-        // ?bad_receipt_number,
-        // ?fork_receipt_hashes,
-        // "Bad receipts are not on the canonical chain"
-        // );
     }
 
     Ok(None)
