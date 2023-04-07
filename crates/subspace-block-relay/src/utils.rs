@@ -5,14 +5,6 @@ use sc_network::types::ProtocolName;
 use sc_network::{OutboundFailure, PeerId, RequestFailure};
 use sc_network_sync::service::network::NetworkServiceHandle;
 
-/// Helper to perform the request response sequence.
-#[derive(Clone)]
-pub struct RequestResponseStub {
-    protocol_name: ProtocolName,
-    who: PeerId,
-    network: NetworkServiceHandle,
-}
-
 #[derive(Debug)]
 pub enum RequestResponseErr {
     DecodeFailed(String),
@@ -21,8 +13,8 @@ pub enum RequestResponseErr {
 }
 
 impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-    fn from(response_err: RequestResponseErr) -> Self {
-        match response_err {
+    fn from(err: RequestResponseErr) -> Self {
+        match err {
             RequestResponseErr::DecodeFailed(_) => {
                 Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)))
             }
@@ -30,6 +22,35 @@ impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, onesho
             RequestResponseErr::Canceled => Err(oneshot::Canceled),
         }
     }
+}
+
+#[derive(Debug)]
+pub enum RelayError {
+    Internal(String),
+    RequestResponseErr,
+}
+
+impl From<String> for RelayError {
+    fn from(msg: String) -> Self {
+        Self::Internal(msg)
+    }
+}
+
+impl From<RelayError> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+    fn from(err: RelayError) -> Self {
+        match err {
+            RelayError::Internal(_) => Ok(Err(RequestFailure::Network(OutboundFailure::Timeout))),
+            RelayError::RequestResponseErr => err.into(),
+        }
+    }
+}
+
+/// Helper to perform the request response sequence.
+#[derive(Clone)]
+pub struct RequestResponseStub {
+    protocol_name: ProtocolName,
+    who: PeerId,
+    network: NetworkServiceHandle,
 }
 
 impl RequestResponseStub {

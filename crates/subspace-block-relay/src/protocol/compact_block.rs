@@ -71,7 +71,7 @@ where
             match self.backend.protocol_unit(&id) {
                 Ok(Some(ret)) => protocol_units.push(ret),
                 Ok(None) => missing_ids.push(id.encode()),
-                Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}")),
+                Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
             }
         }
 
@@ -96,7 +96,8 @@ where
                 "resolve: missing entries response mismatch: {}, {}",
                 missing_entries_response.protocol_units.len(),
                 missing_ids.len()
-            ));
+            )
+            .into());
         }
         for entry in missing_entries_response.protocol_units {
             let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())

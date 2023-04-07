@@ -281,8 +281,8 @@ where
             FromBlock::Hash(h) => Ok(h.clone()),
             FromBlock::Number(n) => match self.client.block_hash(*n) {
                 Ok(Some(hash)) => Ok(hash),
-                Ok(None) => Err(format!("Invalid block hash: {from:?}: None")),
-                Err(err) => Err(format!("Invalid block hash: {from:?}: {err:?}")),
+                Ok(None) => Err(format!("Invalid block hash: {from:?}: None").into()),
+                Err(err) => Err(format!("Invalid block hash: {from:?}: {err:?}").into()),
             },
         }
     }
