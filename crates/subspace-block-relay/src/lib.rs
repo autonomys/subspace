@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use libp2p::PeerId;
+use futures::channel::oneshot;
 use sc_network::request_responses::IncomingRequest;
+use sc_network::{PeerId, RequestFailure};
 use sc_network_sync::service::network::NetworkServiceHandle;
 
 mod consensus;
@@ -48,11 +49,17 @@ pub(crate) const LOG_TARGET: &str = "block_relay";
 pub(crate) type RelayError = String;
 
 /// The relay client stub
+#[async_trait]
 pub trait RelayClient {
     type Request;
 
     /// Fetches the download units from the peer
-    fn download(&self, who: PeerId, request: &Self::Request, network: NetworkServiceHandle);
+    async fn download(
+        &self,
+        who: PeerId,
+        request: &Self::Request,
+        network: NetworkServiceHandle,
+    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>;
 }
 
 /// The relay server

@@ -9,7 +9,7 @@ pub(crate) type ProtocolResponse = Vec<u8>;
 
 /// The client side of the protocol used by RelayClient
 #[async_trait]
-pub trait ProtocolClient<DownloadUnitId, ProtocolUnit>
+pub trait ProtocolClient<DownloadUnitId, ProtocolUnit>: Send + Sync
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode,

@@ -8,11 +8,13 @@ use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
-use libp2p::PeerId;
 use sc_client_api::{BlockBackend, HeaderBackend};
-use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
-use sc_network_common::sync::message::{BlockRequest, FromBlock};
+use sc_network::request_responses::{IfDisconnected, IncomingRequest, OutgoingResponse};
+use sc_network::types::ProtocolName;
+use sc_network::{OutboundFailure, PeerId, RequestFailure};
+use sc_network_common::sync::message::{BlockAttributes, BlockRequest, FromBlock};
 use sc_network_sync::service::network::NetworkServiceHandle;
+use sc_network_sync::{BlockResponseSchema, DirectionSchema};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
@@ -27,9 +29,11 @@ type TxnIndex<Pool> = TxHash<Pool>;
 /// The transaction
 type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
-/// Messages to server
+const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
+
+/// Messages from client
 #[derive(Encode, Decode)]
-enum ServerMessage<Block: BlockT> {
+enum ClientMessage<Block: BlockT> {
     /// Initial request from the client. This has both the block request
     /// and the protocol specific part
     InitialRequest(BlockRequest<Block>, Option<ProtocolRequest>),
@@ -40,32 +44,108 @@ enum ServerMessage<Block: BlockT> {
 
 /// Messages from server
 #[derive(Encode, Decode)]
-enum ClientMessage {
-    /// Initial response from the server
-    InitialResponse,
+enum ServerMessage {
+    /// Initial response: serialized BlockResponseSchema + protocol bytes
+    InitialResponse(Vec<u8>, ProtocolResponse),
 
-    /// Server response during the resolve phase
+    /// Protocol bytes during the resolve phase
     ProtocolResponse(ProtocolResponse),
+}
+
+/// The partial block request from the server, it has all the fields
+/// except the extrinsics. The extrinsics come from the protocol.
+/// This is a subset of BlockResponseSchema
+#[derive(Encode, Decode)]
+struct PartialBlock {
+    hdr: Vec<u8>,
+    justifications: Vec<u8>,
+    indexed_body: Vec<Vec<u8>>,
 }
 
 struct ConsensusRelayClient<Block: BlockT> {
     protocol: Arc<dyn ProtocolClient<BlockIndex<Block>, Extrinsic<Block>>>,
+    protocol_name: ProtocolName,
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
+impl<Block: BlockT> ConsensusRelayClient<Block> {
+    async fn send_request(
+        &self,
+        who: PeerId,
+        request: Vec<u8>,
+        network: NetworkServiceHandle,
+    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+        let (tx, rx) = oneshot::channel();
+        network.start_request(
+            who,
+            self.protocol_name.clone(),
+            request,
+            tx,
+            IfDisconnected::ImmediateError,
+        );
+        rx.await
+    }
+}
+
+#[async_trait]
 impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
     type Request = BlockRequest<Block>;
 
-    fn download(&self, _who: PeerId, request: &Self::Request, _network: NetworkServiceHandle) {
-        // Send initial message
-        let request =
-            ServerMessage::<Block>::InitialRequest(request.clone(), self.protocol.build_request());
-        let bytes = request.encode();
+    async fn download(
+        &self,
+        who: PeerId,
+        request: &Self::Request,
+        network: NetworkServiceHandle,
+    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+        // Perform the initial request/response.
+        let initial_request =
+            ClientMessage::<Block>::InitialRequest(request.clone(), self.protocol.build_request());
+        let ret = self
+            .send_request(who, initial_request.encode(), network.clone())
+            .await;
+        let bytes = match ret {
+            Err(_) | Ok(Err(_)) => return ret,
+            Ok(Ok(bytes)) => bytes,
+        };
+
+        // Parse the initial response
+        let initial_response: ServerMessage = match Decode::decode(&mut bytes.as_ref()) {
+            Ok(initial_response) => initial_response,
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "download: decode initial response: {err:?}"
+                );
+                return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)));
+            }
+        };
+        let (partial_block, protocol_response) = match initial_response {
+            ServerMessage::InitialResponse(partial_block, protocol_response) => {
+                (partial_block, protocol_response)
+            }
+            _ => {
+                warn!(target: LOG_TARGET, "download: invalid initial response");
+                return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)));
+            }
+        };
+
+        let partial_block: PartialBlock = match Decode::decode(&mut partial_block.as_ref()) {
+            Ok(partial_block) => partial_block,
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "download: decode partial block: {err:?}"
+                );
+                return Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)));
+            }
+        };
+
+        // Resolve the protocol response to get the extrinsics.
 
         // let response = _network.send(bytes).await;
         // let transactions = self.protocol.resolve(response.protocol_data);
 
-        unimplemented!()
+        Ok(Ok(vec![]))
     }
 }
 
@@ -90,20 +170,71 @@ where
         protocol_request: Option<ProtocolRequest>,
     ) -> Result<Vec<u8>, RelayError> {
         let block_hash = self.block_hash(&block_request.from)?;
-        let _protocol_response = self
+        let partial_block = self
+            .get_partial_block(&block_hash, &block_request)?
+            .encode();
+        let protocol_response = self
             .protocol
             .build_response(&block_hash, protocol_request)?;
-
-        // Fill the rest of the block request
-        // Call proto to fill the protocol entries
-        // Encode and send
-        Ok(vec![])
+        let initial_response = ServerMessage::InitialResponse(partial_block, protocol_response);
+        Ok(initial_response.encode())
     }
 
     async fn on_protocol_request(&mut self, req: Vec<u8>) -> Result<Vec<u8>, RelayError> {
         // Call proto to process the request
         // Encode and send
         Ok(vec![])
+    }
+
+    fn get_partial_block(
+        &self,
+        block_hash: &BlockIndex<Block>,
+        block_request: &BlockRequest<Block>,
+    ) -> Result<PartialBlock, RelayError> {
+        let block_hdr = self
+            .client
+            .header(*block_hash)
+            .map_err(|err| format!("partial block: failed to get hdr: {block_hash:?}, {err:?}"))?;
+
+        // Header
+        let hdr = if block_request.fields.contains(BlockAttributes::HEADER) {
+            block_hdr.encode()
+        } else {
+            Vec::new()
+        };
+
+        // Justifications
+        let justifications = if block_request
+            .fields
+            .contains(BlockAttributes::JUSTIFICATION)
+        {
+            self.client
+                .justifications(*block_hash)
+                .map_err(|err| {
+                    format!("partial block: failed to get justification: {block_hash:?}, {err:?}")
+                })?
+                .map_or(Vec::new(), |v| v.encode())
+        } else {
+            Vec::new()
+        };
+
+        // Indexed body
+        let indexed_body = if block_request.fields.contains(BlockAttributes::INDEXED_BODY) {
+            self.client
+                .block_indexed_body(*block_hash)
+                .map_err(|err| {
+                    format!("partial block: failed to get indexed body: {block_hash:?}, {err:?}")
+                })?
+                .unwrap_or(Vec::new())
+        } else {
+            Vec::new()
+        };
+
+        Ok(PartialBlock {
+            hdr,
+            justifications,
+            indexed_body,
+        })
     }
 
     fn block_hash(
@@ -123,11 +254,11 @@ where
     fn send_response(
         &self,
         peer: sc_network::PeerId,
-        result: Result<Vec<u8>, RelayError>,
+        response: Vec<u8>,
         sender: oneshot::Sender<OutgoingResponse>,
     ) {
         let response = OutgoingResponse {
-            result: Ok(result.encode()),
+            result: Ok(response.encode()),
             reputation_changes: Vec::new(),
             sent_feedback: None,
         };
@@ -147,31 +278,42 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
     async fn on_request(&mut self, request: IncomingRequest) {
+        // Drop the request in case of errors and let the client time out.
+        // This is the behavior of the current substrate block handler.
         let IncomingRequest {
             peer,
             mut payload,
             pending_response,
         } = request;
-        let msg: ServerMessage<Block> = match Decode::decode(&mut payload.as_ref()) {
+        let msg: ClientMessage<Block> = match Decode::decode(&mut payload.as_ref()) {
             Ok(msg) => msg,
             Err(err) => {
-                self.send_response(
-                    peer,
-                    Err(format!("server: decode request: {err:?}")),
-                    pending_response,
+                warn!(
+                    target: LOG_TARGET,
+                    "on request: decode request: {peer}: {err:?}"
                 );
                 return;
             }
         };
 
         let ret = match msg {
-            ServerMessage::InitialRequest(block_request, protocol_request) => {
+            ClientMessage::InitialRequest(block_request, protocol_request) => {
                 self.on_initial_request(block_request, protocol_request)
                     .await
             }
-            ServerMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
+            ClientMessage::ProtocolRequest(req) => self.on_protocol_request(req).await,
         };
-        self.send_response(peer, ret, pending_response);
+        match ret {
+            Ok(response) => {
+                self.send_response(peer, response, pending_response);
+            }
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "on request: processing request: {peer}:  {err:?}"
+                );
+            }
+        }
     }
 }
 
@@ -237,6 +379,7 @@ where
         protocol: Arc::new(CompactBlockClient {
             backend: backend.clone(),
         }),
+        protocol_name: SYNC_PROTOCOL.into(),
         _phantom_data: Default::default(),
     };
 
