@@ -839,3 +839,87 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         e => panic!("Unexpected error: {e}"),
     }
 }
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn existing_bundle_can_be_resubmitted_to_new_fork() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
+        .1
+        .unwrap();
+
+    let mut parent_hash = ferdie.client.info().best_hash;
+
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        pallet_domains::Call::submit_bundle {
+            signed_opaque_bundle: bundle.unwrap(),
+        }
+        .into(),
+    )
+    .into();
+
+    // Wait one block to ensure the bundle is stored on this fork
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot)
+    )
+    .1
+    .unwrap();
+
+    // Create fork and build one more blocks on it to make it the new best fork
+    parent_hash = ferdie
+        .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
+        .await
+        .unwrap();
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![]))
+    )
+    .1
+    .unwrap();
+
+    // Manually remove the retracted block's `submit_bundle_tx` from tx pool
+    ferdie
+        .transaction_pool
+        .remove_invalid(&[ferdie.transaction_pool.hash_of(&submit_bundle_tx)]);
+    ferdie
+        .transaction_pool
+        .pool()
+        .validated_pool()
+        .clear_stale(&BlockId::Number(9))
+        .unwrap();
+
+    // Bundle can be successfully submitted to the new fork
+    ferdie
+        .transaction_pool
+        .submit_one(
+            &BlockId::Hash(ferdie.client.info().best_hash),
+            TransactionSource::External,
+            submit_bundle_tx,
+        )
+        .await
+        .unwrap();
+}
