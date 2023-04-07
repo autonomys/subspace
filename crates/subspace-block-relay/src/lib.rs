@@ -56,7 +56,7 @@ pub trait RelayClient {
     async fn download(
         &self,
         who: PeerId,
-        request: &Self::Request,
+        request: Self::Request,
         network: NetworkServiceHandle,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>;
 }

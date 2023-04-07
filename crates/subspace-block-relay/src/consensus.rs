@@ -12,11 +12,12 @@ use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse};
 use sc_network::types::ProtocolName;
 use sc_network::{PeerId, RequestFailure};
-use sc_network_common::sync::message::{BlockAttributes, BlockRequest, FromBlock};
+use sc_network_common::sync::message::BlockAttributes;
 use sc_network_sync::service::network::NetworkServiceHandle;
-use sc_network_sync::{BlockDataSchema, BlockResponseSchema};
+use sc_network_sync::{BlockDataSchema, BlockRequestSchema, BlockResponseSchema, FromBlockSchema};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::{Block as BlockT, Header};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -33,8 +34,9 @@ const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
 
 /// Initial request to server
 #[derive(Encode, Decode)]
-struct InitialRequest<Block: BlockT> {
-    block_request: BlockRequest<Block>,
+struct InitialRequest {
+    /// Block request is the serialized BlockRequestSchema
+    block_request: Vec<u8>,
     protocol_request: Option<Vec<u8>>,
 }
 
@@ -66,23 +68,23 @@ struct ConsensusRelayClient<Block: BlockT> {
 
 #[async_trait]
 impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
-    type Request = BlockRequest<Block>;
+    type Request = BlockRequestSchema;
 
     async fn download(
         &self,
         who: PeerId,
-        request: &Self::Request,
+        request: Self::Request,
         network: NetworkServiceHandle,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
         let stub = RequestResponseStub::new(self.protocol_name.clone(), who, network);
 
         // Perform the initial request/response
-        let initial_request: InitialRequest<Block> = InitialRequest {
-            block_request: request.clone(),
+        let initial_request = InitialRequest {
+            block_request: request.encode_to_vec(),
             protocol_request: self.protocol.build_request(),
         };
         let initial_response = match stub
-            .request_response::<InitialRequest<Block>, InitialResponse>(initial_request, false)
+            .request_response::<InitialRequest, InitialResponse>(initial_request, false)
             .await
         {
             Ok(response) => response,
@@ -145,13 +147,17 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
     fn on_consensus_request(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, RelayError> {
-        let req: InitialRequest<Block> = match Decode::decode(&mut msg.as_ref()) {
+        let req: InitialRequest = match Decode::decode(&mut msg.as_ref()) {
             Ok(initial_request) => initial_request,
             Err(err) => return Err(RelayError::from(format!("decode initial request: {err:?}"))),
         };
+        let block_request = BlockRequestSchema::decode(&req.block_request[..])
+            .map_err(|err| format!("decode block schema request: {err:?}"))?;
+        let block_hash = self.block_hash(&block_request.from_block)?;
+        let block_attributes = BlockAttributes::from_be_u32(block_request.fields)
+            .map_err(|err| format!("block attributes: {err:?}"))?;
 
-        let block_hash = self.block_hash(&req.block_request.from)?;
-        let partial_block = self.get_partial_block(&block_hash, &req.block_request)?;
+        let partial_block = self.get_partial_block(&block_hash, block_attributes)?;
         let protocol_response = self
             .protocol
             .build_response(&block_hash, req.protocol_request)?;
@@ -165,7 +171,7 @@ where
     fn get_partial_block(
         &self,
         block_hash: &BlockIndex<Block>,
-        block_request: &BlockRequest<Block>,
+        block_attributes: BlockAttributes,
     ) -> Result<PartialBlock, RelayError> {
         let block_hdr = match self.client.header(*block_hash) {
             Ok(Some(hdr)) => hdr,
@@ -178,17 +184,14 @@ where
         };
 
         // Header
-        let hdr = if block_request.fields.contains(BlockAttributes::HEADER) {
+        let hdr = if block_attributes.contains(BlockAttributes::HEADER) {
             block_hdr.encode()
         } else {
             Vec::new()
         };
 
         // Justifications
-        let justifications = if block_request
-            .fields
-            .contains(BlockAttributes::JUSTIFICATION)
-        {
+        let justifications = if block_attributes.contains(BlockAttributes::JUSTIFICATION) {
             self.client
                 .justifications(*block_hash)
                 .map_err(|err| {
@@ -200,7 +203,7 @@ where
         };
 
         // Indexed body
-        let indexed_body = if block_request.fields.contains(BlockAttributes::INDEXED_BODY) {
+        let indexed_body = if block_attributes.contains(BlockAttributes::INDEXED_BODY) {
             self.client
                 .block_indexed_body(*block_hash)
                 .map_err(|err| {
@@ -221,17 +224,27 @@ where
         })
     }
 
-    fn block_hash(
-        &self,
-        from: &FromBlock<<Block as BlockT>::Hash, NumberFor<Block>>,
-    ) -> Result<BlockIndex<Block>, RelayError> {
-        match from {
-            FromBlock::Hash(h) => Ok(h.clone()),
-            FromBlock::Number(n) => match self.client.block_hash(*n) {
-                Ok(Some(hash)) => Ok(hash),
-                Ok(None) => Err(format!("Invalid block hash: {from:?}: None").into()),
-                Err(err) => Err(format!("Invalid block hash: {from:?}: {err:?}").into()),
+    fn block_hash(&self, from: &Option<FromBlockSchema>) -> Result<BlockIndex<Block>, RelayError> {
+        let block_id = match from {
+            Some(ref from_block) => match from_block {
+                FromBlockSchema::Hash(ref h) => {
+                    let h = Decode::decode(&mut h.as_ref())
+                        .map_err(|err| format!("block hash: decode hash: {err:?}"))?;
+                    BlockId::<Block>::Hash(h)
+                }
+                FromBlockSchema::Number(ref n) => {
+                    let n = Decode::decode(&mut n.as_ref())
+                        .map_err(|err| format!("block hash: decode number: {err:?}"))?;
+                    BlockId::<Block>::Number(n)
+                }
             },
+            None => return Err(RelayError::from(format!("block hash: missing FromBlock"))),
+        };
+
+        match self.client.block_hash_from_id(&block_id) {
+            Ok(Some(hash)) => Ok(hash),
+            Ok(None) => Err(format!("Invalid block hash: {from:?}: None").into()),
+            Err(err) => Err(format!("Invalid block hash: {from:?}: {err:?}").into()),
         }
     }
 
