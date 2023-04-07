@@ -401,7 +401,6 @@ where
         self.create_fraud_proof_for_first_unconfirmed_bad_receipt::<PCB>()
     }
 
-    #[allow(clippy::single_match)]
     fn check_receipts_in_primary_block(
         &self,
         primary_hash: PBlock::Hash,
@@ -425,48 +424,25 @@ where
 
         for execution_receipt in receipts.iter() {
             let primary_block_hash = execution_receipt.primary_hash;
-            match crate::aux_schema::load_execution_receipt::<
+
+            let local_receipt = crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
                 NumberFor<PBlock>,
                 PBlock::Hash,
             >(&*self.client, primary_block_hash)?
+            .ok_or(sp_blockchain::Error::Backend(format!(
+                "receipt for primary block {primary_block_hash} not found"
+            )))?;
+
+            if let Some(trace_mismatch_index) =
+                find_trace_mismatch(&local_receipt, execution_receipt)
             {
-                Some(local_receipt) => {
-                    if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, execution_receipt)
-                    {
-                        bad_receipts_to_write.push((
-                            execution_receipt.primary_number,
-                            execution_receipt.hash(),
-                            (trace_mismatch_index, primary_block_hash),
-                        ));
-                    }
-                }
-                None => {
-                    /* TODO: https://github.com/subspace/subspace/issues/1254
-
-                    let block_number = to_number_primitive(execution_receipt.primary_number);
-
-                    // TODO: Ensure the `block_hash` aligns with the one returned in
-                    // `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are
-                    // multiple forks at present, `block_hash` is on one of them, but another fork
-                    // becomes the canonical chain later.
-                    let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header hash for #{block_number} not found"
-                        ))
-                    })?;
-
-                    // The receipt of a prior block must exist, otherwise it means the receipt included
-                    // on the primary chain points to an invalid domain block.
-                    bad_receipts_to_write.push((
-                        execution_receipt.primary_number,
-                        execution_receipt.hash(),
-                        (0u32, block_hash),
-                    ));
-                    */
-                }
+                bad_receipts_to_write.push((
+                    execution_receipt.primary_number,
+                    execution_receipt.hash(),
+                    (trace_mismatch_index, primary_block_hash),
+                ));
             }
         }
 
