@@ -3,7 +3,7 @@ use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use sc_block_builder::BlockBuilderProvider;
-use sc_client_api::backend;
+use sc_client_api::{backend, BlockchainEvents};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -102,7 +102,7 @@ impl MockPrimaryNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let bundle_validator = BundleValidator::new(client.clone());
+        let mut bundle_validator = BundleValidator::new(client.clone());
 
         let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
             InvalidStateTransitionProofVerifier::new(
@@ -117,7 +117,7 @@ impl MockPrimaryNode {
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             proof_verifier.clone(),
-            bundle_validator,
+            bundle_validator.clone(),
         );
 
         let transaction_pool = subspace_transaction_pool::new_full(
@@ -125,6 +125,27 @@ impl MockPrimaryNode {
             &task_manager,
             client.clone(),
             tx_pre_validator,
+        );
+
+        let mut imported_blocks_stream = client.import_notification_stream();
+        task_manager.spawn_handle().spawn(
+            "maintain-bundles-stored-in-last-k",
+            None,
+            Box::pin(async move {
+                while let Some(incoming_block) = imported_blocks_stream.next().await {
+                    if incoming_block.is_new_best {
+                        bundle_validator.update_recent_stored_bundles(incoming_block.hash);
+                    }
+                }
+            }),
+        );
+
+        // Inform the tx pool about imported and finalized blocks and remove the tx of these
+        // blocks from the tx pool.
+        task_manager.spawn_handle().spawn(
+            "txpool-notifications",
+            Some("transaction-pool"),
+            sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
         );
 
         let fraud_proof_block_import =

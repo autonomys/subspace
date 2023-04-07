@@ -10743,6 +10743,7 @@ dependencies = [
  "sc-network",
  "sc-service",
  "sc-tracing",
+ "sc-transaction-pool",
  "sc-utils",
  "sp-api",
  "sp-application-crypto",
