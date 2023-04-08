@@ -55,5 +55,9 @@ where
     ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, RelayError>;
 
     /// Returns the protocol unit contents with the given Id.
-    fn protocol_unit(&self, id: &ProtocolUnitId) -> Result<Option<ProtocolUnit>, RelayError>;
+    fn protocol_unit(
+        &self,
+        download_unit_id: &DownloadUnitId,
+        protocol_unit_id: &ProtocolUnitId,
+    ) -> Result<Option<ProtocolUnit>, RelayError>;
 }

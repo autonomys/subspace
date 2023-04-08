@@ -398,10 +398,14 @@ where
             .collect())
     }
 
-    fn protocol_unit(&self, id: &TxHash<Pool>) -> Result<Option<Extrinsic<Block>>, RelayError> {
+    fn protocol_unit(
+        &self,
+        download_unit_id: &BlockHash<Block>,
+        protocol_unit_id: &TxHash<Pool>,
+    ) -> Result<Option<Extrinsic<Block>>, RelayError> {
         Ok(self
             .transaction_pool
-            .ready_transaction(id)
+            .ready_transaction(protocol_unit_id)
             .map(|in_pool_transaction| in_pool_transaction.data().clone()))
     }
 }

@@ -11,6 +11,9 @@ use tracing::{info, warn};
 /// The compact response
 #[derive(Encode, Decode)]
 struct CompactResponse {
+    /// The download unit
+    download_unit_id: Vec<u8>,
+
     /// List of the protocol units Ids.
     protocol_unit_ids: Vec<Vec<u8>>,
 }
@@ -18,6 +21,9 @@ struct CompactResponse {
 /// Request for missing transactions
 #[derive(Encode, Decode)]
 struct MissingEntriesRequest {
+    /// The download unit
+    download_unit_id: Vec<u8>,
+
     /// List of the protocol units Ids.
     protocol_unit_ids: Vec<Vec<u8>>,
 }
@@ -44,7 +50,7 @@ where
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolClient<DownloadUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    DownloadUnitId: Encode + Decode,
+    DownloadUnitId: Encode + Decode + Send,
     ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode + Send,
 {
@@ -60,6 +66,10 @@ where
     ) -> Result<Vec<ProtocolUnit>, RelayError> {
         let compact_response: CompactResponse = Decode::decode(&mut response.as_ref())
             .map_err(|err| format!("resolve: decode compact_response: {err:?}"))?;
+        let download_unit_id_encoded = compact_response.download_unit_id.clone();
+        let download_unit_id: DownloadUnitId =
+            Decode::decode(&mut compact_response.download_unit_id.as_ref())
+                .map_err(|err| format!("resolve: decode download_unit_id: {err:?}"))?;
 
         // Look up the protocol units from the backend
         let mut protocol_units = Vec::new();
@@ -69,7 +79,7 @@ where
             let pid = protocol_unit_id.clone();
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
-            match self.backend.protocol_unit(&id) {
+            match self.backend.protocol_unit(&download_unit_id, &id) {
                 Ok(Some(ret)) => protocol_units.push(ret),
                 Ok(None) => missing_ids.push(pid),
                 Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
@@ -90,6 +100,7 @@ where
 
         // Request the missing entries
         let request = MissingEntriesRequest {
+            download_unit_id: download_unit_id_encoded,
             protocol_unit_ids: missing_ids.clone(),
         };
         let missing_entries_response = stub
@@ -148,6 +159,7 @@ where
         // Return the hash of the members in the download unit.
         let members = self.backend.download_unit_members(id)?;
         let response = CompactResponse {
+            download_unit_id: id.encode(),
             protocol_unit_ids: members.iter().map(|(id, _)| id.encode()).collect(),
         };
         info!(
@@ -167,13 +179,16 @@ where
                 )))
             }
         };
+        let download_unit_id: DownloadUnitId =
+            Decode::decode(&mut req.download_unit_id.as_ref())
+                .map_err(|err| format!("on_request: decode download_unit_id: {err:?}"))?;
 
         let mut protocol_units = Vec::new();
         let total_len = req.protocol_unit_ids.len();
         for protocol_unit_id in req.protocol_unit_ids {
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("on_request: decode missing protocol_unit_id: {err:?}"))?;
-            match self.backend.protocol_unit(&id) {
+            match self.backend.protocol_unit(&download_unit_id, &id) {
                 Ok(Some(ret)) => protocol_units.push(ret.encode()),
                 Ok(None) => {
                     warn!(target: LOG_TARGET, "on_request: missing entry not found");
