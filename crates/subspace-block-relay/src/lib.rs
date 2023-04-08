@@ -2,9 +2,8 @@
 
 use crate::utils::RelayError;
 use async_trait::async_trait;
-use futures::channel::oneshot;
 use sc_network::request_responses::IncomingRequest;
-use sc_network::{PeerId, RequestFailure};
+use sc_network::PeerId;
 use sc_network_sync::service::network::NetworkServiceHandle;
 
 mod consensus;
@@ -60,7 +59,7 @@ pub(crate) trait RelayClient {
         who: PeerId,
         request: Self::Request,
         network: NetworkServiceHandle,
-    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled>;
+    ) -> Result<Vec<u8>, RelayError>;
 }
 
 /// The relay server

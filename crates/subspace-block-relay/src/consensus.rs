@@ -22,7 +22,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// The block Id for the backend APIs
 type BlockIndex<Block> = <Block as BlockT>::Hash;
@@ -52,7 +52,8 @@ struct InitialResponse {
 
 /// The partial block request from the server, it has all the fields
 /// except the extrinsics. The extrinsics come from the protocol.
-/// This is a subset of BlockResponseSchema
+/// This is a subset of BlockResponseSchema, so that the fields can be
+/// moved into the final output without extra copies.
 #[derive(Encode, Decode)]
 struct PartialBlock {
     hash: Vec<u8>,
@@ -78,20 +79,20 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
         who: PeerId,
         request: Self::Request,
         network: NetworkServiceHandle,
-    ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
+    ) -> Result<Vec<u8>, RelayError> {
         let stub = RequestResponseStub::new(self.protocol_name.clone(), who, network);
 
         // Perform the initial request/response
         let initial_request = InitialRequest {
             block_request: request,
-            protocol_request: self.protocol.build_request(),
+            protocol_request: self.protocol.build_initial_request(),
         };
         let initial_response = match stub
             .request_response::<InitialRequest, InitialResponse>(initial_request, false)
             .await
         {
             Ok(response) => response,
-            Err(err) => return err.into(),
+            Err(err) => return Err(err.into()),
         };
 
         // Resolve the protocol response to get the extrinsics
@@ -101,7 +102,7 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
             .await
         {
             Ok(extrinsics) => extrinsics,
-            Err(err) => return err.into(),
+            Err(err) => return Err(err),
         };
 
         // Assemble the final response
@@ -125,11 +126,9 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
         let mut data = Vec::with_capacity(block_response.encoded_len());
 
         if let Err(err) = block_response.encode(&mut data) {
-            let relay_err: RelayError =
-                format!("download: failed to encode response: {err:?}").into();
-            relay_err.into()
+            Err(format!("download: encode response: {err:?}").into())
         } else {
-            Ok(Ok(data))
+            Ok(data)
         }
     }
 }
@@ -142,7 +141,22 @@ impl<Block: BlockT> BlockDownloader for ConsensusRelayClient<Block> {
         request: Vec<u8>,
         network: NetworkServiceHandle,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-        self.download(who, request, network).await
+        match self.download(who, request, network).await {
+            Ok(val) => {
+                info!(
+                    target: LOG_TARGET,
+                    "download_block: success: peer = {who:?}"
+                );
+                Ok(Ok(val))
+            }
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "download_block: peer = {who:?}, err = {err:?}"
+                );
+                err.into()
+            }
+        }
     }
 }
 
@@ -165,18 +179,22 @@ where
     fn on_consensus_request(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, RelayError> {
         let req: InitialRequest = match Decode::decode(&mut msg.as_ref()) {
             Ok(initial_request) => initial_request,
-            Err(err) => return Err(RelayError::from(format!("decode initial request: {err:?}"))),
+            Err(err) => {
+                return Err(RelayError::from(format!(
+                    "on_consensus_request: decode request: {err:?}"
+                )))
+            }
         };
         let block_request = BlockRequestSchema::decode(&req.block_request[..])
-            .map_err(|err| format!("decode block schema request: {err:?}"))?;
+            .map_err(|err| format!("on_consensus_request: decode schema: {err:?}"))?;
         let block_hash = self.block_hash(&block_request.from_block)?;
         let block_attributes = BlockAttributes::from_be_u32(block_request.fields)
-            .map_err(|err| format!("block attributes: {err:?}"))?;
+            .map_err(|err| format!("on_consensus_request: block attributes: {err:?}"))?;
 
         let partial_block = self.get_partial_block(&block_hash, block_attributes)?;
         let protocol_response = self
             .protocol
-            .build_response(&block_hash, req.protocol_request)?;
+            .build_initial_response(&block_hash, req.protocol_request)?;
         let initial_response = InitialResponse {
             partial_block,
             protocol_response,
@@ -191,11 +209,11 @@ where
     ) -> Result<PartialBlock, RelayError> {
         let block_hdr = match self.client.header(*block_hash) {
             Ok(Some(hdr)) => hdr,
-            Ok(None) => return Err(format!("partial block: missing hdr: {block_hash:?}").into()),
+            Ok(None) => {
+                return Err(format!("get_partial_block: missing hdr: {block_hash:?}").into())
+            }
             Err(err) => {
-                return Err(
-                    format!("partial block: failed to get hdr: {block_hash:?}, {err:?}").into(),
-                )
+                return Err(format!("get_partial_block: get hdr: {block_hash:?}, {err:?}").into())
             }
         };
 
@@ -211,7 +229,7 @@ where
             self.client
                 .justifications(*block_hash)
                 .map_err(|err| {
-                    format!("partial block: failed to get justification: {block_hash:?}, {err:?}")
+                    format!("get_partial_block: justifications: {block_hash:?}, {err:?}")
                 })?
                 .map_or(Vec::new(), |v| v.encode())
         } else {
@@ -223,7 +241,7 @@ where
             self.client
                 .block_indexed_body(*block_hash)
                 .map_err(|err| {
-                    format!("partial block: failed to get indexed body: {block_hash:?}, {err:?}")
+                    format!("get_partial_block: block_indexed_body: {block_hash:?}, {err:?}")
                 })?
                 .unwrap_or(Vec::new())
         } else {
@@ -245,26 +263,26 @@ where
             Some(ref from_block) => match from_block {
                 FromBlockSchema::Hash(ref h) => {
                     let h = Decode::decode(&mut h.as_ref())
-                        .map_err(|err| format!("block hash: decode hash: {err:?}"))?;
+                        .map_err(|err| format!("block_hash: decode hash: {err:?}"))?;
                     BlockId::<Block>::Hash(h)
                 }
                 FromBlockSchema::Number(ref n) => {
                     let n = Decode::decode(&mut n.as_ref())
-                        .map_err(|err| format!("block hash: decode number: {err:?}"))?;
+                        .map_err(|err| format!("block_hash decode number: {err:?}"))?;
                     BlockId::<Block>::Number(n)
                 }
             },
             None => {
                 return Err(RelayError::from(
-                    "block hash: missing FromBlock".to_string(),
+                    "block_hash: missing FromBlock".to_string(),
                 ))
             }
         };
 
         match self.client.block_hash_from_id(&block_id) {
             Ok(Some(hash)) => Ok(hash),
-            Ok(None) => Err(format!("Invalid block hash: {from:?}: None").into()),
-            Err(err) => Err(format!("Invalid block hash: {from:?}: {err:?}").into()),
+            Ok(None) => Err(format!("block_hash: {from:?}: None").into()),
+            Err(err) => Err(format!("block_hash: {from:?}: {err:?}").into()),
         }
     }
 
@@ -282,7 +300,7 @@ where
         if let Err(err) = sender.send(response) {
             warn!(
                 target: LOG_TARGET,
-                "consensus relay server: failed to send response to {peer}: {err:?}"
+                "send_response: failed to send to {peer}: {err:?}"
             );
         }
     }
@@ -307,7 +325,7 @@ where
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "on request: decode incoming request: {peer}: {err:?}"
+                    "on_request: decode incoming: {peer}: {err:?}"
                 );
                 return;
             }
@@ -321,11 +339,15 @@ where
         match ret {
             Ok(response) => {
                 self.send_response(peer, response, pending_response);
+                info!(
+                    target: LOG_TARGET,
+                    "on_request: request processed from: {peer}"
+                );
             }
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "on request: processing request: {peer}:  {err:?}"
+                    "on_request: request processing error: {peer}:  {err:?}"
                 );
             }
         }
@@ -339,6 +361,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
     async fn run(&mut self) {
+        info!(target: LOG_TARGET, "consensus block server: starting");
         while let Some(request) = self.request_receiver.next().await {
             self.on_request(request).await;
         }

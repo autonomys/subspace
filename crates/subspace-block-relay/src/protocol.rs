@@ -15,7 +15,7 @@ where
     ProtocolUnit: Encode + Decode,
 {
     /// Builds the protocol portion of the initial request
-    fn build_request(&self) -> Option<Vec<u8>>;
+    fn build_initial_request(&self) -> Option<Vec<u8>>;
 
     /// Resolve the initial response to produce the protocol units.
     async fn resolve(
@@ -31,7 +31,7 @@ where
     DownloadUnitId: Encode + Decode,
 {
     /// Builds the protocol response for the request from the protocol client.
-    fn build_response(
+    fn build_initial_response(
         &self,
         id: &DownloadUnitId,
         initial_request: Option<Vec<u8>>,

@@ -6,7 +6,7 @@ use crate::{RelayError, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// The compact response
 #[derive(Encode, Decode)]
@@ -48,7 +48,7 @@ where
     ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode + Send,
 {
-    fn build_request(&self) -> Option<Vec<u8>> {
+    fn build_initial_request(&self) -> Option<Vec<u8>> {
         // Nothing to do for compact blocks
         None
     }
@@ -64,6 +64,7 @@ where
         // Look up the protocol units from the backend
         let mut protocol_units = Vec::new();
         let mut missing_ids = Vec::new();
+        let total_len = compact_response.protocol_unit_ids.len();
         for protocol_unit_id in compact_response.protocol_unit_ids {
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
@@ -73,6 +74,13 @@ where
                 Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
             }
         }
+        info!(
+            target: LOG_TARGET,
+            "compact_blocks::resolve: total = {}, initial responses = {}, missing = {}",
+            total_len,
+            protocol_units.len(),
+            missing_ids.len()
+        );
 
         // All the entries could be resolved locally
         if missing_ids.is_empty() {
@@ -95,6 +103,12 @@ where
             )
             .into());
         }
+        info!(
+            target: LOG_TARGET,
+            "compact_blocks::resolve: total = {}, resolved missing entries = {}",
+            total_len,
+            missing_ids.len()
+        );
         // TODO: reorder to match the order in compact_response
         for entry in missing_entries_response.protocol_units {
             let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())
@@ -125,7 +139,7 @@ where
     ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode,
 {
-    fn build_response(
+    fn build_initial_response(
         &self,
         id: &DownloadUnitId,
         _initial_request: Option<Vec<u8>>,
@@ -135,6 +149,11 @@ where
         let response = CompactResponse {
             protocol_unit_ids: members.iter().map(|(id, _)| id.encode()).collect(),
         };
+        info!(
+            target: LOG_TARGET,
+            "compact_blocks::build_initial_response: protocol units = {}",
+            response.protocol_unit_ids.len()
+        );
         Ok(response.encode())
     }
 
@@ -143,30 +162,30 @@ where
             Ok(req) => req,
             Err(err) => {
                 return Err(RelayError::from(format!(
-                    "compact blocks: decode missing entries request: {err:?}"
+                    "on_request: decode missing entries: {err:?}"
                 )))
             }
         };
 
         let mut protocol_units = Vec::new();
+        let total_len = req.protocol_unit_ids.len();
         for protocol_unit_id in req.protocol_unit_ids {
-            let id: ProtocolUnitId =
-                Decode::decode(&mut protocol_unit_id.as_ref()).map_err(|err| {
-                    format!("compact blocks: decode missing protocol_unit_id: {err:?}")
-                })?;
+            let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
+                .map_err(|err| format!("on_request: decode missing protocol_unit_id: {err:?}"))?;
             match self.backend.protocol_unit(&id) {
                 Ok(Some(ret)) => protocol_units.push(ret.encode()),
                 Ok(None) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "compact blocks: missing entry not found"
-                    );
+                    warn!(target: LOG_TARGET, "on_request: missing entry not found");
                 }
-                Err(err) => {
-                    return Err(format!("compact blocks:: missing entry lookup: {err:?}").into())
-                }
+                Err(err) => return Err(format!("on_request: missing entry lookup: {err:?}").into()),
             }
         }
+        info!(
+            target: LOG_TARGET,
+            "compact_blocks::on_request: requested missing = {}, resolved = {}",
+            total_len,
+            protocol_units.len()
+        );
         let response = MissingEntriesResponse { protocol_units };
 
         Ok(response.encode())
