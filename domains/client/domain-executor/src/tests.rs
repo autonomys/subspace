@@ -22,6 +22,196 @@ use subspace_test_service::mock::MockPrimaryNode;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
+fn number_of(primary_node: &MockPrimaryNode, block_hash: Hash) -> u32 {
+    primary_node
+        .client
+        .number(block_hash)
+        .unwrap_or_else(|err| panic!("Failed to fetch number for {block_hash}: {err}"))
+        .unwrap_or_else(|| panic!("header {block_hash} not in the chain"))
+}
+
+/// Returns a list of (block_number, block_hash) ranging from head_receipt_number(exclusive) to best_header(inclusive).
+fn number_hash_mappings_from_head_receipt_number_to_best_header(
+    primary_node: &MockPrimaryNode,
+    best_header: Header,
+) -> Vec<(u32, Hash)> {
+    let head_receipt_number = primary_node
+        .client
+        .runtime_api()
+        .head_receipt_number(best_header.hash())
+        .unwrap();
+
+    let mut current_best = best_header;
+    let mut mappings = vec![];
+    while *current_best.number() > head_receipt_number {
+        mappings.push((*current_best.number(), current_best.hash()));
+        current_best = primary_node
+            .client
+            .header(*current_best.parent_hash())
+            .unwrap()
+            .unwrap();
+    }
+
+    mappings.reverse();
+
+    mappings
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+    let _ = sc_cli::LoggerBuilder::new("runtime=debug").init();
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut primary_node = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut primary_node)
+    .await;
+
+    futures::join!(alice.wait_for_blocks(3), primary_node.produce_blocks(3))
+        .1
+        .expect("3 primary blocks produced successfully");
+
+    let best_primary_hash = primary_node.client.info().best_hash;
+    let best_primary_number = primary_node.client.info().best_number;
+    assert_eq!(best_primary_number, 3);
+
+    let best_header = primary_node
+        .client
+        .header(best_primary_hash)
+        .unwrap()
+        .unwrap();
+
+    let parent_hash = *best_header.parent_hash();
+
+    // Primary chain forks:
+    //      3
+    //   /
+    // 2 -- 3a
+    //   \
+    //      3b -- 4
+    let slot = primary_node.produce_slot();
+    let fork_block_hash_3a = primary_node
+        .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
+        .await
+        .expect("Produced first primary fork block 3a at height #3");
+    // A fork block 3a at #3 produced.
+    assert_eq!(number_of(&primary_node, fork_block_hash_3a), 3);
+    assert_ne!(fork_block_hash_3a, best_primary_hash);
+    // Best hash unchanged due to the longest chain fork choice.
+    assert_eq!(primary_node.client.info().best_hash, best_primary_hash);
+    // Hash of block number #3 unchanged.
+    assert_eq!(
+        primary_node.client.hash(3).unwrap().unwrap(),
+        best_primary_hash
+    );
+
+    let receipts_primary_info =
+        |signed_bundle: SignedBundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
+            signed_bundle
+                .bundle
+                .receipts
+                .iter()
+                .map(|receipt| (receipt.primary_number, receipt.primary_hash))
+                .collect::<Vec<_>>()
+        };
+
+    // Produce a bundle after the fork block #3a has been produced.
+    let signed_bundle = primary_node.notify_new_slot_and_wait_for_bundle(slot).await;
+
+    let expected_receipts_primary_info =
+        number_hash_mappings_from_head_receipt_number_to_best_header(
+            &primary_node,
+            best_header.clone(),
+        );
+
+    // TODO: make MaximumReceiptDrift configurable in order to submit all the pending receipts at
+    // once, now the max drift is 2, the receipts is limitted to [2, 3]. Once configurable, we
+    // can make the assertation straightforward:
+    // assert_eq!(receipts_primary_info, expected_receipts_primary_info).
+    //
+    // Receipts are always collected against the current best block.
+    receipts_primary_info(signed_bundle.unwrap())
+        .into_iter()
+        .zip(expected_receipts_primary_info.clone())
+        .for_each(|(a, b)| assert_eq!(a, b));
+
+    let slot = primary_node.produce_slot();
+    let fork_block_hash_3b = primary_node
+        .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
+        .await
+        .expect("Produced second primary fork block 3b at height #3");
+    // Another fork block 3b at #3 produced,
+    assert_eq!(number_of(&primary_node, fork_block_hash_3b), 3);
+    assert_ne!(fork_block_hash_3b, best_primary_hash);
+    // Best hash unchanged due to the longest chain fork choice.
+    assert_eq!(primary_node.client.info().best_hash, best_primary_hash);
+    // Hash of block number #3 unchanged.
+    assert_eq!(
+        primary_node.client.hash(3).unwrap().unwrap(),
+        best_primary_hash
+    );
+
+    // Produce a bundle after the fork block #3b has been produced.
+    let signed_bundle = primary_node.notify_new_slot_and_wait_for_bundle(slot).await;
+    // Receipts are always collected against the current best block.
+    receipts_primary_info(signed_bundle.unwrap())
+        .into_iter()
+        .zip(expected_receipts_primary_info)
+        .for_each(|(a, b)| assert_eq!(a, b));
+
+    // Produce a new tip at #4.
+    let slot = primary_node.produce_slot();
+    futures::join!(
+        alice.wait_for_blocks(1),
+        primary_node.produce_block_with_slot_at(slot, fork_block_hash_3b, Some(vec![])),
+    )
+    .1
+    .expect("Produce a new block on top of the second fork block at height #3");
+    let new_best_hash = primary_node.client.info().best_hash;
+    let new_best_number = primary_node.client.info().best_number;
+    assert_eq!(new_best_number, 4);
+    assert_eq!(alice.client.info().best_number, 4);
+
+    // Hash of block number #3 is updated to the second fork block 3b.
+    assert_eq!(
+        primary_node.client.hash(3).unwrap().unwrap(),
+        fork_block_hash_3b
+    );
+
+    let new_best_header = primary_node.client.header(new_best_hash).unwrap().unwrap();
+
+    assert_eq!(*new_best_header.parent_hash(), fork_block_hash_3b);
+
+    // Produce a bundle after the new block #4 has been produced.
+    let (_slot, signed_bundle) = primary_node
+        .produce_slot_and_wait_for_bundle_submission()
+        .await;
+
+    let expected_receipts_primary_info =
+        number_hash_mappings_from_head_receipt_number_to_best_header(
+            &primary_node,
+            new_best_header,
+        );
+
+    // Receipts are always collected against the current best block.
+    receipts_primary_info(signed_bundle.unwrap())
+        .into_iter()
+        .zip(expected_receipts_primary_info)
+        .for_each(|(a, b)| assert_eq!(a, b));
+}
+
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn test_executor_full_node_catching_up() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
