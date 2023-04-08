@@ -1,3 +1,5 @@
+//! Relay protocol defines
+
 use crate::utils::RequestResponseStub;
 use crate::RelayError;
 use async_trait::async_trait;
@@ -7,7 +9,7 @@ pub(crate) mod compact_block;
 
 /// The client side of the protocol used by RelayClient
 #[async_trait]
-pub trait ProtocolClient<DownloadUnitId, ProtocolUnit>: Send + Sync
+pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnit>: Send + Sync
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode,
@@ -24,7 +26,7 @@ where
 }
 
 /// The server side of the protocol used by RelayServer
-pub trait ProtocolServer<DownloadUnitId>
+pub(crate) trait ProtocolServer<DownloadUnitId>
 where
     DownloadUnitId: Encode + Decode,
 {
@@ -40,7 +42,7 @@ where
 }
 
 /// The backend interface to read the relevant data
-pub trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
     ProtocolUnitId: Encode + Decode,

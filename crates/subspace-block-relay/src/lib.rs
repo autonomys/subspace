@@ -51,7 +51,7 @@ pub(crate) const LOG_TARGET: &str = "block_relay";
 
 /// The relay client stub
 #[async_trait]
-pub trait RelayClient {
+pub(crate) trait RelayClient {
     type Request;
 
     /// Fetches the download units from the peer
@@ -65,6 +65,6 @@ pub trait RelayClient {
 
 /// The relay server
 #[async_trait]
-pub trait RelayServer {
+pub(crate) trait RelayServer {
     async fn on_request(&mut self, request: IncomingRequest);
 }

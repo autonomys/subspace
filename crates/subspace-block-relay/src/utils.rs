@@ -1,3 +1,5 @@
+//! Common utils.
+
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use sc_network::request_responses::IfDisconnected;
@@ -17,7 +19,7 @@ pub(crate) struct ServerMessage {
 
 /// Helper to perform the request response sequence.
 #[derive(Clone)]
-pub struct RequestResponseStub {
+pub(crate) struct RequestResponseStub {
     protocol_name: ProtocolName,
     who: PeerId,
     network: NetworkServiceHandle,
@@ -73,7 +75,7 @@ impl RequestResponseStub {
 }
 
 #[derive(Debug)]
-pub enum RequestResponseErr {
+pub(crate) enum RequestResponseErr {
     DecodeFailed(String),
     RequestFailure(RequestFailure),
     Canceled,
@@ -92,7 +94,7 @@ impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, onesho
 }
 
 #[derive(Debug)]
-pub enum RelayError {
+pub(crate) enum RelayError {
     Internal(String),
     RequestResponse(RequestResponseErr),
 }

@@ -19,29 +19,6 @@ sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/subs
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 tracing = "0.1.37"
-
-[dependencies.libp2p]
-# TODO: change to upstream release when https://github.com/libp2p/rust-libp2p/pull/3287 is released
-git = "https://github.com/subspace/rust-libp2p"
-rev = "917b388b0549810903946664a61c9b313b2e9fad"
-default-features = false
-features = [
-    "dns",
-    "gossipsub",
-    "identify",
-    "kad",
-    "macros",
-    "metrics",
-    "noise",
-    "ping",
-    "quic",
-    "request-response",
-    "serde",
-    "tcp",
-    "tokio",
-    "websocket",
-    "yamux",
-]

@@ -254,7 +254,11 @@ where
                     BlockId::<Block>::Number(n)
                 }
             },
-            None => return Err(RelayError::from("block hash: missing FromBlock".to_string())),
+            None => {
+                return Err(RelayError::from(
+                    "block hash: missing FromBlock".to_string(),
+                ))
+            }
         };
 
         match self.client.block_hash_from_id(&block_id) {
