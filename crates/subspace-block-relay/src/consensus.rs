@@ -25,10 +25,7 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 /// The block Id for the backend APIs
-type BlockIndex<Block> = <Block as BlockT>::Hash;
-
-/// The transaction Id for the backend APIs
-type TxnIndex<Pool> = TxHash<Pool>;
+type BlockHash<Block> = <Block as BlockT>::Hash;
 
 /// The transaction
 type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
@@ -65,7 +62,7 @@ struct PartialBlock {
 }
 
 struct ConsensusRelayClient<Block: BlockT> {
-    protocol: Arc<dyn ProtocolClient<BlockIndex<Block>, Extrinsic<Block>>>,
+    protocol: Arc<dyn ProtocolClient<BlockHash<Block>, Extrinsic<Block>>>,
     protocol_name: ProtocolName,
     _phantom_data: std::marker::PhantomData<Block>,
 }
@@ -166,7 +163,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
     client: Arc<Client>,
-    protocol: Box<dyn ProtocolServer<BlockIndex<Block>> + Send>,
+    protocol: Box<dyn ProtocolServer<BlockHash<Block>> + Send>,
     request_receiver: mpsc::Receiver<IncomingRequest>,
     _phantom_data: std::marker::PhantomData<Block>,
 }
@@ -204,7 +201,7 @@ where
 
     fn get_partial_block(
         &self,
-        block_hash: &BlockIndex<Block>,
+        block_hash: &BlockHash<Block>,
         block_attributes: BlockAttributes,
     ) -> Result<PartialBlock, RelayError> {
         let block_hdr = match self.client.header(*block_hash) {
@@ -258,7 +255,7 @@ where
         })
     }
 
-    fn block_hash(&self, from: &Option<FromBlockSchema>) -> Result<BlockIndex<Block>, RelayError> {
+    fn block_hash(&self, from: &Option<FromBlockSchema>) -> Result<BlockHash<Block>, RelayError> {
         let block_id = match from {
             Some(ref from_block) => match from_block {
                 FromBlockSchema::Hash(ref h) => {
@@ -379,7 +376,7 @@ where
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
-impl<Block, Client, Pool> ProtocolBackend<BlockIndex<Block>, TxnIndex<Pool>, Extrinsic<Block>>
+impl<Block, Client, Pool> ProtocolBackend<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>
     for ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
@@ -388,8 +385,8 @@ where
 {
     fn download_unit_members(
         &self,
-        id: &BlockIndex<Block>,
-    ) -> Result<Vec<(TxnIndex<Pool>, Vec<u8>)>, RelayError> {
+        id: &BlockHash<Block>,
+    ) -> Result<Vec<(TxHash<Pool>, Vec<u8>)>, RelayError> {
         let extrinsics = self
             .client
             .block_body(*id)
@@ -401,7 +398,7 @@ where
             .collect())
     }
 
-    fn protocol_unit(&self, id: &TxnIndex<Pool>) -> Result<Option<Extrinsic<Block>>, RelayError> {
+    fn protocol_unit(&self, id: &TxHash<Pool>) -> Result<Option<Extrinsic<Block>>, RelayError> {
         Ok(self
             .transaction_pool
             .ready_transaction(id)
