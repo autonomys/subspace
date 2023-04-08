@@ -66,11 +66,12 @@ where
         let mut missing_ids = Vec::new();
         let total_len = compact_response.protocol_unit_ids.len();
         for protocol_unit_id in compact_response.protocol_unit_ids {
+            let pid = protocol_unit_id.clone();
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
             match self.backend.protocol_unit(&id) {
                 Ok(Some(ret)) => protocol_units.push(ret),
-                Ok(None) => missing_ids.push(protocol_unit_id),
+                Ok(None) => missing_ids.push(pid),
                 Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
             }
         }
