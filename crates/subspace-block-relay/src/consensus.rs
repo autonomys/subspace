@@ -293,7 +293,7 @@ where
         sender: oneshot::Sender<OutgoingResponse>,
     ) {
         let response = OutgoingResponse {
-            result: Ok(Encode::encode(&response)),
+            result: Ok(response),
             reputation_changes: Vec::new(),
             sent_feedback: None,
         };

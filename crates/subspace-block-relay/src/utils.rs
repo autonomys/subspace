@@ -65,8 +65,13 @@ impl RequestResponseStub {
         let ret = rx.await;
         match ret {
             Ok(Ok(bytes)) => {
+                let resp_len = bytes.len();
                 let response: Result<RspType, _> = Decode::decode(&mut bytes.as_ref());
-                response.map_err(|err| RequestResponseErr::DecodeFailed(format!("{err:?}")))
+                response.map_err(|err| {
+                    RequestResponseErr::DecodeFailed(format!(
+                        "Request/response: {resp_len}, {is_protocol_message}, {err:?}"
+                    ))
+                })
             }
             Ok(Err(err)) => Err(RequestResponseErr::RequestFailure(err)),
             Err(_) => Err(RequestResponseErr::Canceled),
