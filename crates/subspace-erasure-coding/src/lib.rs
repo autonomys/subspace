@@ -70,6 +70,13 @@ impl ErasureCoding {
         Ok(Scalar::vec_from_repr(poly.coeffs))
     }
 
+    /// Recovery of source shards from given shards (at least 1/2 should be `Some`).
+    ///
+    /// The same as [`ErasureCoding::recover()`], but returns only source shards.
+    pub fn recover_source(&self, shards: &[Option<Scalar>]) -> Result<Vec<Scalar>, String> {
+        Ok(self.recover(shards)?.into_iter().step_by(2).collect())
+    }
+
     /// Extend commitments using erasure coding.
     ///
     /// Returns both source and parity commitments interleaved.
