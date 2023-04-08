@@ -254,7 +254,7 @@ where
                     BlockId::<Block>::Number(n)
                 }
             },
-            None => return Err(RelayError::from(format!("block hash: missing FromBlock"))),
+            None => return Err(RelayError::from("block hash: missing FromBlock".to_string())),
         };
 
         match self.client.block_hash_from_id(&block_id) {
@@ -396,7 +396,7 @@ where
 
     let backend = Arc::new(ConsensusBackend {
         client: client.clone(),
-        transaction_pool: pool.clone(),
+        transaction_pool: pool,
         _phantom_data: Default::default(),
     });
     let relay_client: ConsensusRelayClient<Block> = ConsensusRelayClient {
