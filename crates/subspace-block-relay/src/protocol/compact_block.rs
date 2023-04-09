@@ -5,8 +5,9 @@ use crate::utils::RequestResponseStub;
 use crate::{RelayError, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
+use std::collections::BTreeMap;
 use std::sync::Arc;
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 
 /// The compact response
 #[derive(Encode, Decode)]
@@ -24,15 +25,17 @@ struct MissingEntriesRequest {
     /// The download unit
     download_unit_id: Vec<u8>,
 
-    /// List of the protocol units Ids.
-    protocol_unit_ids: Vec<Vec<u8>>,
+    /// Map of missing entry Id ->  protocol unit Id.
+    /// The missing entry Id is an opaque identifier used by the client
+    /// side. The server side just returns it as is with the response.
+    protocol_unit_ids: BTreeMap<u64, Vec<u8>>,
 }
 
 /// Response for missing transactions
 #[derive(Encode, Decode)]
 struct MissingEntriesResponse {
-    /// List of the protocol units.
-    protocol_units: Vec<Vec<u8>>,
+    /// Map of missing entry Id ->  protocol unit.
+    protocol_units: BTreeMap<u64, Vec<u8>>,
 }
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
@@ -72,27 +75,31 @@ where
                 .map_err(|err| format!("resolve: decode download_unit_id: {err:?}"))?;
 
         // Look up the protocol units from the backend
-        let mut protocol_units = Vec::new();
-        let mut missing_ids = Vec::new();
+        let mut protocol_units = BTreeMap::new();
+        let mut missing_ids = BTreeMap::new();
         let total_len = compact_response.protocol_unit_ids.len();
-        for protocol_unit_id in compact_response.protocol_unit_ids {
-            let pid = protocol_unit_id.clone();
+        for (index, protocol_unit_id) in compact_response.protocol_unit_ids.iter().enumerate() {
+            let protocol_unit_id_cl = protocol_unit_id.clone();
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
             match self.backend.protocol_unit(&download_unit_id, &id, true) {
-                Ok(Some(ret)) => protocol_units.push(ret),
-                Ok(None) => missing_ids.push(pid),
+                Ok(Some(ret)) => {
+                    protocol_units.insert(index as u64, ret);
+                }
+                Ok(None) => {
+                    missing_ids.insert(index as u64, protocol_unit_id_cl);
+                }
                 Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
             }
         }
 
         // All the entries could be resolved locally
         if protocol_units.len() == total_len {
-            trace!(
+            info!(
                 target: LOG_TARGET,
                 "relay::resolve: {download_unit_id:?}: resolved locally[{total_len}]",
             );
-            return Ok(protocol_units);
+            return Ok(protocol_units.into_values().collect());
         }
 
         // Request the missing entries
@@ -100,7 +107,7 @@ where
             download_unit_id: download_unit_id_encoded,
             protocol_unit_ids: missing_ids.clone(),
         };
-        let missing_entries_response = stub
+        let mut missing_entries_response = stub
             .request_response::<MissingEntriesRequest, MissingEntriesResponse>(request, true)
             .await?;
 
@@ -112,21 +119,29 @@ where
             )
             .into());
         }
-        trace!(
+
+        // Merge the resolved entries from the server
+        for missing_key in missing_ids.keys() {
+            if let Some(entry) = missing_entries_response.protocol_units.get_mut(missing_key) {
+                let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())
+                    .map_err(|err| format!("resolve: decode missing protocol_unit: {err:?}"))?;
+                protocol_units.insert(*missing_key, protocol_unit);
+            } else {
+                return Err(format!(
+                    "resolve: missing entries response missing {missing_key}: {}",
+                    missing_ids.len()
+                )
+                .into());
+            }
+        }
+
+        info!(
             target: LOG_TARGET,
             "relay::resolve: {download_unit_id:?}: resolved by server[{total_len},{},{}]",
             protocol_units.len(),
             missing_ids.len()
         );
-
-        // TODO: reorder to match the order in compact_response
-        for entry in missing_entries_response.protocol_units {
-            let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())
-                .map_err(|err| format!("resolve: decode protocol_unit: {err:?}"))?;
-            protocol_units.push(protocol_unit);
-        }
-
-        Ok(protocol_units)
+        Ok(protocol_units.into_values().collect())
     }
 }
 
@@ -176,13 +191,15 @@ where
             Decode::decode(&mut req.download_unit_id.as_ref())
                 .map_err(|err| format!("on_request: decode download_unit_id: {err:?}"))?;
 
-        let mut protocol_units = Vec::new();
+        let mut protocol_units = BTreeMap::new();
         let total_len = req.protocol_unit_ids.len();
-        for protocol_unit_id in req.protocol_unit_ids {
-            let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
+        for (missing_id, protocol_unit_id) in req.protocol_unit_ids {
+            let pid: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("on_request: decode missing protocol_unit_id: {err:?}"))?;
-            match self.backend.protocol_unit(&download_unit_id, &id, false) {
-                Ok(Some(ret)) => protocol_units.push(ret.encode()),
+            match self.backend.protocol_unit(&download_unit_id, &pid, false) {
+                Ok(Some(ret)) => {
+                    protocol_units.insert(missing_id, ret.encode());
+                }
                 Ok(None) => {
                     warn!(
                         target: LOG_TARGET,
