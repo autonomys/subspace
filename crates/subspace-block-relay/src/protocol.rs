@@ -59,5 +59,6 @@ where
         &self,
         download_unit_id: &DownloadUnitId,
         protocol_unit_id: &ProtocolUnitId,
+        client: bool,
     ) -> Result<Option<ProtocolUnit>, RelayError>;
 }

@@ -22,7 +22,7 @@ use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 /// The block Id for the backend APIs
 type BlockHash<Block> = <Block as BlockT>::Hash;
@@ -140,16 +140,16 @@ impl<Block: BlockT> BlockDownloader for ConsensusRelayClient<Block> {
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
         match self.download(who, request, network).await {
             Ok(val) => {
-                info!(
+                trace!(
                     target: LOG_TARGET,
-                    "download_block: success: peer = {who:?}"
+                    "relay::download_block: success: peer = {who:?}"
                 );
                 Ok(Ok(val))
             }
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "download_block: peer = {who:?}, err = {err:?}"
+                    "relay::download_block: peer = {who:?}, err = {err:?}"
                 );
                 err.into()
             }
@@ -297,7 +297,7 @@ where
         if let Err(err) = sender.send(response) {
             warn!(
                 target: LOG_TARGET,
-                "send_response: failed to send to {peer}: {err:?}"
+                "relay::send_response: failed to send to {peer}: {err:?}"
             );
         }
     }
@@ -322,7 +322,7 @@ where
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "on_request: decode incoming: {peer}: {err:?}"
+                    "relay::on_request: decode incoming: {peer}: {err:?}"
                 );
                 return;
             }
@@ -336,15 +336,15 @@ where
         match ret {
             Ok(response) => {
                 self.send_response(peer, response, pending_response);
-                info!(
+                trace!(
                     target: LOG_TARGET,
-                    "on_request: request processed from: {peer}"
+                    "relay::consensus server: request processed from: {peer}"
                 );
             }
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "on_request: request processing error: {peer}:  {err:?}"
+                    "relay::consensus server: request processing error: {peer}:  {err:?}"
                 );
             }
         }
@@ -358,13 +358,17 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
     async fn run(&mut self) {
-        info!(target: LOG_TARGET, "consensus block server: starting");
+        info!(
+            target: LOG_TARGET,
+            "relay::consensus block server: starting"
+        );
         while let Some(request) = self.request_receiver.next().await {
             self.on_request(request).await;
         }
     }
 }
 
+// TODO: listen to import notifications, cache transactions/blocks
 struct ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
@@ -385,12 +389,12 @@ where
 {
     fn download_unit_members(
         &self,
-        id: &BlockHash<Block>,
+        block_hash: &BlockHash<Block>,
     ) -> Result<Vec<(TxHash<Pool>, Vec<u8>)>, RelayError> {
         let extrinsics = self
             .client
-            .block_body(*id)
-            .map_err(|err| format!("download_unit_members:block_body: {id:?}, {err:?}"))?
+            .block_body(*block_hash)
+            .map_err(|err| format!("download_unit_members:block_body: {block_hash:?}, {err:?}"))?
             .unwrap_or_default();
         Ok(extrinsics
             .iter()
@@ -400,12 +404,31 @@ where
 
     fn protocol_unit(
         &self,
-        download_unit_id: &BlockHash<Block>,
-        protocol_unit_id: &TxHash<Pool>,
+        block_hash: &BlockHash<Block>,
+        tx_hash: &TxHash<Pool>,
+        client: bool,
     ) -> Result<Option<Extrinsic<Block>>, RelayError> {
+        // First look up the block extrinsics
+        if let Ok(Some(extrinsics)) = self.client.block_body(*block_hash) {
+            if !extrinsics.is_empty() {
+                let len = extrinsics.len();
+                for extrinsic in extrinsics {
+                    if self.transaction_pool.hash_of(&extrinsic) == *tx_hash {
+                        return Ok(Some(extrinsic));
+                    }
+                }
+                warn!(
+                    target: LOG_TARGET,
+                    "relay::protocol_unit: {client}, {tx_hash:?} not found in {block_hash:?}/{len}",
+                );
+            }
+        }
+
+        // Failed to find the transaction among the block extrinsics, look up the
+        // transaction pool.
         Ok(self
             .transaction_pool
-            .ready_transaction(protocol_unit_id)
+            .ready_transaction(tx_hash)
             .map(|in_pool_transaction| in_pool_transaction.data().clone()))
     }
 }

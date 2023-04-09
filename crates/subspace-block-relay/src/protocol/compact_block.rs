@@ -6,7 +6,7 @@ use crate::{RelayError, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 /// The compact response
 #[derive(Encode, Decode)]
@@ -50,7 +50,7 @@ where
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolClient<DownloadUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    DownloadUnitId: Encode + Decode + Send,
+    DownloadUnitId: Encode + Decode + Send + std::fmt::Debug,
     ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode + Send,
 {
@@ -79,22 +79,19 @@ where
             let pid = protocol_unit_id.clone();
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("resolve: decode protocol_unit_id: {err:?}"))?;
-            match self.backend.protocol_unit(&download_unit_id, &id) {
+            match self.backend.protocol_unit(&download_unit_id, &id, true) {
                 Ok(Some(ret)) => protocol_units.push(ret),
                 Ok(None) => missing_ids.push(pid),
                 Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
             }
         }
-        info!(
-            target: LOG_TARGET,
-            "compact_blocks::resolve: total = {}, initial responses = {}, missing = {}",
-            total_len,
-            protocol_units.len(),
-            missing_ids.len()
-        );
 
         // All the entries could be resolved locally
-        if missing_ids.is_empty() {
+        if protocol_units.len() == total_len {
+            trace!(
+                target: LOG_TARGET,
+                "relay::resolve: {download_unit_id:?}: resolved locally[{total_len}]",
+            );
             return Ok(protocol_units);
         }
 
@@ -115,12 +112,13 @@ where
             )
             .into());
         }
-        info!(
+        trace!(
             target: LOG_TARGET,
-            "compact_blocks::resolve: total = {}, resolved missing entries = {}",
-            total_len,
+            "relay::resolve: {download_unit_id:?}: resolved by server[{total_len},{},{}]",
+            protocol_units.len(),
             missing_ids.len()
         );
+
         // TODO: reorder to match the order in compact_response
         for entry in missing_entries_response.protocol_units {
             let protocol_unit: ProtocolUnit = Decode::decode(&mut entry.as_ref())
@@ -162,11 +160,6 @@ where
             download_unit_id: id.encode(),
             protocol_unit_ids: members.iter().map(|(id, _)| id.encode()).collect(),
         };
-        info!(
-            target: LOG_TARGET,
-            "compact_blocks::build_initial_response: protocol units = {}",
-            response.protocol_unit_ids.len()
-        );
         Ok(response.encode())
     }
 
@@ -188,20 +181,24 @@ where
         for protocol_unit_id in req.protocol_unit_ids {
             let id: ProtocolUnitId = Decode::decode(&mut protocol_unit_id.as_ref())
                 .map_err(|err| format!("on_request: decode missing protocol_unit_id: {err:?}"))?;
-            match self.backend.protocol_unit(&download_unit_id, &id) {
+            match self.backend.protocol_unit(&download_unit_id, &id, false) {
                 Ok(Some(ret)) => protocol_units.push(ret.encode()),
                 Ok(None) => {
-                    warn!(target: LOG_TARGET, "on_request: missing entry not found");
+                    warn!(
+                        target: LOG_TARGET,
+                        "relay::on_request: missing entry not found"
+                    );
                 }
                 Err(err) => return Err(format!("on_request: missing entry lookup: {err:?}").into()),
             }
         }
-        info!(
-            target: LOG_TARGET,
-            "compact_blocks::on_request: requested missing = {}, resolved = {}",
-            total_len,
-            protocol_units.len()
-        );
+        if total_len != protocol_units.len() {
+            info!(
+                target: LOG_TARGET,
+                "relay::compact_blocks::on_request: could not resolve all entries: {total_len}/{}",
+                protocol_units.len()
+            );
+        }
         let response = MissingEntriesResponse { protocol_units };
 
         Ok(response.encode())
