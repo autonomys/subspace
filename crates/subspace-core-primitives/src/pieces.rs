@@ -98,6 +98,11 @@ impl PieceIndex {
     /// Piece index 1.
     pub const ONE: PieceIndex = PieceIndex(1);
 
+    /// Derive piece index hash
+    pub fn hash(&self) -> PieceIndexHash {
+        PieceIndexHash::from(blake2b_256_hash(&self.to_bytes()))
+    }
+
     /// Convert piece index into bytes.
     pub const fn to_bytes(&self) -> [u8; mem::size_of::<u64>()] {
         self.0.to_le_bytes()
@@ -127,9 +132,10 @@ impl AsRef<[u8]> for PieceIndexHash {
 }
 
 impl PieceIndexHash {
+    // TODO: Remove and replace uses with `index.hash()`
     /// Constructs `PieceIndexHash` from `PieceIndex`
     pub fn from_index(index: PieceIndex) -> Self {
-        Self(blake2b_256_hash(&index.to_bytes()))
+        index.hash()
     }
 }
 
@@ -161,6 +167,13 @@ impl AsMut<[u8]> for RawRecord {
 impl RawRecord {
     /// Size of raw record in bytes, is guaranteed to be a multiple of [`Scalar::SAFE_BYTES`].
     pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
+
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::new_zeroed().assume_init() }
+    }
 }
 
 /// Record contained within a piece.
@@ -187,40 +200,39 @@ impl Record {
     /// [`RawRecord`], is guaranteed to be a multiple of [`Scalar::FULL_BYTES`].
     pub const SIZE: usize = RECORD_SIZE;
 
-    /// Get a stream of arrays, each containing safe scalar bytes.
-    ///
-    /// Only useful for source records since only those contain raw record bytes that fit into safe
-    /// scalar bytes and the rest is zero bytes padding.
-    pub fn safe_scalar_arrays(
-        &self,
-    ) -> impl ExactSizeIterator<Item = &'_ [u8; Scalar::SAFE_BYTES]> + '_ {
-        self.full_scalar_arrays().map(|bytes| {
-            bytes
-                .array_chunks::<{ Scalar::SAFE_BYTES }>()
-                .next()
-                .expect(
-                    "Safe bytes are smaller length as safe bytes, hence first element always \
-                    exists; qed",
-                )
-        })
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::new_zeroed().assume_init() }
     }
 
-    /// Get a stream of mutable arrays, each containing safe scalar bytes.
-    ///
-    /// Only useful for source records since only those contain raw record bytes that fit into safe
-    /// scalar bytes and the rest is zero bytes padding.
-    pub fn safe_scalar_arrays_mut(
-        &mut self,
-    ) -> impl ExactSizeIterator<Item = &'_ mut [u8; Scalar::SAFE_BYTES]> + '_ {
-        self.full_scalar_arrays_mut().map(|bytes| {
-            bytes
-                .array_chunks_mut::<{ Scalar::SAFE_BYTES }>()
-                .next()
-                .expect(
-                    "Safe bytes are smaller length as safe bytes, hence first element always \
-                    exists; qed",
-                )
-        })
+    /// Convenient conversion from slice of record to underlying representation for efficiency
+    /// purposes.
+    pub fn slice_to_repr(value: &[Self]) -> &[[u8; Self::SIZE]] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from slice of underlying representation to record for efficiency
+    /// purposes.
+    pub fn slice_from_repr(value: &[[u8; Self::SIZE]]) -> &[Self] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of record to underlying representation for
+    /// efficiency purposes.
+    pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [[u8; Self::SIZE]] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
+    }
+
+    /// Convenient conversion from mutable slice of underlying representation to record for
+    /// efficiency purposes.
+    pub fn slice_mut_from_repr(value: &mut [[u8; Self::SIZE]]) -> &mut [Self] {
+        // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
+        unsafe { mem::transmute(value) }
     }
 
     /// Get a stream of arrays, each containing scalar bytes.
@@ -239,7 +251,9 @@ impl Record {
 }
 
 /// Record commitment contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(
+    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 #[repr(transparent)]
 pub struct RecordCommitment([u8; Self::SIZE]);
 
@@ -261,7 +275,9 @@ impl RecordCommitment {
 }
 
 /// Record witness contained within a piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
+#[derive(
+    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 #[repr(transparent)]
 pub struct RecordWitness([u8; Self::SIZE]);
 
@@ -289,9 +305,15 @@ impl RecordWitness {
 /// Internally piece contains a record and corresponding witness that together with segment
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Piece(Box<PieceArray>);
+
+impl Default for Piece {
+    fn default() -> Self {
+        Self(PieceArray::new_boxed())
+    }
+}
 
 // TODO: Manual implementation due to https://github.com/paritytech/parity-scale-codec/issues/419,
 //  can be replaced with derive once fixed upstream version is released
@@ -325,6 +347,14 @@ impl TryFrom<Vec<u8>> for Piece {
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
         // TODO: Maybe possible to transmute boxed slice into boxed array
         Self::try_from(vec.as_slice())
+    }
+}
+
+impl From<&PieceArray> for Piece {
+    fn from(value: &PieceArray) -> Self {
+        let mut piece = Piece::default();
+        piece.as_mut().copy_from_slice(value.as_ref());
+        piece
     }
 }
 
@@ -405,19 +435,14 @@ impl AsMut<[u8]> for PieceArray {
     }
 }
 
-impl From<&PieceArray> for Piece {
-    fn from(value: &PieceArray) -> Self {
-        Piece(Box::new(*value))
-    }
-}
-
-impl From<PieceArray> for Piece {
-    fn from(value: PieceArray) -> Self {
-        Piece(Box::new(value))
-    }
-}
-
 impl PieceArray {
+    /// Create boxed value without hitting stack overflow
+    pub fn new_boxed() -> Box<Self> {
+        // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
+        // SAFETY: Data structure filled with zeroes is a valid invariant
+        unsafe { Box::<Self>::new_zeroed().assume_init() }
+    }
+
     /// Split piece into underlying components.
     pub fn split(&self) -> (&Record, &RecordCommitment, &RecordWitness) {
         let (record, extra) = self.0.split_at(Record::SIZE);

@@ -83,13 +83,13 @@ impl PiecesReconstructor {
             .zip(
                 reconstructed_pieces
                     .iter_mut()
-                    .map(|piece| piece.record_mut().safe_scalar_arrays_mut()),
+                    .map(|piece| piece.record_mut().full_scalar_arrays_mut()),
             )
             .all(|(maybe_piece, raw_record)| {
                 if let Some(piece) = maybe_piece {
                     piece
                         .record()
-                        .safe_scalar_arrays()
+                        .full_scalar_arrays()
                         .zip(raw_record)
                         .for_each(|(source, target)| {
                             *target = *source;
@@ -259,7 +259,7 @@ impl PiecesReconstructor {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
 
-        let mut piece = Piece::from(reconstructed_records[piece_position]);
+        let mut piece = Piece::from(&reconstructed_records[piece_position]);
 
         piece.witness_mut().copy_from_slice(
             &self

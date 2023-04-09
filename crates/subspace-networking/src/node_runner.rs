@@ -35,6 +35,7 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
+use tokio::sync::watch;
 use tokio::time::Sleep;
 use tracing::{debug, error, info, trace, warn};
 
@@ -107,6 +108,8 @@ where
     metrics: Option<Metrics>,
     /// Mapping from specific peer to number of established connections
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
+    /// DSN connection observer. Turns on/off DSN operations like piece retrieval.
+    online_status_observer_tx: watch::Sender<bool>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -124,6 +127,7 @@ where
     pub(crate) target_connections: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
+    pub(crate) online_status_observer_tx: watch::Sender<bool>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -142,6 +146,7 @@ where
             target_connections,
             temporary_bans,
             metrics,
+            online_status_observer_tx,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -163,6 +168,7 @@ where
             temporary_bans,
             metrics,
             established_connections: HashMap::new(),
+            online_status_observer_tx,
         }
     }
 
@@ -207,6 +213,18 @@ where
         }
     }
 
+    // Handle DSN online status signaling
+    fn signal_online_status(&mut self) {
+        let current_online_status = self.swarm.connected_peers().next().is_some();
+        let previous_online_status = *self.online_status_observer_tx.borrow();
+
+        if previous_online_status != current_online_status {
+            if let Err(err) = self.online_status_observer_tx.send(current_online_status) {
+                error!("DSN connection observer channel failed: {err}")
+            }
+        }
+    }
+
     async fn handle_peer_dialing(&mut self) {
         let local_peer_id = *self.swarm.local_peer_id();
         let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
@@ -233,6 +251,8 @@ where
         let (total_current_connections, established_connections) = {
             let network_info = self.swarm.network_info();
             let connections = network_info.connection_counters();
+
+            debug!(?connections, "Current connections and limits.");
 
             (
                 connections.num_pending_outgoing()
@@ -348,6 +368,18 @@ where
                 num_established,
                 ..
             } => {
+                self.signal_online_status();
+
+                // Save known addresses that were successfully dialed.
+                if let ConnectedPoint::Dialer { address, .. } = &endpoint {
+                    // filter non-global addresses when non-globals addresses are disabled
+                    if self.allow_non_global_addresses_in_dht || is_global_address_or_dns(address) {
+                        self.networking_parameters_registry
+                            .add_known_peer(peer_id, vec![address.clone()])
+                            .await;
+                    }
+                };
+
                 // Remove temporary ban if there was any
                 self.temporary_bans.lock().remove(&peer_id);
 
@@ -359,7 +391,12 @@ where
                 };
 
                 let is_reserved_peer = self.reserved_peers.contains_key(&peer_id);
-                debug!(%peer_id, %is_reserved_peer, "Connection established [{num_established} from peer]");
+                debug!(
+                    %peer_id,
+                    %is_reserved_peer,
+                    ?endpoint,
+                    "Connection established [{num_established} from peer]"
+                );
 
                 // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
                 self.established_connections
@@ -392,6 +429,8 @@ where
                 num_established,
                 ..
             } => {
+                self.signal_online_status();
+
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
                     None => {

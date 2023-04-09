@@ -241,7 +241,12 @@ fn clone_lru_cache<K: Clone + Hash + Eq, V: Clone>(
 #[async_trait]
 impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
-        trace!(%peer_id, "Add new peer addresses to the networking parameters registry: {:?}", addresses);
+        debug!(
+            %peer_id,
+            addr_num=addresses.len(),
+            "Add new peer addresses to the networking parameters registry: {:?}",
+            addresses
+        );
 
         addresses
             .iter()

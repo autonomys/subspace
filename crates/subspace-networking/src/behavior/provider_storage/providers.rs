@@ -466,11 +466,7 @@ impl<'a> ParityDbProviderRecordIterator<'a> {
     fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
         if let Some(ref mut iter) = self.iter {
             match iter.next() {
-                Ok(value) => {
-                    trace!("Parity DB provider record iterator succeeded");
-
-                    value
-                }
+                Ok(value) => value,
                 Err(err) => {
                     warn!(?err, "Parity DB provider record iterator error");
 
@@ -631,11 +627,7 @@ impl<'a> ParityDbProviderRecordCollectionIterator<'a> {
     fn next_entry(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
         if let Some(ref mut iter) = self.iter {
             match iter.next() {
-                Ok(value) => {
-                    trace!("Parity DB provider iterator succeeded");
-
-                    value
-                }
+                Ok(value) => value,
                 Err(err) => {
                     warn!(?err, "Parity DB provider iterator error");
 

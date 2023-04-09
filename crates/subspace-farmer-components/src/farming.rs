@@ -7,8 +7,8 @@ use subspace_core_primitives::crypto::kzg::Witness;
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    Blake2b256Hash, Piece, PieceIndex, PublicKey, SectorId, SectorIndex, Solution, SolutionRange,
-    PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
+    Blake2b256Hash, LegacySectorId, Piece, PieceIndex, PublicKey, SectorIndex, Solution,
+    SolutionRange, PIECES_IN_SECTOR, PLOT_SECTOR_SIZE,
 };
 use subspace_solving::create_chunk_signature;
 use subspace_verification::{derive_audit_chunk, is_within_solution_range};
@@ -46,7 +46,7 @@ pub struct EligibleChunk {
 #[derive(Debug, Clone)]
 pub struct EligibleSector {
     /// Sector ID
-    pub sector_id: SectorId,
+    pub sector_id: LegacySectorId,
     /// Sector index
     pub sector_index: SectorIndex,
     /// Derived local challenge
@@ -167,7 +167,7 @@ pub fn audit_sector<S>(
 where
     S: io::Read + io::Seek,
 {
-    let sector_id = SectorId::new(public_key, sector_index);
+    let sector_id = LegacySectorId::new(public_key, sector_index);
 
     let local_challenge = sector_id.derive_local_challenge(global_challenge);
     let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);

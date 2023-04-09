@@ -434,7 +434,15 @@ where
             "Starting core domain relayer with relayer_id[{:?}]",
             relayer_id
         );
-        let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages(
+        let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages::<
+            _,
+            _,
+            PBlock,
+            _,
+            _,
+            _,
+            _,
+        >(
             relayer_id,
             client.clone(),
             system_domain_client,

@@ -1,13 +1,15 @@
 #![allow(unused_imports, unused_variables)]
-use crate::invalid_state_transition_proof::SkipPreStateRootVerification;
-use crate::{ExecutionProver, ProofVerifier};
+use crate::invalid_state_transition_proof::{
+    ExecutionProver, InvalidStateTransitionProofVerifier, SkipPreStateRootVerification,
+};
+use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
-use sc_client_api::{HeaderBackend, StorageProof};
+use sc_client_api::{proof_provider, HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
 use sp_domain_digests::AsPredigest;
@@ -15,6 +17,7 @@ use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransition
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_service::mock::MockPrimaryNode;
 use tempfile::TempDir;
@@ -23,7 +26,6 @@ use tempfile::TempDir;
 const TEST_DOMAIN_ID: DomainId = DomainId::SYSTEM;
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn execution_proof_creation_and_verification_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -34,14 +36,11 @@ async fn execution_proof_creation_and_verification_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let (ferdie, ferdie_network_starter) = run_primary_chain_validator_node(
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
         tokio_handle.clone(),
         Ferdie,
-        vec![],
         BasePath::new(directory.path().join("ferdie")),
-    )
-    .await;
-    ferdie_network_starter.start_network();
+    );
 
     // Run Alice (a system domain authority node)
     let alice = domain_test_service::SystemDomainNodeBuilder::new(
@@ -49,8 +48,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .connect_to_primary_chain_node(&ferdie)
-    .build(Role::Authority, false, false)
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
     // Run Bob (a system domain full node)
@@ -59,12 +57,17 @@ async fn execution_proof_creation_and_verification_should_work() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .connect_to_primary_chain_node(&ferdie)
-    .build(Role::Full, false, false)
+    .build_with_mock_primary_node(Role::Full, &mut ferdie)
     .await;
 
     // Bob is able to sync blocks.
-    futures::future::join(alice.wait_for_blocks(1), bob.wait_for_blocks(1)).await;
+    futures::join!(
+        alice.wait_for_blocks(1),
+        bob.wait_for_blocks(1),
+        ferdie.produce_blocks(1),
+    )
+    .2
+    .unwrap();
 
     let transfer_to_charlie = domain_test_service::construct_extrinsic(
         &alice.client,
@@ -110,30 +113,36 @@ async fn execution_proof_creation_and_verification_should_work() {
             .expect("Failed to send extrinsic");
     }
 
-    // Ideally we just need to wait one block and the test txs should be all included
-    // in the next block, but the txs are probably unable to be included if the machine
-    // is overloaded, hence we manually mock the bundles processing to avoid the occasional
-    // test failure (https://github.com/subspace/subspace/runs/5663241460?check_suite_focus=true).
-    //
-    // alice.wait_for_blocks(1).await;
-
-    let primary_info = (
-        ferdie.client.info().best_hash,
-        ferdie.client.info().best_number,
-    );
-    alice.executor.clone().process_bundles(primary_info).await;
+    // Produce a domain bundle to include the above test txs and wait for `alice`
+    // to apply these txs
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    futures::future::join(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot),
+    )
+    .await
+    .1
+    .unwrap();
 
     let best_hash = alice.client.info().best_hash;
     let header = alice.client.header(best_hash).unwrap().unwrap();
     let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
     let create_block_builder = || {
+        let primary_hash = ferdie.client.hash(*header.number()).unwrap().unwrap();
+        let digest = Digest {
+            logs: vec![DigestItem::primary_block_info((
+                *header.number(),
+                primary_hash,
+            ))],
+        };
         BlockBuilder::new(
             &*alice.client,
             parent_header.hash(),
             *parent_header.number(),
             RecordProof::No,
-            Default::default(),
+            digest,
             &*alice.backend,
             test_txs.clone().into_iter().map(Into::into).collect(),
         )
@@ -153,12 +162,18 @@ async fn execution_proof_creation_and_verification_should_work() {
         );
     }
 
+    let primary_hash = ferdie.client.hash(*header.number()).unwrap().unwrap();
     let new_header = Header::new(
         *header.number(),
         Default::default(),
         Default::default(),
         parent_header.hash(),
-        Default::default(),
+        Digest {
+            logs: vec![DigestItem::primary_block_info((
+                *header.number(),
+                primary_hash,
+            ))],
+        },
     );
     let execution_phase = ExecutionPhase::InitializeBlock {
         domain_parent_hash: parent_header.hash(),
@@ -196,12 +211,14 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
         SkipPreStateRootVerification,
     );
+    let proof_verifier =
+        ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
     // Incorrect but it's fine for the test purpose.
     let parent_hash_alice = ferdie.client.info().best_hash;
@@ -335,8 +352,6 @@ async fn execution_proof_creation_and_verification_should_work() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-// TODO: Un-ignore when fixed, see https://github.com/subspace/subspace/pull/1347 for details
-#[ignore]
 async fn invalid_execution_proof_should_not_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -415,8 +430,8 @@ async fn invalid_execution_proof_should_not_work() {
     }
 
     // Produce a domain bundle to include the above test tx
-    let slot = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(ferdie.is_bundle_present_in_tx_pool(slot.into(), alice.key));
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
 
     // Wait for `alice` to apply these txs
     futures::future::join(
@@ -498,12 +513,14 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let proof_verifier = ProofVerifier::<Block, _, _, _, _, _, _>::new(
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
         SkipPreStateRootVerification,
     );
+    let proof_provider =
+        ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
     // Incorrect but it's fine for the test purpose.
     let parent_hash_alice = ferdie.client.info().best_hash;

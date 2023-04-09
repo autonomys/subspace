@@ -1,8 +1,8 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
-use domain_block_preprocessor::preprocessor::SystemDomainBlockPreprocessor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
+use domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -147,7 +147,7 @@ where
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
-        let (extrinsics, maybe_new_runtime) = self
+        let extrinsics = self
             .system_domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
@@ -175,7 +175,6 @@ where
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                maybe_new_runtime,
                 digests,
             )
             .await?;
