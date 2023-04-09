@@ -39,6 +39,7 @@ sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate"
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 sp-domain-digests = { version = "0.1.0", path = "../../domains/primitives/digests" }
 sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-client" }
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }

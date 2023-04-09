@@ -10380,6 +10380,7 @@ dependencies = [
  "sp-state-machine",
  "sp-trie",
  "subspace-runtime-primitives",
+ "subspace-test-client",
  "subspace-test-service",
  "subspace-wasm-tools",
  "substrate-test-utils",

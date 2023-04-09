@@ -400,32 +400,6 @@ where
     }
 }
 
-pub(crate) struct SkipPreStateRootVerification;
-
-impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
-    fn verify_pre_state_root(
-        &self,
-        _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
-
-    fn verify_post_state_root(
-        &self,
-        _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
-
-    fn primary_hash(
-        &self,
-        _domain_id: DomainId,
-        _domain_block_number: u32,
-    ) -> Result<H256, VerificationError> {
-        Ok(Default::default())
-    }
-}
-
 /// Trait to build the extrinsics of domain block derived from the original primary block.
 pub trait BuildDomainExtrinsics<PBlock: BlockT> {
     /// Returns the final list of encoded domain-specific extrinsics.
