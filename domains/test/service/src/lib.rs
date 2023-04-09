@@ -152,6 +152,7 @@ async fn run_executor(
             },
             segment_publish_concurrency: NonZeroUsize::new(10).unwrap(),
             sync_from_dsn: false,
+            enable_subspace_block_relay: false,
         };
 
         let partial_components = subspace_service::new_partial::<
