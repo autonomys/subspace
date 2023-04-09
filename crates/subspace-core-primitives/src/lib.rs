@@ -32,6 +32,8 @@ pub mod objects;
 mod pieces;
 pub mod sector_codec;
 mod segments;
+#[cfg(feature = "serde")]
+mod serde;
 #[cfg(test)]
 mod tests;
 
@@ -39,12 +41,14 @@ extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
+#[cfg(feature = "serde")]
+use ::serde::{Deserialize, Serialize};
 use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
-use derive_more::{Add, Deref, Display, Div, From, Into, Mul, Rem, Sub};
+use derive_more::{Add, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
     FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, RawRecord, Record, RecordCommitment,
     RecordWitness,
@@ -140,16 +144,33 @@ impl PosQualityBytes {
     }
 }
 
-/// Length of proof of space proof in bytes.
-const POS_PROOF_LENGTH: usize = 17 * 8;
-
 /// Proof of space proof bytes.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosProof(pub [u8; POS_PROOF_LENGTH]);
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    From,
+    Into,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+pub struct PosProof([u8; PosProof::SIZE]);
+
+impl Default for PosProof {
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
 
 impl PosProof {
     /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = POS_PROOF_LENGTH;
+    pub const SIZE: usize = 17 * 8;
 }
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
@@ -241,7 +262,7 @@ pub enum ArchivedBlockProgress {
     /// The block has been fully archived.
     Complete,
 
-    /// Number of paritally archived bytes of a block.
+    /// Number of partially archived bytes of a block.
     Partial(u32),
 }
 
@@ -630,6 +651,30 @@ impl From<PieceIndexHash> for U256 {
 impl From<U256> for PieceIndexHash {
     fn from(number: U256) -> Self {
         Self::from(number.to_be_bytes())
+    }
+}
+
+impl TryFrom<U256> for u8 {
+    type Error = &'static str;
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        Self::try_from(value.0)
+    }
+}
+
+impl TryFrom<U256> for u16 {
+    type Error = &'static str;
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        Self::try_from(value.0)
+    }
+}
+
+impl TryFrom<U256> for u32 {
+    type Error = &'static str;
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        Self::try_from(value.0)
     }
 }
 
