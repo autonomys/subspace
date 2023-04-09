@@ -624,18 +624,19 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     let ferdie_client = ferdie.client.clone();
     let create_submit_bundle = |primary_number: BlockNumber| {
-        let execution_receipt = crate::aux_schema::load_execution_receipt(
-            &*bob.backend,
-            bob.client.hash(primary_number).unwrap().unwrap(),
-        )
-        .expect("Failed to load execution receipt from the local aux_db")
-        .unwrap_or_else(|| {
-            panic!("The requested execution receipt for block {primary_number} does not exist")
-        });
+        let primary_hash = ferdie_client.hash(primary_number).unwrap().unwrap();
+        let execution_receipt =
+            crate::aux_schema::load_execution_receipt(&*bob.backend, primary_hash)
+                .expect("Failed to load execution receipt from the local aux_db")
+                .unwrap_or_else(|| {
+                    panic!(
+                        "The requested execution receipt for block {primary_number} does not exist"
+                    )
+                });
 
         let mut bundle = bundle_template.bundle.clone();
         bundle.header.primary_number = primary_number;
-        bundle.header.primary_hash = ferdie_client.hash(primary_number).unwrap().unwrap();
+        bundle.header.primary_hash = primary_hash;
         bundle.receipts = vec![execution_receipt];
 
         let signature = alice_key.pair().sign(bundle.hash().as_ref()).into();
