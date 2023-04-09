@@ -12,19 +12,12 @@ include = [
 ]
 
 [dependencies]
-merlin = { version = "2.0.1", default-features = false }
-schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-
-[dev-dependencies]
-rand = { version = "0.8.5", features = ["min_const_gen"] }
 
 [features]
 default = [
     "std",
 ]
 std = [
-    "merlin/std",
-    "schnorrkel/std",
     "subspace-core-primitives/std",
 ]

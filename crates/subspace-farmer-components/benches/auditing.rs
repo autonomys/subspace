@@ -11,21 +11,28 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SegmentIndex,
+    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SegmentIndex,
     SolutionRange, PIECES_IN_SECTOR,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::farming::audit_sector;
+use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::sector_size;
+use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::sector::{sector_size, SectorContentsMap, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
+    println!("Initializing...");
     let base_path = env::var("BASE_PATH")
         .map(|base_path| base_path.parse().unwrap())
         .unwrap_or_else(|_error| env::temp_dir());
+    let pieces_in_sector = env::var("PIECES_IN_SECTOR")
+        .map(|base_path| base_path.parse().unwrap())
+        .unwrap_or_else(|_error| PIECES_IN_SECTOR);
+    let persist_sector = env::var("PERSIST_SECTOR")
+        .map(|persist_sector| persist_sector == "1")
+        .unwrap_or_else(|_error| false);
     let sectors_count = env::var("SECTORS_COUNT")
         .map(|sectors_count| sectors_count.parse().unwrap())
         .unwrap_or(10);
@@ -57,12 +64,45 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
 
-    let sector_size = sector_size(PIECES_IN_SECTOR);
+    let sector_size = sector_size(pieces_in_sector);
 
-    let plotted_sector = {
-        let mut plotted_sector = vec![0u8; sector_size];
+    let persisted_sector = base_path.join(format!("subspace_bench_sector_{pieces_in_sector}.plot"));
 
-        block_on(plot_sector::<_, _, _, ChiaTable>(
+    let (plotted_sector, plotted_sector_bytes) = if persist_sector && persisted_sector.is_file() {
+        println!(
+            "Reading persisted sector from {}...",
+            persisted_sector.display()
+        );
+
+        let plotted_sector_bytes = fs::read(&persisted_sector).unwrap();
+        let sector_contents_map = SectorContentsMap::from_bytes(
+            &plotted_sector_bytes[..SectorContentsMap::encoded_size(pieces_in_sector)],
+            pieces_in_sector,
+        )
+        .unwrap();
+        let sector_metadata = SectorMetadata {
+            sector_index,
+            pieces_in_sector,
+            s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
+            history_size: farmer_protocol_info.history_size,
+            expires_at: Default::default(),
+        };
+
+        (
+            PlottedSector {
+                sector_id: SectorId::new(public_key.hash(), sector_index),
+                sector_index,
+                sector_metadata,
+                piece_indexes: vec![],
+            },
+            plotted_sector_bytes,
+        )
+    } else {
+        println!("Plotting one sector...");
+
+        let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
+
+        let plotted_sector = block_on(plot_sector::<_, _, _, ChiaTable>(
             &public_key,
             sector_index,
             &archived_history_segment,
@@ -70,17 +110,27 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &farmer_protocol_info,
             &kzg,
             &erasure_coding,
-            PIECES_IN_SECTOR,
-            &mut plotted_sector,
+            pieces_in_sector,
+            &mut plotted_sector_bytes,
             &mut io::sink(),
             Default::default(),
         ))
         .unwrap();
 
-        plotted_sector
+        (plotted_sector, plotted_sector_bytes)
     };
 
-    let mut group = c.benchmark_group("audit");
+    assert_eq!(plotted_sector_bytes.len(), sector_size);
+
+    if persist_sector && !persisted_sector.is_file() {
+        println!(
+            "Writing persisted sector into {}...",
+            persisted_sector.display()
+        );
+        fs::write(persisted_sector, &plotted_sector_bytes).unwrap()
+    }
+
+    let mut group = c.benchmark_group("auditing");
     group.throughput(Throughput::Elements(1));
     group.bench_function("memory", |b| {
         b.iter(|| {
@@ -89,15 +139,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 black_box(sector_index),
                 black_box(&global_challenge),
                 black_box(solution_range),
-                black_box(io::Cursor::new(&plotted_sector)),
+                black_box(&mut io::Cursor::new(&plotted_sector_bytes)),
+                black_box(&plotted_sector.sector_metadata),
             )
             .unwrap();
         })
     });
 
-    group.throughput(Throughput::Elements(sectors_count));
-    group.bench_function("disk", |b| {
-        let plot_file_path = base_path.join("subspace_bench_sector.bin");
+    {
+        println!("Writing {sectors_count} sectors to disk...");
+
+        let plot_file_path = base_path.join("subspace_bench_plot.plot");
         let mut plot_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -112,7 +164,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         plot_file.advise_random_access().unwrap();
 
         for _i in 0..sectors_count {
-            plot_file.write_all(plotted_sector.as_slice()).unwrap();
+            plot_file
+                .write_all(plotted_sector_bytes.as_slice())
+                .unwrap();
         }
 
         let plot_mmap = unsafe { Mmap::map(&plot_file).unwrap() };
@@ -122,30 +176,34 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             plot_mmap.advise(memmap2::Advice::Random).unwrap();
         }
 
-        b.iter_custom(|iters| {
-            let start = Instant::now();
-            for _i in 0..iters {
-                for (sector_index, sector) in plot_mmap
-                    .chunks_exact(sector_size)
-                    .enumerate()
-                    .map(|(sector_index, sector)| (sector_index as u64, sector))
-                {
-                    audit_sector(
-                        black_box(&public_key),
-                        black_box(sector_index),
-                        black_box(&global_challenge),
-                        black_box(solution_range),
-                        black_box(io::Cursor::new(sector)),
-                    )
-                    .unwrap();
+        group.throughput(Throughput::Elements(sectors_count));
+        group.bench_function("disk", move |b| {
+            b.iter_custom(|iters| {
+                let start = Instant::now();
+                for _i in 0..iters {
+                    for (sector_index, sector) in plot_mmap
+                        .chunks_exact(sector_size)
+                        .enumerate()
+                        .map(|(sector_index, sector)| (sector_index as u64, sector))
+                    {
+                        audit_sector(
+                            black_box(&public_key),
+                            black_box(sector_index),
+                            black_box(&global_challenge),
+                            black_box(solution_range),
+                            black_box(&mut io::Cursor::new(sector)),
+                            black_box(&plotted_sector.sector_metadata),
+                        )
+                        .unwrap();
+                    }
                 }
-            }
-            start.elapsed()
+                start.elapsed()
+            });
         });
 
         drop(plot_file);
         fs::remove_file(plot_file_path).unwrap();
-    });
+    }
     group.finish();
 }
 

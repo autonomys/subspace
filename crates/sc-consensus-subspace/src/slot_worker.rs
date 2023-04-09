@@ -46,7 +46,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{LegacySectorId, Randomness, RewardSignature, Solution};
 use subspace_solving::derive_global_challenge;
 use subspace_verification::{
-    check_reward_signature, derive_audit_chunk, is_within_solution_range, verify_solution,
+    check_reward_signature, derive_audit_chunk, is_within_solution_range_legacy, verify_solution,
     PieceCheckParams, VerifySolutionParams,
 };
 
@@ -274,13 +274,14 @@ where
             if let Err(error) = solution_verification_result {
                 warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
             } else {
-                let local_challenge = sector_id.derive_local_challenge(&global_challenge);
+                let sector_slot_challenge =
+                    sector_id.derive_sector_slot_challenge(&global_challenge);
 
                 // If solution is of high enough quality and block pre-digest wasn't produced yet,
                 // block reward is claimed
                 if maybe_pre_digest.is_none()
-                    && is_within_solution_range(
-                        local_challenge,
+                    && is_within_solution_range_legacy(
+                        sector_slot_challenge,
                         derive_audit_chunk(&solution.chunk.to_bytes()),
                         solution_range,
                     )

@@ -29,9 +29,11 @@ use blake2::digest::typenum::U32;
 use blake2::digest::{FixedOutput, Update};
 use blake2::{Blake2b, Blake2bMac, Digest};
 use blst_from_scratch::types::fr::FsFr;
+use core::cmp::Ordering;
+use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input};
+use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 use scale_info::{Type, TypeInfo};
 
 /// BLAKE2b-256 hashing of a single value.
@@ -226,6 +228,24 @@ impl ScalarLegacy {
 #[repr(transparent)]
 pub struct Scalar(FsFr);
 
+impl Hash for Scalar {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_bytes().hash(state)
+    }
+}
+
+impl PartialOrd<Self> for Scalar {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.to_bytes().partial_cmp(&other.to_bytes())
+    }
+}
+
+impl Ord for Scalar {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.to_bytes().cmp(&other.to_bytes())
+    }
+}
+
 impl Encode for Scalar {
     fn size_hint(&self) -> usize {
         Self::FULL_BYTES
@@ -267,6 +287,12 @@ impl TypeInfo for Scalar {
                     .name(stringify!(inner))
                     .type_name("FsFr")
             }))
+    }
+}
+
+impl MaxEncodedLen for Scalar {
+    fn max_encoded_len() -> usize {
+        Self::FULL_BYTES
     }
 }
 

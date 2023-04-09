@@ -75,10 +75,9 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, ChunkSignature, FlatPieces, HistorySize, Piece, PieceIndex,
-    PieceOffset, Solution,
+    ArchivedHistorySegment, FlatPieces, HistorySize, Piece, PieceIndex, PieceOffset, Solution,
 };
-use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 use tokio::runtime::{Handle, Runtime};
 
@@ -569,7 +568,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
                     //         piece_index,
                     //         encoding: encoding.clone(),
                     //         tag_signature: create_chunk_signature(&keypair, tag),
-                    //         local_challenge: derive_local_challenge(
+                    //         sector_slot_challenge: derive_sector_slot_challenge(
                     //             &keypair,
                     //             new_slot_info.global_challenge,
                     //         ),
@@ -681,14 +680,12 @@ pub fn dummy_claim_slot(
                 sector_index: 0,
                 history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
                 piece_offset: PieceOffset::default(),
-                record_commitment_hash: Default::default(),
-                piece_witness: Default::default(),
-                chunk_offset: 0,
+                record_commitment: Default::default(),
+                record_witness: Default::default(),
                 chunk: Default::default(),
-                chunk_signature: ChunkSignature {
-                    output: [0; 32],
-                    proof: [0; 64],
-                },
+                chunk_witness: Default::default(),
+                audit_chunk_offset: 0,
+                proof_of_space: Default::default(),
             },
             slot,
         },
@@ -746,7 +743,7 @@ fn propose_and_import_block<Transaction: Send + 'static>(
     //                     piece_index: 0,
     //                     encoding,
     //                     tag_signature: create_chunk_signature(&keypair, tag),
-    //                     local_challenge: LocalChallenge {
+    //                     sector_slot_challenge: LocalChallenge {
     //                         output: [0; 32],
     //                         proof: [0; 64],
     //                     },

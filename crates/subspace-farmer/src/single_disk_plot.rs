@@ -4,7 +4,7 @@ use crate::identity::Identity;
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_plot::farming::audit_sector;
+use crate::single_disk_plot::auditing::audit_sector;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
@@ -31,14 +31,13 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex, Solution};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
-use subspace_farmer_components::{farming, plotting};
+use subspace_farmer_components::{auditing, plotting, proving};
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -384,12 +383,6 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Failed to create memory mapping for plot
-    #[error("Failed to create memory mapping for plot: {error}")]
-    FailedToMapPlot {
-        /// Lower-level error
-        error: io::Error,
-    },
     /// Failed to create memory mapping for metadata
     #[error("Failed to create memory mapping for metadata: {error}")]
     FailedToMapMetadata {
@@ -402,9 +395,12 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Low-level farming error
-    #[error("Low-level farming error: {0}")]
-    LowLevel(#[from] farming::FarmingError),
+    /// Low-level auditing error
+    #[error("Low-level auditing error: {0}")]
+    LowLevelAuditing(#[from] auditing::AuditingError),
+    /// Low-level proving error
+    #[error("Low-level proving error: {0}")]
+    LowLevelProving(#[from] proving::ProvingError),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -668,8 +664,6 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
-        let sector_codec =
-            SectorCodec::new(sector_size).expect("Protocol constant must be correct; qed");
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
 
@@ -682,6 +676,7 @@ impl SingleDiskPlot {
 
                 let handle = handle.clone();
                 let sectors_metadata = Arc::clone(&sectors_metadata);
+                let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
                 let node_client = node_client.clone();
@@ -832,11 +827,11 @@ impl SingleDiskPlot {
                 }
 
                 let handle = handle.clone();
+                let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
                 let sectors_metadata = Arc::clone(&sectors_metadata);
                 let mut start_receiver = start_sender.subscribe();
                 let mut stop_receiver = stop_sender.subscribe();
-                let identity = identity.clone();
                 let node_client = node_client.clone();
                 let span = span.clone();
 
@@ -857,25 +852,11 @@ impl SingleDiskPlot {
 
                             debug!(%slot, %sector_count, "Reading sectors");
 
-                            let metadata_mmap = unsafe {
-                                MmapOptions::new()
-                                    .offset(RESERVED_PLOT_METADATA)
-                                    .len(SectorMetadata::encoded_size() * sector_count)
-                                    .map(&metadata_file)
-                                    .map_err(|error| FarmingError::FailedToMapMetadata { error })?
-                            };
-                            #[cfg(unix)]
-                            {
-                                metadata_mmap
-                                    .advise(memmap2::Advice::Random)
-                                    .map_err(FarmingError::Io)?;
-                            }
-
                             let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-                            for (sector_index, sector, sector_metadata) in plot_mmap
-                                .chunks_exact(sector_size)
-                                .zip(metadata_mmap.chunks_exact(SectorMetadata::encoded_size()))
+                            for (sector_index, sector_metadata, sector) in sectors_metadata
+                                .iter()
+                                .zip(plot_mmap.chunks_exact(sector_size))
                                 .enumerate()
                                 .map(|(sector_index, (sector, metadata))| {
                                     (sector_index as u64 + first_sector_index, sector, metadata)
@@ -883,28 +864,36 @@ impl SingleDiskPlot {
                             {
                                 trace!(%slot, %sector_index, "Auditing sector");
 
-                                let maybe_eligible_sector = audit_sector(
+                                let maybe_solution_candidates = audit_sector(
                                     &public_key,
                                     sector_index,
                                     &slot_info.global_challenge,
                                     slot_info.voting_solution_range,
-                                    io::Cursor::new(sector),
-                                )
-                                .map_err(FarmingError::LowLevel)?;
-                                let Some(eligible_sector) = maybe_eligible_sector else {
+                                    &mut io::Cursor::new(sector),
+                                    sector_metadata,
+                                )?;
+                                let Some(solution_candidates) = maybe_solution_candidates else {
                                     continue;
                                 };
 
-                                for solution in eligible_sector
-                                    .try_into_solutions(
-                                        &identity,
-                                        reward_address,
-                                        &sector_codec,
-                                        sector,
-                                        sector_metadata,
-                                    )
-                                    .map_err(FarmingError::LowLevel)?
+                                for maybe_solution in solution_candidates
+                                    .into_iter::<_, _, PosTable>(
+                                        &reward_address,
+                                        &kzg,
+                                        &erasure_coding,
+                                        &mut io::Cursor::new(sector),
+                                    )?
                                 {
+                                    let solution = match maybe_solution {
+                                        Ok(solution) => solution,
+                                        Err(error) => {
+                                            error!(%slot, %sector_index, %error, "Failed to prove");
+                                            // Do not error completely on disk corruption or other
+                                            // reasons why proving might fail
+                                            continue;
+                                        }
+                                    };
+
                                     debug!(%slot, %sector_index, "Solution found");
                                     trace!(?solution, "Solution found");
 
@@ -940,7 +929,7 @@ impl SingleDiskPlot {
                                 })?;
                         }
 
-                        Ok(())
+                        Ok::<_, FarmingError>(())
                     };
 
                     let farming_result = handle.block_on(select(
@@ -950,7 +939,7 @@ impl SingleDiskPlot {
 
                     if let Either::Left((Err(error), _)) = farming_result {
                         if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error) {
+                            if let Err(error) = error_sender.send(error.into()) {
                                 error!(%error, "Farming failed to send error to background task");
                             }
                         }

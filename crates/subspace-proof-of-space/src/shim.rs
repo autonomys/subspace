@@ -60,7 +60,7 @@ impl Table for ShimTable {
         challenge_index: u32,
         proof: &PosProof,
     ) -> Option<PosQualityBytes> {
-        let quality = find_quality(&seed, challenge_index)?;
+        let quality = find_quality(seed, challenge_index)?;
 
         proof[..seed.len()]
             .iter()

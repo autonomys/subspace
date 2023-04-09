@@ -351,11 +351,12 @@ impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedS
             sector_index: solution.sector_index,
             history_size: solution.history_size,
             piece_offset: solution.piece_offset,
-            record_commitment_hash: solution.record_commitment_hash,
-            piece_witness: solution.piece_witness,
-            chunk_offset: solution.chunk_offset,
+            record_commitment: solution.record_commitment,
+            record_witness: solution.record_witness,
             chunk: solution.chunk,
-            chunk_signature: solution.chunk_signature,
+            chunk_witness: solution.chunk_witness,
+            audit_chunk_offset: solution.audit_chunk_offset,
+            proof_of_space: solution.proof_of_space,
         })
     }
 }

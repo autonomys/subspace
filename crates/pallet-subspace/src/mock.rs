@@ -38,14 +38,14 @@ use sp_runtime::Perbill;
 use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, Kzg, Witness};
+use subspace_core_primitives::crypto::{kzg, Scalar, ScalarLegacy};
 use subspace_core_primitives::{
     ArchivedBlockProgress, Blake2b256Hash, HistorySize, LastArchivedBlock, Piece, PieceArray,
     PieceOffset, Randomness, RecordedHistorySegment, SegmentCommitment, SegmentHeader,
     SegmentIndex, Solution, SolutionRange,
 };
-use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
+use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -199,11 +199,12 @@ pub fn go_to_block(
             sector_index: 0,
             history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
             piece_offset: PieceOffset::default(),
-            record_commitment_hash: Default::default(),
-            piece_witness: Default::default(),
-            chunk_offset: 0,
+            record_commitment: Default::default(),
+            record_witness: Default::default(),
             chunk,
-            chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
+            chunk_witness: Default::default(),
+            audit_chunk_offset: 0,
+            proof_of_space: Default::default(),
         },
     );
 
@@ -271,7 +272,7 @@ pub fn generate_equivocation_proof(
             *byte = (current_block % 8) as u8;
         });
 
-        ScalarLegacy::from(&chunk_bytes)
+        Scalar::from(&chunk_bytes)
     };
 
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
@@ -286,11 +287,12 @@ pub fn generate_equivocation_proof(
                 sector_index: 0,
                 history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
                 piece_offset,
-                record_commitment_hash: Default::default(),
-                piece_witness: Default::default(),
-                chunk_offset: 0,
+                record_commitment: Default::default(),
+                record_witness: Default::default(),
                 chunk,
-                chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
+                chunk_witness: Default::default(),
+                audit_chunk_offset: 0,
+                proof_of_space: Default::default(),
             },
         );
         System::reset_events();
@@ -386,11 +388,12 @@ pub fn create_signed_vote(
             sector_index: 0,
             history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
             piece_offset: PieceOffset::default(),
-            record_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
-            piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
-            chunk_offset: 0,
+            record_commitment: Commitment::try_from_bytes(piece.commitment()).unwrap(),
+            record_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
             chunk,
-            chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
+            chunk_witness: Default::default(),
+            audit_chunk_offset: 0,
+            proof_of_space: Default::default(),
         },
     };
 

@@ -20,56 +20,15 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use merlin::Transcript;
-use schnorrkel::vrf::{VRFInOut, VRFOutput, VRFProof};
-use schnorrkel::{Keypair, PublicKey, SignatureResult};
-use subspace_core_primitives::crypto::{blake2b_256_hash_list, ScalarLegacy};
-use subspace_core_primitives::{Blake2b256Hash, ChunkSignature, Randomness};
-
-const CHUNK_SIGNATURE_LABEL: &[u8] = b"subspace_chunk_signature";
+use subspace_core_primitives::crypto::blake2b_256_hash_list;
+use subspace_core_primitives::{Blake2b256Hash, Randomness};
 
 /// Signing context used for creating reward signatures by farmers.
 pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
 
 // TODO: Separate type for global challenge
+// TODO: Transform this function into a method on `Randomness`
 /// Derive global slot challenge from global randomness.
 pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Blake2b256Hash {
     blake2b_256_hash_list(&[global_randomness, &slot.to_le_bytes()])
-}
-
-/// Transcript used for creation and verification of VRF signatures for chunks.
-pub fn create_chunk_signature_transcript(
-    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
-) -> Transcript {
-    let mut transcript = Transcript::new(CHUNK_SIGNATURE_LABEL);
-    transcript.append_message(b"chunk", chunk_bytes);
-    transcript
-}
-
-/// Create tag signature using farmer's keypair.
-pub fn create_chunk_signature(
-    keypair: &Keypair,
-    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
-) -> ChunkSignature {
-    let (in_out, proof, _) = keypair.vrf_sign(create_chunk_signature_transcript(chunk_bytes));
-
-    ChunkSignature {
-        output: in_out.output.to_bytes(),
-        proof: proof.to_bytes(),
-    }
-}
-
-/// Verify that chunk signature was created correctly.
-pub fn verify_chunk_signature(
-    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
-    chunk_signature: &ChunkSignature,
-    public_key: &PublicKey,
-) -> SignatureResult<VRFInOut> {
-    public_key
-        .vrf_verify(
-            create_chunk_signature_transcript(chunk_bytes),
-            &VRFOutput(chunk_signature.output),
-            &VRFProof::from_bytes(&chunk_signature.proof)?,
-        )
-        .map(|(in_out, _)| in_out)
 }

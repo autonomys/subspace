@@ -70,8 +70,7 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    HistorySize, Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange,
+    HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -957,12 +956,7 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
         let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(
-            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk.to_bytes(),
-            &pre_digest.solution.chunk_signature,
-        )
-        .expect("Tag signature is verified by the client and must always be valid; qed");
+        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
         let mut data = Vec::with_capacity(seed.len() + randomness.len());
         data.extend_from_slice(seed);
         data.extend_from_slice(&randomness);

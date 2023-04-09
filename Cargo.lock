@@ -10818,7 +10818,6 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-proof-of-space",
- "subspace-solving",
  "subspace-verification",
  "thiserror",
  "tokio",
@@ -11109,9 +11108,6 @@ dependencies = [
 name = "subspace-solving"
 version = "0.1.0"
 dependencies = [
- "merlin",
- "rand 0.8.5",
- "schnorrkel",
  "subspace-core-primitives",
 ]
 
@@ -11235,9 +11231,9 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-networking",
+ "subspace-proof-of-space",
  "subspace-runtime-primitives",
  "subspace-service",
- "subspace-solving",
  "subspace-test-client",
  "subspace-test-runtime",
  "subspace-transaction-pool",

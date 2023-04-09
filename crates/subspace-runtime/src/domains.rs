@@ -7,7 +7,7 @@ use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
 use sp_std::vec::Vec;
-use subspace_core_primitives::{PublicKey, Randomness};
+use subspace_core_primitives::Randomness;
 use subspace_verification::derive_randomness;
 
 pub(crate) fn extract_system_bundles(
@@ -135,12 +135,7 @@ pub(crate) fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) ->
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
         let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(
-            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk.to_bytes(),
-            &pre_digest.solution.chunk_signature,
-        )
-        .expect("Tag signature is verified by the client and must always be valid; qed");
+        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
         let mut data = Vec::with_capacity(seed.len() + randomness.len());
         data.extend_from_slice(seed);
         data.extend_from_slice(&randomness);

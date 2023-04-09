@@ -23,7 +23,7 @@ use crate::mock::{
     Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
-    pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, ChunkOffset, Config,
+    pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
     CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, Error, ParentBlockAuthorInfo,
     ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence, WeightInfo,
 };
@@ -45,6 +45,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::SegmentIndex;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -1047,7 +1048,7 @@ fn vote_invalid_solution_signature() {
         );
 
         let Vote::V0 { solution, .. } = &mut signed_vote.vote;
-        solution.chunk_signature.output = rand::random();
+        solution.chunk = Scalar::from(rand::random::<[u8; Scalar::SAFE_BYTES]>());
 
         // Fix signed vote signature after changed contents
         signed_vote.signature = FarmerSignature::unchecked_from(
@@ -1166,7 +1167,8 @@ fn vote_equivocation_current_block_plus_vote() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             0,
-            ChunkOffset(0),
+            Scalar::default(),
+            AuditChunkOffset(0),
             slot,
             reward_address,
         ));
@@ -1218,7 +1220,8 @@ fn vote_equivocation_parent_block_plus_vote() {
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             sector_index,
-            ChunkOffset(0),
+            Scalar::default(),
+            AuditChunkOffset(0),
             slot,
         ));
 
@@ -1291,7 +1294,8 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    ChunkOffset(0),
+                    Scalar::default(),
+                    AuditChunkOffset(0),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1311,7 +1315,8 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    ChunkOffset(0),
+                    Scalar::default(),
+                    AuditChunkOffset(0),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1370,7 +1375,8 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    ChunkOffset(0),
+                    Scalar::default(),
+                    AuditChunkOffset(0),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1390,7 +1396,8 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    ChunkOffset(0),
+                    Scalar::default(),
+                    AuditChunkOffset(0),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1418,7 +1425,8 @@ fn enabling_block_rewards_works() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
             0,
-            ChunkOffset(0),
+            Scalar::default(),
+            AuditChunkOffset(0),
             Subspace::current_slot(),
             1,
         ));
@@ -1428,7 +1436,8 @@ fn enabling_block_rewards_works() {
                 (
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
                     0,
-                    ChunkOffset(0),
+                    Scalar::default(),
+                    AuditChunkOffset(0),
                     Subspace::current_slot(),
                 ),
                 (2, FarmerSignature::unchecked_from([0; 64])),

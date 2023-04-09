@@ -25,13 +25,12 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
     HistorySize, LegacySectorId, PublicKey, Randomness, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex, Solution, SolutionRange, PIECES_IN_SECTOR,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::farming::audit_sector;
+use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
@@ -60,10 +59,10 @@ fn default_test_constants() -> ChainConstants<Header> {
 }
 
 fn derive_solution_range(
-    local_challenge: &SolutionRange,
+    sector_slot_challenge: &SolutionRange,
     audit_chunk: &SolutionRange,
 ) -> SolutionRange {
-    subspace_core_primitives::bidirectional_distance(local_challenge, audit_chunk) * 2
+    subspace_core_primitives::bidirectional_distance(sector_slot_challenge, audit_chunk) * 2
 }
 
 fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
@@ -82,9 +81,11 @@ fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
 }
 
 struct Farmer {
+    kzg: Kzg,
+    erasure_coding: ErasureCoding,
     segment_header: SegmentHeader,
     sector: Vec<u8>,
-    sector_metadata: Vec<u8>,
+    sector_metadata: SectorMetadata,
 }
 
 impl Farmer {
@@ -107,7 +108,7 @@ impl Farmer {
         )
         .unwrap();
 
-        block_on(plot_sector::<_, _, _, ChiaTable>(
+        let plotted_sector = block_on(plot_sector::<_, _, _, ChiaTable>(
             &public_key,
             sector_index,
             &archived_segment.pieces,
@@ -123,9 +124,11 @@ impl Farmer {
         .unwrap();
 
         Self {
+            kzg,
+            erasure_coding,
             segment_header,
             sector,
-            sector_metadata,
+            sector_metadata: plotted_sector.sector_metadata,
         }
     }
 }
@@ -155,37 +158,36 @@ fn valid_header(
     let segment_commitment = farmer.segment_header.segment_commitment();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
-    let sector_codec = SectorCodec::new(sector_size(PIECES_IN_SECTOR)).unwrap();
 
     let global_challenge = derive_global_challenge(&randomness, slot);
-    let eligible_sector = audit_sector(
+    let solution_candidates = audit_sector(
         &public_key,
         sector_index,
         &global_challenge,
         SolutionRange::MAX,
-        Cursor::new(&farmer.sector),
+        &mut Cursor::new(&farmer.sector),
+        &farmer.sector_metadata,
     )
     .unwrap()
     .expect("With max solution range there must be a sector eligible; qed");
-    let local_challenge = eligible_sector.local_challenge;
-    let solution = eligible_sector
-        .try_into_solutions(
-            keypair,
-            public_key,
-            &sector_codec,
-            farmer.sector.as_slice(),
-            farmer.sector_metadata.as_slice(),
+    let sector_slot_challenge = solution_candidates.sector_slot_challenge;
+    let solution = solution_candidates
+        .into_iter(
+            &public_key,
+            &farmer.kzg,
+            &farmer.erasure_coding,
+            &mut Cursor::new(farmer.sector.as_slice()),
         )
         .unwrap()
-        .into_iter()
         .next()
-        .expect("With max solution range there must be a solution; qed");
+        .expect("With max solution range there must be a solution; qed")
+        .unwrap();
     // Lazy conversion to a different type of public key and reward address
     let solution =
         Solution::<FarmerPublicKey, FarmerPublicKey>::decode(&mut solution.encode().as_slice())
             .unwrap();
     let audit_chunk = derive_audit_chunk(&solution.chunk.to_bytes());
-    let solution_range = derive_solution_range(&local_challenge, &audit_chunk);
+    let solution_range = derive_solution_range(&sector_slot_challenge, &audit_chunk);
 
     let pre_digest = PreDigest {
         slot: slot.into(),
@@ -276,9 +278,7 @@ fn add_next_digests(store: &MockStorage, number: NumberOf<Header>, header: &mut 
         number,
         constants.global_randomness_interval,
         &digests.pre_digest,
-    )
-    .unwrap()
-    {
+    ) {
         digest_logs.push(DigestItem::next_global_randomness(next_randomness));
     }
 
@@ -806,12 +806,7 @@ fn test_next_global_randomness_digest() {
         // add next global randomness
         remove_seal(&mut header);
         let pre_digest = extract_pre_digest(&header).unwrap();
-        let randomness = derive_randomness(
-            &PublicKey::from(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk.to_bytes(),
-            &pre_digest.solution.chunk_signature,
-        )
-        .unwrap();
+        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
         let digests = header.digest_mut();
         digests.push(DigestItem::next_global_randomness(randomness));
         seal_header(&keypair, &mut header);

@@ -457,4 +457,28 @@ impl SectorContentsMap {
                 },
             ))
     }
+
+    /// Iterate over chunks of s-bucket indicating if encoded chunk is used at corresponding
+    /// position
+    ///
+    /// ## Panics
+    /// Panics if `s_bucket` is outside of [`Record::NUM_S_BUCKETS`] range.
+    pub fn iter_s_bucket_encoded_record_chunks_used(
+        &self,
+        s_bucket: SBucket,
+    ) -> Result<impl Iterator<Item = bool> + '_, SectorContentsMapIterationError> {
+        let s_bucket = usize::from(s_bucket);
+
+        if s_bucket >= Record::NUM_S_BUCKETS {
+            return Err(SectorContentsMapIterationError::SBucketOutOfRange {
+                provided: s_bucket,
+                max: Record::NUM_S_BUCKETS,
+            });
+        }
+
+        Ok(self
+            .encoded_record_chunks_used
+            .iter()
+            .map(move |record_bitfields| record_bitfields[s_bucket]))
+    }
 }

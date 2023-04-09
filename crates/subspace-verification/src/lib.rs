@@ -17,24 +17,25 @@
 //! Verification primitives for Subspace.
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+#![feature(array_chunks)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
 use schnorrkel::context::SigningContext;
-use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{SignatureError, SignatureResult};
+use schnorrkel::SignatureError;
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
+use subspace_core_primitives::crypto::{
+    blake2b_256_254_hash_to_scalar, blake2b_256_hash, blake2b_256_hash_list, ScalarLegacy,
+};
 use subspace_core_primitives::{
-    BlockNumber, ChunkSignature, LegacySectorId, PieceOffset, PublicKey, Randomness,
-    RewardSignature, SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR,
-    RANDOMNESS_CONTEXT,
+    Blake2b256Hash, BlockNumber, LegacySectorId, PieceOffset, PublicKey, Randomness,
+    RewardSignature, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution, SolutionRange,
+    PIECES_IN_SECTOR,
 };
-use subspace_solving::{
-    create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
-};
+use subspace_solving::derive_global_challenge;
 
 /// Errors encountered by the Subspace consensus primitives.
 #[derive(Debug, Eq, PartialEq)]
@@ -83,9 +84,9 @@ where
 {
     if !archiver::is_record_commitment_hash_valid(
         kzg,
-        &solution.record_commitment_hash,
+        &blake2b_256_254_hash_to_scalar(&solution.record_commitment.to_bytes()),
         segment_commitment,
-        &solution.piece_witness,
+        &solution.record_witness,
         position,
     ) {
         return Err(Error::InvalidPiece);
@@ -94,6 +95,7 @@ where
     Ok(())
 }
 
+// TODO: Delete
 /// Derive audit chunk from scalar bytes contained within plotted piece
 pub fn derive_audit_chunk(chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES]) -> SolutionRange {
     let hash = blake2b_256_hash(chunk_bytes);
@@ -103,13 +105,38 @@ pub fn derive_audit_chunk(chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES]) -> Solut
 }
 
 /// Returns true if `solution.tag` is within the solution range.
-pub fn is_within_solution_range(
+pub fn is_within_solution_range_legacy(
     local_challenge: SolutionRange,
     audit_chunk: SolutionRange,
     solution_range: SolutionRange,
 ) -> bool {
     subspace_core_primitives::bidirectional_distance(&local_challenge, &audit_chunk)
         <= solution_range / 2
+}
+
+/// Returns true if `solution.tag` is within the solution range.
+pub fn is_within_solution_range(
+    global_challenge: &Blake2b256Hash,
+    audit_chunk: SolutionRange,
+    sector_slot_challenge: &SectorSlotChallenge,
+    solution_range: SolutionRange,
+) -> bool {
+    let global_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
+        *global_challenge
+            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .next()
+            .expect("Solution range is smaller in size than global challenge; qed"),
+    );
+    let sector_slot_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
+        *sector_slot_challenge
+            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .next()
+            .expect("Solution range is smaller in size than sector slot challenge; qed"),
+    );
+    subspace_core_primitives::bidirectional_distance(
+        &global_challenge_as_solution_range,
+        &(audit_chunk ^ sector_slot_challenge_as_solution_range),
+    ) <= solution_range / 2
 }
 
 /// Parameters for checking piece validity
@@ -154,33 +181,24 @@ where
 
     let sector_id = LegacySectorId::new(&public_key, solution.sector_index);
 
-    let local_challenge =
-        sector_id.derive_local_challenge(&derive_global_challenge(global_randomness, slot));
+    let sector_slot_challenge =
+        sector_id.derive_sector_slot_challenge(&derive_global_challenge(global_randomness, slot));
 
     let chunk_bytes = solution.chunk.to_bytes();
 
-    if !is_within_solution_range(
-        local_challenge,
+    if !is_within_solution_range_legacy(
+        sector_slot_challenge,
         derive_audit_chunk(&chunk_bytes),
         *solution_range,
     ) {
         return Err(Error::OutsideSolutionRange);
     }
 
-    if let Err(error) = verify_chunk_signature(
-        &chunk_bytes,
-        &solution.chunk_signature,
-        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())
-            .expect("Always correct length; qed"),
-    ) {
-        return Err(Error::InvalidSolutionSignature(error));
-    }
-
     // TODO: Check if sector already expired once we have such notion
 
     if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
         let audit_piece_offset = PieceOffset::from(
-            u16::try_from(local_challenge % u64::from(PIECES_IN_SECTOR))
+            u16::try_from(sector_slot_challenge % u64::from(PIECES_IN_SECTOR))
                 .expect("Remainder of division by u16 fits into u16; qed"),
         );
         let position = sector_id
@@ -200,21 +218,12 @@ where
     Ok(())
 }
 
-/// Derive on-chain randomness from chunk signature.
-///
-/// NOTE: If you are not the signer then you must verify the local challenge before calling this
-/// function.
-pub fn derive_randomness(
-    public_key: &PublicKey,
-    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
-    chunk_signature: &ChunkSignature,
-) -> SignatureResult<Randomness> {
-    let in_out = VRFOutput(chunk_signature.output).attach_input_hash(
-        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
-        create_chunk_signature_transcript(chunk_bytes),
-    )?;
-
-    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
+/// Derive on-chain randomness from solution.
+pub fn derive_randomness<PublicKey, RewardAddress>(
+    solution: &Solution<PublicKey, RewardAddress>,
+    slot: SlotNumber,
+) -> Randomness {
+    blake2b_256_hash_list(&[&solution.chunk.to_bytes(), &slot.to_le_bytes()])
 }
 
 /// Derives next solution range based on the total era slots and slot probability

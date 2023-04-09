@@ -891,10 +891,10 @@ pub fn is_piece_valid(
     )
 }
 
-/// Validate witness for piece commitment hash produced by archiver
+/// Validate witness for record commitment hash produced by archiver
 pub fn is_record_commitment_hash_valid(
     kzg: &Kzg,
-    commitment_hash: &Scalar,
+    record_commitment_hash: &Scalar,
     commitment: &SegmentCommitment,
     witness: &Witness,
     position: u32,
@@ -903,7 +903,7 @@ pub fn is_record_commitment_hash_valid(
         commitment,
         ArchivedHistorySegment::NUM_PIECES,
         position,
-        commitment_hash,
+        record_commitment_hash,
         witness,
     )
 }

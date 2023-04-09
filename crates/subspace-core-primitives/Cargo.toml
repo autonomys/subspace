@@ -49,14 +49,10 @@ rand_core = "0.6.4"
 
 [features]
 default = [
-    "parallel-decoding",
     "embedded-kzg-settings",
     "serde",
     "std",
 ]
-# Parallel decoding will use all CPUs available, but will allocate a memory of a size of a sector instead of square root
-# of that
-parallel-decoding = ["dep:rayon"]
 embedded-kzg-settings = []
 rayon = ["dep:rayon"]
 serde = [

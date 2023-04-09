@@ -31,7 +31,6 @@ schnorrkel = "0.9.1"
 serde = { version = "1.0.159", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }

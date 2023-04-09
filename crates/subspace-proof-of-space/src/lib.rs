@@ -20,7 +20,7 @@ pub trait Quality {
 }
 
 /// Proof of space kind
-pub trait Table: Send + Sync {
+pub trait Table: Send + Sync + 'static {
     /// Abstraction that represents quality of the solution in the table
     type Quality<'a>: Quality
     where

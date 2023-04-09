@@ -540,13 +540,16 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             header_digests.pre_digest.slot.into(),
         );
 
-        let local_challenge = sector_id.derive_local_challenge(&global_challenge);
+        let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
 
         let audit_chunk = derive_audit_chunk(&header_digests.pre_digest.solution.chunk.to_bytes());
 
         BlockWeight::from(
             SolutionRange::MAX
-                - subspace_core_primitives::bidirectional_distance(&local_challenge, &audit_chunk),
+                - subspace_core_primitives::bidirectional_distance(
+                    &sector_slot_challenge,
+                    &audit_chunk,
+                ),
         )
     }
 

@@ -7,17 +7,19 @@
     iter_collect_into,
     new_uninit,
     portable_simd,
-    slice_flatten
+    slice_flatten,
+    try_blocks
 )]
 
 //! Components of the reference implementation of Subspace Farmer for Subspace Network Blockchain.
 //!
 //! These components are used to implement farmer itself, but can also be used independently if necessary.
 
-pub mod farming;
+pub mod auditing;
 pub mod file_ext;
 pub mod piece_caching;
 pub mod plotting;
+pub mod proving;
 pub mod reading;
 pub mod sector;
 mod segment_reconstruction;

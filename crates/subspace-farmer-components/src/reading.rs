@@ -157,6 +157,38 @@ where
     Ok(record_chunks)
 }
 
+/// Given sector record chunks recover extended record chunks (both source and parity)
+pub fn recover_extended_record_chunks(
+    sector_record_chunks: &[Option<Scalar>; Record::NUM_S_BUCKETS],
+    piece_offset: PieceOffset,
+    erasure_coding: &ErasureCoding,
+) -> Result<Box<[Scalar; Record::NUM_S_BUCKETS]>, ReadingError> {
+    // Restore source record scalars
+    let record_chunks = erasure_coding
+        .recover(sector_record_chunks)
+        .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
+            piece_offset,
+            error,
+        })?;
+
+    // Required for safety invariant below
+    if record_chunks.len() != Record::NUM_S_BUCKETS {
+        return Err(ReadingError::WrongRecordSizeAfterDecoding {
+            expected: Record::NUM_S_BUCKETS,
+            actual: record_chunks.len(),
+        });
+    }
+
+    let mut record_chunks = ManuallyDrop::new(record_chunks);
+
+    // SAFETY: Original memory is not dropped, size of the data checked above
+    let record_chunks = unsafe {
+        Box::from_raw(record_chunks.as_mut_ptr() as *mut [Scalar; Record::NUM_S_BUCKETS])
+    };
+
+    Ok(record_chunks)
+}
+
 /// Given sector record chunks recover source record chunks
 pub fn recover_source_record_chunks(
     sector_record_chunks: &[Option<Scalar>; Record::NUM_S_BUCKETS],
