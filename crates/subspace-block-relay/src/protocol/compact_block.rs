@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 /// The compact response
 #[derive(Encode, Decode)]
@@ -95,7 +95,7 @@ where
 
         // All the entries could be resolved locally
         if protocol_units.len() == total_len {
-            info!(
+            trace!(
                 target: LOG_TARGET,
                 "relay::resolve: {download_unit_id:?}: resolved locally[{total_len}]",
             );
@@ -135,7 +135,7 @@ where
             }
         }
 
-        info!(
+        trace!(
             target: LOG_TARGET,
             "relay::resolve: {download_unit_id:?}: resolved by server[{total_len},{},{}]",
             protocol_units.len(),
