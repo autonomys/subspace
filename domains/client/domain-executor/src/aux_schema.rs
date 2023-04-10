@@ -6,8 +6,7 @@ use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
 use sp_domains::ExecutionReceipt;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, SaturatedConversion};
-use std::sync::Arc;
+use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
 
 const EXECUTION_RECEIPT: &[u8] = b"execution_receipt";
@@ -344,37 +343,6 @@ where
     Ok(())
 }
 
-// TODO: improve the canonical block hash searching in the future.
-// ref https://substrate.stackexchange.com/questions/7970/whats-the-best-practice-to-check-whether-a-block-hash-is-in-the-canonical-chain
-pub(super) fn canonical_primary_hash_at<PBlock, PClient>(
-    primary_chain_client: &Arc<PClient>,
-    height: NumberFor<PBlock>,
-) -> ClientResult<PBlock::Hash>
-where
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock>,
-{
-    let primary_chain_best_hash = primary_chain_client.info().best_hash;
-    let primary_chain_best_header = primary_chain_client
-        .header(primary_chain_best_hash)?
-        .ok_or_else(|| {
-            ClientError::Backend(format!(
-                "Primary header for {primary_chain_best_hash} not found"
-            ))
-        })?;
-
-    let mut start = primary_chain_best_header;
-
-    while *start.number() > height {
-        let parent_hash = *start.parent_hash();
-        start = primary_chain_client.header(parent_hash)?.ok_or_else(|| {
-            ClientError::Backend(format!("Primary header for {parent_hash} not found",))
-        })?;
-    }
-
-    Ok(start.hash())
-}
-
 /// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
 pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, PBlock, F>(
     backend: &Backend,
@@ -396,7 +364,6 @@ where
 
         let canonical_primary_hash = canonical_primary_hash_at(bad_receipt_number)?;
 
-        // let mut fork_receipt_hashes = vec![];
         for bad_receipt_hash in bad_receipt_hashes.iter() {
             let (trace_mismatch_index, primary_block_hash): (u32, PBlock::Hash) = load_decode(
                 backend,
