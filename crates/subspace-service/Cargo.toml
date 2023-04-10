@@ -22,6 +22,7 @@ domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitive
 either = "1.8.1"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 futures = "0.3.28"
+hex = "0.4.3"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 parity-scale-codec = "3.4.0"
