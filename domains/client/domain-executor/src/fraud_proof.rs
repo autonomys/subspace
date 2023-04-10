@@ -7,9 +7,11 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
+use sp_runtime::{Digest, DigestItem};
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -144,14 +146,26 @@ where
             let pre_state_root = as_h256(parent_header.state_root())?;
             let post_state_root = as_h256(local_root)?;
 
-            // TODO: digests for system domain is not `Default::default()`, fix it and add a test
-            // to cover the entire flow of creation and verification in the production environment.
+            let digest = if domain_id.is_system() {
+                Digest {
+                    logs: vec![DigestItem::primary_block_info::<NumberFor<Block>, _>((
+                        block_number.into(),
+                        local_receipt.primary_hash,
+                    ))],
+                }
+            } else {
+                Default::default()
+            };
+
+            // TODO: add a test to cover the entire flow of creation and verification in the production
+            // environment, i.e., the generate_proof function on the executor side and the verify function
+            // on the verifier side.
             let new_header = Block::Header::new(
                 block_number.into(),
                 Default::default(),
                 Default::default(),
                 parent_header.hash(),
-                Default::default(),
+                digest,
             );
             let execution_phase = ExecutionPhase::InitializeBlock {
                 domain_parent_hash: as_h256(&parent_header.hash())?,

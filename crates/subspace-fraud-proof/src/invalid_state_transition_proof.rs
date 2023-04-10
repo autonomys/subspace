@@ -14,11 +14,13 @@ use sc_client_api::{backend, BlockBackend, HeaderBackend};
 use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::MessengerApi;
 use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, Header as HeaderT, NumberFor};
+use sp_runtime::{Digest, DigestItem};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
@@ -678,14 +680,27 @@ where
                     <Block as BlockT>::Hash::decode(&mut domain_parent_hash.encode().as_slice())?;
                 let parent_number =
                     <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
-                // TODO: digests for system domain is not `Default::default()`, fix it and add a test
-                // to cover the entire flow of creation and verification in the production environment.
+
+                let primary_number = parent_number + 1;
+                let digest = if domain_id.is_system() {
+                    let primary_hash = self
+                        .pre_post_state_root_verifier
+                        .primary_hash(*domain_id, primary_number)?;
+                    Digest {
+                        logs: vec![DigestItem::primary_block_info::<NumberFor<Block>, _>((
+                            primary_number,
+                            primary_hash,
+                        ))],
+                    }
+                } else {
+                    Default::default()
+                };
                 let new_header = <Block as BlockT>::Header::new(
-                    parent_number,
+                    primary_number,
                     Default::default(),
                     Default::default(),
                     parent_hash,
-                    Default::default(),
+                    digest,
                 );
                 new_header.encode()
             }

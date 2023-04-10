@@ -1,4 +1,3 @@
-#![allow(unused_imports, unused_variables)]
 use crate::invalid_state_transition_proof::{
     ExecutionProver, InvalidStateTransitionProofVerifier, SystemDomainExtrinsicsBuilder,
     VerifyPrePostStateRoot,
@@ -7,7 +6,6 @@ use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
-use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
