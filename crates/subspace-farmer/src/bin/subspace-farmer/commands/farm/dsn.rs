@@ -36,6 +36,9 @@ const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
+const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 100;
+const MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 100;
+
 #[allow(clippy::type_complexity)]
 pub(super) fn configure_dsn(
     base_path: PathBuf,
@@ -277,6 +280,8 @@ pub(super) fn configure_dsn(
             }),
         ],
         provider_storage: farmer_provider_storage,
+        max_established_outgoing_connections: MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
+        max_pending_outgoing_connections: MAX_PENDING_OUTGOING_CONNECTIONS,
         ..default_config
     };
 
