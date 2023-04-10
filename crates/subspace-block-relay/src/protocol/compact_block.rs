@@ -95,7 +95,7 @@ where
 
         // All the entries could be resolved locally
         if protocol_units.len() == total_len {
-            trace!(
+            info!(
                 target: LOG_TARGET,
                 "relay::resolve: {download_unit_id:?}: resolved locally[{total_len}]",
             );
@@ -135,7 +135,7 @@ where
             }
         }
 
-        trace!(
+        info!(
             target: LOG_TARGET,
             "relay::resolve: {download_unit_id:?}: resolved by server[{total_len},{},{}]",
             protocol_units.len(),
