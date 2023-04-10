@@ -274,15 +274,14 @@ async fn execution_proof_creation_and_verification_should_work() {
     let proof_verifier =
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
-    // Incorrect but it's fine for the test purpose.
-    let parent_hash_alice = ferdie.client.info().best_hash;
-    let parent_number_alice = ferdie.client.info().best_number;
+    let parent_number_alice = *parent_header.number();
+    let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
@@ -339,7 +338,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             domain_id: TEST_DOMAIN_ID,
             bad_receipt_hash: Hash::random(),
             parent_number: parent_number_alice,
-            primary_parent_hash: parent_hash_alice,
+            primary_parent_hash,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
             post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
             proof: storage_proof,
@@ -392,7 +391,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: intermediate_roots.last().unwrap().into(),
         post_state_root: post_execution_root,
         proof: storage_proof,
@@ -578,12 +577,7 @@ async fn invalid_execution_proof_should_not_work() {
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
     let parent_number_alice = *parent_header.number();
-    let primary_parent_hash = ferdie
-        .client
-        .header(ferdie.client.hash(parent_number_alice).unwrap().unwrap())
-        .unwrap()
-        .unwrap()
-        .hash();
+    let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
