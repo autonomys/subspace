@@ -32,11 +32,5 @@ system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system
 tracing = "0.1.37"
 
 [dev-dependencies]
-<<<<<<< HEAD
 sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-
-=======
-sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
->>>>>>> main
