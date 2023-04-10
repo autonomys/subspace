@@ -19,7 +19,7 @@ use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::{BlockDataSchema, BlockRequestSchema, BlockResponseSchema, FromBlockSchema};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, Header};
+use sp_runtime::traits::{Block as BlockT, Extrinsic as ExtrinsicT, Header};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, trace, warn};
@@ -61,14 +61,14 @@ struct PartialBlock {
     indexed_body: Vec<Vec<u8>>,
 }
 
-struct ConsensusRelayClient<Block: BlockT> {
-    protocol: Arc<dyn ProtocolClient<BlockHash<Block>, Extrinsic<Block>>>,
+struct ConsensusRelayClient<Block: BlockT, Pool: TransactionPool> {
+    protocol: Arc<dyn ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>>,
     protocol_name: ProtocolName,
     _phantom_data: std::marker::PhantomData<Block>,
 }
 
 #[async_trait]
-impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
+impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<Block, Pool> {
     type Request = Vec<u8>;
 
     async fn download(
@@ -93,22 +93,30 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
         };
 
         // Resolve the protocol response to get the extrinsics
-        let mut extrinsics = match self
+        let (block_hash, mut resolved) = self
             .protocol
             .resolve(initial_response.protocol_response, stub.clone())
-            .await
-        {
-            Ok(extrinsics) => extrinsics,
-            Err(err) => return Err(err),
-        };
+            .await?;
 
         // Assemble the final response
         let block_data = BlockDataSchema {
             hash: initial_response.partial_block.hash,
             header: initial_response.partial_block.hdr,
-            body: extrinsics
+            body: resolved
                 .iter_mut()
-                .map(|extrinsic| extrinsic.encode())
+                .map(|resolved| {
+                    let encoded = resolved.protocol_unit.encode();
+                    warn!(
+                        target: LOG_TARGET,
+                        "relay::download: {block_hash:?}/{:?}: locally_resolved = {}, \
+                         signed = {:?}, size = {}",
+                        resolved.protocol_unit_id,
+                        resolved.locally_resolved,
+                        resolved.protocol_unit.is_signed(),
+                        encoded.len()
+                    );
+                    encoded
+                })
                 .collect(),
             receipt: Vec::new(),
             message_queue: Vec::new(),
@@ -131,7 +139,7 @@ impl<Block: BlockT> RelayClient for ConsensusRelayClient<Block> {
 }
 
 #[async_trait]
-impl<Block: BlockT> BlockDownloader for ConsensusRelayClient<Block> {
+impl<Block: BlockT, Pool: TransactionPool> BlockDownloader for ConsensusRelayClient<Block, Pool> {
     async fn download_block(
         &self,
         who: PeerId,
@@ -450,7 +458,7 @@ where
         transaction_pool: pool,
         _phantom_data: Default::default(),
     });
-    let relay_client: ConsensusRelayClient<Block> = ConsensusRelayClient {
+    let relay_client: ConsensusRelayClient<Block, Pool> = ConsensusRelayClient {
         protocol: Arc::new(CompactBlockClient {
             backend: backend.clone(),
         }),

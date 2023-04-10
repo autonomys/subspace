@@ -7,11 +7,26 @@ use codec::{Decode, Encode};
 
 pub(crate) mod compact_block;
 
+/// The resolved protocol unit and meta info
+pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
+    /// The protocol unit Id.
+    pub(crate) protocol_unit_id: ProtocolUnitId,
+
+    /// The protocol unit
+    pub(crate) protocol_unit: ProtocolUnit,
+
+    /// If it was resolved from the local pool or if
+    /// it had to be fetched from the server
+    pub(crate) locally_resolved: bool,
+}
+
 /// The client side of the protocol used by RelayClient
 #[async_trait]
-pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnit>: Send + Sync
+pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
+    Send + Sync
 where
     DownloadUnitId: Encode + Decode,
+    ProtocolUnitId: Encode + Decode,
     ProtocolUnit: Encode + Decode,
 {
     /// Builds the protocol portion of the initial request
@@ -22,7 +37,7 @@ where
         &self,
         response: Vec<u8>,
         stub: RequestResponseStub,
-    ) -> Result<Vec<ProtocolUnit>, RelayError>;
+    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 
 /// The server side of the protocol used by RelayServer
@@ -33,7 +48,7 @@ where
     /// Builds the protocol response for the request from the protocol client.
     fn build_initial_response(
         &self,
-        id: &DownloadUnitId,
+        download_unit_id: &DownloadUnitId,
         initial_request: Option<Vec<u8>>,
     ) -> Result<Vec<u8>, RelayError>;
 
