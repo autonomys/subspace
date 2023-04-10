@@ -317,12 +317,12 @@ where
             .build();
 
         if let Err(err) = self.swarm.dial(dial_opts) {
-            warn!(
+            debug!(
                 %err,
                 %local_peer_id,
                 remote_peer_id = %peer_id,
                 %addr,
-                "Unexpected error: failed to dial an address."
+                "Dialing error: failed to dial an address."
             );
         }
     }
