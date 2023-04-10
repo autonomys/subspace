@@ -19,18 +19,18 @@ serde = { version = "1.0.159", optional = true }
 
 # Substrate Dependencies
 
-frame-support = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
-frame-system = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
-sp-consensus-grandpa = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
-sp-core = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
-sp-runtime = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
-sp-std = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
-sp-trie = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
+frame-support = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
+frame-system = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
+sp-consensus-grandpa = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
+sp-core = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
+sp-runtime = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
+sp-std = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
+sp-trie = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
 
 [dev-dependencies]
 ed25519-dalek = { version = "1.0", default-features = false, features = ["u64_backend"] }
-sp-io = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-application-crypto = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+sp-io = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-application-crypto = { git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
 
 [features]
 default = ["std"]

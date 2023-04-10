@@ -18,17 +18,17 @@ codec = { package = "parity-scale-codec", version = "3.4.0", default-features = 
 log = { version = "0.4.17", default-features = false }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-application-crypto = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-externalities = { version = "0.13.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-runtime-interface = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
-sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-application-crypto = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-externalities = { version = "0.13.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-runtime-interface = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4" }
+sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", branch = "rsub/block-relay-poc-v4", default-features = false }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
