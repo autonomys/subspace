@@ -61,7 +61,7 @@ enum Command {
         piece_providers_cache_size: ByteSize,
         /// Protocol prefix for libp2p stack, should be set as genesis hash of the blockchain for
         /// production use.
-        #[arg(long, default_value = "dev")]
+        #[arg(long)]
         protocol_prefix: String,
     },
     /// Generate a new keypair
