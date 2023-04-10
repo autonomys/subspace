@@ -6,15 +6,17 @@ pub(crate) mod prometheus;
 mod tests;
 pub(crate) mod unique_record_binary_heap;
 
+use crate::Node;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
+use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Notify;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// This test is successful only for global IP addresses and DNS names.
 pub(crate) fn is_global_address_or_dns(addr: &Multiaddr) -> bool {
@@ -282,6 +284,26 @@ impl Drop for ResizableSemaphorePermit {
         let notify_waiters = self.0.state.lock().free_one();
         if notify_waiters {
             self.0.notify.notify_waiters();
+        }
+    }
+}
+
+/// Prints DSN online status changes.
+pub fn online_status_informer(node: &Node) -> impl Future<Output = ()> {
+    let mut online_status_observer = node.online_status_observer().clone();
+    async move {
+        loop {
+            if online_status_observer.changed().await.is_err() {
+                return; // app is closing
+            }
+
+            let online_status = *online_status_observer.borrow();
+
+            if online_status {
+                info!("DSN connection established.");
+            } else {
+                warn!("DSN connection lost.");
+            }
         }
     }
 }

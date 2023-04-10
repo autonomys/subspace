@@ -43,7 +43,7 @@ use sp_runtime::DigestItem;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Randomness, RewardSignature, SectorId, Solution};
+use subspace_core_primitives::{LegacySectorId, Randomness, RewardSignature, Solution};
 use subspace_solving::derive_global_challenge;
 use subspace_verification::{
     check_reward_signature, derive_audit_chunk, is_within_solution_range, verify_solution,
@@ -227,7 +227,8 @@ where
                 continue;
             }
 
-            let sector_id = SectorId::new(&(&solution.public_key).into(), solution.sector_index);
+            let sector_id =
+                LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
 
             let segment_index = sector_id
                 .derive_piece_index(solution.piece_offset, solution.total_pieces)

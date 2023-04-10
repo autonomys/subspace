@@ -36,7 +36,7 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockWeight, PublicKey, Randomness, RewardSignature, SectorId,
+    ArchivedHistorySegment, BlockWeight, LegacySectorId, PublicKey, Randomness, RewardSignature,
     SegmentCommitment, SegmentIndex, SolutionRange,
 };
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
@@ -340,7 +340,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Self::verify_block_signature(&mut header, &header_digests.pre_digest.solution.public_key)?;
 
         // verify solution
-        let sector_id = SectorId::new(
+        let sector_id = LegacySectorId::new(
             &(&header_digests.pre_digest.solution.public_key).into(),
             header_digests.pre_digest.solution.sector_index,
         );
@@ -532,7 +532,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
     /// Calculates block weight from randomness and predigest.
     fn calculate_block_weight(
-        sector_id: &SectorId,
+        sector_id: &LegacySectorId,
         header_digests: &SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
     ) -> BlockWeight {
         let global_challenge = derive_global_challenge(

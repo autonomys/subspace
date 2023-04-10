@@ -29,8 +29,8 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment, SectorId, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
+    LegacySectorId, Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment,
+    SegmentCommitment, SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
@@ -379,7 +379,7 @@ fn add_headers_to_chain(
             });
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
-        let sector_id = SectorId::new(
+        let sector_id = LegacySectorId::new(
             &(&digests.pre_digest.solution.public_key).into(),
             digests.pre_digest.solution.sector_index,
         );
@@ -740,7 +740,7 @@ fn test_reorg_to_heavier_smaller_chain() {
         seal_header(&keypair, &mut header);
         let digests: SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature> =
             extract_subspace_digest_items(&header).unwrap();
-        let sector_id = SectorId::new(
+        let sector_id = LegacySectorId::new(
             &(&digests.pre_digest.solution.public_key).into(),
             digests.pre_digest.solution.sector_index,
         );

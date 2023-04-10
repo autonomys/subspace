@@ -81,6 +81,7 @@ use subspace_fraud_proof::invalid_state_transition_proof::{
 };
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_networking::utils::online_status_informer;
 use subspace_networking::{peer_id, Node};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
@@ -574,6 +575,18 @@ where
                 }
             }))
             .detach();
+
+            let status_informer_fut = online_status_informer(&node);
+            task_manager.spawn_handle().spawn(
+                "status-observer",
+                Some("subspace-networking"),
+                Box::pin(
+                    async move {
+                        status_informer_fut.await;
+                    }
+                    .in_current_span(),
+                ),
+            );
 
             task_manager.spawn_essential_handle().spawn_essential(
                 "node-runner",
