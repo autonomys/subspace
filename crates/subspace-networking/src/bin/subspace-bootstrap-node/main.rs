@@ -159,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
                 max_established_outgoing_connections: out_peers,
                 max_pending_incoming_connections: pending_in_peers,
                 max_pending_outgoing_connections: pending_out_peers,
-                ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
+                ..Config::new(keypair, provider_storage)
             };
             let (node, mut node_runner) =
                 subspace_networking::create(config).expect("Networking stack creation failed.");

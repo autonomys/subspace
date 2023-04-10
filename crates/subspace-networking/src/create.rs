@@ -34,6 +34,7 @@ use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;
 use std::num::NonZeroUsize;
+use std::string::ToString;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
@@ -42,8 +43,11 @@ use thiserror::Error;
 use tokio::sync::watch;
 use tracing::{debug, error, info};
 
-const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
-const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
+const DEFAULT_NETWORK_PROTOCOL_PREFIX: &str = "dev";
+const PROTOCOL_PREFIX_PLACEHOLDER: &str = "{}";
+const KADEMLIA_PROTOCOL: &str = "/subspace/{}/kad/0.1.0";
+const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/{}/gossipsub";
+
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
@@ -232,9 +236,15 @@ impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
 
 impl Default for Config<MemoryProviderStorage> {
     fn default() -> Self {
-        let keypair = identity::ed25519::Keypair::generate();
-        let peer_id = identity::PublicKey::Ed25519(keypair.public()).to_peer_id();
-        Self::with_keypair_and_provider_storage(keypair, MemoryProviderStorage::new(peer_id))
+        let ed25519_keypair = identity::ed25519::Keypair::generate();
+
+        let peer_id = identity::PublicKey::Ed25519(ed25519_keypair.public()).to_peer_id();
+        let keypair = identity::Keypair::Ed25519(ed25519_keypair);
+        Self::new(
+            DEFAULT_NETWORK_PROTOCOL_PREFIX.to_string(),
+            keypair,
+            MemoryProviderStorage::new(peer_id),
+        )
     }
 }
 
@@ -242,14 +252,19 @@ impl<ProviderStorage> Config<ProviderStorage>
 where
     ProviderStorage: provider_storage::ProviderStorage,
 {
-    pub fn with_keypair_and_provider_storage(
-        keypair: identity::ed25519::Keypair,
+    pub fn new(
+        protocol_prefix: String,
+        keypair: identity::Keypair,
         provider_storage: ProviderStorage,
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
-            .set_protocol_names(vec![KADEMLIA_PROTOCOL.into()])
+            .set_protocol_names(vec![Cow::Owned(
+                KADEMLIA_PROTOCOL
+                    .replace(PROTOCOL_PREFIX_PLACEHOLDER, &protocol_prefix)
+                    .into_bytes(),
+            )])
             .set_max_packet_size(2 * Piece::SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
             .set_record_filtering(KademliaStoreInserts::FilterBoth)
@@ -265,7 +280,10 @@ where
 
         let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
             GossipsubConfigBuilder::default()
-                .protocol_id_prefix(GOSSIPSUB_PROTOCOL_PREFIX)
+                .protocol_id_prefix(
+                    GOSSIPSUB_PROTOCOL_PREFIX
+                        .replace(PROTOCOL_PREFIX_PLACEHOLDER, &protocol_prefix),
+                )
                 // TODO: Do we want message signing?
                 .validation_mode(ValidationMode::None)
                 // To content-address message, we can take the hash of message and use it as an ID.
@@ -277,7 +295,6 @@ where
                 .expect("Default config for gossipsub is always correct; qed")
         });
 
-        let keypair = identity::Keypair::Ed25519(keypair);
         let identify = IdentifyConfig::new("ipfs/0.1.0".to_string(), keypair.public());
 
         let temporary_ban_backoff = ExponentialBackoff {
