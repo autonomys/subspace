@@ -34,5 +34,11 @@ sp_api::decl_runtime_apis! {
             domain_block_number: NumberFor<Block>,
             domain_block_hash: Block::Hash,
         ) -> Option<DomainHash>;
+
+        /// Returns the primary block hash for given domain block number.
+        fn primary_hash(
+            domain_id: DomainId,
+            domain_block_number: NumberFor<Block>,
+        ) -> Option<Block::Hash>;
     }
 }
