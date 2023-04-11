@@ -37,13 +37,18 @@ const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
 struct InitialRequest {
     /// Block request is the serialized BlockRequestSchema
     block_request: Vec<u8>,
+
+    /// The opaque protocol specific part of the request
     protocol_request: Option<Vec<u8>>,
 }
 
 /// Initial response from server
 #[derive(Encode, Decode)]
 struct InitialResponse {
+    /// The block except the extrinsics
     partial_block: PartialBlock,
+
+    /// The opaque protocol specific part of the response
     protocol_response: Vec<u8>,
 }
 
