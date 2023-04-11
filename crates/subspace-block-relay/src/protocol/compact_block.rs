@@ -203,10 +203,10 @@ where
         _initial_request: Option<Vec<u8>>,
     ) -> Result<Vec<u8>, RelayError> {
         // Return the hash of the members in the download unit.
-        let protocol_unit_ids = self.backend.download_unit_members(download_unit_id)?;
+        let members = self.backend.download_unit_members(download_unit_id)?;
         let response = CompactResponse {
             download_unit_id: download_unit_id.clone(),
-            protocol_unit_ids,
+            protocol_unit_ids: members.iter().map(|(id, _)| id.clone()).collect(),
         };
         Ok(response.encode())
     }
