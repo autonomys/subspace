@@ -140,22 +140,22 @@ where
         )
         .map_err(|_| FraudProofError::InvalidStateRootType)?;
 
+        let digest = if domain_id.is_system() {
+            Digest {
+                logs: vec![DigestItem::primary_block_info::<NumberFor<Block>, _>((
+                    block_number.into(),
+                    local_receipt.primary_hash,
+                ))],
+            }
+        } else {
+            Default::default()
+        };
+
         // TODO: abstract the execution proof impl to be reusable in the test.
         let invalid_state_transition_proof = if local_trace_index == 0 {
             // `initialize_block` execution proof.
             let pre_state_root = as_h256(parent_header.state_root())?;
             let post_state_root = as_h256(local_root)?;
-
-            let digest = if domain_id.is_system() {
-                Digest {
-                    logs: vec![DigestItem::primary_block_info::<NumberFor<Block>, _>((
-                        block_number.into(),
-                        local_receipt.primary_hash,
-                    ))],
-                }
-            } else {
-                Default::default()
-            };
 
             // TODO: add a test to cover the entire flow of creation and verification in the production
             // environment, i.e., the generate_proof function on the executor side and the verify function
@@ -204,7 +204,7 @@ where
                 parent_header.hash(),
                 *parent_header.number(),
                 RecordProof::No,
-                Default::default(),
+                digest,
                 &*self.backend,
                 extrinsics,
             )?;
@@ -240,6 +240,7 @@ where
                 &parent_header,
                 block_hash,
                 &prover,
+                digest,
             )?;
 
             // TODO: proof should be a CompactProof.
@@ -278,6 +279,7 @@ where
         parent_header: &Block::Header,
         current_hash: Block::Hash,
         prover: &ExecutionProver<Block, Backend, E>,
+        digest: Digest,
     ) -> Result<(StorageProof, ExecutionPhase), FraudProofError> {
         let extrinsics = self.block_body(current_hash)?;
 
@@ -301,7 +303,7 @@ where
             parent_header.hash(),
             *parent_header.number(),
             RecordProof::No,
-            Default::default(),
+            digest,
             &*self.backend,
             extrinsics,
         )?;
