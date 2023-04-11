@@ -36,9 +36,6 @@ const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
-const MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 100;
-const MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 100;
-
 #[allow(clippy::type_complexity)]
 pub(super) fn configure_dsn(
     base_path: PathBuf,
@@ -50,6 +47,11 @@ pub(super) fn configure_dsn(
         provided_keys_limit,
         disable_private_ips,
         reserved_peers,
+        in_connections,
+        out_connections,
+        pending_in_connections,
+        pending_out_connections,
+        target_connections,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
@@ -280,8 +282,11 @@ pub(super) fn configure_dsn(
             }),
         ],
         provider_storage: farmer_provider_storage,
-        max_established_outgoing_connections: MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
-        max_pending_outgoing_connections: MAX_PENDING_OUTGOING_CONNECTIONS,
+        max_established_outgoing_connections: out_connections,
+        max_pending_outgoing_connections: pending_out_connections,
+        max_established_incoming_connections: in_connections,
+        max_pending_incoming_connections: pending_in_connections,
+        target_connections,
         ..default_config
     };
 
