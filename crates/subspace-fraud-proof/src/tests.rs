@@ -1,26 +1,74 @@
-#![allow(unused_imports, unused_variables)]
 use crate::invalid_state_transition_proof::{
-    ExecutionProver, InvalidStateTransitionProofVerifier, SkipPreStateRootVerification,
+    ExecutionProver, InvalidStateTransitionProofVerifier, SystemDomainExtrinsicsBuilder,
+    VerifyPrePostStateRoot,
 };
 use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
-use domain_test_service::run_primary_chain_validator_node;
 use domain_test_service::runtime::Header;
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
-use sc_client_api::{proof_provider, HeaderBackend, StorageProof};
+use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
+use sp_core::H256;
 use sp_domain_digests::AsPredigest;
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
+use sp_domains::fraud_proof::{
+    ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
+};
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
+use subspace_test_client::Client;
 use subspace_test_service::mock::MockPrimaryNode;
 use tempfile::TempDir;
+
+struct SkipPreStateRootVerification {
+    primary_chain_client: Arc<Client>,
+}
+
+impl SkipPreStateRootVerification {
+    fn new(primary_chain_client: Arc<Client>) -> Self {
+        Self {
+            primary_chain_client,
+        }
+    }
+}
+
+impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
+    fn verify_pre_state_root(
+        &self,
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        Ok(())
+    }
+
+    fn verify_post_state_root(
+        &self,
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
+    ) -> Result<(), VerificationError> {
+        Ok(())
+    }
+
+    fn primary_hash(
+        &self,
+        _domain_id: DomainId,
+        domain_block_number: u32,
+    ) -> Result<H256, VerificationError> {
+        // TODO: remove this workaround impl once the following tests are improved/superseded by
+        // something close to the real work flow in production.
+        //
+        // This is retrieved from the `PrimaryBlockHash` state on the parent chain in
+        // production, we retrieve it from the primary chain client in test for simplicity.
+        Ok(self
+            .primary_chain_client
+            .hash(domain_block_number)
+            .unwrap()
+            .unwrap())
+    }
+}
 
 // Use the system domain id for testing
 const TEST_DOMAIN_ID: DomainId = DomainId::SYSTEM;
@@ -215,28 +263,30 @@ async fn execution_proof_creation_and_verification_should_work() {
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
-        SkipPreStateRootVerification,
+        SkipPreStateRootVerification::new(ferdie.client.clone()),
+        SystemDomainExtrinsicsBuilder::new(
+            ferdie.client.clone(),
+            Arc::new(ferdie.executor.clone()),
+        ),
     );
     let proof_verifier =
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
-    // Incorrect but it's fine for the test purpose.
-    let parent_hash_alice = ferdie.client.info().best_hash;
-    let parent_number_alice = ferdie.client.info().best_number;
+    let parent_number_alice = *parent_header.number();
+    let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
         execution_phase,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
     // Test extrinsic execution.
     for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {
@@ -286,15 +336,14 @@ async fn execution_proof_creation_and_verification_should_work() {
             domain_id: TEST_DOMAIN_ID,
             bad_receipt_hash: Hash::random(),
             parent_number: parent_number_alice,
-            primary_parent_hash: parent_hash_alice,
+            primary_parent_hash,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
             post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
             proof: storage_proof,
             execution_phase,
         };
-        // TODO: re-enable when #1230 resolves
-        // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-        // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+        let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+        assert!(proof_verifier.verify(&fraud_proof).is_ok());
     }
 
     // Test `finalize_block`
@@ -340,15 +389,14 @@ async fn execution_proof_creation_and_verification_should_work() {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: intermediate_roots.last().unwrap().into(),
         post_state_root: post_execution_root,
         proof: storage_proof,
         execution_phase,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
@@ -517,54 +565,54 @@ async fn invalid_execution_proof_should_not_work() {
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
-        SkipPreStateRootVerification,
+        SkipPreStateRootVerification::new(ferdie.client.clone()),
+        SystemDomainExtrinsicsBuilder::new(
+            ferdie.client.clone(),
+            Arc::new(ferdie.executor.clone()),
+        ),
     );
-    let proof_provider =
+    let proof_verifier =
         ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
 
-    // Incorrect but it's fine for the test purpose.
-    let parent_hash_alice = ferdie.client.info().best_hash;
-    let parent_number_alice = ferdie.client.info().best_number;
+    let parent_number_alice = *parent_header.number();
+    let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof1,
         execution_phase: execution_phase0.clone(),
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_err());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof0.clone(),
         execution_phase: execution_phase1,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_err());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_err());
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
-        primary_parent_hash: parent_hash_alice,
+        primary_parent_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof0,
         execution_phase: execution_phase0,
     };
-    // TODO: re-enable when #1230 resolves
-    // let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
-    // assert!(proof_verifier.verify(&fraud_proof).is_ok());
+    let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
+    assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }

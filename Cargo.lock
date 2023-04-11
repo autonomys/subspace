@@ -10359,6 +10359,7 @@ name = "subspace-fraud-proof"
 version = "0.1.0"
 dependencies = [
  "domain-block-builder",
+ "domain-block-preprocessor",
  "domain-runtime-primitives",
  "domain-test-service",
  "futures",
@@ -10374,14 +10375,17 @@ dependencies = [
  "sp-domain-digests",
  "sp-domains",
  "sp-keyring",
+ "sp-messenger",
  "sp-receipts",
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
  "subspace-runtime-primitives",
+ "subspace-test-client",
  "subspace-test-service",
  "subspace-wasm-tools",
  "substrate-test-utils",
+ "system-runtime-primitives",
  "tempfile",
  "tokio",
  "tracing",
@@ -10568,6 +10572,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "derive_more",
+ "domain-block-preprocessor",
  "domain-runtime-primitives",
  "either",
  "frame-support",

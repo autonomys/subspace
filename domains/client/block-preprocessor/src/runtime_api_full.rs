@@ -6,7 +6,6 @@ use crate::utils::extract_xdm_proof_state_roots_with_client;
 use codec::Codec;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
@@ -34,7 +33,7 @@ impl<Client> Clone for RuntimeApiFull<Client> {
 
 impl<Client, Block> StateRootExtractor<Block> for RuntimeApiFull<Client>
 where
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: ProvideRuntimeApi<Block>,
     Client::Api: MessengerApi<Block, NumberFor<Block>>,
     Block: BlockT,
 {
@@ -54,7 +53,7 @@ impl<PBlock, Client, Block> CoreBundleConstructor<PBlock, Block> for RuntimeApiF
 where
     PBlock: BlockT,
     Block: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: ProvideRuntimeApi<Block>,
     Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
 {
     fn construct_submit_core_bundle_extrinsics(
@@ -72,7 +71,7 @@ where
 impl<Client, Block, AccountId> SignerExtractor<Block, AccountId> for RuntimeApiFull<Client>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: ProvideRuntimeApi<Block>,
     Client::Api: DomainCoreApi<Block, AccountId>,
     AccountId: Codec,
 {
@@ -89,7 +88,7 @@ where
 impl<Client, Block> SetCodeConstructor<Block> for RuntimeApiFull<Client>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: ProvideRuntimeApi<Block>,
     Client::Api: DomainCoreApi<Block, AccountId>,
 {
     fn construct_set_code_extrinsic(
