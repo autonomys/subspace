@@ -20,7 +20,10 @@ use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
     ParityDbProviderStorage, VoidProviderStorage,
 };
-use tracing::info;
+use tracing::{info, Level};
+use tracing_subscriber::fmt::Subscriber;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -91,11 +94,20 @@ impl KeypairOutput {
     }
 }
 
+fn init_logging() {
+    // set default log to info if the RUST_LOG is not set.
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(Level::INFO.into())
+        .from_env_lossy();
+
+    let builder = Subscriber::builder().with_env_filter(env_filter).finish();
+
+    builder.init()
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
-
-    info!("Subspace Bootstrap Node started",);
+    init_logging();
 
     let command: Command = Command::parse();
 
@@ -179,6 +191,7 @@ async fn main() -> anyhow::Result<()> {
             let status_informer_fut = online_status_informer(&node);
             let networking_fut = node_runner.run();
 
+            info!("Subspace Bootstrap Node started");
             select!(
                 // Status informer future
                 _ = status_informer_fut.fuse() => {
