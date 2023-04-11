@@ -67,7 +67,7 @@ where
     fn download_unit_members(
         &self,
         id: &DownloadUnitId,
-    ) -> Result<Vec<(ProtocolUnitId, Vec<u8>)>, RelayError>;
+    ) -> Result<Vec<(ProtocolUnitId, ProtocolUnit)>, RelayError>;
 
     /// Returns the protocol unit contents with the given Id.
     fn protocol_unit(
