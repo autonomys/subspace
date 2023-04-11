@@ -77,7 +77,9 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_block_relay::build_consensus_relay;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
+use subspace_fraud_proof::invalid_state_transition_proof::{
+    PrePostStateRootVerifier, SystemDomainExtrinsicsBuilder,
+};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::online_status_informer;
@@ -139,6 +141,11 @@ pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
         SpawnTaskHandle,
         Hash,
         PrePostStateRootVerifier<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+        SystemDomainExtrinsicsBuilder<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            NativeElseWasmExecutor<ExecutorDispatch>,
+        >,
     >;
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
@@ -306,9 +313,10 @@ where
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
         InvalidStateTransitionProofVerifier::new(
             client.clone(),
-            executor,
+            executor.clone(),
             task_manager.spawn_handle(),
             PrePostStateRootVerifier::new(client.clone()),
+            SystemDomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor)),
         ),
     ));
     let tx_pre_validator = PrimaryChainTxPreValidator::new(

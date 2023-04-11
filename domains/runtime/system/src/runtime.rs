@@ -559,6 +559,10 @@ impl_runtime_apis! {
         ) -> Option<Hash> {
             Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
         }
+
+        fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
+            Receipts::primary_hash(domain_id, domain_block_number)
+        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {

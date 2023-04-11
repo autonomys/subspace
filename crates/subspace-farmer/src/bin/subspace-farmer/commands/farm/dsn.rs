@@ -47,6 +47,11 @@ pub(super) fn configure_dsn(
         provided_keys_limit,
         disable_private_ips,
         reserved_peers,
+        in_connections,
+        out_connections,
+        pending_in_connections,
+        pending_out_connections,
+        target_connections,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
@@ -277,6 +282,11 @@ pub(super) fn configure_dsn(
             }),
         ],
         provider_storage: farmer_provider_storage,
+        max_established_outgoing_connections: out_connections,
+        max_pending_outgoing_connections: pending_out_connections,
+        max_established_incoming_connections: in_connections,
+        max_pending_incoming_connections: pending_in_connections,
+        target_connections,
         ..default_config
     };
 

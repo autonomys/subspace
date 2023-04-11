@@ -82,6 +82,21 @@ struct DsnArgs {
     /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
     #[arg(long)]
     reserved_peers: Vec<Multiaddr>,
+    /// Defines max established incoming connection limit.
+    #[arg(long, default_value_t = 50)]
+    in_connections: u32,
+    /// Defines max established outgoing swarm connection limit.
+    #[arg(long, default_value_t = 50)]
+    out_connections: u32,
+    /// Defines max pending incoming connection limit.
+    #[arg(long, default_value_t = 50)]
+    pending_in_connections: u32,
+    /// Defines max pending outgoing swarm connection limit.
+    #[arg(long, default_value_t = 50)]
+    pending_out_connections: u32,
+    /// Defines target total (in and out) connection number that should be maintained.
+    #[arg(long, default_value_t = 50)]
+    target_connections: u32,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
