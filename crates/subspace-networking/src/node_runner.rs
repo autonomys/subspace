@@ -584,7 +584,7 @@ where
                     kademlia.add_address(&peer_id, address);
                 }
             } else {
-                info!(
+                debug!(
                     %local_peer_id,
                     %peer_id,
                     peer_protocols=?info.protocols,
