@@ -1,7 +1,7 @@
 use crate::node_config;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt, SinkExt, StreamExt};
 use sc_block_builder::BlockBuilderProvider;
 use sc_client_api::{backend, BlockchainEvents};
 use sc_consensus::block_import::{
@@ -22,9 +22,9 @@ use sp_core::H256;
 use sp_domains::SignedOpaqueBundle;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::generic::Digest;
+use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
-use sp_runtime::DigestItem;
+use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::sync::Arc;
@@ -131,14 +131,40 @@ impl MockPrimaryNode {
             tx_pre_validator,
         );
 
+        let fraud_proof_block_import =
+            sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
+
+        let mut block_import = MockBlockImport::<
+            BoxBlockImport<Block, TransactionFor<Client, Block>>,
+            _,
+            _,
+        >::new(Box::new(fraud_proof_block_import), client.clone());
+
         let mut imported_blocks_stream = client.import_notification_stream();
+        let mut block_importing_stream = block_import.block_importing_notification_stream();
         task_manager.spawn_handle().spawn(
             "maintain-bundles-stored-in-last-k",
             None,
             Box::pin(async move {
-                while let Some(incoming_block) = imported_blocks_stream.next().await {
-                    if incoming_block.is_new_best {
-                        bundle_validator.update_recent_stored_bundles(incoming_block.hash);
+                loop {
+                    tokio::select! {
+                        biased;
+                        maybe_block_imported = imported_blocks_stream.next() => {
+                            match maybe_block_imported {
+                                Some(block) => if block.is_new_best {
+                                    bundle_validator.update_recent_stored_bundles(block.hash);
+                                }
+                                None => break,
+                            }
+                        },
+                        maybe_block_importing = block_importing_stream.next() => {
+                            match maybe_block_importing {
+                                Some((_, mut acknowledgement_sender)) => {
+                                    let _ = acknowledgement_sender.send(()).await;
+                                }
+                                None => break,
+                            }
+                        }
                     }
                 }
             }),
@@ -151,15 +177,6 @@ impl MockPrimaryNode {
             Some("transaction-pool"),
             sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
         );
-
-        let fraud_proof_block_import =
-            sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
-
-        let block_import = MockBlockImport::<
-            BoxBlockImport<Block, TransactionFor<Client, Block>>,
-            _,
-            _,
-        >::new(Box::new(fraud_proof_block_import), client.clone());
 
         let mock_solution = {
             let mut gs = Solution::genesis_solution(
@@ -264,11 +281,7 @@ impl MockPrimaryNode {
     pub fn block_importing_notification_stream(
         &mut self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
-        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
-        self.block_import
-            .block_importing_notification_subscribers
-            .push(tx);
-        rx
+        self.block_import.block_importing_notification_stream()
     }
 
     /// Get the bundle that created at `slot` from the transaction pool
@@ -289,6 +302,17 @@ impl MockPrimaryNode {
             }
         }
         None
+    }
+
+    /// Remove tx from tx pool
+    pub fn remove_tx_from_tx_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
+        self.transaction_pool
+            .remove_invalid(&[self.transaction_pool.hash_of(tx)]);
+        self.transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&BlockId::Number(self.client.info().best_number))?;
+        Ok(())
     }
 }
 
@@ -492,6 +516,15 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
             client,
             block_importing_notification_subscribers: Vec::new(),
         }
+    }
+
+    // Subscribe the block importing notification
+    fn block_importing_notification_stream(
+        &mut self,
+    ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
+        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
+        self.block_importing_notification_subscribers.push(tx);
+        rx
     }
 }
 

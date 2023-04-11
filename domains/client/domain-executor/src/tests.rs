@@ -785,15 +785,17 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
             signed_opaque_bundle: bundle.unwrap(),
         }
         .into(),
-    );
+    )
+    .into();
 
-    // Wait one block to ensure the bundle is stored onchain
+    // Wait one block to ensure the bundle is stored onchain and manually remove it from tx pool
     futures::join!(
         alice.wait_for_blocks(1),
         ferdie.produce_block_with_slot(slot)
     )
     .1
     .unwrap();
+    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
 
     // Bundle is rejected due to it is duplicated
     let res = ferdie
@@ -802,7 +804,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         .submit_one(
             &BlockId::Hash(ferdie.client.info().best_hash),
             TransactionSource::External,
-            submit_bundle_tx.clone().into(),
+            submit_bundle_tx.clone(),
         )
         .await;
     match res.unwrap_err() {
@@ -817,7 +819,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         e => panic!("Unexpected error: {e}"),
     }
 
-    // Wait for confirmation depth  K blocks which is 100 in test
+    // Wait for confirmation depth K blocks which is 100 in test
     futures::join!(alice.wait_for_blocks(100), ferdie.produce_blocks(100))
         .1
         .unwrap();
@@ -829,7 +831,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         .submit_one(
             &BlockId::Hash(ferdie.client.info().best_hash),
             TransactionSource::External,
-            submit_bundle_tx.into(),
+            submit_bundle_tx,
         )
         .await;
     match res.unwrap_err() {
@@ -902,15 +904,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .unwrap();
 
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
-    ferdie
-        .transaction_pool
-        .remove_invalid(&[ferdie.transaction_pool.hash_of(&submit_bundle_tx)]);
-    ferdie
-        .transaction_pool
-        .pool()
-        .validated_pool()
-        .clear_stale(&BlockId::Number(9))
-        .unwrap();
+    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
 
     // Bundle can be successfully submitted to the new fork
     ferdie
