@@ -403,7 +403,7 @@ where
     fn download_unit_members(
         &self,
         block_hash: &BlockHash<Block>,
-    ) -> Result<Vec<(TxHash<Pool>, Vec<u8>)>, RelayError> {
+    ) -> Result<Vec<TxHash<Pool>>, RelayError> {
         let extrinsics = self
             .client
             .block_body(*block_hash)
@@ -411,7 +411,7 @@ where
             .unwrap_or_default();
         Ok(extrinsics
             .iter()
-            .map(|extrinsic| (self.transaction_pool.hash_of(extrinsic), extrinsic.encode()))
+            .map(|extrinsic| self.transaction_pool.hash_of(extrinsic))
             .collect())
     }
 
