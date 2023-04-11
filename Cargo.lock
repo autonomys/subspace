@@ -2343,6 +2343,7 @@ dependencies = [
  "domain-test-service",
  "futures",
  "futures-timer",
+ "pallet-balances",
  "pallet-domains",
  "parity-scale-codec",
  "sc-cli",
