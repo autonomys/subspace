@@ -43,7 +43,7 @@ tempfile = "3.5.0"
 thiserror = "1.0.38"
 tokio = { version = "1.27.0", features = ["macros", "parking_lot", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.37"
-tracing-subscriber = "0.3.16"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"]}
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
 
 [dependencies.libp2p]

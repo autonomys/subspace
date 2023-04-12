@@ -252,7 +252,11 @@ where
             let network_info = self.swarm.network_info();
             let connections = network_info.connection_counters();
 
-            debug!(?connections, "Current connections and limits.");
+            debug!(
+                ?connections,
+                target_connections = self.target_connections,
+                "Current connections and limits."
+            );
 
             (
                 connections.num_pending_outgoing()
@@ -317,12 +321,12 @@ where
             .build();
 
         if let Err(err) = self.swarm.dial(dial_opts) {
-            warn!(
+            debug!(
                 %err,
                 %local_peer_id,
                 remote_peer_id = %peer_id,
                 %addr,
-                "Unexpected error: failed to dial an address."
+                "Dialing error: failed to dial an address."
             );
         }
     }
