@@ -10744,6 +10744,7 @@ dependencies = [
  "sc-service",
  "sc-tracing",
  "sc-transaction-pool",
+ "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
  "sp-application-crypto",

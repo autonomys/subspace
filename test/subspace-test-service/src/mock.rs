@@ -10,6 +10,8 @@ use sc_consensus::block_import::{
 use sc_consensus::{BlockImport, BoxBlockImport, StateAction};
 use sc_executor::NativeElseWasmExecutor;
 use sc_service::{BasePath, InPoolTransaction, TaskManager, TransactionPool};
+use sc_transaction_pool::error::Error as PoolError;
+use sc_transaction_pool_api::TransactionSource;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_application_crypto::UncheckedFrom;
@@ -302,6 +304,17 @@ impl MockPrimaryNode {
             }
         }
         None
+    }
+
+    /// Submit a tx to the tx pool
+    pub async fn submit_transaction(&self, tx: OpaqueExtrinsic) -> Result<H256, PoolError> {
+        self.transaction_pool
+            .submit_one(
+                &BlockId::Hash(self.client.info().best_hash),
+                TransactionSource::External,
+                tx,
+            )
+            .await
     }
 
     /// Remove tx from tx pool

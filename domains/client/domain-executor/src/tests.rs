@@ -6,7 +6,6 @@ use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
-use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
@@ -448,13 +447,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let expected_tx_hash = tx.using_encoded(BlakeTwo256::hash);
     let tx_hash = ferdie
-        .transaction_pool
-        .pool()
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            tx.into(),
-        )
+        .submit_transaction(tx.into())
         .await
         .expect("Error at submitting a valid fraud proof");
     assert_eq!(tx_hash, expected_tx_hash);
@@ -473,17 +466,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .into(),
     );
 
-    let submit_invalid_fraud_proof_result = ferdie
-        .transaction_pool
-        .pool()
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            tx.into(),
-        )
-        .await;
-
-    match submit_invalid_fraud_proof_result.unwrap_err() {
+    match ferdie.submit_transaction(tx.into()).await.unwrap_err() {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
         ) => assert_eq!(invalid_tx, InvalidTransactionCode::FraudProof.into()),
@@ -691,20 +674,6 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .into()
     };
 
-    let ferdie_transaction_pool = ferdie.transaction_pool.clone();
-    let send_extrinsic = |tx: OpaqueExtrinsic| {
-        let pool = ferdie_transaction_pool.pool();
-        let ferdie_best_hash = ferdie_client.info().best_hash;
-        async move {
-            pool.submit_one(
-                &BlockId::Hash(ferdie_best_hash),
-                TransactionSource::External,
-                tx,
-            )
-            .await
-        }
-    };
-
     let ferdie_client = ferdie.client.clone();
     let head_receipt_number = || {
         let best_hash = ferdie_client.info().best_hash;
@@ -714,8 +683,14 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
             .expect("Failed to get head receipt number")
     };
 
-    send_extrinsic(create_submit_bundle(1)).await.unwrap();
-    send_extrinsic(create_submit_bundle(2)).await.unwrap();
+    ferdie
+        .submit_transaction(create_submit_bundle(1))
+        .await
+        .unwrap();
+    ferdie
+        .submit_transaction(create_submit_bundle(2))
+        .await
+        .unwrap();
     futures::join!(bob.wait_for_blocks(1), ferdie.produce_blocks(1),)
         .1
         .unwrap();
@@ -723,7 +698,11 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // max drift is 2, hence the max allowed receipt number is 2 + 2, 5 will be rejected as being
     // too far.
-    match send_extrinsic(create_submit_bundle(5)).await.unwrap_err() {
+    match ferdie
+        .submit_transaction(create_submit_bundle(5))
+        .await
+        .unwrap_err()
+    {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
         ) => assert_eq!(invalid_tx, InvalidTransactionCode::ExecutionReceipt.into()),
@@ -732,17 +711,23 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // The 4 is able to submit to tx pool but will fail to execute due to the receipt of 3 is missing.
     let submit_bundle_4 = create_submit_bundle(4);
-    let submit_bundle_4_hash = ferdie.transaction_pool.hash_of(&submit_bundle_4);
-    send_extrinsic(submit_bundle_4).await.unwrap();
+    ferdie
+        .submit_transaction(submit_bundle_4.clone())
+        .await
+        .unwrap();
     assert!(ferdie.produce_blocks(1).await.is_err());
     assert_eq!(head_receipt_number(), 2);
 
     // Re-submit 4 after 3, this time it will successfully execute and update the head receipt number.
+    ferdie.remove_tx_from_tx_pool(&submit_bundle_4).unwrap();
     ferdie
-        .transaction_pool
-        .remove_invalid(&[submit_bundle_4_hash]);
-    send_extrinsic(create_submit_bundle(3)).await.unwrap();
-    send_extrinsic(create_submit_bundle(4)).await.unwrap();
+        .submit_transaction(create_submit_bundle(3))
+        .await
+        .unwrap();
+    ferdie
+        .submit_transaction(create_submit_bundle(4))
+        .await
+        .unwrap();
     futures::join!(bob.wait_for_blocks(1), ferdie.produce_blocks(1),)
         .1
         .unwrap();
@@ -798,16 +783,11 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
 
     // Bundle is rejected due to it is duplicated
-    let res = ferdie
-        .transaction_pool
-        .pool()
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            submit_bundle_tx.clone(),
-        )
-        .await;
-    match res.unwrap_err() {
+    match ferdie
+        .submit_transaction(submit_bundle_tx.clone())
+        .await
+        .unwrap_err()
+    {
         sc_transaction_pool::error::Error::Pool(err) => {
             // Compare the error message of `TxPoolError::ImmediatelyDropped` here because
             // `TxPoolError` didn't drive `PartialEq`
@@ -825,16 +805,11 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         .unwrap();
 
     // Bundle is now rejected due to it is stale
-    let res = ferdie
-        .transaction_pool
-        .pool()
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            submit_bundle_tx,
-        )
-        .await;
-    match res.unwrap_err() {
+    match ferdie
+        .submit_transaction(submit_bundle_tx)
+        .await
+        .unwrap_err()
+    {
         sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
             assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
         }
@@ -907,13 +882,5 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
 
     // Bundle can be successfully submitted to the new fork
-    ferdie
-        .transaction_pool
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            submit_bundle_tx,
-        )
-        .await
-        .unwrap();
+    ferdie.submit_transaction(submit_bundle_tx).await.unwrap();
 }
