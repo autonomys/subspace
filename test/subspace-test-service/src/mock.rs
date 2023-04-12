@@ -142,6 +142,10 @@ impl MockPrimaryNode {
             _,
         >::new(Box::new(fraud_proof_block_import), client.clone());
 
+        // The `maintain-bundles-stored-in-last-k` worker here is different from the one in the production code
+        // that it subscribes the `block_importing_notification_stream`, which is intended to ensure the bundle
+        // validator's `recent_stored_bundles` info must be updated when a new primary block is produced, this
+        // will help the test to be more deterministic.
         let mut imported_blocks_stream = client.import_notification_stream();
         let mut block_importing_stream = block_import.block_importing_notification_stream();
         task_manager.spawn_handle().spawn(
