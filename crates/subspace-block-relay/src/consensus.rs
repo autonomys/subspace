@@ -44,7 +44,10 @@ struct InitialRequest {
 
 /// Initial response from server
 #[derive(Encode, Decode)]
-struct InitialResponse {
+struct InitialResponse<Block: BlockT> {
+    ///  Hash of the block being downloaded
+    block_hash: BlockHash<Block>,
+
     /// The block except the extrinsics
     partial_block: PartialBlock,
 
@@ -75,13 +78,14 @@ struct ConsensusRelayClient<Block: BlockT, Pool: TransactionPool> {
 #[async_trait]
 impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<Block, Pool> {
     type Request = Vec<u8>;
+    type DownloadUnitId = BlockHash<Block>;
 
     async fn download(
         &self,
         who: PeerId,
         request: Self::Request,
         network: NetworkServiceHandle,
-    ) -> Result<Vec<u8>, RelayError> {
+    ) -> Result<(BlockHash<Block>, Vec<u8>), RelayError> {
         let stub = RequestResponseStub::new(self.protocol_name.clone(), who, network);
 
         // Perform the initial request/response
@@ -90,7 +94,7 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
             protocol_request: self.protocol.build_initial_request(),
         };
         let initial_response = match stub
-            .request_response::<InitialRequest, InitialResponse>(initial_request, false)
+            .request_response::<InitialRequest, InitialResponse<Block>>(initial_request, false)
             .await
         {
             Ok(response) => response,
@@ -139,7 +143,7 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
         if let Err(err) = block_response.encode(&mut data) {
             Err(format!("download: encode response: {err:?}").into())
         } else {
-            Ok(data)
+            Ok((initial_response.block_hash, data))
         }
     }
 }
@@ -156,13 +160,13 @@ impl<Block: BlockT, Pool: TransactionPool> BlockDownloader for ConsensusRelayCli
         let ret = self.download(who, request, network).await;
         let elapsed = start_ts.elapsed();
         match ret {
-            Ok(val) => {
+            Ok((block_hash, response)) => {
                 info!(
                     target: LOG_TARGET,
-                    "relay::download_block: {} bytes from {who:?} in {elapsed:?}",
-                    val.len()
+                    "relay::download_block: {block_hash:?}: {} bytes in {elapsed:?} from {who:?}",
+                    response.len()
                 );
-                Ok(Ok(val))
+                Ok(Ok(response))
             }
             Err(err) => {
                 warn!(
@@ -210,7 +214,8 @@ where
         let protocol_response = self
             .protocol
             .build_initial_response(&block_hash, req.protocol_request)?;
-        let initial_response = InitialResponse {
+        let initial_response: InitialResponse<Block> = InitialResponse {
+            block_hash,
             partial_block,
             protocol_response,
         };

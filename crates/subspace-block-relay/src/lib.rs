@@ -52,6 +52,7 @@ pub(crate) const LOG_TARGET: &str = "block_relay";
 #[async_trait]
 pub(crate) trait RelayClient {
     type Request;
+    type DownloadUnitId;
 
     /// Fetches the download units from the peer
     async fn download(
@@ -59,7 +60,7 @@ pub(crate) trait RelayClient {
         who: PeerId,
         request: Self::Request,
         network: NetworkServiceHandle,
-    ) -> Result<Vec<u8>, RelayError>;
+    ) -> Result<(Self::DownloadUnitId, Vec<u8>), RelayError>;
 }
 
 /// The relay server

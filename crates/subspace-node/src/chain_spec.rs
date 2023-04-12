@@ -282,7 +282,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
                     enable_transfer: true,
-                    confirmation_depth_k: 5,
+                    confirmation_depth_k: 100,
                 },
             )
         },
