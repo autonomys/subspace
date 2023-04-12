@@ -419,7 +419,6 @@ where
         &self,
         block_hash: &BlockHash<Block>,
         tx_hash: &TxHash<Pool>,
-        client: bool,
     ) -> Result<Option<Extrinsic<Block>>, RelayError> {
         // First look up the block extrinsics
         if let Ok(Some(extrinsics)) = self.client.block_body(*block_hash) {
@@ -432,7 +431,7 @@ where
                 }
                 warn!(
                     target: LOG_TARGET,
-                    "relay::protocol_unit: {client}, {tx_hash:?} not found in {block_hash:?}/{len}",
+                    "relay::protocol_unit: {tx_hash:?} not found in {block_hash:?}/{len}",
                 );
             }
         }

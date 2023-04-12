@@ -49,6 +49,11 @@ where
     protocol_units: BTreeMap<u64, ProtocolUnit>,
 }
 
+struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
+    resolved: BTreeMap<u64, Resolved<ProtocolUnitId, ProtocolUnit>>,
+    local_miss: BTreeMap<u64, ProtocolUnitId>,
+}
+
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode,
@@ -58,6 +63,108 @@ where
     pub(crate) backend: Arc<
         dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
     >,
+}
+
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+    CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+where
+    DownloadUnitId: Encode + Decode + Clone,
+    ProtocolUnitId: Encode + Decode + Clone,
+    ProtocolUnit: Encode + Decode + Clone,
+{
+    /// Tries to resolve the entries in CompactResponse locally
+    fn resolve_local(
+        &self,
+        compact_response: &CompactResponse<DownloadUnitId, ProtocolUnitId>,
+    ) -> Result<ResolveContext<ProtocolUnitId, ProtocolUnit>, RelayError> {
+        let mut context = ResolveContext {
+            resolved: BTreeMap::new(),
+            local_miss: BTreeMap::new(),
+        };
+
+        for (index, protocol_unit_id) in compact_response.protocol_unit_ids.iter().enumerate() {
+            match self
+                .backend
+                .protocol_unit(&compact_response.download_unit_id, protocol_unit_id)
+            {
+                Ok(Some(ret)) => {
+                    context.resolved.insert(
+                        index as u64,
+                        Resolved {
+                            protocol_unit_id: protocol_unit_id.clone(),
+                            protocol_unit: ret,
+                            locally_resolved: true,
+                        },
+                    );
+                }
+                Ok(None) => {
+                    context
+                        .local_miss
+                        .insert(index as u64, protocol_unit_id.clone());
+                }
+                Err(err) => {
+                    return Err(format!("resolve_local: protocol unit lookup: {err:?}").into())
+                }
+            }
+        }
+
+        Ok(context)
+    }
+
+    /// Tries to resolve the entries missing from the local backend pool
+    async fn resolve_misses(
+        &self,
+        compact_response: CompactResponse<DownloadUnitId, ProtocolUnitId>,
+        context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
+        stub: &RequestResponseStub,
+    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError> {
+        let ResolveContext {
+            mut resolved,
+            local_miss,
+        } = context;
+        let missing = local_miss.len();
+        // Request the missing entries from the server
+        let request = MissingEntriesRequest {
+            download_unit_id: compact_response.download_unit_id.clone(),
+            protocol_unit_ids: local_miss.clone(),
+        };
+        let missing_entries_response = stub
+            .request_response::<MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>,
+                MissingEntriesResponse<ProtocolUnit>>(request, true)
+            .await?;
+
+        if missing_entries_response.protocol_units.len() != missing {
+            return Err(format!(
+                "resolve_misses: missing entries response mismatch: {}, {}",
+                missing_entries_response.protocol_units.len(),
+                missing
+            )
+            .into());
+        }
+
+        // Merge the resolved entries from the server
+        for (missing_key, protocol_unit_id) in local_miss.into_iter() {
+            if let Some(protocol_unit) = missing_entries_response.protocol_units.get(&missing_key) {
+                // TODO: avoid clone
+                resolved.insert(
+                    missing_key,
+                    Resolved {
+                        protocol_unit_id,
+                        protocol_unit: protocol_unit.clone(),
+                        locally_resolved: false,
+                    },
+                );
+            } else {
+                return Err(format!(
+                    "resolve_misses: response missing {missing_key}: {}",
+                    missing
+                )
+                .into());
+            }
+        }
+
+        Ok(resolved.into_values().collect())
+    }
 }
 
 #[async_trait]
@@ -83,98 +190,35 @@ where
             Decode::decode(&mut response.as_ref())
                 .map_err(|err| format!("resolve: decode compact_response: {err:?}"))?;
 
-        // Look up the protocol units from the backend
-        let mut protocol_units = BTreeMap::new();
-        let mut missing_ids = BTreeMap::new();
-        let total_len = compact_response.protocol_unit_ids.len();
-        for (index, protocol_unit_id) in compact_response.protocol_unit_ids.iter().enumerate() {
-            match self.backend.protocol_unit(
-                &compact_response.download_unit_id,
-                protocol_unit_id,
-                true,
-            ) {
-                Ok(Some(ret)) => {
-                    protocol_units.insert(
-                        index as u64,
-                        Resolved {
-                            protocol_unit_id: protocol_unit_id.clone(),
-                            protocol_unit: ret,
-                            locally_resolved: true,
-                        },
-                    );
-                }
-                Ok(None) => {
-                    missing_ids.insert(index as u64, protocol_unit_id.clone());
-                }
-                Err(err) => return Err(format!("resolve: protocol unit lookup: {err:?}").into()),
-            }
-        }
-        let missing_ids_len = missing_ids.len();
-
-        // All the entries could be resolved locally
-        if protocol_units.len() == total_len {
+        // Try to resolve the hashes locally first.
+        let context = self.resolve_local(&compact_response)?;
+        if context.resolved.len() == compact_response.protocol_unit_ids.len() {
             info!(
                 target: LOG_TARGET,
-                "relay::resolve: {:?}: resolved locally[{total_len}]",
+                "relay::resolve: {:?}: resolved locally[{}]",
                 compact_response.download_unit_id,
+                compact_response.protocol_unit_ids.len()
             );
             return Ok((
                 compact_response.download_unit_id,
-                protocol_units.into_values().collect(),
+                context.resolved.into_values().collect(),
             ));
         }
 
-        // Request the missing entries
-        let request = MissingEntriesRequest {
-            download_unit_id: compact_response.download_unit_id.clone(),
-            protocol_unit_ids: missing_ids.clone(),
-        };
-        let missing_entries_response = stub
-            .request_response::<MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>,
-                MissingEntriesResponse<ProtocolUnit>>(request, true)
+        // Resolve the misses from the server
+        let misses = context.local_miss.len();
+        let download_unit_id = compact_response.download_unit_id.clone();
+        let resolved = self
+            .resolve_misses(compact_response, context, &stub)
             .await?;
-
-        if missing_entries_response.protocol_units.len() != missing_ids.len() {
-            return Err(format!(
-                "resolve: missing entries response mismatch: {}, {}",
-                missing_entries_response.protocol_units.len(),
-                missing_ids_len
-            )
-            .into());
-        }
-
-        // Merge the resolved entries from the server
-        for (missing_key, protocol_unit_id) in missing_ids.into_iter() {
-            if let Some(protocol_unit) = missing_entries_response.protocol_units.get(&missing_key) {
-                // TODO: avoid clone
-                protocol_units.insert(
-                    missing_key,
-                    Resolved {
-                        protocol_unit_id,
-                        protocol_unit: protocol_unit.clone(),
-                        locally_resolved: false,
-                    },
-                );
-            } else {
-                return Err(format!(
-                    "resolve: missing entries response missing {missing_key}: {}",
-                    missing_ids_len
-                )
-                .into());
-            }
-        }
-
         info!(
             target: LOG_TARGET,
-            "relay::resolve: {:?}: resolved by server[{total_len},{},{}]",
-            compact_response.download_unit_id,
-            protocol_units.len(),
-            missing_ids_len
+            "relay::resolve: {:?}: resolved by server[{},{}]",
+            download_unit_id,
+            resolved.len(),
+            misses,
         );
-        Ok((
-            compact_response.download_unit_id,
-            protocol_units.into_values().collect(),
-        ))
+        Ok((download_unit_id, resolved))
     }
 }
 
@@ -227,7 +271,7 @@ where
         for (missing_id, protocol_unit_id) in req.protocol_unit_ids {
             match self
                 .backend
-                .protocol_unit(&req.download_unit_id, &protocol_unit_id, false)
+                .protocol_unit(&req.download_unit_id, &protocol_unit_id)
             {
                 Ok(Some(ret)) => {
                     protocol_units.insert(missing_id, ret);
