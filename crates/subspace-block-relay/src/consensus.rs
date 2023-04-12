@@ -111,15 +111,16 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
                 .iter_mut()
                 .map(|resolved| {
                     let encoded = resolved.protocol_unit.encode();
-                    trace!(
-                        target: LOG_TARGET,
-                        "relay::download: {block_hash:?}/{:?}: locally_resolved = {}, \
-                         signed = {:?}, size = {}",
-                        resolved.protocol_unit_id,
-                        resolved.locally_resolved,
-                        resolved.protocol_unit.is_signed(),
-                        encoded.len()
-                    );
+                    if !resolved.locally_resolved {
+                        info!(
+                            target: LOG_TARGET,
+                            "relay::download: local miss: {block_hash:?}/{:?}: \
+                             signed = {:?}, size = {}",
+                            resolved.protocol_unit_id,
+                            resolved.protocol_unit.is_signed(),
+                            encoded.len()
+                        );
+                    }
                     encoded
                 })
                 .collect(),

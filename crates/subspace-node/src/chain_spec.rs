@@ -339,7 +339,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_executor: true,
                     enable_transfer: true,
-                    confirmation_depth_k: 1,
+                    confirmation_depth_k: 5,
                 },
             )
         },

@@ -298,6 +298,7 @@ impl SubstrateCli for Cli {
             "" | "local" => chain_spec::local_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
+        println!("xxx: load_spec(): {}", id);
 
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec
