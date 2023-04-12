@@ -137,19 +137,15 @@ where
 
         let best_hash = self.client.info().best_hash;
         let best_number = self.client.info().best_number;
-        let best_receipt = crate::aux_schema::load_execution_receipt::<
-            _,
-            Block::Hash,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-        >(&*self.client, best_hash)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!(
-                "Receipt for #{best_number},{best_hash:?} not found"
-            ))
-        })?;
 
-        let primary_from = best_receipt.primary_hash;
+        let primary_hash_for_best_domain_hash =
+            crate::aux_schema::primary_hash_for(&*self.backend, best_hash)?.ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Primary hash for domain hash #{best_hash} not found"
+                ))
+            })?;
+
+        let primary_from = primary_hash_for_best_domain_hash;
         let primary_to = primary_hash;
 
         if primary_from == primary_to {
@@ -175,7 +171,7 @@ where
             (true, false) => {
                 // New tip, A -> B
                 Ok(Some(PendingPrimaryBlocks {
-                    initial_parent: (self.client.info().best_hash, self.client.info().best_number),
+                    initial_parent: (best_hash, best_number),
                     primary_imports: enacted.to_vec(),
                 }))
             }
@@ -374,9 +370,14 @@ where
 
         crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
             &*self.client,
-            (header_hash, header_number),
             head_receipt_number,
             &execution_receipt,
+        )?;
+
+        crate::aux_schema::track_domain_hash_to_primary_hash(
+            &*self.client,
+            header_hash,
+            primary_hash,
         )?;
 
         // TODO: The applied txs can be fully removed from the transaction pool
@@ -422,46 +423,26 @@ where
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
-            let block_hash = execution_receipt.domain_hash;
-            match crate::aux_schema::load_execution_receipt::<
+            let primary_block_hash = execution_receipt.primary_hash;
+
+            let local_receipt = crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
                 NumberFor<PBlock>,
                 PBlock::Hash,
-            >(&*self.client, block_hash)?
+            >(&*self.client, primary_block_hash)?
+            .ok_or(sp_blockchain::Error::Backend(format!(
+                "receipt for primary block {primary_block_hash} not found"
+            )))?;
+
+            if let Some(trace_mismatch_index) =
+                find_trace_mismatch(&local_receipt, execution_receipt)
             {
-                Some(local_receipt) => {
-                    if let Some(trace_mismatch_index) =
-                        find_trace_mismatch(&local_receipt, execution_receipt)
-                    {
-                        bad_receipts_to_write.push((
-                            execution_receipt.primary_number,
-                            execution_receipt.hash(),
-                            (trace_mismatch_index, block_hash),
-                        ));
-                    }
-                }
-                None => {
-                    let block_number = to_number_primitive(execution_receipt.primary_number);
-
-                    // TODO: Ensure the `block_hash` aligns with the one returned in
-                    // `aux_schema::find_first_unconfirmed_bad_receipt_info`. Assuming there are
-                    // multiple forks at present, `block_hash` is on one of them, but another fork
-                    // becomes the canonical chain later.
-                    let block_hash = self.client.hash(block_number.into())?.ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header hash for #{block_number} not found"
-                        ))
-                    })?;
-
-                    // The receipt of a prior block must exist, otherwise it means the receipt included
-                    // on the primary chain points to an invalid domain block.
-                    bad_receipts_to_write.push((
-                        execution_receipt.primary_number,
-                        execution_receipt.hash(),
-                        (0u32, block_hash),
-                    ));
-                }
+                bad_receipts_to_write.push((
+                    execution_receipt.primary_number,
+                    execution_receipt.hash(),
+                    (trace_mismatch_index, primary_block_hash),
+                ));
             }
         }
 
@@ -497,7 +478,7 @@ where
             .collect::<Vec<_>>();
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
-            crate::aux_schema::write_bad_receipt::<_, PBlock, _>(
+            crate::aux_schema::write_bad_receipt::<_, PBlock>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -529,18 +510,25 @@ where
     where
         PCB: BlockT,
     {
-        if let Some((bad_receipt_hash, trace_mismatch_index, block_hash)) =
-            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, NumberFor<PBlock>>(
+        if let Some((bad_receipt_hash, trace_mismatch_index, primary_block_hash)) =
+            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, PBlock, _>(
                 &*self.client,
+                |height| {
+                    self.primary_chain_client.hash(height)?.ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Primary block hash for {height} not found",
+                        ))
+                    })
+                },
             )?
         {
-            let local_receipt = crate::aux_schema::load_execution_receipt(
-                &*self.client,
-                block_hash,
-            )?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("Receipt for {block_hash:?} not found"))
-            })?;
+            let local_receipt =
+                crate::aux_schema::load_execution_receipt(&*self.client, primary_block_hash)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Receipt for primary block {primary_block_hash} not found"
+                        ))
+                    })?;
 
             let fraud_proof = self
                 .fraud_proof_generator
