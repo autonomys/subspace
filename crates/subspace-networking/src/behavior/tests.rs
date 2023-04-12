@@ -112,7 +112,7 @@ impl Future for FuturePolledTwice {
 struct ExampleRequest;
 
 impl GenericRequest for ExampleRequest {
-    const PROTOCOL_NAME: &'static str = "/example";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/example";
     const LOG_TARGET: &'static str = "example_request";
     type Response = ExampleResponse;
 }
@@ -127,11 +127,14 @@ async fn test_async_handler_works_with_pending_internal_future() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
-            let fut = FuturePolledTwice::default();
+        request_response_protocols: vec![GenericRequestHandler::create(
+            "test".to_string(),
+            |&ExampleRequest| async {
+                let fut = FuturePolledTwice::default();
 
-            Some(ExampleResponse { counter: fut.await })
-        })],
+                Some(ExampleResponse { counter: fut.await })
+            },
+        )],
         ..Config::default()
     };
     let (node_1, mut node_runner_1) = crate::create(config_1).unwrap();
@@ -165,6 +168,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
+            "test".to_string(),
             |_| async { None },
         )],
         ..Config::default()

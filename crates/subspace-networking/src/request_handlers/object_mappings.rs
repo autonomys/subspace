@@ -16,7 +16,7 @@ pub struct ObjectMappingsRequest {
 }
 
 impl GenericRequest for ObjectMappingsRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/object-mappings/0.1.0";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/subspace/{}/object-mappings/0.1.0";
     const LOG_TARGET: &'static str = "object-mappings-request-response-handler";
     type Response = ObjectMappingsResponse;
 }

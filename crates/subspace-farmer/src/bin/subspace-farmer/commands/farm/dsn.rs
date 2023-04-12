@@ -156,69 +156,72 @@ pub(super) fn configure_dsn(
         }
     });
 
-    let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage);
+    let default_config = Config::new(protocol_prefix.clone(), keypair, farmer_provider_storage);
     let config = Config {
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
         networking_parameters_registry,
         request_response_protocols: vec![
-            PieceByHashRequestHandler::create(move |&PieceByHashRequest { piece_index_hash }| {
-                debug!(?piece_index_hash, "Piece request received. Trying cache...");
-                let multihash = piece_index_hash.to_multihash();
+            PieceByHashRequestHandler::create(
+                protocol_prefix.clone(),
+                move |&PieceByHashRequest { piece_index_hash }| {
+                    debug!(?piece_index_hash, "Piece request received. Trying cache...");
+                    let multihash = piece_index_hash.to_multihash();
 
-                let weak_readers_and_pieces = weak_readers_and_pieces.clone();
-                let piece_store = piece_store.clone();
-                let piece_memory_cache = piece_memory_cache.clone();
+                    let weak_readers_and_pieces = weak_readers_and_pieces.clone();
+                    let piece_store = piece_store.clone();
+                    let piece_memory_cache = piece_memory_cache.clone();
 
-                async move {
-                    if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
-                        return Some(PieceByHashResponse { piece: Some(piece) });
-                    }
+                    async move {
+                        if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
+                            return Some(PieceByHashResponse { piece: Some(piece) });
+                        }
 
-                    let piece_from_store = piece_store.get(&multihash.into());
+                        let piece_from_store = piece_store.get(&multihash.into());
 
-                    if let Some(piece) = piece_from_store {
-                        Some(PieceByHashResponse { piece: Some(piece) })
-                    } else {
-                        debug!(
-                            ?piece_index_hash,
-                            "No piece in the cache. Trying archival storage..."
-                        );
+                        if let Some(piece) = piece_from_store {
+                            Some(PieceByHashResponse { piece: Some(piece) })
+                        } else {
+                            debug!(
+                                ?piece_index_hash,
+                                "No piece in the cache. Trying archival storage..."
+                            );
 
-                        let read_piece_fut = {
-                            let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                                Some(readers_and_pieces) => readers_and_pieces,
-                                None => {
-                                    debug!("A readers and pieces are already dropped");
-                                    return None;
-                                }
+                            let read_piece_fut = {
+                                let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
+                                    Some(readers_and_pieces) => readers_and_pieces,
+                                    None => {
+                                        debug!("A readers and pieces are already dropped");
+                                        return None;
+                                    }
+                                };
+                                let readers_and_pieces = readers_and_pieces.lock();
+                                let readers_and_pieces = match readers_and_pieces.as_ref() {
+                                    Some(readers_and_pieces) => readers_and_pieces,
+                                    None => {
+                                        debug!(
+                                            ?piece_index_hash,
+                                            "Readers and pieces are not initialized yet"
+                                        );
+                                        return None;
+                                    }
+                                };
+
+                                readers_and_pieces
+                                    .read_piece(&piece_index_hash)?
+                                    .instrument(Span::current())
                             };
-                            let readers_and_pieces = readers_and_pieces.lock();
-                            let readers_and_pieces = match readers_and_pieces.as_ref() {
-                                Some(readers_and_pieces) => readers_and_pieces,
-                                None => {
-                                    debug!(
-                                        ?piece_index_hash,
-                                        "Readers and pieces are not initialized yet"
-                                    );
-                                    return None;
-                                }
-                            };
 
-                            readers_and_pieces
-                                .read_piece(&piece_index_hash)?
-                                .instrument(Span::current())
-                        };
+                            let piece = read_piece_fut.await;
 
-                        let piece = read_piece_fut.await;
-
-                        Some(PieceByHashResponse { piece })
+                            Some(PieceByHashResponse { piece })
+                        }
                     }
-                }
-                .instrument(Span::current())
-            }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |req| {
+                    .instrument(Span::current())
+                },
+            ),
+            SegmentHeaderBySegmentIndexesRequestHandler::create(protocol_prefix, move |req| {
                 debug!(?req, "Segment headers request received.");
 
                 let node_client = node_client.clone();

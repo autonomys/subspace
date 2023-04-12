@@ -20,7 +20,7 @@ pub enum SegmentHeaderRequest {
 }
 
 impl GenericRequest for SegmentHeaderRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/segment-headers-by-indexes/0.1.0";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/subspace/{}/segment-headers-by-indexes/0.1.0";
     const LOG_TARGET: &'static str = "segment-headers-by-indexes-request-response-handler";
     type Response = SegmentHeaderResponse;
 }

@@ -26,7 +26,7 @@ pub struct PeerInfo {
 }
 
 impl GenericRequest for PeerInfoRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/sync/peer-info/0.1.0";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/subspace/{}/sync/peer-info/0.1.0";
     const LOG_TARGET: &'static str = "peer-info-request-response-handler";
     type Response = PeerInfoResponse;
 }

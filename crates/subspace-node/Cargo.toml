@@ -33,6 +33,7 @@ frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 futures = "0.3.28"
+hex = "0.4.3"
 hex-literal = "0.4.0"
 log = "0.4.17"
 once_cell = "1.17.1"

@@ -73,9 +73,6 @@ pub trait RequestHandler: Send {
     /// Returns a config for the request-response protocol factory.
     fn protocol_config(&self) -> ProtocolConfig;
 
-    /// Returns a protocol name.
-    fn protocol_name(&self) -> &'static str;
-
     /// Clone boxed value.
     fn clone_box(&self) -> Box<dyn RequestHandler>;
 }

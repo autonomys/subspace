@@ -17,7 +17,7 @@ use tracing::error;
 struct ExampleRequest;
 
 impl GenericRequest for ExampleRequest {
-    const PROTOCOL_NAME: &'static str = "/example";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/example";
     const LOG_TARGET: &'static str = "example_request";
     type Response = ExampleResponse;
 }
@@ -35,12 +35,15 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
-            sleep(Duration::from_secs(2)).await;
+        request_response_protocols: vec![GenericRequestHandler::create(
+            "test".to_string(),
+            |&ExampleRequest| async {
+                sleep(Duration::from_secs(2)).await;
 
-            println!("Request handler for request");
-            Some(ExampleResponse)
-        })],
+                println!("Request handler for request");
+                Some(ExampleResponse)
+            },
+        )],
         metrics: Some(metrics),
         ..Config::default()
     };
@@ -92,6 +95,7 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
+            "test".to_string(),
             |_| async { None },
         )],
         ..Config::default()

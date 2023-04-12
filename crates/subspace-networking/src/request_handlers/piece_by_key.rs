@@ -15,7 +15,7 @@ pub struct PieceByHashRequest {
 }
 
 impl GenericRequest for PieceByHashRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/piece-by-hash/0.1.0";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/subspace/{}/piece-by-hash/0.1.0";
     const LOG_TARGET: &'static str = "piece-by-hash-request-response-handler";
     type Response = PieceByHashResponse;
 }

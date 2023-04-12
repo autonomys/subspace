@@ -23,7 +23,7 @@ pub struct PiecesByRangeRequest {
 }
 
 impl GenericRequest for PiecesByRangeRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/sync/pieces-by-range/0.1.0";
+    const PROTOCOL_NAME_TEMPLATE: &'static str = "/subspace/{}/sync/pieces-by-range/0.1.0";
     const LOG_TARGET: &'static str = "pieces-by-range-request-response-handler";
     type Response = PiecesByRangeResponse;
 }

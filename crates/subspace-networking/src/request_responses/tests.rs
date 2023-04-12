@@ -26,10 +26,6 @@ impl RequestHandler for MockRunner {
         self.0.clone()
     }
 
-    fn protocol_name(&self) -> &'static str {
-        self.0.name
-    }
-
     fn clone_box(&self) -> Box<dyn RequestHandler> {
         Box::new(Self(self.0.clone()))
     }

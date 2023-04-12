@@ -378,7 +378,7 @@ impl Node {
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,
-            protocol_name: Request::PROTOCOL_NAME,
+            protocol_name: Request::PROTOCOL_NAME_TEMPLATE,
             request: request.encode(),
             result_sender,
         };

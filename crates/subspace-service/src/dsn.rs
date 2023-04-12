@@ -130,7 +130,7 @@ where
         NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
     let keypair = dsn_config.keypair.clone();
     let default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_prefix, keypair, provider_storage);
+        subspace_networking::Config::new(dsn_protocol_prefix.clone(), keypair, provider_storage);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
@@ -138,7 +138,7 @@ where
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry,
         request_response_protocols: vec![
-            PieceByHashRequestHandler::create(move |req| {
+            PieceByHashRequestHandler::create(dsn_protocol_prefix.clone(), move |req| {
                 let result = match piece_cache.get_piece(req.piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
                     Err(error) => {
@@ -149,7 +149,7 @@ where
 
                 async { Some(PieceByHashResponse { piece: result }) }
             }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |req| {
+            SegmentHeaderBySegmentIndexesRequestHandler::create(dsn_protocol_prefix, move |req| {
                 let segment_indexes = match req {
                     SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
                         segment_indexes.clone()

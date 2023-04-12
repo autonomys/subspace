@@ -29,7 +29,8 @@ const REQUESTS_BUFFER_SIZE: usize = 50;
 
 /// Generic request with associated response
 pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
-    const PROTOCOL_NAME: &'static str;
+    const PROTOCOL_NAME_TEMPLATE: &'static str;
+    const PROTOCOL_PREFIX_PLACEHOLDER: &'static str = "{}";
     const LOG_TARGET: &'static str;
     /// Response type that corresponds to this request
     type Response: Encode + Decode + Send + Sync + 'static;
@@ -52,14 +53,17 @@ pub struct GenericRequestHandler<Request: GenericRequest> {
 }
 
 impl<Request: GenericRequest> GenericRequestHandler<Request> {
-    pub fn create<RH, Fut>(request_handler: RH) -> Box<dyn RequestHandler>
+    pub fn create<RH, Fut>(protocol_prefix: String, request_handler: RH) -> Box<dyn RequestHandler>
     where
         RH: (Fn(&Request) -> Fut) + Send + Sync + 'static,
         Fut: Future<Output = Option<Request::Response>> + Send + 'static,
     {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
-        let mut protocol_config = ProtocolConfig::new(Request::PROTOCOL_NAME);
+        let protocol_name = Request::PROTOCOL_NAME_TEMPLATE
+            .replace(Request::PROTOCOL_PREFIX_PLACEHOLDER, &protocol_prefix)
+            .into_boxed_str();
+        let mut protocol_config = ProtocolConfig::new(Box::leak(protocol_name));
         protocol_config.inbound_queue = Some(request_sender);
 
         Box::new(Self {
@@ -106,7 +110,7 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
                         Ok(()) => trace!(target = Request::LOG_TARGET, %peer, "Handled request",),
                         Err(_) => debug!(
                             target = Request::LOG_TARGET,
-                            protocol = Request::PROTOCOL_NAME,
+                            protocol = Request::PROTOCOL_NAME_TEMPLATE,
                             %peer,
                             "Failed to handle request: {}",
                             RequestHandlerError::SendResponse
@@ -116,7 +120,7 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
                 Err(e) => {
                     debug!(
                         target = Request::LOG_TARGET,
-                        protocol = Request::PROTOCOL_NAME,
+                        protocol = Request::PROTOCOL_NAME_TEMPLATE,
                         %e,
                         "Failed to handle request.",
                     );
@@ -129,7 +133,7 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
                     if pending_response.send(response).is_err() {
                         debug!(
                             target = Request::LOG_TARGET,
-                            protocol = Request::PROTOCOL_NAME,
+                            protocol = Request::PROTOCOL_NAME_TEMPLATE,
                             %peer,
                             "Failed to handle request: {}", RequestHandlerError::SendResponse
                         );
@@ -143,14 +147,10 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
         self.protocol_config.clone()
     }
 
-    fn protocol_name(&self) -> &'static str {
-        Request::PROTOCOL_NAME
-    }
-
     fn clone_box(&self) -> Box<dyn RequestHandler> {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
-        let mut protocol_config = ProtocolConfig::new(Request::PROTOCOL_NAME);
+        let mut protocol_config = ProtocolConfig::new(self.protocol_config.name);
         protocol_config.inbound_queue = Some(request_sender);
 
         Box::new(Self {
