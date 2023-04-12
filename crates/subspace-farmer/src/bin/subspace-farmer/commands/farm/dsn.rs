@@ -38,6 +38,7 @@ const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
 #[allow(clippy::type_complexity)]
 pub(super) fn configure_dsn(
+    protocol_prefix: String,
     base_path: PathBuf,
     keypair: Keypair,
     DsnArgs {
@@ -64,6 +65,8 @@ pub(super) fn configure_dsn(
     ),
     anyhow::Error,
 > {
+    let peer_id = peer_id(&keypair);
+
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
@@ -89,9 +92,6 @@ pub(super) fn configure_dsn(
             fs::rename(&provider_cache_db_path, &provider_db_path)?;
         }
     }
-
-    let default_config = Config::default();
-    let peer_id = peer_id(&keypair);
 
     info!(
         db_path = ?provider_db_path,
@@ -156,9 +156,9 @@ pub(super) fn configure_dsn(
         }
     });
 
+    let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage);
     let config = Config {
         reserved_peers,
-        keypair,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
         networking_parameters_registry,
@@ -281,7 +281,6 @@ pub(super) fn configure_dsn(
                 .instrument(Span::current())
             }),
         ],
-        provider_storage: farmer_provider_storage,
         max_established_outgoing_connections: out_connections,
         max_pending_outgoing_connections: pending_out_connections,
         max_established_incoming_connections: in_connections,

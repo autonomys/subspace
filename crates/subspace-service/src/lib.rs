@@ -522,11 +522,22 @@ where
             bootstrap_nodes,
         } => (node, bootstrap_nodes),
         SubspaceNetworking::Create {
-            config,
+            config: dsn_config,
             piece_cache_size,
         } => {
-            let piece_cache =
-                PieceCache::new(client.clone(), piece_cache_size, peer_id(&config.keypair));
+            let dsn_protocol_prefix = hex::encode(client.chain_info().genesis_hash);
+
+            info!(
+                chain_type=?config.chain_spec.chain_type(),
+                genesis_hash=%hex::encode(client.chain_info().genesis_hash),
+                "Setting DSN protocol prefix..."
+            );
+
+            let piece_cache = PieceCache::new(
+                client.clone(),
+                piece_cache_size,
+                peer_id(&dsn_config.keypair),
+            );
 
             // Start before archiver below, so we don't have potential race condition and miss pieces
             task_manager
@@ -559,8 +570,12 @@ where
                     }
                 });
 
-            let (node, mut node_runner) =
-                create_dsn_instance(config.clone(), piece_cache, segment_header_cache.clone())?;
+            let (node, mut node_runner) = create_dsn_instance(
+                dsn_protocol_prefix,
+                dsn_config.clone(),
+                piece_cache,
+                segment_header_cache.clone(),
+            )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
 
@@ -599,7 +614,7 @@ where
                 ),
             );
 
-            (node, config.bootstrap_nodes)
+            (node, dsn_config.bootstrap_nodes)
         }
     };
 

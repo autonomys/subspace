@@ -81,16 +81,17 @@ pub(crate) async fn farm_multi_disk(
         let identity = Identity::open_or_create(&directory).unwrap();
         let keypair = derive_libp2p_keypair(identity.secret_key());
 
+        let farmer_app_info = node_client
+            .farmer_app_info()
+            .await
+            .map_err(|error| anyhow::anyhow!(error))?;
+
         if dsn.bootstrap_nodes.is_empty() {
-            dsn.bootstrap_nodes = {
-                node_client
-                    .farmer_app_info()
-                    .await
-                    .map_err(|error| anyhow::anyhow!(error))?
-                    .dsn_bootstrap_nodes
-            };
+            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes;
         }
+
         configure_dsn(
+            hex::encode(farmer_app_info.genesis_hash),
             base_path,
             keypair,
             dsn,
