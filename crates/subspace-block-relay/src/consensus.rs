@@ -21,7 +21,7 @@ use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Extrinsic as ExtrinsicT, Header};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{info, trace, warn};
 
 /// The block Id for the backend APIs
@@ -151,11 +151,15 @@ impl<Block: BlockT, Pool: TransactionPool> BlockDownloader for ConsensusRelayCli
         request: Vec<u8>,
         network: NetworkServiceHandle,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-        match self.download(who, request, network).await {
+        let start_ts = Instant::now();
+        let ret = self.download(who, request, network).await;
+        let elapsed = start_ts.elapsed();
+        match ret {
             Ok(val) => {
-                trace!(
+                info!(
                     target: LOG_TARGET,
-                    "relay::download_block: success: peer = {who:?}"
+                    "relay::download_block: {} bytes from {who:?} in {elapsed:?}",
+                    val.len()
                 );
                 Ok(Ok(val))
             }
