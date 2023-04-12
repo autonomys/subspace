@@ -3,7 +3,7 @@
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::protocol::{ProtocolBackend, ProtocolClient, ProtocolServer};
 use crate::utils::{RequestResponseStub, ServerMessage};
-use crate::{RelayClient, RelayError, RelayServer, LOG_TARGET};
+use crate::{DownloadResult, RelayClient, RelayError, RelayServer, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
@@ -85,7 +85,8 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
         who: PeerId,
         request: Self::Request,
         network: NetworkServiceHandle,
-    ) -> Result<(BlockHash<Block>, Vec<u8>), RelayError> {
+    ) -> Result<DownloadResult<BlockHash<Block>>, RelayError> {
+        let start_ts = Instant::now();
         let stub = RequestResponseStub::new(self.protocol_name.clone(), who, network);
 
         // Perform the initial request/response
@@ -108,6 +109,7 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
             .await?;
 
         // Assemble the final response
+        let mut local_miss = 0;
         let block_data = BlockDataSchema {
             hash: initial_response.partial_block.hash,
             header: initial_response.partial_block.hdr,
@@ -124,6 +126,7 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
                             resolved.protocol_unit.is_signed(),
                             encoded.len()
                         );
+                        local_miss += encoded.len();
                     }
                     encoded
                 })
@@ -143,7 +146,12 @@ impl<Block: BlockT, Pool: TransactionPool> RelayClient for ConsensusRelayClient<
         if let Err(err) = block_response.encode(&mut data) {
             Err(format!("download: encode response: {err:?}").into())
         } else {
-            Ok((initial_response.block_hash, data))
+            Ok(DownloadResult {
+                download_unit_id: initial_response.block_hash,
+                download_unit: data,
+                latency: start_ts.elapsed(),
+                local_miss,
+            })
         }
     }
 }
@@ -156,17 +164,17 @@ impl<Block: BlockT, Pool: TransactionPool> BlockDownloader for ConsensusRelayCli
         request: Vec<u8>,
         network: NetworkServiceHandle,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-        let start_ts = Instant::now();
         let ret = self.download(who, request, network).await;
-        let elapsed = start_ts.elapsed();
         match ret {
-            Ok((block_hash, response)) => {
+            Ok(result) => {
                 info!(
                     target: LOG_TARGET,
-                    "relay::download_block: {block_hash:?}: {} bytes in {elapsed:?} from {who:?}",
-                    response.len()
+                    "relay::download_block: {:?} [block_size = {} bytes, local_miss = {} bytes, \
+                     download_latency = {:?}]",
+                    result.download_unit_id, result.download_unit.len(),
+                    result.local_miss, result.latency
                 );
-                Ok(Ok(response))
+                Ok(Ok(result.download_unit))
             }
             Err(err) => {
                 warn!(

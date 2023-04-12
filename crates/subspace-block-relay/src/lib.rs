@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use sc_network::request_responses::IncomingRequest;
 use sc_network::PeerId;
 use sc_network_sync::service::network::NetworkServiceHandle;
+use std::time::Duration;
 
 mod consensus;
 mod protocol;
@@ -48,6 +49,22 @@ pub use crate::consensus::build_consensus_relay;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
 
+/// The downloaded entry and meta info
+pub(crate) struct DownloadResult<DownloadUnitId> {
+    /// Downloaded unit Id
+    download_unit_id: DownloadUnitId,
+
+    /// Downloaded entry
+    download_unit: Vec<u8>,
+
+    /// Total transactions (in bytes) that could not be resolved
+    /// locally, and had to be fetched from the server
+    local_miss: usize,
+
+    /// Download latency
+    latency: Duration,
+}
+
 /// The relay client stub
 #[async_trait]
 pub(crate) trait RelayClient {
@@ -60,7 +77,7 @@ pub(crate) trait RelayClient {
         who: PeerId,
         request: Self::Request,
         network: NetworkServiceHandle,
-    ) -> Result<(Self::DownloadUnitId, Vec<u8>), RelayError>;
+    ) -> Result<DownloadResult<Self::DownloadUnitId>, RelayError>;
 }
 
 /// The relay server
