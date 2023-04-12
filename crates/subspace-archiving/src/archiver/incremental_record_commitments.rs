@@ -110,8 +110,7 @@ impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
         // TODO: `collect_into_vec()`, unfortunately, truncates input, which is not what we want
         //  can be unified when https://github.com/rayon-rs/rayon/issues/1039 is resolved
         #[cfg(feature = "rayon")]
-        self.incremental_record_commitments
-            .extend(&iter.collect::<Vec<_>>());
+        self.incremental_record_commitments.par_extend(iter);
     }
 }
 
