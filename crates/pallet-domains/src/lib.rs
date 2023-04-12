@@ -729,13 +729,20 @@ where
     pub fn submit_bundle_unsigned(
         signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
+        let slot = signed_opaque_bundle.bundle.header.slot_number;
+        let receipts_count = signed_opaque_bundle.bundle.receipts.len();
+        let extrincis_count = signed_opaque_bundle.bundle.extrinsics.len();
+
         let call = Call::submit_bundle {
             signed_opaque_bundle,
         };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {
-                log::info!(target: "runtime::domains", "Submitted bundle");
+                log::info!(
+                    target: "runtime::domains",
+                    "Submitted bundle from slot {slot}, receipts: {receipts_count}, extrinsics: {extrincis_count}",
+                );
             }
             Err(()) => {
                 log::error!(target: "runtime::domains", "Error submitting bundle");

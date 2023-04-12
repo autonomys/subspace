@@ -67,6 +67,7 @@ pub(super) async fn start_worker<
         SBlock,
         Client,
         SClient,
+        PClient,
         CoreDomainParentChain<SClient, SBlock, PBlock>,
         TransactionPool,
     >,
