@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Notify;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 /// This test is successful only for global IP addresses and DNS names.
 pub(crate) fn is_global_address_or_dns(addr: &Multiaddr) -> bool {
@@ -300,9 +300,9 @@ pub fn online_status_informer(node: &Node) -> impl Future<Output = ()> {
             let online_status = *online_status_observer.borrow();
 
             if online_status {
-                info!("DSN connection established.");
+                debug!("DSN connection established.");
             } else {
-                warn!("DSN connection lost.");
+                debug!("DSN connection lost.");
             }
         }
     }
