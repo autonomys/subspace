@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 /// The compact response
 #[derive(Encode, Decode)]
@@ -193,7 +193,7 @@ where
         // Try to resolve the hashes locally first.
         let context = self.resolve_local(&compact_response)?;
         if context.resolved.len() == compact_response.protocol_unit_ids.len() {
-            info!(
+            trace!(
                 target: LOG_TARGET,
                 "relay::resolve: {:?}: resolved locally[{}]",
                 compact_response.download_unit_id,
@@ -286,7 +286,7 @@ where
             }
         }
         if total_len != protocol_units.len() {
-            info!(
+            warn!(
                 target: LOG_TARGET,
                 "relay::compact_blocks::on_request: could not resolve all entries: {total_len}/{}",
                 protocol_units.len()
