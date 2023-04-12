@@ -492,10 +492,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     ferdie.produce_blocks(1).await.unwrap();
 }
 
-// TODO: enable the test after we can fetch call_data from the original primary block, currently the test
-// will fail due to `panicked at 'Bad input data provided to initialize_block_with_post_state_root: Codec error'`
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -523,7 +520,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
     // after https://github.com/subspace/subspace/issues/1301 is resolved.
-    futures::join!(alice.wait_for_blocks(2), ferdie.produce_blocks(2))
+    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
         .1
         .unwrap();
 
@@ -531,11 +528,17 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
         let mut signed_opaque_bundle = bundle.unwrap();
-        signed_opaque_bundle.bundle.receipts[0].trace[0] = Default::default();
+        signed_opaque_bundle
+            .bundle
+            .receipts
+            .last_mut()
+            .unwrap()
+            .trace[0] = Default::default();
         signed_opaque_bundle
     };
-    let bad_receipt = bad_bundle.bundle.receipts[0].clone();
+    let bad_receipt = bad_bundle.bundle.receipts.last().unwrap().clone();
     let bad_receipt_number = bad_receipt.primary_number;
+    assert_ne!(bad_receipt_number, 1);
 
     // Submit the bad receipt to the primary chain
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
