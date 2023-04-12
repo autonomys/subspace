@@ -1150,6 +1150,10 @@ impl_runtime_apis! {
         ) -> Option<domain_runtime_primitives::Hash> {
             Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
         }
+
+        fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
+            Receipts::primary_hash(domain_id, domain_block_number)
+        }
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {

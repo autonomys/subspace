@@ -74,6 +74,9 @@ pub enum VerificationError {
     /// `pre_state_root` in the invalid state transition proof is invalid.
     #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
     InvalidPreStateRoot,
+    /// Hash of the primary block being challenged not found.
+    #[cfg_attr(feature = "thiserror", error("primary hash not found"))]
+    PrimaryHashNotFound,
     /// `post_state_root` not found in the state.
     #[cfg_attr(feature = "thiserror", error("`post_state_root` not found"))]
     PostStateRootNotFound,
@@ -83,6 +86,18 @@ pub enum VerificationError {
         error("`post_state_root` is same as the one on chain")
     )]
     SamePostStateRoot,
+    /// Domain extrinsic at given index not found.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Domain extrinsic at index {0} not found")
+    )]
+    DomainExtrinsicNotFound(u32),
+    /// Error occurred while building the domain extrinsics.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to rebuild the domain extrinsic list")
+    )]
+    FailedToBuildDomainExtrinsics,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",
@@ -117,6 +132,10 @@ pub enum VerificationError {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(parity_scale_codec::Error),
+    /// Decode error.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
+    Decode(#[from] parity_scale_codec::Error),
     /// Runtime api error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]

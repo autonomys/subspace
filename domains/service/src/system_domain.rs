@@ -39,7 +39,9 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
+use subspace_fraud_proof::invalid_state_transition_proof::{
+    CoreDomainExtrinsicsBuilder, PrePostStateRootVerifier,
+};
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -62,7 +64,12 @@ where
     NumberFor<PBlock>: From<NumberFor<Block>>,
     PBlock::Hash: From<Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
@@ -126,6 +133,13 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
         SpawnTaskHandle,
         Hash,
         PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        CoreDomainExtrinsicsBuilder<
+            PBlock,
+            Block,
+            PClient,
+            FullClient<RuntimeApi, Executor>,
+            NativeElseWasmExecutor<Executor>,
+        >,
     >;
 
 type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
@@ -158,7 +172,12 @@ where
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>>,
     PBlock::Hash: From<Hash>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync + 'static,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutionDispatch>>
         + Send
@@ -212,6 +231,11 @@ where
             executor.clone(),
             task_manager.spawn_handle(),
             PrePostStateRootVerifier::new(client.clone()),
+            CoreDomainExtrinsicsBuilder::new(
+                primary_chain_client.clone(),
+                client.clone(),
+                Arc::new(executor.clone()),
+            ),
         ),
     ));
 

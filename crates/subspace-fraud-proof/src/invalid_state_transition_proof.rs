@@ -6,21 +6,28 @@
 //! specific extrinsic execution are supported.
 
 use codec::{Codec, Decode, Encode};
+use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use domain_block_preprocessor::{CoreDomainBlockPreprocessor, SystemDomainBlockPreprocessor};
+use domain_runtime_primitives::opaque::Block;
 use hash_db::{HashDB, Hasher, Prefix};
-use sc_client_api::{backend, HeaderBackend};
+use sc_client_api::{backend, BlockBackend, HeaderBackend};
 use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
 use sp_core::H256;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::{DomainId, ExecutorApi};
+use sp_messenger::MessengerApi;
 use sp_receipts::ReceiptsApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, Header as HeaderT, NumberFor};
+use sp_runtime::{Digest, DigestItem};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
+use system_runtime_primitives::SystemDomainApi;
 
 /// Creates storage proof for verifying an execution without owning the whole state.
 pub struct ExecutionProver<Block, B, Exec> {
@@ -201,20 +208,31 @@ pub struct InvalidStateTransitionProofVerifier<
     Spawn,
     Hash,
     PrePostStateRootVerifier,
+    DomainExtrinsicsBuilder,
 > {
     client: Arc<C>,
     executor: Exec,
     spawn_handle: Spawn,
     pre_post_state_root_verifier: PrePostStateRootVerifier,
+    domain_extrinsics_builder: DomainExtrinsicsBuilder,
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> Clone
-    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier, DomainExtrinsicsBuilder> Clone
+    for InvalidStateTransitionProofVerifier<
+        PBlock,
+        C,
+        Exec,
+        Spawn,
+        Hash,
+        PrePostStateRootVerifier,
+        DomainExtrinsicsBuilder,
+    >
 where
     Exec: Clone,
     Spawn: Clone,
     PrePostStateRootVerifier: Clone,
+    DomainExtrinsicsBuilder: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -222,6 +240,7 @@ where
             executor: self.executor.clone(),
             spawn_handle: self.spawn_handle.clone(),
             pre_post_state_root_verifier: self.pre_post_state_root_verifier.clone(),
+            domain_extrinsics_builder: self.domain_extrinsics_builder.clone(),
             _phantom: self._phantom,
         }
     }
@@ -240,6 +259,13 @@ pub trait VerifyPrePostStateRoot {
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError>;
+
+    /// Returns the hash of primary block at height `domain_block_number`.
+    fn primary_hash(
+        &self,
+        domain_id: DomainId,
+        domain_block_number: u32,
+    ) -> Result<H256, VerificationError>;
 }
 
 /// Verifier of `pre_state_root` in [`InvalidStateTransitionProof`].
@@ -275,6 +301,12 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: ReceiptsApi<Block, domain_runtime_primitives::Hash>,
 {
+    // TODO: It's not necessary to require `pre_state_root` in the proof and then verify, it can
+    // be just retrieved by the verifier itself according the execution phase, which requires some
+    // fixes in tests however, we can do this refactoring once we have or are able to construct a
+    // proper `VerifyPrePostStateRoot` implementation in test.
+    //
+    // Related: https://github.com/subspace/subspace/pull/1240#issuecomment-1476212007
     fn verify_pre_state_root(
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
@@ -294,8 +326,7 @@ where
                     self.client.info().best_hash,
                     *domain_id,
                     NumberFor::<Block>::from(*parent_number),
-                    Block::Hash::decode(&mut domain_parent_hash.encode().as_slice())
-                        .expect("Block Hash must be H256; qed"),
+                    Block::Hash::decode(&mut domain_parent_hash.encode().as_slice())?,
                 )?
             }
             ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
@@ -359,36 +390,213 @@ where
             Ok(())
         }
     }
-}
 
-pub(crate) struct SkipPreStateRootVerification;
-
-impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
-    fn verify_pre_state_root(
+    fn primary_hash(
         &self,
-        _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
-
-    fn verify_post_state_root(
-        &self,
-        _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
+        domain_id: DomainId,
+        domain_block_number: u32,
+    ) -> Result<H256, VerificationError> {
+        self.client
+            .runtime_api()
+            .primary_hash(
+                self.client.info().best_hash,
+                domain_id,
+                domain_block_number.into(),
+            )?
+            .and_then(|primary_hash| Decode::decode(&mut primary_hash.encode().as_slice()).ok())
+            .ok_or(VerificationError::PrimaryHashNotFound)
     }
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
-    InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+/// Trait to build the extrinsics of domain block derived from the original primary block.
+pub trait BuildDomainExtrinsics<PBlock: BlockT> {
+    /// Returns the final list of encoded domain-specific extrinsics.
+    fn build_domain_extrinsics(
+        &self,
+        domain_id: DomainId,
+        primary_hash: PBlock::Hash,
+        domain_runtime: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>>;
+}
+
+/// Utility to build the system domain extrinsics.
+pub struct SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor> {
+    primary_chain_client: Arc<PClient>,
+    executor: Arc<Executor>,
+    _phantom: PhantomData<PBlock>,
+}
+
+impl<PBlock, PClient, Executor> SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor>
 where
     PBlock: BlockT,
+    PBlock::Hash: From<sp_core::H256>,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    Executor: CodeExecutor,
+{
+    /// Constructs a new instance of [`SystemDomainExtrinsicsBuilder`].
+    pub fn new(primary_chain_client: Arc<PClient>, executor: Arc<Executor>) -> Self {
+        Self {
+            primary_chain_client,
+            executor,
+            _phantom: Default::default(),
+        }
+    }
+
+    fn build_system_domain_extrinsics(
+        &self,
+        primary_hash: PBlock::Hash,
+        runtime_code: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        let system_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+        let domain_extrinsics = SystemDomainBlockPreprocessor::<Block, _, _, _>::new(
+            self.primary_chain_client.clone(),
+            system_runtime_api_light,
+        )
+        .preprocess_primary_block_for_verifier(primary_hash)?;
+        Ok(domain_extrinsics)
+    }
+}
+
+impl<PBlock, PClient, Executor> BuildDomainExtrinsics<PBlock>
+    for SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor>
+where
+    PBlock: BlockT,
+    PBlock::Hash: From<sp_core::H256>,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    Executor: CodeExecutor,
+{
+    fn build_domain_extrinsics(
+        &self,
+        _domain_id: DomainId,
+        primary_hash: <PBlock as BlockT>::Hash,
+        domain_runtime: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        self.build_system_domain_extrinsics(primary_hash, domain_runtime)
+    }
+}
+
+/// Utility to build the core domain extrinsics.
+pub struct CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor> {
+    primary_chain_client: Arc<PClient>,
+    system_domain_client: Arc<SClient>,
+    executor: Arc<Executor>,
+    _phantom: PhantomData<(PBlock, SBlock)>,
+}
+
+impl<PBlock, SBlock, PClient, SClient, Executor>
+    CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor>
+where
+    PBlock: BlockT,
+    PBlock::Hash: From<sp_core::H256>,
+    SBlock: BlockT,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
+    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
+    Executor: CodeExecutor,
+{
+    /// Constructs a new instance of [`CoreDomainExtrinsicsBuilder`].
+    pub fn new(
+        primary_chain_client: Arc<PClient>,
+        system_domain_client: Arc<SClient>,
+        executor: Arc<Executor>,
+    ) -> Self {
+        Self {
+            primary_chain_client,
+            system_domain_client,
+            executor,
+            _phantom: Default::default(),
+        }
+    }
+
+    fn build_core_domain_extrinsics(
+        &self,
+        domain_id: DomainId,
+        primary_hash: PBlock::Hash,
+        runtime_code: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        let core_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+        let domain_extrinsics = CoreDomainBlockPreprocessor::<Block, _, _, _, _, _>::new(
+            domain_id,
+            core_runtime_api_light,
+            self.primary_chain_client.clone(),
+            self.system_domain_client.clone(),
+        )
+        .preprocess_primary_block_for_verifier(primary_hash)?;
+        Ok(domain_extrinsics)
+    }
+}
+
+impl<PBlock, SBlock, PClient, SClient, Executor> BuildDomainExtrinsics<PBlock>
+    for CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor>
+where
+    PBlock: BlockT,
+    PBlock::Hash: From<sp_core::H256>,
+    SBlock: BlockT,
+    PClient: HeaderBackend<PBlock>
+        + BlockBackend<PBlock>
+        + ProvideRuntimeApi<PBlock>
+        + Send
+        + Sync
+        + 'static,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + MessengerApi<SBlock, NumberFor<SBlock>>,
+    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
+    Executor: CodeExecutor,
+{
+    fn build_domain_extrinsics(
+        &self,
+        domain_id: DomainId,
+        primary_hash: <PBlock as BlockT>::Hash,
+        domain_runtime: Vec<u8>,
+    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
+        self.build_core_domain_extrinsics(domain_id, primary_hash, domain_runtime)
+    }
+}
+
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier, DomainExtrinsicsBuilder>
+    InvalidStateTransitionProofVerifier<
+        PBlock,
+        C,
+        Exec,
+        Spawn,
+        Hash,
+        PrePostStateRootVerifier,
+        DomainExtrinsicsBuilder,
+    >
+where
+    PBlock: BlockT,
+    H256: Into<PBlock::Hash>,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
     PrePostStateRootVerifier: VerifyPrePostStateRoot,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
 {
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
@@ -396,12 +604,14 @@ where
         executor: Exec,
         spawn_handle: Spawn,
         pre_post_state_root_verifier: PrePostStateRootVerifier,
+        domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
             client,
             executor,
             spawn_handle,
             pre_post_state_root_verifier,
+            domain_extrinsics_builder,
             _phantom: PhantomData::<(PBlock, Hash)>,
         }
     }
@@ -419,6 +629,7 @@ where
 
         let InvalidStateTransitionProof {
             domain_id,
+            parent_number,
             primary_parent_hash,
             pre_state_root,
             post_state_root,
@@ -427,8 +638,7 @@ where
             ..
         } = invalid_state_transition_proof;
 
-        let at = PBlock::Hash::decode(&mut primary_parent_hash.encode().as_slice())
-            .expect("Block Hash must be H256; qed");
+        let at = PBlock::Hash::decode(&mut primary_parent_hash.encode().as_slice())?;
         let system_wasm_bundle = self
             .client
             .runtime_api()
@@ -464,7 +674,51 @@ where
             heap_pages: None,
         };
 
-        let call_data = b"TODO: fetch call_data from the original primary block";
+        let call_data = match execution_phase {
+            ExecutionPhase::InitializeBlock { domain_parent_hash } => {
+                let parent_hash =
+                    <Block as BlockT>::Hash::decode(&mut domain_parent_hash.encode().as_slice())?;
+                let parent_number =
+                    <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
+
+                let primary_number = parent_number + 1;
+                let digest = if domain_id.is_system() {
+                    let primary_hash = self
+                        .pre_post_state_root_verifier
+                        .primary_hash(*domain_id, primary_number)?;
+                    Digest {
+                        logs: vec![DigestItem::primary_block_info::<NumberFor<Block>, _>((
+                            primary_number,
+                            primary_hash,
+                        ))],
+                    }
+                } else {
+                    Default::default()
+                };
+                let new_header = <Block as BlockT>::Header::new(
+                    primary_number,
+                    Default::default(),
+                    Default::default(),
+                    parent_hash,
+                    digest,
+                );
+                new_header.encode()
+            }
+            ExecutionPhase::ApplyExtrinsic(extrinsic_index) => {
+                let primary_hash = self
+                    .pre_post_state_root_verifier
+                    .primary_hash(*domain_id, parent_number + 1)?;
+                let domain_extrinsics = self
+                    .domain_extrinsics_builder
+                    .build_domain_extrinsics(*domain_id, primary_hash.into(), wasm_bundle.to_vec())
+                    .map_err(|_| VerificationError::FailedToBuildDomainExtrinsics)?;
+                domain_extrinsics
+                    .into_iter()
+                    .nth(*extrinsic_index as usize)
+                    .ok_or(VerificationError::DomainExtrinsicNotFound(*extrinsic_index))?
+            }
+            ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
+        };
 
         let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
             *pre_state_root,
@@ -473,15 +727,14 @@ where
             &self.executor,
             self.spawn_handle.clone(),
             execution_phase.verifying_method(),
-            call_data,
+            &call_data,
             &runtime_code,
         )
         .map_err(VerificationError::BadProof)?;
 
         let new_post_state_root =
             execution_phase.decode_execution_result::<PBlock::Header>(execution_result)?;
-        let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())
-            .expect("Block Hash must be H256; qed");
+        let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())?;
 
         if new_post_state_root == *post_state_root {
             Ok(())
@@ -503,16 +756,27 @@ pub trait VerifyInvalidStateTransitionProof {
     ) -> Result<(), VerificationError>;
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier> VerifyInvalidStateTransitionProof
-    for InvalidStateTransitionProofVerifier<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier>
+impl<PBlock, C, Exec, Spawn, Hash, PrePostStateRootVerifier, DomainExtrinsicsBuilder>
+    VerifyInvalidStateTransitionProof
+    for InvalidStateTransitionProofVerifier<
+        PBlock,
+        C,
+        Exec,
+        Spawn,
+        Hash,
+        PrePostStateRootVerifier,
+        DomainExtrinsicsBuilder,
+    >
 where
     PBlock: BlockT,
+    H256: Into<PBlock::Hash>,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
     PrePostStateRootVerifier: VerifyPrePostStateRoot,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
 {
     fn verify_invalid_state_transition_proof(
         &self,

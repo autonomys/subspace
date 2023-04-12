@@ -8,7 +8,7 @@ use clap::{Parser, ValueHint};
 use either::Either;
 use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::{identity, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
@@ -20,7 +20,10 @@ use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
     ParityDbProviderStorage, VoidProviderStorage,
 };
-use tracing::info;
+use tracing::{debug, info, Level};
+use tracing_subscriber::fmt::Subscriber;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -59,6 +62,10 @@ enum Command {
         /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
         #[arg(long, default_value = "100MiB")]
         piece_providers_cache_size: ByteSize,
+        /// Protocol prefix for libp2p stack, should be set as genesis hash of the blockchain for
+        /// production use.
+        #[arg(long)]
+        protocol_prefix: String,
     },
     /// Generate a new keypair
     GenerateKeypair {
@@ -91,11 +98,20 @@ impl KeypairOutput {
     }
 }
 
+fn init_logging() {
+    // set default log to info if the RUST_LOG is not set.
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(Level::INFO.into())
+        .from_env_lossy();
+
+    let builder = Subscriber::builder().with_env_filter(env_filter).finish();
+
+    builder.init()
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
-
-    info!("Subspace Bootstrap Node started",);
+    init_logging();
 
     let command: Command = Command::parse();
 
@@ -112,14 +128,21 @@ async fn main() -> anyhow::Result<()> {
             disable_private_ips,
             db_path,
             piece_providers_cache_size,
+            protocol_prefix,
         } => {
+            debug!(
+                "Libp2p protocol stack instantiated with prefix: {} ",
+                protocol_prefix
+            );
+
             const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
             let recs = piece_providers_cache_size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
             let converted_cache_size =
                 NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
 
-            let keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
-            let local_peer_id = peer_id_from_keypair(keypair.clone());
+            let decoded_keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
+            let local_peer_id = peer_id_from_keypair(decoded_keypair.clone());
+            let keypair = identity::Keypair::Ed25519(decoded_keypair);
 
             let provider_storage = if let Some(path) = &db_path {
                 let db_path = path.join("subspace_storage_providers_db");
@@ -159,7 +182,7 @@ async fn main() -> anyhow::Result<()> {
                 max_established_outgoing_connections: out_peers,
                 max_pending_incoming_connections: pending_in_peers,
                 max_pending_outgoing_connections: pending_out_peers,
-                ..Config::with_keypair_and_provider_storage(keypair, provider_storage)
+                ..Config::new(protocol_prefix.to_string(), keypair, provider_storage)
             };
             let (node, mut node_runner) =
                 subspace_networking::create(config).expect("Networking stack creation failed.");
@@ -179,6 +202,7 @@ async fn main() -> anyhow::Result<()> {
             let status_informer_fut = online_status_informer(&node);
             let networking_fut = node_runner.run();
 
+            info!("Subspace Bootstrap Node started");
             select!(
                 // Status informer future
                 _ = status_informer_fut.fuse() => {

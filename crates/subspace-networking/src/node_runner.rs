@@ -252,7 +252,11 @@ where
             let network_info = self.swarm.network_info();
             let connections = network_info.connection_counters();
 
-            debug!(?connections, "Current connections and limits.");
+            debug!(
+                ?connections,
+                target_connections = self.target_connections,
+                "Current connections and limits."
+            );
 
             (
                 connections.num_pending_outgoing()
@@ -317,12 +321,12 @@ where
             .build();
 
         if let Err(err) = self.swarm.dial(dial_opts) {
-            warn!(
+            debug!(
                 %err,
                 %local_peer_id,
                 remote_peer_id = %peer_id,
                 %addr,
-                "Unexpected error: failed to dial an address."
+                "Dialing error: failed to dial an address."
             );
         }
     }
@@ -549,14 +553,14 @@ where
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
-            let kademlia_enabled = info.protocols.iter().any(|protocol_a| {
-                kademlia
-                    .protocol_names()
+            // We use kademlia support as a flag for the correct network in general.
+            let full_kademlia_support = kademlia.protocol_names().iter().all(|local_protocol| {
+                info.protocols
                     .iter()
-                    .any(|protocol_b| protocol_a.as_bytes() == protocol_b.as_ref())
+                    .any(|remote_protocol| remote_protocol.as_bytes() == local_protocol.as_ref())
             });
 
-            if kademlia_enabled {
+            if full_kademlia_support {
                 for address in info.listen_addrs {
                     if !self.allow_non_global_addresses_in_dht
                         && !is_global_address_or_dns(&address)
@@ -584,16 +588,23 @@ where
                     kademlia.add_address(&peer_id, address);
                 }
             } else {
-                trace!(
+                debug!(
                     %local_peer_id,
                     %peer_id,
-                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Adding to the DHT skipped.",
+                    peer_protocols=?info.protocols,
+                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Peer was banned.",
                     kademlia
                         .protocol_names()
                         .iter()
                         .map(|p| String::from_utf8_lossy(p.as_ref()))
                         .collect::<Vec<_>>(),
-                )
+                );
+
+                kademlia.remove_peer(&peer_id);
+                self.networking_parameters_registry
+                    .remove_all_known_peer_addresses(peer_id)
+                    .await;
+                self.swarm.ban_peer_id(peer_id);
             }
         }
     }
