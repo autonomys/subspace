@@ -709,15 +709,11 @@ where
             import_queue,
             block_announce_validator_builder: None,
             warp_sync_params: None,
-            block_relay: if config.enable_subspace_block_relay {
-                Some(build_consensus_relay(
-                    client.clone(),
-                    transaction_pool.clone(),
-                    100,
-                ))
-            } else {
-                None
-            },
+            block_relay: Some(build_consensus_relay(
+                client.clone(),
+                transaction_pool.clone(),
+                100,
+            )),
         })?;
 
     let sync_oracle = sync_service.clone();
