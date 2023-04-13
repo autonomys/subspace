@@ -7,8 +7,8 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::{FraudProof, InvalidTransactionProof};
-use sp_domains::{DomainId, ExecutorPublicKey};
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::{Bundle, DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -156,6 +156,23 @@ where
             transaction_pool,
             fraud_proof_generator,
             _phantom_data: Default::default(),
+        }
+    }
+
+    pub(crate) fn check_bundle_equivocation(
+        &self,
+        bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    ) -> Result<(), GossipMessageError> {
+        // TODO: check bundle equivocation
+        let bundle_is_an_equivocation = false;
+
+        if bundle_is_an_equivocation {
+            let equivocation_proof = BundleEquivocationProof::dummy_at(bundle.header.slot_number);
+            let fraud_proof = FraudProof::BundleEquivocation(equivocation_proof);
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+            Err(GossipMessageError::BundleEquivocation)
+        } else {
+            Ok(())
         }
     }
 

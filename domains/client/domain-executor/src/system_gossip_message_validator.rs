@@ -7,8 +7,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof};
-use sp_domains::{Bundle, SignedBundle};
+use sp_domains::SignedBundle;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use std::sync::Arc;
@@ -166,23 +165,8 @@ where
             signature,
         } = signed_bundle;
 
-        let check_equivocation =
-            |_bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>| {
-                // TODO: check bundle equivocation
-                let bundle_is_an_equivocation = false;
-                if bundle_is_an_equivocation {
-                    Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
-                } else {
-                    None
-                }
-            };
-
-        // A bundle equivocation occurs.
-        if let Some(equivocation_proof) = check_equivocation(bundle) {
-            let fraud_proof = FraudProof::BundleEquivocation(equivocation_proof);
-            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-            return Err(GossipMessageError::BundleEquivocation);
-        }
+        self.gossip_message_validator
+            .check_bundle_equivocation(bundle)?;
 
         let bundle_exists = false;
 
