@@ -7,7 +7,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::FraudProof;
+use sp_domains::fraud_proof::{FraudProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
@@ -53,16 +53,28 @@ pub struct GossipMessageValidator<
     PClient,
     Backend,
     E,
+    TransactionPool,
     ParentChain,
 > {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     parent_chain: ParentChain,
+    transaction_pool: Arc<TransactionPool>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
-impl<Block, PBlock, ParentChainBlock, Client, PClient, Backend, E, ParentChain> Clone
+impl<
+        Block,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    > Clone
     for GossipMessageValidator<
         Block,
         PBlock,
@@ -71,6 +83,7 @@ impl<Block, PBlock, ParentChainBlock, Client, PClient, Backend, E, ParentChain> 
         PClient,
         Backend,
         E,
+        TransactionPool,
         ParentChain,
     >
 where
@@ -81,13 +94,24 @@ where
             client: self.client.clone(),
             spawner: self.spawner.clone(),
             parent_chain: self.parent_chain.clone(),
+            transaction_pool: self.transaction_pool.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, ParentChainBlock, Client, PClient, Backend, E, ParentChain>
+impl<
+        Block,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    >
     GossipMessageValidator<
         Block,
         PBlock,
@@ -96,6 +120,7 @@ impl<Block, PBlock, ParentChainBlock, Client, PClient, Backend, E, ParentChain>
         PClient,
         Backend,
         E,
+        TransactionPool,
         ParentChain,
     >
 where
@@ -114,18 +139,21 @@ where
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     ParentChain: ParentChainInterface<ParentChainBlock> + Send + Sync + Clone + 'static,
 {
     pub(crate) fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
         parent_chain: ParentChain,
+        transaction_pool: Arc<TransactionPool>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         Self {
             client,
             spawner,
             parent_chain,
+            transaction_pool,
             fraud_proof_generator,
             _phantom_data: Default::default(),
         }
@@ -145,6 +173,30 @@ where
             if let Some(fraud_proof) =
                 self.validate_execution_receipt(receipt, head_receipt_number, domain_id)?
             {
+                self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_bundle_transactions(
+        &self,
+        extrinsics: &[Block::Extrinsic],
+        domain_id: DomainId,
+    ) -> Result<(), GossipMessageError> {
+        for extrinsic in extrinsics {
+            let tx_hash = self.transaction_pool.hash_of(extrinsic);
+
+            if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
+                // TODO: Set the status of each tx in the bundle to seen
+            } else {
+                // TODO: check the legality
+                //
+                // if illegal => illegal tx proof
+                let invalid_transaction_proof = InvalidTransactionProof { domain_id };
+                let fraud_proof = FraudProof::InvalidTransaction(invalid_transaction_proof);
+
                 self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
             }
         }

@@ -7,7 +7,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof};
 use sp_domains::{Bundle, SignedBundle};
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
@@ -35,8 +35,17 @@ pub struct CoreGossipMessageValidator<
     parent_chain: ParentChain,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    gossip_message_validator:
-        GossipMessageValidator<Block, PBlock, SBlock, Client, PClient, Backend, E, ParentChain>,
+    gossip_message_validator: GossipMessageValidator<
+        Block,
+        PBlock,
+        SBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    >,
     _phantom_data: PhantomData<(SBlock, SClient, PClient)>,
 }
 
@@ -116,6 +125,7 @@ where
             client.clone(),
             spawner,
             parent_chain.clone(),
+            transaction_pool.clone(),
             fraud_proof_generator,
         );
         Self {
@@ -217,21 +227,8 @@ where
             self.gossip_message_validator
                 .validate_bundle_receipts(&bundle.receipts, domain_id)?;
 
-            for extrinsic in bundle.extrinsics.iter() {
-                let tx_hash = self.transaction_pool.hash_of(extrinsic);
-
-                if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
-                    // TODO: Set the status of each tx in the bundle to seen
-                } else {
-                    // TODO: check the legality
-                    //
-                    // if illegal => illegal tx proof
-                    let invalid_transaction_proof = InvalidTransactionProof { domain_id };
-                    let fraud_proof = FraudProof::InvalidTransaction(invalid_transaction_proof);
-
-                    self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-                }
-            }
+            self.gossip_message_validator
+                .validate_bundle_transactions(&bundle.extrinsics, domain_id)?;
 
             // TODO: all checks pass, add to the bundle pool
 
