@@ -28,7 +28,8 @@ pub struct SystemGossipMessageValidator<
     parent_chain: ParentChain,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>,
+    gossip_message_validator:
+        GossipMessageValidator<Block, PBlock, PBlock, Client, PClient, Backend, E, ParentChain>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain> Clone
@@ -83,7 +84,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<PBlock>,
+    ParentChain: ParentChainInterface<PBlock> + Send + Sync + Clone + 'static,
 {
     pub fn new(
         parent_chain: ParentChain,
@@ -92,8 +93,12 @@ where
         transaction_pool: Arc<TransactionPool>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let gossip_message_validator =
-            GossipMessageValidator::new(client.clone(), spawner, fraud_proof_generator);
+        let gossip_message_validator = GossipMessageValidator::new(
+            client.clone(),
+            spawner,
+            parent_chain.clone(),
+            fraud_proof_generator,
+        );
         Self {
             parent_chain,
             client,
@@ -132,7 +137,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<PBlock>,
+    ParentChain: ParentChainInterface<PBlock> + Send + Sync + Clone + 'static,
 {
     type Error = GossipMessageError;
 
@@ -186,11 +191,7 @@ where
             let domain_id = bundle_solution.proof_of_election().domain_id;
             for receipt in &bundle.receipts {
                 self.gossip_message_validator
-                    .validate_gossiped_execution_receipt::<PBlock, _>(
-                        &self.parent_chain,
-                        receipt,
-                        domain_id,
-                    )?;
+                    .validate_gossiped_execution_receipt(receipt, domain_id)?;
             }
 
             for extrinsic in bundle.extrinsics.iter() {

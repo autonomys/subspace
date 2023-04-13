@@ -35,7 +35,8 @@ pub struct CoreGossipMessageValidator<
     parent_chain: ParentChain,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
-    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>,
+    gossip_message_validator:
+        GossipMessageValidator<Block, PBlock, SBlock, Client, PClient, Backend, E, ParentChain>,
     _phantom_data: PhantomData<(SBlock, SClient, PClient)>,
 }
 
@@ -102,7 +103,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<SBlock>,
+    ParentChain: ParentChainInterface<SBlock> + Send + Sync + Clone + 'static,
 {
     pub fn new(
         parent_chain: ParentChain,
@@ -111,8 +112,12 @@ where
         transaction_pool: Arc<TransactionPool>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let gossip_message_validator =
-            GossipMessageValidator::new(client.clone(), spawner, fraud_proof_generator);
+        let gossip_message_validator = GossipMessageValidator::new(
+            client.clone(),
+            spawner,
+            parent_chain.clone(),
+            fraud_proof_generator,
+        );
         Self {
             parent_chain,
             client,
@@ -156,7 +161,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<SBlock>,
+    ParentChain: ParentChainInterface<SBlock> + Send + Sync + Clone + 'static,
 {
     type Error = GossipMessageError;
 
@@ -208,13 +213,10 @@ where
 
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
             let domain_id = bundle_solution.proof_of_election().domain_id;
+
             for receipt in &bundle.receipts {
                 self.gossip_message_validator
-                    .validate_gossiped_execution_receipt::<SBlock, _>(
-                        &self.parent_chain,
-                        receipt,
-                        domain_id,
-                    )?;
+                    .validate_gossiped_execution_receipt(receipt, domain_id)?;
             }
 
             for extrinsic in bundle.extrinsics.iter() {
