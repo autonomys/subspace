@@ -14,19 +14,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::ExecutorDispatch;
 use clap::Parser;
+use frame_support::inherent::BlockT;
 use sc_cli::{CliConfiguration, ImportParams, SharedParams};
+use sc_client_api::{BlockBackend, HeaderBackend};
 use sp_core::traits::SpawnEssentialNamed;
 use std::sync::Arc;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     BootstrappedNetworkingParameters, Config, PieceByHashRequestHandler, VoidProviderStorage,
 };
-use subspace_runtime::RuntimeApi;
-use subspace_runtime_primitives::opaque::Block;
 use subspace_service::dsn::import_blocks::import_blocks;
-use subspace_service::FullClient;
 
 /// The `import-blocks-from-network` command used to import blocks from Subspace Network DSN.
 #[derive(Debug, Parser)]
@@ -52,16 +50,18 @@ pub struct ImportBlocksFromDsnCmd {
 
 impl ImportBlocksFromDsnCmd {
     /// Run the import-blocks command
-    pub async fn run<IQ>(
+    pub async fn run<B, C, IQ>(
         &self,
-        client: Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+        client: Arc<C>,
         mut import_queue: IQ,
         spawner: impl SpawnEssentialNamed,
     ) -> sc_cli::Result<()>
     where
-        IQ: sc_service::ImportQueue<Block> + 'static,
+        C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
+        B: BlockT + for<'de> serde::Deserialize<'de>,
+        IQ: sc_service::ImportQueue<B> + 'static,
     {
-        let dsn_protocol_prefix = hex::encode(client.chain_info().genesis_hash);
+        let dsn_protocol_prefix = hex::encode(client.info().genesis_hash);
         let keypair = identity::Keypair::Ed25519(identity::ed25519::Keypair::generate());
 
         let default_config = Config::new(dsn_protocol_prefix.clone(), keypair, VoidProviderStorage);
