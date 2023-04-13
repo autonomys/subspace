@@ -131,6 +131,27 @@ where
         }
     }
 
+    pub(crate) fn validate_bundle_receipts(
+        &self,
+        receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
+        domain_id: DomainId,
+    ) -> Result<(), GossipMessageError> {
+        let head_receipt_number = self
+            .parent_chain
+            .head_receipt_number(self.parent_chain.best_hash())?;
+        let head_receipt_number = to_number_primitive(head_receipt_number);
+
+        for receipt in receipts {
+            if let Some(fraud_proof) =
+                self.validate_execution_receipt(receipt, head_receipt_number, domain_id)?
+            {
+                self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// The background is that a receipt received from the network points to a future block
     /// from the local view, so we need to wait for the receipt for the block at the same
     /// height to be produced locally in order to check the validity of the external receipt.
@@ -187,25 +208,6 @@ where
                 Err(e) => return tx.send(Err(e)).map_err(|_| GossipMessageError::SendError),
             }
         }
-    }
-
-    pub(crate) fn validate_gossiped_execution_receipt(
-        &self,
-        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
-        domain_id: DomainId,
-    ) -> Result<(), GossipMessageError> {
-        let head_receipt_number = self
-            .parent_chain
-            .head_receipt_number(self.parent_chain.best_hash())?;
-        let head_receipt_number = to_number_primitive(head_receipt_number);
-
-        if let Some(fraud_proof) =
-            self.validate_execution_receipt(execution_receipt, head_receipt_number, domain_id)?
-        {
-            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-        }
-
-        Ok(())
     }
 
     #[allow(clippy::type_complexity)]

@@ -214,10 +214,8 @@ where
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
             let domain_id = bundle_solution.proof_of_election().domain_id;
 
-            for receipt in &bundle.receipts {
-                self.gossip_message_validator
-                    .validate_gossiped_execution_receipt(receipt, domain_id)?;
-            }
+            self.gossip_message_validator
+                .validate_bundle_receipts(&bundle.receipts, domain_id)?;
 
             for extrinsic in bundle.extrinsics.iter() {
                 let tx_hash = self.transaction_pool.hash_of(extrinsic);
