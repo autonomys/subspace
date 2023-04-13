@@ -5,7 +5,7 @@ use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
-use sc_transaction_pool_api::{TransactionPool, TransactionSource};
+use sc_transaction_pool_api::error::Error as TxPoolError;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
@@ -447,13 +447,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let expected_tx_hash = tx.using_encoded(BlakeTwo256::hash);
     let tx_hash = ferdie
-        .transaction_pool
-        .pool()
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            tx.into(),
-        )
+        .submit_transaction(tx.into())
         .await
         .expect("Error at submitting a valid fraud proof");
     assert_eq!(tx_hash, expected_tx_hash);
@@ -472,17 +466,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .into(),
     );
 
-    let submit_invalid_fraud_proof_result = ferdie
-        .transaction_pool
-        .pool()
-        .submit_one(
-            &BlockId::Hash(ferdie.client.info().best_hash),
-            TransactionSource::External,
-            tx.into(),
-        )
-        .await;
-
-    match submit_invalid_fraud_proof_result.unwrap_err() {
+    match ferdie.submit_transaction(tx.into()).await.unwrap_err() {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
         ) => assert_eq!(invalid_tx, InvalidTransactionCode::FraudProof.into()),
@@ -690,20 +674,6 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .into()
     };
 
-    let ferdie_transaction_pool = ferdie.transaction_pool.clone();
-    let send_extrinsic = |tx: OpaqueExtrinsic| {
-        let pool = ferdie_transaction_pool.pool();
-        let ferdie_best_hash = ferdie_client.info().best_hash;
-        async move {
-            pool.submit_one(
-                &BlockId::Hash(ferdie_best_hash),
-                TransactionSource::External,
-                tx,
-            )
-            .await
-        }
-    };
-
     let ferdie_client = ferdie.client.clone();
     let head_receipt_number = || {
         let best_hash = ferdie_client.info().best_hash;
@@ -713,8 +683,14 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
             .expect("Failed to get head receipt number")
     };
 
-    send_extrinsic(create_submit_bundle(1)).await.unwrap();
-    send_extrinsic(create_submit_bundle(2)).await.unwrap();
+    ferdie
+        .submit_transaction(create_submit_bundle(1))
+        .await
+        .unwrap();
+    ferdie
+        .submit_transaction(create_submit_bundle(2))
+        .await
+        .unwrap();
     futures::join!(bob.wait_for_blocks(1), ferdie.produce_blocks(1),)
         .1
         .unwrap();
@@ -722,7 +698,11 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // max drift is 2, hence the max allowed receipt number is 2 + 2, 5 will be rejected as being
     // too far.
-    match send_extrinsic(create_submit_bundle(5)).await.unwrap_err() {
+    match ferdie
+        .submit_transaction(create_submit_bundle(5))
+        .await
+        .unwrap_err()
+    {
         sc_transaction_pool::error::Error::Pool(
             sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
         ) => assert_eq!(invalid_tx, InvalidTransactionCode::ExecutionReceipt.into()),
@@ -731,19 +711,176 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // The 4 is able to submit to tx pool but will fail to execute due to the receipt of 3 is missing.
     let submit_bundle_4 = create_submit_bundle(4);
-    let submit_bundle_4_hash = ferdie.transaction_pool.hash_of(&submit_bundle_4);
-    send_extrinsic(submit_bundle_4).await.unwrap();
+    ferdie
+        .submit_transaction(submit_bundle_4.clone())
+        .await
+        .unwrap();
     assert!(ferdie.produce_blocks(1).await.is_err());
     assert_eq!(head_receipt_number(), 2);
 
     // Re-submit 4 after 3, this time it will successfully execute and update the head receipt number.
+    ferdie.remove_tx_from_tx_pool(&submit_bundle_4).unwrap();
     ferdie
-        .transaction_pool
-        .remove_invalid(&[submit_bundle_4_hash]);
-    send_extrinsic(create_submit_bundle(3)).await.unwrap();
-    send_extrinsic(create_submit_bundle(4)).await.unwrap();
+        .submit_transaction(create_submit_bundle(3))
+        .await
+        .unwrap();
+    ferdie
+        .submit_transaction(create_submit_bundle(4))
+        .await
+        .unwrap();
     futures::join!(bob.wait_for_blocks(1), ferdie.produce_blocks(1),)
         .1
         .unwrap();
     assert_eq!(head_receipt_number(), 4);
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn duplicated_and_stale_bundle_should_be_rejected() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
+        .1
+        .unwrap();
+
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        pallet_domains::Call::submit_bundle {
+            signed_opaque_bundle: bundle.unwrap(),
+        }
+        .into(),
+    )
+    .into();
+
+    // Wait one block to ensure the bundle is stored onchain and manually remove it from tx pool
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot)
+    )
+    .1
+    .unwrap();
+    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
+
+    // Bundle is rejected due to it is duplicated
+    match ferdie
+        .submit_transaction(submit_bundle_tx.clone())
+        .await
+        .unwrap_err()
+    {
+        sc_transaction_pool::error::Error::Pool(err) => {
+            // Compare the error message of `TxPoolError::ImmediatelyDropped` here because
+            // `TxPoolError` didn't drive `PartialEq`
+            assert_eq!(
+                &err.to_string(),
+                "Transaction couldn't enter the pool because of the limit"
+            );
+        }
+        e => panic!("Unexpected error: {e}"),
+    }
+
+    // Wait for confirmation depth K blocks which is 100 in test
+    futures::join!(alice.wait_for_blocks(100), ferdie.produce_blocks(100))
+        .1
+        .unwrap();
+
+    // Bundle is now rejected due to it is stale
+    match ferdie
+        .submit_transaction(submit_bundle_tx)
+        .await
+        .unwrap_err()
+    {
+        sc_transaction_pool::error::Error::Pool(TxPoolError::InvalidTransaction(invalid_tx)) => {
+            assert_eq!(invalid_tx, InvalidTransactionCode::Bundle.into())
+        }
+        e => panic!("Unexpected error: {e}"),
+    }
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn existing_bundle_can_be_resubmitted_to_new_fork() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
+        .1
+        .unwrap();
+
+    let mut parent_hash = ferdie.client.info().best_hash;
+
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+        pallet_domains::Call::submit_bundle {
+            signed_opaque_bundle: bundle.unwrap(),
+        }
+        .into(),
+    )
+    .into();
+
+    // Wait one block to ensure the bundle is stored on this fork
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot)
+    )
+    .1
+    .unwrap();
+
+    // Create fork and build one more blocks on it to make it the new best fork
+    parent_hash = ferdie
+        .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
+        .await
+        .unwrap();
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![]))
+    )
+    .1
+    .unwrap();
+
+    // Manually remove the retracted block's `submit_bundle_tx` from tx pool
+    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
+
+    // Bundle can be successfully submitted to the new fork
+    ferdie.submit_transaction(submit_bundle_tx).await.unwrap();
 }

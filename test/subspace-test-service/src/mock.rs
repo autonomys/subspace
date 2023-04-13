@@ -1,15 +1,17 @@
 use crate::node_config;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt, SinkExt, StreamExt};
 use sc_block_builder::BlockBuilderProvider;
-use sc_client_api::backend;
+use sc_client_api::{backend, BlockchainEvents};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sc_consensus::{BlockImport, BoxBlockImport, StateAction};
 use sc_executor::NativeElseWasmExecutor;
 use sc_service::{BasePath, InPoolTransaction, TaskManager, TransactionPool};
+use sc_transaction_pool::error::Error as PoolError;
+use sc_transaction_pool_api::TransactionSource;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_application_crypto::UncheckedFrom;
@@ -22,9 +24,9 @@ use sp_core::H256;
 use sp_domains::SignedOpaqueBundle;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::generic::Digest;
+use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
-use sp_runtime::DigestItem;
+use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::sync::Arc;
@@ -85,7 +87,11 @@ impl MockPrimaryNode {
     ) -> MockPrimaryNode {
         let log_prefix = key.into();
 
-        let config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+        let mut config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+
+        // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
+        // by `TemporarilyBanned`
+        config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
         let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
             config.wasm_method,
@@ -102,7 +108,7 @@ impl MockPrimaryNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let bundle_validator = BundleValidator::new(client.clone());
+        let mut bundle_validator = BundleValidator::new(client.clone());
 
         let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
             InvalidStateTransitionProofVerifier::new(
@@ -117,7 +123,7 @@ impl MockPrimaryNode {
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             proof_verifier.clone(),
-            bundle_validator,
+            bundle_validator.clone(),
         );
 
         let transaction_pool = subspace_transaction_pool::new_full(
@@ -130,11 +136,53 @@ impl MockPrimaryNode {
         let fraud_proof_block_import =
             sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-        let block_import = MockBlockImport::<
+        let mut block_import = MockBlockImport::<
             BoxBlockImport<Block, TransactionFor<Client, Block>>,
             _,
             _,
         >::new(Box::new(fraud_proof_block_import), client.clone());
+
+        // The `maintain-bundles-stored-in-last-k` worker here is different from the one in the production code
+        // that it subscribes the `block_importing_notification_stream`, which is intended to ensure the bundle
+        // validator's `recent_stored_bundles` info must be updated when a new primary block is produced, this
+        // will help the test to be more deterministic.
+        let mut imported_blocks_stream = client.import_notification_stream();
+        let mut block_importing_stream = block_import.block_importing_notification_stream();
+        task_manager.spawn_handle().spawn(
+            "maintain-bundles-stored-in-last-k",
+            None,
+            Box::pin(async move {
+                loop {
+                    tokio::select! {
+                        biased;
+                        maybe_block_imported = imported_blocks_stream.next() => {
+                            match maybe_block_imported {
+                                Some(block) => if block.is_new_best {
+                                    bundle_validator.update_recent_stored_bundles(block.hash);
+                                }
+                                None => break,
+                            }
+                        },
+                        maybe_block_importing = block_importing_stream.next() => {
+                            match maybe_block_importing {
+                                Some((_, mut acknowledgement_sender)) => {
+                                    let _ = acknowledgement_sender.send(()).await;
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+            }),
+        );
+
+        // Inform the tx pool about imported and finalized blocks and remove the tx of these
+        // blocks from the tx pool.
+        task_manager.spawn_handle().spawn(
+            "txpool-notifications",
+            Some("transaction-pool"),
+            sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
+        );
 
         let mock_solution = {
             let mut gs = Solution::genesis_solution(
@@ -239,11 +287,7 @@ impl MockPrimaryNode {
     pub fn block_importing_notification_stream(
         &mut self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
-        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
-        self.block_import
-            .block_importing_notification_subscribers
-            .push(tx);
-        rx
+        self.block_import.block_importing_notification_stream()
     }
 
     /// Get the bundle that created at `slot` from the transaction pool
@@ -264,6 +308,28 @@ impl MockPrimaryNode {
             }
         }
         None
+    }
+
+    /// Submit a tx to the tx pool
+    pub async fn submit_transaction(&self, tx: OpaqueExtrinsic) -> Result<H256, PoolError> {
+        self.transaction_pool
+            .submit_one(
+                &BlockId::Hash(self.client.info().best_hash),
+                TransactionSource::External,
+                tx,
+            )
+            .await
+    }
+
+    /// Remove tx from tx pool
+    pub fn remove_tx_from_tx_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
+        self.transaction_pool
+            .remove_invalid(&[self.transaction_pool.hash_of(tx)]);
+        self.transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&BlockId::Number(self.client.info().best_number))?;
+        Ok(())
     }
 }
 
@@ -467,6 +533,15 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
             client,
             block_importing_notification_subscribers: Vec::new(),
         }
+    }
+
+    // Subscribe the block importing notification
+    fn block_importing_notification_stream(
+        &mut self,
+    ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
+        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
+        self.block_importing_notification_subscribers.push(tx);
+        rx
     }
 }
 
