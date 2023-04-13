@@ -523,7 +523,7 @@ where
             return Ok(Some(extrinsic));
         }
 
-        Err("".to_string().into())
+        Ok(None)
     }
 }
 
