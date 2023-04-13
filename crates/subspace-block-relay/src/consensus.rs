@@ -8,6 +8,8 @@ use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::{mpsc, oneshot};
 use futures::stream::StreamExt;
+use lru::LruCache;
+use parking_lot::Mutex;
 use prost::Message;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
@@ -17,9 +19,11 @@ use sc_network_common::sync::message::BlockAttributes;
 use sc_network_sync::block_relay_protocol::{BlockDownloader, BlockRelayParams, BlockServer};
 use sc_network_sync::service::network::NetworkServiceHandle;
 use sc_network_sync::{BlockDataSchema, BlockRequestSchema, BlockResponseSchema, FromBlockSchema};
+use sc_service::SpawnTaskHandle;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Extrinsic as ExtrinsicT, Header};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{info, trace, warn};
@@ -31,6 +35,9 @@ type BlockHash<Block> = <Block as BlockT>::Hash;
 type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 
 const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
+
+// TODO: size this properly
+const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 
 /// Initial request to server
 #[derive(Encode, Decode)]
@@ -169,10 +176,11 @@ impl<Block: BlockT, Pool: TransactionPool> BlockDownloader for ConsensusRelayCli
             Ok(result) => {
                 info!(
                     target: LOG_TARGET,
-                    "relay::download_block: {:?} [block_size = {} bytes, local_miss = {} bytes, \
-                     download_latency = {:?}]",
-                    result.download_unit_id, result.download_unit.len(),
-                    result.local_miss, result.latency
+                    "relay::download_block: {:?} => {},{},{:?}",
+                    result.download_unit_id,
+                    result.download_unit.len(),
+                    result.local_miss,
+                    result.latency
                 );
                 Ok(Ok(result.download_unit))
             }
@@ -408,7 +416,54 @@ where
 {
     client: Arc<Client>,
     transaction_pool: Arc<Pool>,
+    transaction_cache: Arc<Mutex<LruCache<TxHash<Pool>, Extrinsic<Block>>>>,
     _phantom_data: std::marker::PhantomData<Block>,
+}
+
+impl<Block, Client, Pool> ConsensusBackend<Block, Client, Pool>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block>,
+    Pool: TransactionPool<Block = Block> + 'static,
+{
+    fn new(
+        client: Arc<Client>,
+        transaction_pool: Arc<Pool>,
+        spawn_handle: SpawnTaskHandle,
+    ) -> Self {
+        let transaction_cache = Arc::new(Mutex::new(LruCache::new(TRANSACTION_CACHE_SIZE)));
+        let transaction_pool_cl = transaction_pool.clone();
+        let transaction_cache_cl = transaction_cache.clone();
+        spawn_handle.spawn_blocking("block-relay-transaction-import", None, {
+            Box::pin(async move {
+                while let Some(hash) = transaction_pool_cl
+                    .import_notification_stream()
+                    .next()
+                    .await
+                {
+                    if let Some(transaction) = transaction_pool_cl.ready_transaction(&hash) {
+                        transaction_cache_cl
+                            .lock()
+                            .put(hash, transaction.data().clone());
+                    }
+                }
+            })
+        });
+
+        Self {
+            client,
+            transaction_pool,
+            transaction_cache,
+            _phantom_data: Default::default(),
+        }
+    }
+
+    /// Adds the entry to the cache
+    fn update_cache(&self, tx_hash: &TxHash<Pool>, extrinsic: &Extrinsic<Block>) {
+        self.transaction_cache
+            .lock()
+            .put(tx_hash.clone(), extrinsic.clone());
+    }
 }
 
 impl<Block, Client, Pool> ProtocolBackend<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>
@@ -416,7 +471,7 @@ impl<Block, Client, Pool> ProtocolBackend<BlockHash<Block>, TxHash<Pool>, Extrin
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
-    Pool: TransactionPool<Block = Block>,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
     fn download_unit_members(
         &self,
@@ -438,12 +493,18 @@ where
         block_hash: &BlockHash<Block>,
         tx_hash: &TxHash<Pool>,
     ) -> Result<Option<Extrinsic<Block>>, RelayError> {
-        // First look up the block extrinsics
+        // First look up the cache
+        if let Some(extrinsic) = self.transaction_cache.lock().get(tx_hash) {
+            return Ok(Some(extrinsic.clone()));
+        }
+
+        // Next look up the block extrinsics
         if let Ok(Some(extrinsics)) = self.client.block_body(*block_hash) {
             if !extrinsics.is_empty() {
                 let len = extrinsics.len();
                 for extrinsic in extrinsics {
                     if self.transaction_pool.hash_of(&extrinsic) == *tx_hash {
+                        self.update_cache(tx_hash, &extrinsic);
                         return Ok(Some(extrinsic));
                     }
                 }
@@ -456,16 +517,20 @@ where
 
         // Failed to find the transaction among the block extrinsics, look up the
         // transaction pool.
-        Ok(self
-            .transaction_pool
-            .ready_transaction(tx_hash)
-            .map(|in_pool_transaction| in_pool_transaction.data().clone()))
+        if let Some(in_pool_transaction) = self.transaction_pool.ready_transaction(tx_hash) {
+            let extrinsic = in_pool_transaction.data().clone();
+            self.update_cache(tx_hash, &extrinsic);
+            return Ok(Some(extrinsic));
+        }
+
+        Err("".to_string().into())
     }
 }
 
 pub fn build_consensus_relay<Block, Client, Pool>(
     client: Arc<Client>,
     pool: Arc<Pool>,
+    spawn_handle: SpawnTaskHandle,
     num_peer_hint: usize,
 ) -> BlockRelayParams<Block>
 where
@@ -475,11 +540,7 @@ where
 {
     let (tx, request_receiver) = mpsc::channel(num_peer_hint);
 
-    let backend = Arc::new(ConsensusBackend {
-        client: client.clone(),
-        transaction_pool: pool,
-        _phantom_data: Default::default(),
-    });
+    let backend = Arc::new(ConsensusBackend::new(client.clone(), pool, spawn_handle));
     let relay_client: ConsensusRelayClient<Block, Pool> = ConsensusRelayClient {
         protocol: Arc::new(CompactBlockClient {
             backend: backend.clone(),

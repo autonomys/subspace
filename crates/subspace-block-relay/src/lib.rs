@@ -1,5 +1,7 @@
 //! Block relay implementation.
 
+#![feature(const_option)]
+
 use crate::utils::RelayError;
 use async_trait::async_trait;
 use sc_network::request_responses::IncomingRequest;

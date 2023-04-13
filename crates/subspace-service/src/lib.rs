@@ -712,6 +712,7 @@ where
             block_relay: Some(build_consensus_relay(
                 client.clone(),
                 transaction_pool.clone(),
+                task_manager.spawn_handle(),
                 100,
             )),
         })?;
