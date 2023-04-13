@@ -847,6 +847,12 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
     ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
 
-    // Bundle can be successfully submitted to the new fork
-    ferdie.submit_transaction(submit_bundle_tx).await.unwrap();
+    // Bundle can be successfully submitted to the new fork, or it is also possible
+    // that the retracted block's `submit_bundle_tx` have resubmitted to the tx pool
+    // in the background by the `txpool-notifications` worker just after the above
+    // `remove_tx_from_tx_pool` call
+    match ferdie.submit_transaction(submit_bundle_tx).await {
+        Ok(_) | Err(sc_transaction_pool::error::Error::Pool(TxPoolError::AlreadyImported(_))) => {}
+        Err(err) => panic!("Unexpected error: {err}"),
+    }
 }
