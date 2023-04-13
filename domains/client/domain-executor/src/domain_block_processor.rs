@@ -528,7 +528,7 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_proof::<PCB>(
+                .generate_invalid_state_transition_proof::<PCB>(
                     self.domain_id,
                     trace_mismatch_index,
                     &local_receipt,

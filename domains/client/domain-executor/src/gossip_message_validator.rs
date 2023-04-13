@@ -225,12 +225,14 @@ where
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof::<PCB>(
-                domain_id,
-                trace_mismatch_index,
-                &local_receipt,
-                execution_receipt.hash(),
-            )?;
+            let fraud_proof = self
+                .fraud_proof_generator
+                .generate_invalid_state_transition_proof::<PCB>(
+                    domain_id,
+                    trace_mismatch_index,
+                    &local_receipt,
+                    execution_receipt.hash(),
+                )?;
             Ok(Some(fraud_proof))
         } else {
             Ok(None)
