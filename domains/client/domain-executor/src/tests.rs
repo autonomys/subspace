@@ -7,6 +7,7 @@ use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
+use sc_transaction_pool_api::TransactionPool;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
@@ -15,7 +16,7 @@ use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransition
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, SignedBundle};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
@@ -306,19 +307,16 @@ async fn test_executor_full_node_catching_up() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_initialize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(0).await
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(1).await
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_finalize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(2).await
 }
@@ -393,9 +391,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     .1
     .unwrap();
     // Manually remove the target bundle from tx pool in case resubmit it by accident
-    ferdie.transaction_pool.remove_invalid(&[ferdie
-        .transaction_pool
-        .hash_of(&bundle_to_tx(target_bundle.clone()))]);
+    ferdie
+        .remove_tx_from_tx_pool(&bundle_to_tx(target_bundle.clone()))
+        .unwrap();
 
     // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
     // to increase the `ProofOfElection::block_number` of the next bundle such that we can skip the runtime
@@ -428,17 +426,12 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
     ferdie
-        .transaction_pool
-        .remove_invalid(&[ferdie.transaction_pool.hash_of(&original_submit_bundle_tx)]);
+        .remove_tx_from_tx_pool(&original_submit_bundle_tx)
+        .unwrap();
     assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
-    let ferdie_best_hash = ferdie.client.info().best_hash;
+
     ferdie
-        .transaction_pool
-        .submit_one(
-            &BlockId::Hash(ferdie_best_hash),
-            TransactionSource::External,
-            bad_submit_bundle_tx,
-        )
+        .submit_transaction(bad_submit_bundle_tx)
         .await
         .unwrap();
 
@@ -634,14 +627,18 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
             fraud_proof: valid_fraud_proof.clone(),
         }
         .into(),
-    );
+    )
+    .into();
 
-    let expected_tx_hash = tx.using_encoded(BlakeTwo256::hash);
-    let tx_hash = ferdie
-        .submit_transaction(tx.into())
-        .await
-        .expect("Error at submitting a valid fraud proof");
-    assert_eq!(tx_hash, expected_tx_hash);
+    // The exact same fraud proof should be submitted to tx pool already
+    match ferdie.submit_transaction(tx).await.unwrap_err() {
+        sc_transaction_pool::error::Error::Pool(
+            sc_transaction_pool_api::error::Error::AlreadyImported(_),
+        ) => {}
+        e => panic!("Unexpected error while submitting fraud proof: {e}"),
+    }
+    // Produce one more block to verify the fraud proof in the block import pipeline
+    ferdie.produce_blocks(1).await.unwrap();
 
     let bad_invalid_state_transition_proof = InvalidStateTransitionProof {
         post_state_root: Hash::random(),
