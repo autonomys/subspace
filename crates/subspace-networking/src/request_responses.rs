@@ -87,7 +87,7 @@ impl Clone for Box<dyn RequestHandler> {
 #[derive(Debug, Clone)]
 pub struct ProtocolConfig {
     /// Name of the protocol on the wire. Should be something like `/foo/bar`.
-    pub name: &'static str,
+    pub name: String,
 
     /// Maximum allowed size, in bytes, of a request.
     ///
@@ -131,7 +131,7 @@ pub struct ProtocolConfig {
 
 impl ProtocolConfig {
     /// Creates request-response protocol config.
-    pub fn new(protocol_name: &'static str) -> ProtocolConfig {
+    pub fn new(protocol_name: String) -> ProtocolConfig {
         ProtocolConfig {
             name: protocol_name,
             max_request_size: 1024 * 1024,
@@ -192,7 +192,7 @@ pub enum Event {
         /// Peer which has emitted the request.
         peer: PeerId,
         /// Name of the protocol in question.
-        protocol: Cow<'static, str>,
+        protocol: String,
         /// Whether handling the request was successful or unsuccessful.
         ///
         /// When successful contains the time elapsed between when we received the request and when
@@ -208,7 +208,7 @@ pub enum Event {
         /// Peer that we send a request to.
         peer: PeerId,
         /// Name of the protocol in question.
-        protocol: Cow<'static, str>,
+        protocol: String,
         /// Duration the request took.
         duration: Duration,
         /// Result of the request.
@@ -224,12 +224,12 @@ pub enum Event {
 /// [`ProtocolRequestId`]s.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ProtocolRequestId {
-    protocol: Cow<'static, str>,
+    protocol: String,
     request_id: RequestId,
 }
 
-impl From<(Cow<'static, str>, RequestId)> for ProtocolRequestId {
-    fn from((protocol, request_id): (Cow<'static, str>, RequestId)) -> Self {
+impl From<(String, RequestId)> for ProtocolRequestId {
+    fn from((protocol, request_id): (String, RequestId)) -> Self {
         Self {
             protocol,
             request_id,
@@ -265,7 +265,7 @@ pub struct RequestResponsesBehaviour {
     /// Contains the underlying libp2p `RequestResponse` behaviour, plus an optional
     /// "response builder" used to build responses for incoming requests.
     protocols: HashMap<
-        Cow<'static, str>,
+        String,
         (
             RequestResponse<GenericCodec>,
             Option<mpsc::Sender<IncomingRequest>>,
@@ -338,7 +338,7 @@ impl RequestResponsesBehaviour {
                 cfg,
             );
 
-            match protocols.entry(Cow::Borrowed(config.name)) {
+            match protocols.entry(config.name) {
                 Entry::Vacant(e) => e.insert((rq_rp, config.inbound_queue)),
                 Entry::Occupied(e) => {
                     return Err(RegisterError::DuplicateProtocol(e.key().clone()))
@@ -369,16 +369,16 @@ impl RequestResponsesBehaviour {
     pub fn send_request(
         &mut self,
         target: &PeerId,
-        protocol_name: &str,
+        protocol_name: String,
         request: Vec<u8>,
         pending_response: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
         connect: IfDisconnected,
     ) {
-        if let Some((protocol, _)) = self.protocols.get_mut(protocol_name) {
+        if let Some((protocol, _)) = self.protocols.get_mut(&protocol_name) {
             if protocol.is_connected(target) || connect.should_connect() {
                 let request_id = protocol.send_request(target, request);
                 let prev_req_id = self.pending_requests.insert(
-                    (protocol_name.to_string().into(), request_id).into(),
+                    (protocol_name.clone(), request_id).into(),
                     (Instant::now(), pending_response),
                 );
                 debug_assert!(prev_req_id.is_none(), "Expect request id to be unique.");
@@ -821,7 +821,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
 pub enum RegisterError {
     /// A protocol has been specified multiple times.
     #[error("{0}")]
-    DuplicateProtocol(Cow<'static, str>),
+    DuplicateProtocol(String),
 }
 
 /// Error in a request.

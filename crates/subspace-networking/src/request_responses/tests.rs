@@ -63,7 +63,7 @@ fn build_swarm(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn basic_request_response_works() {
-    let protocol_name = "/test/req-resp/1";
+    let protocol_name = "/test/req-resp/1".to_string();
     let mut pool = LocalPool::new();
 
     // Build swarms whose behaviour is `RequestResponsesBehaviour`.
@@ -88,7 +88,7 @@ async fn basic_request_response_works() {
                 .unwrap();
 
             let protocol_config = ProtocolConfig {
-                name: protocol_name,
+                name: protocol_name.clone(),
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
@@ -137,7 +137,7 @@ async fn basic_request_response_works() {
                     let (sender, receiver) = oneshot::channel();
                     swarm.behaviour_mut().send_request(
                         &peer_id,
-                        protocol_name,
+                        protocol_name.clone(),
                         b"this is a request".to_vec(),
                         sender,
                         IfDisconnected::ImmediateError,
@@ -162,7 +162,7 @@ async fn basic_request_response_works() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn max_response_size_exceeded() {
-    let protocol_name = "/test/req-resp/1";
+    let protocol_name = "/test/req-resp/1".to_string();
     let mut pool = LocalPool::new();
 
     // Build swarms whose behaviour is `RequestResponsesBehaviour`.
@@ -187,7 +187,7 @@ async fn max_response_size_exceeded() {
                 .unwrap();
 
             let protocol_config = ProtocolConfig {
-                name: protocol_name,
+                name: protocol_name.clone(),
                 max_request_size: 1024,
                 max_response_size: 8, // <-- important for the test
                 request_timeout: Duration::from_secs(30),
@@ -238,7 +238,7 @@ async fn max_response_size_exceeded() {
                     let (sender, receiver) = oneshot::channel();
                     swarm.behaviour_mut().send_request(
                         &peer_id,
-                        protocol_name,
+                        protocol_name.clone(),
                         b"this is a request".to_vec(),
                         sender,
                         IfDisconnected::ImmediateError,
@@ -273,21 +273,21 @@ async fn max_response_size_exceeded() {
 /// See [`ProtocolRequestId`] for additional information.
 #[tokio::test(flavor = "multi_thread")]
 async fn request_id_collision() {
-    let protocol_name_1 = "/test/req-resp-1/1";
-    let protocol_name_2 = "/test/req-resp-2/1";
+    let protocol_name_1 = "/test/req-resp-1/1".to_string();
+    let protocol_name_2 = "/test/req-resp-2/1".to_string();
     let mut pool = LocalPool::new();
 
     let mut swarm_1 = {
         let protocol_configs = vec![
             ProtocolConfig {
-                name: protocol_name_1,
+                name: protocol_name_1.to_string(),
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: None,
             },
             ProtocolConfig {
-                name: protocol_name_2,
+                name: protocol_name_2.to_string(),
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
@@ -304,14 +304,14 @@ async fn request_id_collision() {
 
         let protocol_configs = vec![
             ProtocolConfig {
-                name: protocol_name_1,
+                name: protocol_name_1.to_string(),
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: Some(tx_1),
             },
             ProtocolConfig {
-                name: protocol_name_2,
+                name: protocol_name_2.to_string(),
                 max_request_size: 1024,
                 max_response_size: 1024 * 1024,
                 request_timeout: Duration::from_secs(30),
@@ -389,14 +389,14 @@ async fn request_id_collision() {
                     let (sender_2, receiver_2) = oneshot::channel();
                     swarm_1.behaviour_mut().send_request(
                         &peer_id,
-                        protocol_name_1,
+                        protocol_name_1.clone(),
                         b"this is a request".to_vec(),
                         sender_1,
                         IfDisconnected::ImmediateError,
                     );
                     swarm_1.behaviour_mut().send_request(
                         &peer_id,
-                        protocol_name_2,
+                        protocol_name_2.clone(),
                         b"this is a request".to_vec(),
                         sender_2,
                         IfDisconnected::ImmediateError,

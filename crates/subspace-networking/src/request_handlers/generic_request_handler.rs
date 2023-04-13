@@ -34,6 +34,10 @@ pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
     const LOG_TARGET: &'static str;
     /// Response type that corresponds to this request
     type Response: Encode + Decode + Send + Sync + 'static;
+
+    fn protocol_name_by_prefix(prefix: String) -> String {
+        Self::PROTOCOL_NAME_TEMPLATE.replace(Self::PROTOCOL_PREFIX_PLACEHOLDER, &prefix)
+    }
 }
 
 pub type RequestHandlerFn<Request> = Arc<
@@ -61,9 +65,8 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
         let protocol_name = Request::PROTOCOL_NAME_TEMPLATE
-            .replace(Request::PROTOCOL_PREFIX_PLACEHOLDER, &protocol_prefix)
-            .into_boxed_str();
-        let mut protocol_config = ProtocolConfig::new(Box::leak(protocol_name));
+            .replace(Request::PROTOCOL_PREFIX_PLACEHOLDER, &protocol_prefix);
+        let mut protocol_config = ProtocolConfig::new(protocol_name);
         protocol_config.inbound_queue = Some(request_sender);
 
         Box::new(Self {
@@ -150,7 +153,7 @@ impl<Request: GenericRequest> RequestHandler for GenericRequestHandler<Request> 
     fn clone_box(&self) -> Box<dyn RequestHandler> {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
 
-        let mut protocol_config = ProtocolConfig::new(self.protocol_config.name);
+        let mut protocol_config = ProtocolConfig::new(self.protocol_config.name.clone());
         protocol_config.inbound_queue = Some(request_sender);
 
         Box::new(Self {

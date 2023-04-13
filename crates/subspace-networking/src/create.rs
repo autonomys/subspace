@@ -226,6 +226,8 @@ pub struct Config<ProviderStorage> {
     pub temporary_ban_backoff: ExponentialBackoff,
     /// Optional external prometheus metrics. None will disable metrics gathering.
     pub metrics: Option<Metrics>,
+    /// Defines protocol prefix for the libp2p protocols (like genesis-hash).
+    pub protocol_prefix: String,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -331,6 +333,7 @@ where
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
             metrics: None,
+            protocol_prefix,
         }
     }
 }
@@ -391,6 +394,7 @@ where
         temporary_bans_cache_size,
         temporary_ban_backoff,
         metrics,
+        protocol_prefix,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -458,6 +462,7 @@ where
 
     let shared = Arc::new(Shared::new(
         local_peer_id,
+        protocol_prefix,
         command_sender,
         kademlia_tasks_semaphore,
         regular_tasks_semaphore,

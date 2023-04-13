@@ -59,7 +59,7 @@ pub(crate) enum Command {
     },
     GenericRequest {
         peer_id: PeerId,
-        protocol_name: &'static str,
+        protocol_name: String,
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
@@ -103,6 +103,7 @@ pub(crate) struct Handlers {
 pub(crate) struct Shared {
     pub(crate) handlers: Handlers,
     pub(crate) id: PeerId,
+    pub(crate) protocol_prefix: String,
     /// Addresses on which node is listening for incoming requests.
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
     pub(crate) connected_peers_count: Arc<AtomicUsize>,
@@ -116,12 +117,14 @@ pub(crate) struct Shared {
 impl Shared {
     pub(crate) fn new(
         id: PeerId,
+        protocol_prefix: String,
         command_sender: mpsc::Sender<Command>,
         kademlia_tasks_semaphore: ResizableSemaphore,
         regular_tasks_semaphore: ResizableSemaphore,
         online_status_observer_rx: watch::Receiver<bool>,
     ) -> Self {
         Self {
+            protocol_prefix,
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
