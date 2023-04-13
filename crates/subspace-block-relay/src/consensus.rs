@@ -37,7 +37,7 @@ type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
 const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
 
 // TODO: size this properly
-const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(400).expect("Not zero; qed");
 
 /// Initial request to server
 #[derive(Encode, Decode)]
@@ -444,7 +444,11 @@ where
                     if let Some(transaction) = transaction_pool_cl.ready_transaction(&hash) {
                         transaction_cache_cl
                             .lock()
-                            .put(hash, transaction.data().clone());
+                            .put(hash.clone(), transaction.data().clone());
+                        info!(
+                            target: LOG_TARGET,
+                            "relay::backend: received import notification: {hash:?}"
+                        );
                     }
                 }
             })
@@ -463,6 +467,10 @@ where
         self.transaction_cache
             .lock()
             .put(tx_hash.clone(), extrinsic.clone());
+        info!(
+            target: LOG_TARGET,
+            "relay::backend: updated cache: {tx_hash:?}"
+        );
     }
 }
 
