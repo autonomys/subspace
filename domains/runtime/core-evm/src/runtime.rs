@@ -698,6 +698,13 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+
+        fn check_transaction_validity(
+            _uxt: <Block as BlockT>::Extrinsic,
+            _block_hash: <Block as BlockT>::Hash,
+        ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
+            unimplemented!("TODO: check transaction fee to core-evm")
+        }
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {

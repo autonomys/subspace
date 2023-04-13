@@ -250,6 +250,14 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 pub struct InvalidTransactionProof {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
+    /// Number of the block at which the invalid transaction occurred.
+    pub block_number: u32,
+    /// Hash of the domain block corresponding to `block_number`.
+    pub domain_block_hash: H256,
+    // TODO: Verifiable invalid extrinsic.
+    pub invalid_extrinsic: Vec<u8>,
+    /// Storage witness needed for verifying this proof.
+    pub storage_proof: StorageProof,
 }
 
 /// Represents an invalid transaction proof.
