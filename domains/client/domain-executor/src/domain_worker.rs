@@ -133,6 +133,14 @@ pub(crate) async fn handle_block_import_notifications<
 
     loop {
         tokio::select! {
+            // Ensure the `blocks_imported` branch will be checked before the `blocks_importing` branch.
+            // Currently this is only necessary for the test to ensure when both `block_imported` notification
+            // and `blocks_importing` notification are arrived, the `block_imported` notification will be processed
+            // first, such that we can ensure when the `blocks_importing` acknowledgement is responded, the
+            // imported block must being processed by the executor.
+            // Please see https://github.com/subspace/subspace/pull/1363#discussion_r1162571291 for more details.
+            biased;
+
             maybe_block_imported = blocks_imported.next() => {
                 let block_imported = match maybe_block_imported {
                     Some(block_imported) => block_imported,

@@ -12,7 +12,7 @@ use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi, SignedBundle};
+use sp_domains::{DomainId, ExecutorApi, SignedBundle};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
@@ -94,40 +94,6 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         .unwrap();
 
     let parent_hash = *best_header.parent_hash();
-
-    let load_receipt = |primary_hash| -> Option<ExecutionReceipt<BlockNumber, Hash, Hash>> {
-        crate::aux_schema::load_execution_receipt::<_, _, BlockNumber, _>(
-            &*alice.backend,
-            primary_hash,
-        )
-        .unwrap_or_else(|err| panic!("Error occurred when loading execution receipt: {err}"))
-    };
-
-    // There is a chance that the receipt for #3 is not available at this point because
-    // writing the receipt happens in the background concurrently after the domain block #3
-    // notification is out.
-    //
-    // NOTE: There is a distinction between the domain block and regular block pipeline.
-    // - Regular block: fully imported to the blockchain database (block notification is fired at
-    //                  this point).
-    // - Domain block: fully imported to the blockchain database and the domain block
-    //                 post-hook (writing the receipt, etc) is finished.
-    //
-    // This difference should be okay in practice, we'll see if we need to take some actions in
-    // future and only take it into account in the tests for now.
-    let mut retries = 0;
-    loop {
-        if retries >= 10 || load_receipt(best_primary_hash).is_some() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        retries += 1;
-    }
-
-    assert!(
-        load_receipt(best_primary_hash).is_some(),
-        "Executor failed to process and generate the receipt of last primary block in 50ms"
-    );
 
     // Primary chain forks:
     //      3
