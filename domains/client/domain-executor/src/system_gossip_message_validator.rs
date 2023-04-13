@@ -24,9 +24,7 @@ pub struct SystemGossipMessageValidator<
     E,
     ParentChain,
 > {
-    parent_chain: ParentChain,
     client: Arc<Client>,
-    transaction_pool: Arc<TransactionPool>,
     gossip_message_validator: GossipMessageValidator<
         Block,
         PBlock,
@@ -56,9 +54,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            parent_chain: self.parent_chain.clone(),
             client: self.client.clone(),
-            transaction_pool: self.transaction_pool.clone(),
             gossip_message_validator: self.gossip_message_validator.clone(),
         }
     }
@@ -104,14 +100,12 @@ where
         let gossip_message_validator = GossipMessageValidator::new(
             client.clone(),
             spawner,
-            parent_chain.clone(),
-            transaction_pool.clone(),
+            parent_chain,
+            transaction_pool,
             fraud_proof_generator,
         );
         Self {
-            parent_chain,
             client,
-            transaction_pool,
             gossip_message_validator,
         }
     }
