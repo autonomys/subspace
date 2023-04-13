@@ -1,5 +1,6 @@
 use crate::domain_block_processor::DomainBlockProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
+use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_processor::SystemBundleProcessor;
@@ -120,12 +121,18 @@ where
 
         let parent_chain = SystemDomainParentChain::new(params.primary_chain_client.clone());
 
+        let domain_bundle_proposer = DomainBundleProposer::new(
+            params.client.clone(),
+            params.primary_chain_client.clone(),
+            params.transaction_pool.clone(),
+        );
+
         let bundle_producer = DomainBundleProducer::new(
             DomainId::SYSTEM,
             params.client.clone(),
             params.client.clone(),
             parent_chain,
-            params.transaction_pool.clone(),
+            domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
         );

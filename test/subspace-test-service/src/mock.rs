@@ -1,15 +1,17 @@
 use crate::node_config;
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt, SinkExt, StreamExt};
 use sc_block_builder::BlockBuilderProvider;
-use sc_client_api::backend;
+use sc_client_api::{backend, BlockchainEvents};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sc_consensus::{BlockImport, BoxBlockImport, StateAction};
 use sc_executor::NativeElseWasmExecutor;
 use sc_service::{BasePath, InPoolTransaction, TaskManager, TransactionPool};
+use sc_transaction_pool::error::Error as PoolError;
+use sc_transaction_pool_api::TransactionSource;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_application_crypto::UncheckedFrom;
@@ -18,12 +20,13 @@ use sp_consensus::{BlockOrigin, Error as ConsensusError, NoNetwork, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_core::H256;
 use sp_domains::SignedOpaqueBundle;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
-use sp_runtime::generic::Digest;
+use sp_runtime::generic::{BlockId, Digest};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
-use sp_runtime::DigestItem;
+use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::sync::Arc;
@@ -72,6 +75,7 @@ pub struct MockPrimaryNode {
         MockBlockImport<BoxBlockImport<Block, TransactionFor<Client, Block>>, Client, Block>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
+    log_prefix: &'static str,
 }
 
 impl MockPrimaryNode {
@@ -81,7 +85,13 @@ impl MockPrimaryNode {
         key: Sr25519Keyring,
         base_path: BasePath,
     ) -> MockPrimaryNode {
-        let config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+        let log_prefix = key.into();
+
+        let mut config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
+
+        // Set `transaction_pool.ban_time` to 0 such that duplicated tx will not immediately rejected
+        // by `TemporarilyBanned`
+        config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
         let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
             config.wasm_method,
@@ -98,7 +108,7 @@ impl MockPrimaryNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let bundle_validator = BundleValidator::new(client.clone());
+        let mut bundle_validator = BundleValidator::new(client.clone());
 
         let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
             InvalidStateTransitionProofVerifier::new(
@@ -113,7 +123,7 @@ impl MockPrimaryNode {
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             proof_verifier.clone(),
-            bundle_validator,
+            bundle_validator.clone(),
         );
 
         let transaction_pool = subspace_transaction_pool::new_full(
@@ -126,11 +136,53 @@ impl MockPrimaryNode {
         let fraud_proof_block_import =
             sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-        let block_import = MockBlockImport::<
+        let mut block_import = MockBlockImport::<
             BoxBlockImport<Block, TransactionFor<Client, Block>>,
             _,
             _,
         >::new(Box::new(fraud_proof_block_import), client.clone());
+
+        // The `maintain-bundles-stored-in-last-k` worker here is different from the one in the production code
+        // that it subscribes the `block_importing_notification_stream`, which is intended to ensure the bundle
+        // validator's `recent_stored_bundles` info must be updated when a new primary block is produced, this
+        // will help the test to be more deterministic.
+        let mut imported_blocks_stream = client.import_notification_stream();
+        let mut block_importing_stream = block_import.block_importing_notification_stream();
+        task_manager.spawn_handle().spawn(
+            "maintain-bundles-stored-in-last-k",
+            None,
+            Box::pin(async move {
+                loop {
+                    tokio::select! {
+                        biased;
+                        maybe_block_imported = imported_blocks_stream.next() => {
+                            match maybe_block_imported {
+                                Some(block) => if block.is_new_best {
+                                    bundle_validator.update_recent_stored_bundles(block.hash);
+                                }
+                                None => break,
+                            }
+                        },
+                        maybe_block_importing = block_importing_stream.next() => {
+                            match maybe_block_importing {
+                                Some((_, mut acknowledgement_sender)) => {
+                                    let _ = acknowledgement_sender.send(()).await;
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+            }),
+        );
+
+        // Inform the tx pool about imported and finalized blocks and remove the tx of these
+        // blocks from the tx pool.
+        task_manager.spawn_handle().spawn(
+            "txpool-notifications",
+            Some("transaction-pool"),
+            sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
+        );
 
         let mock_solution = {
             let mut gs = Solution::genesis_solution(
@@ -152,6 +204,7 @@ impl MockPrimaryNode {
             new_slot_notification_subscribers: Vec::new(),
             block_import,
             mock_solution,
+            log_prefix,
         }
     }
 
@@ -165,16 +218,18 @@ impl MockPrimaryNode {
         self.next_slot
     }
 
-    /// Produce a slot and wait for bundle submission
-    pub async fn produce_slot_and_wait_for_bundle_submission(
-        &mut self,
-    ) -> (
-        Slot,
-        Option<SignedOpaqueBundle<NumberFor<Block>, Hash, sp_core::H256>>,
-    ) {
+    /// Produce a slot only, without waiting for the potential slot handlers.
+    pub fn produce_slot(&mut self) -> Slot {
         let slot = Slot::from(self.next_slot);
         self.next_slot += 1;
+        slot
+    }
 
+    /// Notify the executor about the new slot and wait for the bundle produced at this slot.
+    pub async fn notify_new_slot_and_wait_for_bundle(
+        &mut self,
+        slot: Slot,
+    ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>> {
         let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
@@ -202,7 +257,19 @@ impl MockPrimaryNode {
             }
         }
 
-        let bundle = self.get_bundle_from_tx_pool(slot.into());
+        self.get_bundle_from_tx_pool(slot.into())
+    }
+
+    /// Produce a new slot and wait for a bundle produced at this slot.
+    pub async fn produce_slot_and_wait_for_bundle_submission(
+        &mut self,
+    ) -> (
+        Slot,
+        Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>>,
+    ) {
+        let slot = self.produce_slot();
+
+        let bundle = self.notify_new_slot_and_wait_for_bundle(slot).await;
 
         (slot, bundle)
     }
@@ -220,18 +287,14 @@ impl MockPrimaryNode {
     pub fn block_importing_notification_stream(
         &mut self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
-        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
-        self.block_import
-            .block_importing_notification_subscribers
-            .push(tx);
-        rx
+        self.block_import.block_importing_notification_stream()
     }
 
     /// Get the bundle that created at `slot` from the transaction pool
     fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
-    ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, sp_core::H256>> {
+    ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
@@ -245,6 +308,28 @@ impl MockPrimaryNode {
             }
         }
         None
+    }
+
+    /// Submit a tx to the tx pool
+    pub async fn submit_transaction(&self, tx: OpaqueExtrinsic) -> Result<H256, PoolError> {
+        self.transaction_pool
+            .submit_one(
+                &BlockId::Hash(self.client.info().best_hash),
+                TransactionSource::External,
+                tx,
+            )
+            .await
+    }
+
+    /// Remove tx from tx pool
+    pub fn remove_tx_from_tx_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
+        self.transaction_pool
+            .remove_invalid(&[self.transaction_pool.hash_of(tx)]);
+        self.transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&BlockId::Number(self.client.info().best_number))?;
+        Ok(())
     }
 }
 
@@ -329,8 +414,11 @@ impl MockPrimaryNode {
         &mut self,
         block: Block,
         storage_changes: Option<StorageChanges>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
         let (header, body) = block.deconstruct();
+
+        let header_hash = header.hash();
+
         let block_import_params = {
             let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
             import_block.body = Some(body);
@@ -346,50 +434,64 @@ impl MockPrimaryNode {
         let import_result = self.block_import.import_block(block_import_params).await?;
 
         match import_result {
-            ImportResult::Imported(_) | ImportResult::AlreadyInChain => Ok(()),
+            ImportResult::Imported(_) | ImportResult::AlreadyInChain => Ok(header_hash),
             bad_res => Err(format!("Fail to import block due to {bad_res:?}").into()),
         }
     }
 
-    /// Produce block based on the current best block and the extrinsics in pool
-    pub async fn produce_block_with_slot(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
+    /// Produce a new block with the slot on top of `parent_hash`, with optional
+    /// specified extrinsic list.
+    #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
+    pub async fn produce_block_with_slot_at(
+        &mut self,
+        slot: Slot,
+        parent_hash: <Block as BlockT>::Hash,
+        maybe_extrinsics: Option<Vec<<Block as BlockT>::Extrinsic>>,
+    ) -> Result<<Block as BlockT>::Hash, Box<dyn Error>> {
         let block_timer = time::Instant::now();
 
-        let parent_hash = self.client.info().best_hash;
-        let parent_number = self.client.info().best_number;
+        let parent_number =
+            self.client
+                .number(parent_hash)?
+                .ok_or(sp_blockchain::Error::Backend(format!(
+                    "Number for {parent_hash} not found"
+                )))?;
 
-        let extrinsics = self.collect_txn_from_pool(parent_number).await;
+        let extrinsics = match maybe_extrinsics {
+            Some(extrinsics) => extrinsics,
+            None => self.collect_txn_from_pool(parent_number).await,
+        };
 
         let (block, storage_changes) = self.build_block(slot, parent_hash, extrinsics).await?;
 
         log_new_block(&block, block_timer.elapsed().as_millis());
 
-        self.import_block(block, Some(storage_changes)).await?;
+        self.import_block(block, Some(storage_changes)).await
+    }
 
+    /// Produce a new block on top of the current best block, with the extrinsics collected from
+    /// the transaction pool.
+    #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
+    pub async fn produce_block_with_slot(&mut self, slot: Slot) -> Result<(), Box<dyn Error>> {
+        self.produce_block_with_slot_at(slot, self.client.info().best_hash, None)
+            .await?;
         Ok(())
     }
 
-    /// Produce block based on the current best block and the given extrinsics
+    /// Produce a new block on top of the current best block, with the specificed extrinsics.
+    #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_block_with_extrinsics(
         &mut self,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(), Box<dyn Error>> {
         let (slot, _) = self.produce_slot_and_wait_for_bundle_submission().await;
-
-        let block_timer = time::Instant::now();
-
-        let (block, storage_changes) = self
-            .build_block(slot, self.client.info().best_hash, extrinsics)
+        self.produce_block_with_slot_at(slot, self.client.info().best_hash, Some(extrinsics))
             .await?;
-
-        log_new_block(&block, block_timer.elapsed().as_millis());
-
-        self.import_block(block, Some(storage_changes)).await?;
-
         Ok(())
     }
 
     /// Produce `n` number of blocks.
+    #[sc_tracing::logging::prefix_logs_with(self.log_prefix)]
     pub async fn produce_blocks(&mut self, n: u64) -> Result<(), Box<dyn Error>> {
         for _ in 0..n {
             let (slot, _) = self.produce_slot_and_wait_for_bundle_submission().await;
@@ -432,6 +534,15 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
             block_importing_notification_subscribers: Vec::new(),
         }
     }
+
+    // Subscribe the block importing notification
+    fn block_importing_notification_stream(
+        &mut self,
+    ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
+        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
+        self.block_importing_notification_subscribers.push(tx);
+        rx
+    }
 }
 
 #[async_trait::async_trait]
@@ -453,10 +564,7 @@ where
         mut block: BlockImportParams<Block, Self::Transaction>,
     ) -> Result<ImportResult, Self::Error> {
         let block_number = *block.header.number();
-        let current_best_number = self.client.info().best_number;
-        block.fork_choice = Some(ForkChoiceStrategy::Custom(
-            block_number > current_best_number,
-        ));
+        block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 
         let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);

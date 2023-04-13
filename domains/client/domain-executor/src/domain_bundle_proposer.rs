@@ -15,40 +15,50 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 
-pub(super) struct DomainBundleProposer<Block, Client, TransactionPool> {
+pub(super) struct DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool> {
     client: Arc<Client>,
+    primary_chain_client: Arc<PClient>,
     transaction_pool: Arc<TransactionPool>,
-    _phantom_data: PhantomData<Block>,
+    _phantom_data: PhantomData<(Block, PBlock, PClient)>,
 }
 
-impl<Block, Client, TransactionPool> Clone
-    for DomainBundleProposer<Block, Client, TransactionPool>
+impl<Block, Client, PBlock, PClient, TransactionPool> Clone
+    for DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
+            primary_chain_client: self.primary_chain_client.clone(),
             transaction_pool: self.transaction_pool.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, Client, TransactionPool> DomainBundleProposer<Block, Client, TransactionPool>
+impl<Block, Client, PBlock, PClient, TransactionPool>
+    DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>
 where
     Block: BlockT,
+    PBlock: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
+    PClient: HeaderBackend<PBlock>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-    pub(crate) fn new(client: Arc<Client>, transaction_pool: Arc<TransactionPool>) -> Self {
+    pub(crate) fn new(
+        client: Arc<Client>,
+        primary_chain_client: Arc<PClient>,
+        transaction_pool: Arc<TransactionPool>,
+    ) -> Self {
         Self {
             client,
+            primary_chain_client,
             transaction_pool,
             _phantom_data: PhantomData::default(),
         }
     }
 
-    pub(crate) async fn propose_bundle_at<PBlock, ParentChain, ParentChainBlock>(
+    pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
@@ -106,7 +116,7 @@ where
         let receipts = if primary_number.is_zero() {
             Vec::new()
         } else {
-            self.collect_bundle_receipts::<PBlock, _, _>(parent_number, parent_chain)?
+            self.collect_bundle_receipts(parent_number, parent_chain)?
         };
 
         receipts_sanity_check::<Block, PBlock>(&receipts)?;
@@ -126,7 +136,7 @@ where
     }
 
     /// Returns the receipts in the next domain bundle.
-    fn collect_bundle_receipts<PBlock, ParentChain, ParentChainBlock>(
+    fn collect_bundle_receipts<ParentChain, ParentChainBlock>(
         &self,
         header_number: NumberFor<Block>,
         parent_chain: ParentChain,
@@ -147,15 +157,17 @@ where
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
 
-        let load_receipt = |block_hash| {
+        let load_receipt = |primary_block_hash| {
             crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
                 NumberFor<PBlock>,
                 PBlock::Hash,
-            >(&*self.client, block_hash)?
+            >(&*self.client, primary_block_hash)?
             .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("Receipt not found for {block_hash}"))
+                sp_blockchain::Error::Backend(format!(
+                    "Receipt of primary block #{primary_block_hash} not found"
+                ))
             })
         };
 
@@ -163,10 +175,15 @@ where
         let mut to_send = head_receipt_number + 1;
         let max_allowed = (head_receipt_number + max_drift).min(to_number_primitive(header_number));
         loop {
-            let block_hash = self.client.hash(to_send.into())?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("Hash for Block {to_send:?} not found"))
-            })?;
-            receipts.push(load_receipt(block_hash)?);
+            let primary_block_hash =
+                self.primary_chain_client
+                    .hash(to_send.into())?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Primary block hash for #{to_send:?} not found"
+                        ))
+                    })?;
+            receipts.push(load_receipt(primary_block_hash)?);
             to_send += 1;
 
             if to_send > max_allowed {

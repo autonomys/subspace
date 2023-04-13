@@ -15,8 +15,6 @@ use tracing::{debug, error, trace, warn};
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
-/// Start generating warnings after N failed attempts.
-const START_WARN_AFTER_ATTEMPTS_NUMBER: u64 = 3;
 
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
@@ -162,7 +160,7 @@ where
                 return Ok(Some(piece));
             }
 
-            let retry_limit = match retry_policy {
+            match retry_policy {
                 RetryPolicy::Limited(max_retries) => {
                     if current_attempt >= max_retries.into() {
                         if max_retries > 0 {
@@ -181,14 +179,7 @@ where
                 RetryPolicy::Unlimited => u64::MAX,
             };
 
-            // Warn if there were several attempts or retry limit is low.
-            if current_attempt >= START_WARN_AFTER_ATTEMPTS_NUMBER
-                || (retry_limit < START_WARN_AFTER_ATTEMPTS_NUMBER)
-            {
-                warn!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
-            } else {
-                debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
-            }
+            debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
 
             Err(backoff::Error::transient(
                 "Couldn't get piece from DSN".into(),
