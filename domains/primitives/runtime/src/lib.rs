@@ -17,9 +17,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use parity_scale_codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
-use sp_runtime::{MultiAddress, MultiSignature};
+use sp_runtime::traits::{Block as BlockT, IdentifyAccount, LookupError, Verify};
+use sp_runtime::{DispatchError, MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -87,6 +89,26 @@ pub mod opaque {
     pub type AccountId = Vec<u8>;
 }
 
+#[derive(Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
+pub enum CheckTransactionFeeError {
+    /// Can not find the sender from address.
+    Lookup,
+    /// Can not pay the transaction fee.
+    DispatchError(DispatchError),
+}
+
+impl From<LookupError> for CheckTransactionFeeError {
+    fn from(_lookup_error: LookupError) -> Self {
+        Self::Lookup
+    }
+}
+
+impl From<DispatchError> for CheckTransactionFeeError {
+    fn from(dispatch_error: DispatchError) -> Self {
+        Self::DispatchError(dispatch_error)
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     pub trait DomainCoreApi {
@@ -106,5 +128,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
+
+        /// Checks whether the sender is able to pay the transaction fee.
+        fn check_transaction_fee(uxt: <Block as BlockT>::Extrinsic) -> Result<(), CheckTransactionFeeError>;
     }
 }

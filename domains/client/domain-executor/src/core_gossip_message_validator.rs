@@ -3,6 +3,7 @@ use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator
 use crate::parent_chain::ParentChainInterface;
 use crate::TransactionFor;
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -91,7 +92,8 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: sp_block_builder::BlockBuilder<Block>
+    Client::Api: DomainCoreApi<Block>
+        + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
@@ -148,7 +150,8 @@ where
         + AuxStore
         + ProofProvider<Block>
         + 'static,
-    Client::Api: sp_block_builder::BlockBuilder<Block>
+    Client::Api: DomainCoreApi<Block>
+        + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
@@ -198,8 +201,13 @@ where
             self.gossip_message_validator
                 .validate_bundle_receipts(&bundle.receipts, domain_id)?;
 
-            self.gossip_message_validator
-                .validate_bundle_transactions(&bundle.extrinsics, domain_id)?;
+            let at = bundle_solution.proof_of_election().block_hash;
+
+            self.gossip_message_validator.validate_bundle_transactions(
+                &bundle.extrinsics,
+                domain_id,
+                at,
+            )?;
 
             // TODO: all checks pass, add to the bundle pool
 

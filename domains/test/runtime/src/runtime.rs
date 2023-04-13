@@ -521,6 +521,38 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+
+        fn check_transaction_fee(
+            uxt: <Block as BlockT>::Extrinsic,
+        ) -> Result<(), domain_runtime_primitives::CheckTransactionFeeError> {
+            use codec::Encode;
+            use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
+            use sp_runtime::traits::{StaticLookup, Zero};
+
+            let maybe_address_and_tip = uxt.signature.as_ref().map(|(address, _signature, extra)| {
+                let (_, _, _, _, _, _, _, charge_transaction_payment) = extra;
+                (address.clone(), charge_transaction_payment.tip())
+            });
+
+            if let Some((address, tip)) = maybe_address_and_tip {
+                let len = uxt.encode().len().try_into().expect("Size of extrinsic must fit into u32");
+                let fee = TransactionPayment::query_fee_details(uxt, len).final_fee() + tip;
+
+                let sender = <Runtime as frame_system::Config>::Lookup::lookup(address)?;
+
+                let withdraw_reason = if tip.is_zero() {
+                    WithdrawReasons::TRANSACTION_PAYMENT
+                } else {
+                    WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
+                };
+
+                Balances::withdraw(&sender, fee, withdraw_reason, ExistenceRequirement::KeepAlive)
+                    .map(|_| ())
+                    .map_err(Into::into)
+            } else {
+                Ok(())
+            }
+        }
     }
 
     impl sp_receipts::ReceiptsApi<Block, Hash> for Runtime {

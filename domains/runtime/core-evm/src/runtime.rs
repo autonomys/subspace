@@ -674,6 +674,12 @@ impl_runtime_apis! {
                 }.into()
             ).encode()
         }
+
+        fn check_transaction_fee(
+            _uxt: <Block as BlockT>::Extrinsic,
+        ) -> Result<(), domain_runtime_primitives::CheckTransactionFeeError> {
+            unimplemented!("TODO: check transaction fee to core-evm")
+        }
     }
 
     impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
