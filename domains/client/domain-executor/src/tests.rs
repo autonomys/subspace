@@ -410,10 +410,10 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
     let bad_submit_bundle_tx = {
         let mut signed_opaque_bundle = bundle.unwrap();
-        for rc in signed_opaque_bundle.bundle.receipts.iter_mut() {
-            if rc.primary_number == target_bundle.bundle.header.primary_number + 1 {
-                assert_eq!(rc.trace.len(), 3);
-                rc.trace[mismatch_trace_index] = Default::default();
+        for receipt in signed_opaque_bundle.bundle.receipts.iter_mut() {
+            if receipt.primary_number == target_bundle.bundle.header.primary_number + 1 {
+                assert_eq!(receipt.trace.len(), 3);
+                receipt.trace[mismatch_trace_index] = Default::default();
             }
         }
         signed_opaque_bundle.signature = alice
