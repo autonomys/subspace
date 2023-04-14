@@ -26,11 +26,7 @@ pub struct CoreGossipMessageValidator<
     Backend,
     E,
     ParentChain,
-> where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
-{
+> {
     client: Arc<Client>,
     gossip_message_validator: GossipMessageValidator<
         Block,
@@ -61,9 +57,6 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
         ParentChain,
     >
 where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
     ParentChain: Clone,
 {
     fn clone(&self) -> Self {

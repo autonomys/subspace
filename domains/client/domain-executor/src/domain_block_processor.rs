@@ -30,10 +30,7 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
-where
-    PBlock: BlockT,
-{
+pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E> {
     domain_id: DomainId,
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
@@ -44,8 +41,6 @@ where
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
-where
-    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -219,8 +214,8 @@ where
 
         if to_number_primitive(parent_number) + 1 != primary_number {
             return Err(sp_blockchain::Error::Application(Box::from(format!(
-                "Wrong domain parent block #{parent_number},{parent_hash:?} for \
-                primary block #{primary_number},{primary_hash:?}, the number of new \
+                "Wrong domain parent block #{parent_number},{parent_hash} for \
+                primary block #{primary_number},{primary_hash}, the number of new \
                 domain block must match the number of corresponding primary block."
             ))));
         }
@@ -236,8 +231,8 @@ where
             .await?;
 
         tracing::debug!(
-            "Built new domain block #{header_number},{header_hash} \
-            from primary block #{primary_number},{primary_hash}",
+            "Built new domain block #{header_number},{header_hash} from primary block #{primary_number},{primary_hash} \
+            on top of parent block #{header_number},{header_hash}"
         );
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;

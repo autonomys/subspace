@@ -25,10 +25,7 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
 /// System domain executor.
-pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-where
-    PBlock: BlockT,
-{
+pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E> {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
@@ -40,8 +37,6 @@ where
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
     for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-where
-    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {

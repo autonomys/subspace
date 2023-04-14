@@ -307,18 +307,10 @@ where
             .runtime_api
             .construct_submit_core_bundle_extrinsics(domain_hash, core_bundles)?
             .into_iter()
-            .filter_map(
-                |uxt| match <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice()) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                            error = ?e,
-                            "Failed to decode the opaque extrisic in bundle, this should not happen"
-                        );
-                        None
-                    }
-                },
-            )
+            .map(|uxt| {
+                <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice())
+                    .expect("Internally constructed extrinsic must be valid; qed")
+            })
             .chain(origin_system_extrinsics)
             .collect::<Vec<_>>();
 

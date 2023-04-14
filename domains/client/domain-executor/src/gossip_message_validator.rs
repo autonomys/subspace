@@ -7,12 +7,17 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
 use sp_domains::{Bundle, DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
+
+type FraudProof<ParentChainBlock> = sp_domains::fraud_proof::FraudProof<
+    NumberFor<ParentChainBlock>,
+    <ParentChainBlock as BlockT>::Hash,
+>;
 
 /// Error type for domain gossip handling.
 #[derive(Debug, thiserror::Error)]
@@ -168,7 +173,8 @@ where
 
         if bundle_is_an_equivocation {
             let equivocation_proof = BundleEquivocationProof::dummy_at(bundle.header.slot_number);
-            let fraud_proof = FraudProof::BundleEquivocation(equivocation_proof);
+            let fraud_proof =
+                FraudProof::<ParentChainBlock>::BundleEquivocation(equivocation_proof);
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
             Err(GossipMessageError::BundleEquivocation)
         } else {
@@ -212,7 +218,8 @@ where
                 //
                 // if illegal => illegal tx proof
                 let invalid_transaction_proof = InvalidTransactionProof { domain_id };
-                let fraud_proof = FraudProof::InvalidTransaction(invalid_transaction_proof);
+                let fraud_proof =
+                    FraudProof::<ParentChainBlock>::InvalidTransaction(invalid_transaction_proof);
 
                 self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
             }
@@ -279,16 +286,12 @@ where
         }
     }
 
-    #[allow(clippy::type_complexity)]
     fn validate_execution_receipt(
         &self,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
         domain_id: DomainId,
-    ) -> Result<
-        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
-        GossipMessageError,
-    > {
+    ) -> Result<Option<FraudProof<ParentChainBlock>>, GossipMessageError> {
         let primary_number = to_number_primitive(execution_receipt.primary_number);
 
         // Just ignore it if the receipt is too old and has been pruned.
