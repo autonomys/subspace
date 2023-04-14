@@ -62,10 +62,10 @@ enum Command {
         /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
         #[arg(long, default_value = "100MiB")]
         piece_providers_cache_size: ByteSize,
-        /// Protocol prefix for libp2p stack, should be set as genesis hash of the blockchain for
+        /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
         /// production use.
         #[arg(long)]
-        protocol_prefix: String,
+        protocol_version: String,
     },
     /// Generate a new keypair
     GenerateKeypair {
@@ -128,11 +128,11 @@ async fn main() -> anyhow::Result<()> {
             disable_private_ips,
             db_path,
             piece_providers_cache_size,
-            protocol_prefix,
+            protocol_version,
         } => {
             debug!(
-                "Libp2p protocol stack instantiated with prefix: {} ",
-                protocol_prefix
+                "Libp2p protocol stack instantiated with version: {} ",
+                protocol_version
             );
 
             const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
@@ -182,7 +182,7 @@ async fn main() -> anyhow::Result<()> {
                 max_established_outgoing_connections: out_peers,
                 max_pending_incoming_connections: pending_in_peers,
                 max_pending_outgoing_connections: pending_out_peers,
-                ..Config::new(protocol_prefix.to_string(), keypair, provider_storage)
+                ..Config::new(protocol_version.to_string(), keypair, provider_storage)
             };
             let (node, mut node_runner) =
                 subspace_networking::create(config).expect("Networking stack creation failed.");

@@ -525,12 +525,12 @@ where
             config: dsn_config,
             piece_cache_size,
         } => {
-            let dsn_protocol_prefix = hex::encode(client.chain_info().genesis_hash);
+            let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
-            info!(
+            debug!(
                 chain_type=?config.chain_spec.chain_type(),
                 genesis_hash=%hex::encode(client.chain_info().genesis_hash),
-                "Setting DSN protocol prefix..."
+                "Setting DSN protocol version..."
             );
 
             let piece_cache = PieceCache::new(
@@ -571,7 +571,7 @@ where
                 });
 
             let (node, mut node_runner) = create_dsn_instance(
-                dsn_protocol_prefix,
+                dsn_protocol_version,
                 dsn_config.clone(),
                 piece_cache,
                 segment_header_cache.clone(),
