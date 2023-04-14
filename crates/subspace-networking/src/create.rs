@@ -44,7 +44,6 @@ use tokio::sync::watch;
 use tracing::{debug, error, info};
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
-const SUBSPACE_PROTOCOL_VERSION_PREFIX: &str = "/subspace/";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 
@@ -290,7 +289,7 @@ where
                 .expect("Default config for gossipsub is always correct; qed")
         });
 
-        let protocol_version = SUBSPACE_PROTOCOL_VERSION_PREFIX.to_string() + &protocol_version;
+        let protocol_version = format!("/subspace/{}", protocol_version);
         let identify = IdentifyConfig::new(protocol_version.clone(), keypair.public());
 
         let temporary_ban_backoff = ExponentialBackoff {

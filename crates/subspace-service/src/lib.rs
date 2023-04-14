@@ -571,7 +571,7 @@ where
                 });
 
             let (node, mut node_runner) = create_dsn_instance(
-                dsn_protocol_prefix,
+                dsn_protocol_version,
                 dsn_config.clone(),
                 piece_cache,
                 segment_header_cache.clone(),
