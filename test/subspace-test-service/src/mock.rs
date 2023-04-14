@@ -574,7 +574,19 @@ where
         {
             let value = (block_number, acknowledgement_sender);
             self.block_importing_notification_subscribers
-                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
+                .retain(|subscriber| {
+                    // It is necessary to notify the subscriber twice for each importing block in the test to ensure
+                    // the imported block must be fully processed by the executor when all acknowledgements responded.
+                    // This is because the `futures::channel::mpsc::channel` used in the executor have 1 slot even the
+                    // `primary_block_import_throttling_buffer_size` is set to 0 in the test, notify one more time can
+                    // ensure the previously sent `block_imported` notification must be fully processed by the executor
+                    // when the second acknowledgements responded.
+                    // Please see https://github.com/subspace/subspace/pull/1363#discussion_r1162571291 for more details.
+                    subscriber
+                        .unbounded_send(value.clone())
+                        .and_then(|_| subscriber.unbounded_send(value.clone()))
+                        .is_ok()
+                });
         }
 
         // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
