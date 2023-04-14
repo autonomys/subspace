@@ -20,6 +20,10 @@ targets = ["x86_64-unknown-linux-gnu"]
 codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
 domain-pallet-executive = { version = "0.1.0", path = "../../pallets/executive", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
+fp-account = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+fp-evm = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+fp-rpc = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+fp-self-contained = { version = "1.0.0-dev", default-features = false, git = "https://github.com/paritytech/frontier/" }
 frame-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
@@ -27,6 +31,15 @@ frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, o
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 hex-literal = { version = '0.4.0', optional = true }
 log = { version = "0.4.17", default-features = false }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+pallet-base-fee = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-dynamic-fee = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-ethereum = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-evm-chain-id = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-evm-precompile-modexp = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-evm-precompile-sha3fips = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
+pallet-evm-precompile-simple = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "d262ae7636c9e27d125b7b386e309567b39fc3e1" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
@@ -55,10 +68,23 @@ std = [
 	"codec/std",
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
+	"fp-account/std",
+	"fp-evm/std",
+	"fp-rpc/std",
+	"fp-self-contained/std",
 	"frame-support/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
 	"log/std",
+	"pallet-balances/std",
+	"pallet-base-fee/std",
+	"pallet-dynamic-fee/std",
+	"pallet-ethereum/std",
+	"pallet-evm/std",
+	"pallet-evm-chain-id/std",
+	"pallet-evm-precompile-modexp/std",
+	"pallet-evm-precompile-sha3fips/std",
+	"pallet-evm-precompile-simple/std",
 	"pallet-sudo/std",
 	"scale-info/std",
 	"sp-api/std",
@@ -86,4 +112,7 @@ runtime-benchmarks = [
 	"frame-system-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
+	"pallet-balances/runtime-benchmarks",
+	"pallet-ethereum/runtime-benchmarks",
+	"pallet-evm/runtime-benchmarks",
 ]
