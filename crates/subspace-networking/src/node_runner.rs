@@ -110,6 +110,8 @@ where
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
     /// DSN connection observer. Turns on/off DSN operations like piece retrieval.
     online_status_observer_tx: watch::Sender<bool>,
+    /// Defines protocol version for the network peers. Affects network partition.
+    protocol_version: String,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -128,6 +130,7 @@ where
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
     pub(crate) online_status_observer_tx: watch::Sender<bool>,
+    pub(crate) protocol_version: String,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -147,6 +150,7 @@ where
             temporary_bans,
             metrics,
             online_status_observer_tx,
+            protocol_version,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -169,6 +173,7 @@ where
             metrics,
             established_connections: HashMap::new(),
             online_status_observer_tx,
+            protocol_version,
         }
     }
 
@@ -539,8 +544,25 @@ where
     }
 
     async fn handle_identify_event(&mut self, event: IdentifyEvent) {
+        let local_peer_id = *self.swarm.local_peer_id();
+
         if let IdentifyEvent::Received { peer_id, mut info } = event {
-            let local_peer_id = *self.swarm.local_peer_id();
+            // Check for network partition
+            if info.protocol_version != self.protocol_version {
+                debug!(
+                    %local_peer_id,
+                    %peer_id,
+                    local_protocol_version=%self.protocol_version,
+                    peer_protocol_version=%info.protocol_version,
+                    "Peer has different protocol version. Peer was banned.",
+                );
+
+                self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+                self.networking_parameters_registry
+                    .remove_all_known_peer_addresses(peer_id)
+                    .await;
+                self.swarm.ban_peer_id(peer_id);
+            }
 
             if info.listen_addrs.len() > 30 {
                 debug!(
@@ -553,7 +575,6 @@ where
             }
 
             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
-            // We use kademlia support as a flag for the correct network in general.
             let full_kademlia_support = kademlia.protocol_names().iter().all(|local_protocol| {
                 info.protocols
                     .iter()
@@ -592,7 +613,7 @@ where
                     %local_peer_id,
                     %peer_id,
                     peer_protocols=?info.protocols,
-                    "Peer doesn't support our Kademlia DHT protocol ({:?}). Peer was banned.",
+                    "Peer doesn't support our Kademlia DHT protocol ({:?}).",
                     kademlia
                         .protocol_names()
                         .iter()
@@ -601,10 +622,6 @@ where
                 );
 
                 kademlia.remove_peer(&peer_id);
-                self.networking_parameters_registry
-                    .remove_all_known_peer_addresses(peer_id)
-                    .await;
-                self.swarm.ban_peer_id(peer_id);
             }
         }
     }

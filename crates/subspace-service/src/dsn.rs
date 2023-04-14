@@ -88,7 +88,7 @@ type DsnProviderStorage<AS> =
     NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
 
 pub(crate) fn create_dsn_instance<AS>(
-    dsn_protocol_prefix: String,
+    dsn_protocol_version: String,
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     segment_header_cache: SegmentHeaderCache<AS>,
@@ -130,7 +130,7 @@ where
         NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
     let keypair = dsn_config.keypair.clone();
     let default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_prefix, keypair, provider_storage);
+        subspace_networking::Config::new(dsn_protocol_version, keypair, provider_storage);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
