@@ -2,10 +2,12 @@ use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
+use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
+use sc_transaction_pool_api::TransactionPool;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
@@ -14,7 +16,7 @@ use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransition
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutorApi, SignedBundle};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
@@ -270,10 +272,186 @@ async fn test_executor_full_node_catching_up() {
     );
 }
 
-// TODO: enable the test after we can fetch call_data from the original primary block, currently the test
-// will fail due to `panicked at 'Bad input data provided to initialize_block_with_post_state_root: Codec error'`
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
+async fn test_initialize_block_proof_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(0).await
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(1).await
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_finalize_block_proof_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(2).await
+}
+
+/// This test will create and verify a invalid state transition proof that targets the receipt of
+/// a bundle that contains 1 extrinsic, thus there are 3 trace roots and the `mismatch_trace_index`
+/// should be in the range of [0..2]
+async fn test_invalid_state_transition_proof_creation_and_verification(
+    mismatch_trace_index: usize,
+) {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |signed_opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle {
+                signed_opaque_bundle,
+            }
+            .into(),
+        )
+        .into()
+    };
+
+    futures::join!(alice.wait_for_blocks(5), ferdie.produce_blocks(5))
+        .1
+        .unwrap();
+
+    let transfer_to_bob = domain_test_service::construct_extrinsic(
+        &alice.client,
+        pallet_balances::Call::transfer {
+            dest: domain_test_service::runtime::Address::Id(Bob.public().into()),
+            value: 1,
+        },
+        Alice,
+        false,
+        0,
+    );
+    alice
+        .send_extrinsic(transfer_to_bob)
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let target_bundle = bundle.unwrap();
+    assert_eq!(target_bundle.bundle.extrinsics.len(), 1);
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot),
+    )
+    .1
+    .unwrap();
+    // Manually remove the target bundle from tx pool in case resubmit it by accident
+    ferdie
+        .remove_tx_from_tx_pool(&bundle_to_tx(target_bundle.clone()))
+        .unwrap();
+
+    // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
+    // to increase the `ProofOfElection::block_number` of the next bundle such that we can skip the runtime
+    // `state_root` check for the modified `trace` when testing the `finalize_block` proof.
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot),
+    )
+    .1
+    .unwrap();
+
+    // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let bad_submit_bundle_tx = {
+        let mut signed_opaque_bundle = bundle.unwrap();
+        for receipt in signed_opaque_bundle.bundle.receipts.iter_mut() {
+            if receipt.primary_number == target_bundle.bundle.header.primary_number + 1 {
+                assert_eq!(receipt.trace.len(), 3);
+                receipt.trace[mismatch_trace_index] = Default::default();
+            }
+        }
+        signed_opaque_bundle.signature = alice
+            .key
+            .pair()
+            .sign(signed_opaque_bundle.bundle.hash().as_ref())
+            .into();
+        bundle_to_tx(signed_opaque_bundle)
+    };
+
+    // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
+    ferdie
+        .remove_tx_from_tx_pool(&original_submit_bundle_tx)
+        .unwrap();
+    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+
+    ferdie
+        .submit_transaction(bad_submit_bundle_tx)
+        .await
+        .unwrap();
+
+    // Produce a primary block that contains the `bad_submit_bundle_tx`
+    let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
+    futures::join!(
+        alice.wait_for_blocks(1),
+        ferdie.produce_block_with_slot(slot),
+    )
+    .1
+    .unwrap();
+
+    // When the system domain node process the primary block that contains the `bad_submit_bundle_tx`,
+    // it will generate and submit a fraud proof
+    while let Some(ready_tx_hash) = import_tx_stream.next().await {
+        let ready_tx = ferdie
+            .transaction_pool
+            .ready_transaction(&ready_tx_hash)
+            .unwrap();
+        let ext = subspace_test_runtime::UncheckedExtrinsic::decode(
+            &mut ready_tx.data.encode().as_slice(),
+        )
+        .unwrap();
+        if let subspace_test_runtime::RuntimeCall::Domains(
+            pallet_domains::Call::submit_fraud_proof {
+                fraud_proof: FraudProof::InvalidStateTransition(proof),
+            },
+        ) = ext.function
+        {
+            match mismatch_trace_index {
+                0 => assert!(matches!(
+                    proof.execution_phase,
+                    ExecutionPhase::InitializeBlock { .. }
+                )),
+                1 => assert!(matches!(
+                    proof.execution_phase,
+                    ExecutionPhase::ApplyExtrinsic(_)
+                )),
+                2 => assert!(matches!(
+                    proof.execution_phase,
+                    ExecutionPhase::FinalizeBlock { .. }
+                )),
+                _ => unreachable!(),
+            }
+            break;
+        }
+    }
+
+    // Produce a primary block that contains the fraud proof, the fraud proof wil be verified
+    // in the block import pipeline
+    ferdie.produce_blocks(1).await.unwrap();
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -301,7 +479,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
     // after https://github.com/subspace/subspace/issues/1301 is resolved.
-    futures::join!(alice.wait_for_blocks(2), ferdie.produce_blocks(2))
+    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
         .1
         .unwrap();
 
@@ -309,11 +487,17 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
         let mut signed_opaque_bundle = bundle.unwrap();
-        signed_opaque_bundle.bundle.receipts[0].trace[0] = Default::default();
+        signed_opaque_bundle
+            .bundle
+            .receipts
+            .last_mut()
+            .unwrap()
+            .trace[0] = Default::default();
         signed_opaque_bundle
     };
-    let bad_receipt = bad_bundle.bundle.receipts[0].clone();
+    let bad_receipt = bad_bundle.bundle.receipts.last().unwrap().clone();
     let bad_receipt_number = bad_receipt.primary_number;
+    assert_ne!(bad_receipt_number, 1);
 
     // Submit the bad receipt to the primary chain
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
@@ -409,14 +593,18 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
             fraud_proof: valid_fraud_proof.clone(),
         }
         .into(),
-    );
+    )
+    .into();
 
-    let expected_tx_hash = tx.using_encoded(BlakeTwo256::hash);
-    let tx_hash = ferdie
-        .submit_transaction(tx.into())
-        .await
-        .expect("Error at submitting a valid fraud proof");
-    assert_eq!(tx_hash, expected_tx_hash);
+    // The exact same fraud proof should be submitted to tx pool already
+    match ferdie.submit_transaction(tx).await.unwrap_err() {
+        sc_transaction_pool::error::Error::Pool(
+            sc_transaction_pool_api::error::Error::AlreadyImported(_),
+        ) => {}
+        e => panic!("Unexpected error while submitting fraud proof: {e}"),
+    }
+    // Produce one more block to verify the fraud proof in the block import pipeline
+    ferdie.produce_blocks(1).await.unwrap();
 
     let bad_invalid_state_transition_proof = InvalidStateTransitionProof {
         post_state_root: Hash::random(),

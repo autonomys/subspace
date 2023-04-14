@@ -44,6 +44,7 @@ tokio = { version = "1.27.0", features = ["macros"] }
 [dev-dependencies]
 core-payments-domain-runtime = { version = "0.1.0", path = "../../runtime/core-payments" }
 domain-test-service = { version = "0.1.0", path = "../../test/service" }
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 pallet-domains = { version = "0.1.0", path = "../../../crates/pallet-domains" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }

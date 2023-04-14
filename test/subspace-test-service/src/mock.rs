@@ -291,7 +291,7 @@ impl MockPrimaryNode {
     }
 
     /// Get the bundle that created at `slot` from the transaction pool
-    fn get_bundle_from_tx_pool(
+    pub fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
     ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>> {

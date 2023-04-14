@@ -382,10 +382,6 @@ where
 
         // TODO: The applied txs can be fully removed from the transaction pool
 
-        // TODO: Skip fraud-proof processing until
-        // https://github.com/subspace/subspace/issues/1020 is resolved.
-        return Ok(None);
-
         self.check_receipts_in_primary_block(primary_hash)?;
 
         if self.primary_network_sync_oracle.is_major_syncing() {
