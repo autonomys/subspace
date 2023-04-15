@@ -83,13 +83,13 @@ impl PiecesReconstructor {
             .zip(
                 reconstructed_pieces
                     .iter_mut()
-                    .map(|piece| piece.record_mut().full_scalar_arrays_mut()),
+                    .map(|piece| piece.record_mut().iter_mut()),
             )
             .all(|(maybe_piece, raw_record)| {
                 if let Some(piece) = maybe_piece {
                     piece
                         .record()
-                        .full_scalar_arrays()
+                        .iter()
                         .zip(raw_record)
                         .for_each(|(source, target)| {
                             *target = *source;
@@ -115,7 +115,7 @@ impl PiecesReconstructor {
                         .map(|piece| {
                             piece
                                 .record()
-                                .full_scalar_arrays()
+                                .iter()
                                 .nth(record_offset)
                                 .expect("Statically guaranteed to exist in a piece; qed")
                         })
@@ -133,7 +133,7 @@ impl PiecesReconstructor {
                     .zip(reconstructed_pieces.iter_mut().map(|piece| {
                         piece
                             .record_mut()
-                            .full_scalar_arrays_mut()
+                            .iter_mut()
                             .nth(record_offset)
                             .expect("Statically guaranteed to exist in a piece; qed")
                     }))
@@ -160,11 +160,10 @@ impl PiecesReconstructor {
                         .map_err(|_error| ReconstructorError::InvalidInputPieceCommitment)
                 } else {
                     let scalars = {
-                        let record_chunks = piece.record().full_scalar_arrays();
-                        let number_of_chunks = record_chunks.len();
-                        let mut scalars = Vec::with_capacity(number_of_chunks.next_power_of_two());
+                        let mut scalars =
+                            Vec::with_capacity(piece.record().len().next_power_of_two());
 
-                        for record_chunk in record_chunks {
+                        for record_chunk in piece.record().iter() {
                             scalars.push(
                                 Scalar::try_from(record_chunk)
                                     .map_err(ReconstructorError::DataShardsReconstruction)?,

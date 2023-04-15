@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 pub enum BlockObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
+    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Object hash
         hash: Blake2b256Hash,
@@ -86,6 +87,7 @@ pub struct BlockObjectMapping {
 pub enum PieceObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
+    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Object hash
         hash: Blake2b256Hash,
@@ -127,6 +129,7 @@ pub struct PieceObjectMapping {
 pub enum GlobalObject {
     /// V0 of object mapping data structure
     #[codec(index = 0)]
+    #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Piece index where object is contained (at least its beginning, might not fit fully)
         piece_index: PieceIndex,

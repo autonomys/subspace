@@ -25,7 +25,7 @@ fn record_to_raw_record_bytes(record: &Record) -> impl Iterator<Item = u8> + '_ 
     // We have zero byte padding from [`Scalar::SAFE_BYTES`] to [`Scalar::FULL_BYTES`] that we need
     // to skip
     record
-        .chunks_exact(Scalar::FULL_BYTES)
+        .iter()
         .flat_map(|bytes| &bytes[..Scalar::SAFE_BYTES])
         .copied()
 }
