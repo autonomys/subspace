@@ -44,9 +44,13 @@ impl Table {
     }
 }
 
-/// Check whether proof created earlier is valid
-pub fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool {
-    subspace_chiapos::is_proof_valid(seed, challenge_index, proof)
+/// Check whether proof created earlier is valid and return quality bytes if yes
+pub fn is_proof_valid(
+    seed: &PosSeed,
+    challenge_index: u32,
+    proof: &PosProof,
+) -> Option<PosQualityBytes> {
+    subspace_chiapos::is_proof_valid(seed, challenge_index, proof).map(PosQualityBytes::from)
 }
 
 #[cfg(test)]
@@ -68,7 +72,8 @@ mod tests {
             let challenge_index = 1;
             let quality = table.find_quality(challenge_index).unwrap();
             let proof = quality.create_proof();
-            assert!(is_proof_valid(&SEED, challenge_index, &proof));
+            let maybe_quality = is_proof_valid(&SEED, challenge_index, &proof);
+            assert_eq!(maybe_quality, Some(quality.to_bytes()));
         }
     }
 }

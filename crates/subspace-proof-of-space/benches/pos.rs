@@ -50,7 +50,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("verification", |b| {
         b.iter(|| {
-            assert!(is_proof_valid(&seed, challenge_index_with_solution, &proof));
+            assert!(is_proof_valid(&seed, challenge_index_with_solution, &proof).is_some());
         });
     });
     group.finish();
