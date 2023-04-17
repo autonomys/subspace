@@ -502,17 +502,18 @@ where
     PBlock: BlockT,
     PBlock::Hash: From<sp_core::H256>,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<<Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
-    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
     Executor: CodeExecutor,
 {
     /// Constructs a new instance of [`CoreDomainExtrinsicsBuilder`].
@@ -554,17 +555,18 @@ where
     PBlock: BlockT,
     PBlock::Hash: From<sp_core::H256>,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<<Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
-    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
     Executor: CodeExecutor,
 {
     fn build_domain_extrinsics(
@@ -647,15 +649,16 @@ where
 
         let wasm_bundle = match *domain_id {
             DomainId::SYSTEM => system_wasm_bundle,
-            DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => {
-                read_core_domain_runtime_blob(system_wasm_bundle.as_ref(), *domain_id)
-                    .map_err(|err| {
-                        VerificationError::RuntimeCode(format!(
+            DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => read_core_domain_runtime_blob(
+                system_wasm_bundle.as_ref(),
+                *domain_id,
+            )
+            .map_err(|err| {
+                VerificationError::RuntimeCode(format!(
                     "failed to read core domain {domain_id:?} runtime blob file, error {err:?}"
                 ))
-                    })?
-                    .into()
-            }
+            })?
+            .into(),
             _ => {
                 return Err(VerificationError::RuntimeCode(format!(
                     "No runtime code for {domain_id:?}"

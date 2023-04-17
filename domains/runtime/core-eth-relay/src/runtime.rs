@@ -1,4 +1,5 @@
 use crate::feed_processor::{feed_processor, FeedProcessorId, FeedProcessorKind};
+use codec::Decode;
 use core::time::Duration;
 use domain_runtime_primitives::opaque;
 pub use domain_runtime_primitives::{
@@ -19,7 +20,9 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::OpaqueMetadata;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
-use sp_messenger::messages::{CrossDomainMessage, MessageId, RelayerMessagesWithStorageKey};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
@@ -298,6 +301,7 @@ impl pallet_sudo::Config for Runtime {
 
 /// Dummy time provider that always returns zero.
 pub struct DummyTimeProvider;
+
 impl UnixTime for DummyTimeProvider {
     fn now() -> Duration {
         Duration::ZERO
@@ -548,6 +552,18 @@ impl_runtime_apis! {
         }
     }
 
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+    }
+
     impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
         fn domain_id() -> DomainId {
             CoreEthRelayDomainId::get()
@@ -636,5 +652,23 @@ impl_runtime_apis! {
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
         }
+    }
+}
+
+fn extract_xdm_proof_state_roots(
+    encoded_ext: Vec<u8>,
+) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
+        match &ext.function {
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            _ => None,
+        }
+    } else {
+        None
     }
 }

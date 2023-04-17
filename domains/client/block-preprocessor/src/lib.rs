@@ -394,13 +394,15 @@ where
     Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    RuntimeApi: SignerExtractor<Block, AccountId> + SetCodeConstructor<Block>,
+    SBlock::Hash: From<Block::Hash>,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    RuntimeApi:
+        SignerExtractor<Block, AccountId> + SetCodeConstructor<Block> + StateRootExtractor<Block>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
 {
     pub fn new(
         domain_id: DomainId,
@@ -455,7 +457,7 @@ where
             extrinsics,
             shuffling_seed,
         )
-        .map(|extrinsics| self.filter_invalid_xdm_extrinsics(extrinsics))?;
+        .map(|extrinsics| self.filter_invalid_xdm_extrinsics(domain_hash, extrinsics))?;
 
         if let Some(new_runtime) = maybe_new_runtime {
             let encoded_set_code = self
@@ -473,12 +475,18 @@ where
         Ok(extrinsics)
     }
 
-    fn filter_invalid_xdm_extrinsics(&self, exts: Vec<Block::Extrinsic>) -> Vec<Block::Extrinsic> {
+    fn filter_invalid_xdm_extrinsics(
+        &self,
+        at: Block::Hash,
+        exts: Vec<Block::Extrinsic>,
+    ) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
-                match verify_xdm_with_system_domain_client::<_, Block, SBlock, PBlock>(
+                match verify_xdm_with_system_domain_client::<_, Block, SBlock, PBlock, _>(
                     &self.system_domain_client,
-                    &(ext.clone().into()),
+                    at,
+                    ext,
+                    &self.runtime_api,
                 ) {
                     Ok(valid) => valid,
                     Err(err) => {

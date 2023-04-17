@@ -1,5 +1,4 @@
 use crate::runtime_api::StateRootExtractor;
-use crate::utils::extract_xdm_proof_state_roots_with_client;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend};
 use sp_domains::ExecutorApi;
@@ -13,40 +12,43 @@ use system_runtime_primitives::SystemDomainApi;
 /// Core domains nodes use this to verify an XDM coming from other domains.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub fn verify_xdm_with_system_domain_client<Client, Block, SBlock, PBlock>(
-    system_domain_client: &Arc<Client>,
-    extrinsic: &SBlock::Extrinsic,
+pub fn verify_xdm_with_system_domain_client<SClient, Block, SBlock, PBlock, SRE>(
+    system_domain_client: &Arc<SClient>,
+    at: Block::Hash,
+    extrinsic: &Block::Extrinsic,
+    state_root_extractor: &SRE,
 ) -> Result<bool, Error>
 where
-    Client: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    Client::Api: MessengerApi<SBlock, NumberFor<SBlock>>
+    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     Block: BlockT,
     SBlock: BlockT,
+    SBlock::Hash: From<Block::Hash>,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
     PBlock: BlockT,
+    SRE: StateRootExtractor<Block>,
 {
-    let api = system_domain_client.runtime_api();
-    let best_hash = system_domain_client.info().best_hash;
-    if let Ok(Some(state_roots)) =
-        extract_xdm_proof_state_roots_with_client(&*api, best_hash, extrinsic)
-    {
+    if let Ok(state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {
         // verify system domain state root
         let header = system_domain_client
-            .header(state_roots.system_domain_block_info.block_hash)?
+            .header(state_roots.system_domain_block_info.block_hash.into())?
             .ok_or(Error::MissingHeader(format!(
                 "hash: {}",
                 state_roots.system_domain_block_info.block_hash
             )))?;
 
-        if *header.number() != state_roots.system_domain_block_info.block_number {
+        if *header.number() != state_roots.system_domain_block_info.block_number.into() {
             return Ok(false);
         }
 
-        if *header.state_root() != state_roots.system_domain_state_root {
+        if *header.state_root() != state_roots.system_domain_state_root.into() {
             return Ok(false);
         }
 
         // verify core domain state root and the if the number is K-deep.
+        let best_hash = system_domain_client.info().best_hash;
+        let api = system_domain_client.runtime_api();
         if let Some((domain_id, core_domain_info, core_domain_state_root)) =
             state_roots.core_domain_info
         {
@@ -54,7 +56,7 @@ where
             if let Some(confirmed_number) =
                 best_number.checked_sub(&api.confirmation_depth(best_hash)?)
             {
-                if confirmed_number < core_domain_info.block_number {
+                if confirmed_number < core_domain_info.block_number.into() {
                     return Ok(false);
                 }
             }
@@ -62,10 +64,10 @@ where
             if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
                 best_hash,
                 domain_id,
-                core_domain_info.block_number,
-                core_domain_info.block_hash,
+                core_domain_info.block_number.into(),
+                core_domain_info.block_hash.into(),
             )? {
-                if expected_core_domain_state_root != core_domain_state_root {
+                if expected_core_domain_state_root != core_domain_state_root.into() {
                     return Ok(false);
                 }
             }

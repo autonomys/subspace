@@ -58,7 +58,13 @@ type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, Exe
         FullPool<
             Block,
             FullClient<Block, RuntimeApi, ExecutorDispatch>,
-            CoreDomainTxPreValidator<Block, SBlock, PBlock, SClient>,
+            CoreDomainTxPreValidator<
+                Block,
+                SBlock,
+                PBlock,
+                FullClient<Block, RuntimeApi, ExecutorDispatch>,
+                SClient,
+            >,
         >,
         FullBackend<Block>,
         NativeElseWasmExecutor<ExecutorDispatch>,
@@ -79,6 +85,8 @@ pub struct NewFullCore<
     SBlock: BlockT,
     PBlock: BlockT,
     Block: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
@@ -93,8 +101,8 @@ pub struct NewFullCore<
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
+        + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
@@ -136,7 +144,13 @@ fn new_partial<RuntimeApi, Executor, SDC, Block, SBlock, PBlock>(
         FullPool<
             Block,
             FullClient<Block, RuntimeApi, Executor>,
-            CoreDomainTxPreValidator<Block, SBlock, PBlock, SDC>,
+            CoreDomainTxPreValidator<
+                Block,
+                SBlock,
+                PBlock,
+                FullClient<Block, RuntimeApi, Executor>,
+                SDC,
+            >,
         >,
         (
             Option<Telemetry>,
@@ -150,12 +164,14 @@ where
     RuntimeApi:
         ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, Executor>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
-        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
+        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+        + MessengerApi<Block, NumberFor<Block>>,
     Executor: NativeExecutionDispatch + 'static,
     Block: BlockT,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
-    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
@@ -194,7 +210,8 @@ where
         telemetry
     });
 
-    let core_domain_tx_pre_validator = CoreDomainTxPreValidator::new(system_domain_client);
+    let core_domain_tx_pre_validator =
+        CoreDomainTxPreValidator::new(client.clone(), system_domain_client);
     let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
@@ -278,7 +295,6 @@ where
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     <Block as BlockT>::Header: Unpin,
     NumberFor<Block>: FullCodec + TypeInfo,
-    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
@@ -311,6 +327,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
+        + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, RelayerId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

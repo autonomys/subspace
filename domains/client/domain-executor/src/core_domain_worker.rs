@@ -86,8 +86,9 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -97,6 +98,7 @@ pub(super) async fn start_worker<
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + BlockBuilder<Block>
+        + MessengerApi<Block, NumberFor<Block>>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
         Block,

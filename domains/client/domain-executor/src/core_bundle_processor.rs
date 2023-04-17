@@ -64,7 +64,8 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -73,6 +74,7 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
+        + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<

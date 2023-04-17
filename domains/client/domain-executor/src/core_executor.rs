@@ -57,8 +57,9 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
 where
     Block: BlockT,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -68,6 +69,7 @@ where
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
+        + MessengerApi<Block, NumberFor<Block>>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: sc_consensus::BlockImport<
         Block,
