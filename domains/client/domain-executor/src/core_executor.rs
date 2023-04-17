@@ -57,8 +57,8 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
 where
     Block: BlockT,
     SBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
     PBlock: BlockT,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore

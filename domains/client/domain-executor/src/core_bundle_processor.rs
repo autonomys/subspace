@@ -14,16 +14,10 @@ use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
-use std::marker::PhantomData;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
-where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
-{
+pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E> {
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
@@ -40,15 +34,10 @@ where
         RuntimeApiFull<Client>,
     >,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    _phantom_data: PhantomData<(SBlock, PBlock)>,
 }
 
 impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E> Clone
     for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E>
-where
-    Block: BlockT,
-    SBlock: BlockT,
-    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -61,7 +50,6 @@ where
             keystore: self.keystore.clone(),
             core_domain_block_preprocessor: self.core_domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
-            _phantom_data: self._phantom_data,
         }
     }
 }
@@ -126,7 +114,6 @@ where
             keystore,
             core_domain_block_preprocessor,
             domain_block_processor,
-            _phantom_data: PhantomData::default(),
         }
     }
 
@@ -134,10 +121,10 @@ where
     pub(crate) async fn process_bundles(
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
-    ) -> Result<(), sp_blockchain::Error> {
-        tracing::debug!(?primary_info, "Processing imported primary block");
-
+    ) -> sp_blockchain::Result<()> {
         let (primary_hash, primary_number) = primary_info;
+
+        tracing::debug!("Processing imported primary block #{primary_number},{primary_hash}");
 
         let maybe_pending_primary_blocks = self
             .domain_block_processor
@@ -170,13 +157,13 @@ where
         &self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_info: (Block::Hash, NumberFor<Block>),
-    ) -> Result<(Block::Hash, NumberFor<Block>), sp_blockchain::Error> {
+    ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)> {
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
         tracing::debug!(
-            "Building a new domain block derived from primary block #{primary_number},{primary_hash} \
-            on top of #{parent_number},{parent_hash}"
+            "Building a new domain block from primary block #{primary_number},{primary_hash} \
+            on top of parent block #{parent_number},{parent_hash}"
         );
 
         let extrinsics = self

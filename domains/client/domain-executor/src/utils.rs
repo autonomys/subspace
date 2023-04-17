@@ -13,14 +13,8 @@ pub(super) struct ExecutorSlotInfo {
     pub(super) global_challenge: Blake2b256Hash,
 }
 
-/// An event telling the `Overseer` on the particular block
-/// that has been imported or finalized.
-///
-/// This structure exists solely for the purposes of decoupling
-/// `Overseer` code from the client code and the necessity to call
-/// `HeaderBackend::block_number_from_id()`.
 #[derive(Debug, Clone)]
-pub struct BlockInfo<Block>
+pub(crate) struct BlockInfo<Block>
 where
     Block: BlockT,
 {

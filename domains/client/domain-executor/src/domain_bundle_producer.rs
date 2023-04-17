@@ -48,7 +48,7 @@ pub(super) struct DomainBundleProducer<
     keystore: KeystorePtr,
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
-    _phantom_data: PhantomData<(SBlock, ParentChainBlock)>,
+    _phantom_data: PhantomData<ParentChainBlock>,
 }
 
 impl<
@@ -166,7 +166,7 @@ where
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-    ) -> Result<Option<SignedOpaqueBundle<Block, PBlock>>, sp_blockchain::Error> {
+    ) -> sp_blockchain::Result<Option<SignedOpaqueBundle<Block, PBlock>>> {
         let ExecutorSlotInfo {
             slot,
             global_challenge,
@@ -220,7 +220,7 @@ where
     fn construct_bundle_solution(
         &self,
         preliminary_bundle_solution: PreliminaryBundleSolution<Block::Hash>,
-    ) -> Result<BundleSolution<Block::Hash>, sp_blockchain::Error> {
+    ) -> sp_blockchain::Result<BundleSolution<Block::Hash>> {
         match preliminary_bundle_solution {
             PreliminaryBundleSolution::System {
                 authority_stake_weight,
@@ -254,7 +254,7 @@ pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
     bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     keystore: KeystorePtr,
     bundle_solution: BundleSolution<Block::Hash>,
-) -> Result<SignedOpaqueBundle<Block, PBlock>, sp_blockchain::Error> {
+) -> sp_blockchain::Result<SignedOpaqueBundle<Block, PBlock>> {
     let to_sign = bundle.hash();
     let bundle_author = bundle_solution
         .proof_of_election()

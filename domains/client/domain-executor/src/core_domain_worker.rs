@@ -86,8 +86,8 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     SBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
     PBlock: BlockT,
+    Block::Extrinsic: Into<SBlock::Extrinsic>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore

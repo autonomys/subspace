@@ -85,7 +85,6 @@ impl<Executor> RuntimeApiLight<Executor>
 where
     Executor: CodeExecutor,
 {
-    #[allow(unused)]
     pub fn new(executor: Arc<Executor>, runtime_code: Cow<'static, [u8]>) -> Self {
         Self {
             executor,
