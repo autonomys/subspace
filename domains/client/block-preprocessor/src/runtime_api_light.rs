@@ -11,19 +11,25 @@ use sp_core::ExecutionContext;
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
+use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_runtime_primitives::Moment;
 use system_runtime_primitives::SystemDomainApi;
 
-/// This is a stateless wrapper around the runtime api.
-/// Note: Dispatch may give invalid output if the invoked function relies on state of the chain.
-/// Note: Be sure to use this only when there is no domain client available as this holds
-/// since entire domain runtime on heap.
+/// Lightweight runtime api based on the runtime code and partial state.
+///
+/// NOTE:
+/// - This is only supposed to be used when no domain client available, i.e., when the
+/// caller does not own the entire domain state.
+/// - This perfectly fits the runtime APIs that are purely stateless, but it's also usable
+/// for the stateful APIs. if some states are used inside a runtime api, they must be provided
+/// and set before dispatching otherwise [`RuntimeApiLight`] may give invalid output.
 pub struct RuntimeApiLight<Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,
+    storage: Storage,
 }
 
 impl<Block, Executor> Core<Block> for RuntimeApiLight<Executor>
@@ -85,11 +91,20 @@ impl<Executor> RuntimeApiLight<Executor>
 where
     Executor: CodeExecutor,
 {
+    /// Create a new instance of [`RuntimeApiLight`] with empty storage.
     pub fn new(executor: Arc<Executor>, runtime_code: Cow<'static, [u8]>) -> Self {
         Self {
             executor,
             runtime_code,
+            storage: Storage::default(),
         }
+    }
+
+    /// Set the storage.
+    ///
+    /// Inject the state necessary for calling stateful runtime APIs.
+    pub fn set_storage(&mut self, storage: Storage) {
+        self.storage = storage;
     }
 
     fn runtime_code(&self) -> RuntimeCode<'_> {
@@ -119,7 +134,7 @@ where
     ) -> Result<Vec<u8>, ApiError> {
         let runtime_version = self.runtime_version()?;
         let fn_name = fn_name(runtime_version);
-        let mut ext = BasicExternalities::new_empty();
+        let mut ext = BasicExternalities::new(self.storage.clone());
         self.executor
             .call(
                 &mut ext,
