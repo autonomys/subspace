@@ -61,7 +61,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::{Error as ConsensusError, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
 use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
@@ -73,6 +73,7 @@ use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -83,6 +84,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::online_status_informer;
 use subspace_networking::{peer_id, Node};
+use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::bundle_validator::BundleValidator;
@@ -191,12 +193,14 @@ pub struct SubspaceConfiguration {
     pub sync_from_dsn: bool,
 }
 
-struct SubspaceExtensionsFactory {
+struct SubspaceExtensionsFactory<PosTable> {
     kzg: Kzg,
+    _pos_table: PhantomData<PosTable>,
 }
 
-impl<Block> ExtensionsFactory<Block> for SubspaceExtensionsFactory
+impl<PosTable, Block> ExtensionsFactory<Block> for SubspaceExtensionsFactory<PosTable>
 where
+    PosTable: Table,
     Block: BlockT,
 {
     fn extensions_for(
@@ -207,13 +211,14 @@ where
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
+        exts.register(PosExtension::new::<PosTable>());
         exts
     }
 }
 
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
-pub fn new_partial<RuntimeApi, ExecutorDispatch>(
+pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
 ) -> Result<
     PartialComponents<
@@ -245,6 +250,7 @@ pub fn new_partial<RuntimeApi, ExecutorDispatch>(
     ServiceError,
 >
 where
+    PosTable: Table,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -287,10 +293,13 @@ where
             executor.clone(),
         )?;
 
+    let kzg = Kzg::new(embedded_kzg_settings());
+
     client
         .execution_extensions()
-        .set_extensions_factory(SubspaceExtensionsFactory {
-            kzg: Kzg::new(embedded_kzg_settings()),
+        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable> {
+            kzg: kzg.clone(),
+            _pos_table: PhantomData::default(),
         });
 
     let client = Arc::new(client);
@@ -331,10 +340,11 @@ where
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-    let (block_import, subspace_link) = sc_consensus_subspace::block_import(
+    let (block_import, subspace_link) = sc_consensus_subspace::block_import::<PosTable, _, _, _, _>(
         sc_consensus_subspace::slot_duration(&*client)?,
         fraud_proof_block_import,
         client.clone(),
+        kzg.clone(),
         {
             let client = client.clone();
 
@@ -365,10 +375,11 @@ where
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    let import_queue = sc_consensus_subspace::import_queue(
+    let import_queue = sc_consensus_subspace::import_queue::<PosTable, _, _, _, _, _>(
         block_import.clone(),
         None,
         client.clone(),
+        kzg,
         select_chain.clone(),
         move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -449,7 +460,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 
 /// Builds a new service for a full client.
 #[allow(clippy::type_complexity)]
-pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
+pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
     config: SubspaceConfiguration,
     partial_components: PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -477,6 +488,7 @@ pub async fn new_full<RuntimeApi, ExecutorDispatch, I>(
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
 where
+    PosTable: Table,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -809,7 +821,10 @@ where
             telemetry: None,
         };
 
-        let subspace = sc_consensus_subspace::start_subspace(subspace_config)?;
+        let subspace =
+            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(
+                subspace_config,
+            )?;
 
         // Subspace authoring task is considered essential, i.e. if it fails we take down the
         // service with it.

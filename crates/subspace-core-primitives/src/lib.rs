@@ -77,7 +77,45 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
 
 /// Type of randomness.
-pub type Randomness = [u8; RANDOMNESS_LENGTH];
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    From,
+    Into,
+    Deref,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Randomness(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RANDOMNESS_LENGTH],
+);
+
+impl AsRef<[u8]> for Randomness {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for Randomness {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl Randomness {
+    /// Derive global slot challenge from global randomness.
+    // TODO: Separate type for global challenge
+    pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake2b256Hash {
+        crypto::blake2b_256_hash_list(&[&self.0, &slot.to_le_bytes()])
+    }
+}
 
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
@@ -671,55 +709,6 @@ impl TryFrom<U256> for u64 {
 
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         Self::try_from(value.0)
-    }
-}
-
-// TODO: Remove
-/// Data structure representing sector ID in farmer's plot
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct LegacySectorId(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash,
-);
-
-impl AsRef<[u8]> for LegacySectorId {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl LegacySectorId {
-    /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key: &PublicKey, sector_index: SectorIndex) -> Self {
-        Self(blake2b_256_hash_with_key(
-            &sector_index.to_le_bytes(),
-            public_key.as_ref(),
-        ))
-    }
-
-    /// Derive piece index that should be stored in sector at `piece_offset` for specified size of
-    /// blockchain history
-    pub fn derive_piece_index(
-        &self,
-        piece_offset: PieceOffset,
-        history_size: HistorySize,
-    ) -> PieceIndex {
-        let piece_index =
-            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0))
-                % U256::from(history_size.in_pieces().get());
-
-        PieceIndex::from(u64::try_from(piece_index).expect(
-            "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
-        ))
-    }
-
-    /// Derive sector slot challenge for this sector from provided global challenge
-    pub fn derive_sector_slot_challenge(&self, global_challenge: &Blake2b256Hash) -> SolutionRange {
-        let hash = blake2b_256_hash_with_key(global_challenge, &self.0);
-
-        SolutionRange::from_be_bytes([
-            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
-        ])
     }
 }
 

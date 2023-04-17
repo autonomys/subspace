@@ -3,7 +3,7 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![feature(const_trait_impl)]
 
-#[cfg(feature = "std")]
+#[cfg(feature = "chia")]
 pub mod chia;
 #[cfg(feature = "shim")]
 pub mod shim;

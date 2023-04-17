@@ -3,11 +3,14 @@ use codec::{Decode, Encode};
 use frame_support::sp_io::TestExternalities;
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::Zero;
-use sp_consensus_subspace::KzgExtension;
+use sp_consensus_subspace::{KzgExtension, PosExtension};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::{BTreeMap, HashMap};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{BlockWeight, SegmentCommitment, SegmentIndex, SolutionRange};
+use subspace_proof_of_space::shim::ShimTable;
+
+pub(crate) type PosTable = ShimTable;
 
 pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
@@ -191,6 +194,7 @@ pub fn new_test_ext() -> TestExternalities {
     let mut ext = TestExternalities::new_empty();
 
     ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
+    ext.register_extension(PosExtension::new::<PosTable>());
 
     ext
 }

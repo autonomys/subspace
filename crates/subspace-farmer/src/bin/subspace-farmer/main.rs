@@ -17,11 +17,14 @@ use subspace_core_primitives::{PublicKey, PIECES_IN_SECTOR};
 use subspace_farmer::single_disk_plot::SingleDiskPlot;
 use subspace_farmer_components::sector::sector_size;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_proof_of_space::chia::ChiaTable;
 use tempfile::TempDir;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
+
+type PosTable = ChiaTable;
 
 #[cfg(all(
     target_arch = "x86_64",
@@ -306,7 +309,7 @@ async fn main() -> Result<()> {
                 command.farm
             };
 
-            commands::farm_multi_disk(base_path, disk_farms, farming_args).await?;
+            commands::farm_multi_disk::<PosTable>(base_path, disk_farms, farming_args).await?;
         }
         Subcommand::Info => {
             let disk_farms = if command.farm.is_empty() {

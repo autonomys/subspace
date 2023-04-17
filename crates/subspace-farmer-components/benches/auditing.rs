@@ -22,6 +22,8 @@ use subspace_farmer_components::sector::{sector_size, SectorContentsMap, SectorM
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 
+type PosTable = ChiaTable;
+
 pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Initializing...");
     let base_path = env::var("BASE_PATH")
@@ -102,7 +104,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, ChiaTable>(
+        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
             &public_key,
             sector_index,
             &archived_history_segment,

@@ -43,12 +43,19 @@ use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
+#[cfg(feature = "std")]
+use std::any::TypeId;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
     REWARD_SIGNATURE_LENGTH,
 };
+#[cfg(feature = "std")]
+use subspace_proof_of_space::chia::ChiaTable;
+#[cfg(feature = "std")]
+use subspace_proof_of_space::shim::ShimTable;
+use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
 
@@ -148,6 +155,12 @@ where
     pub fn solution(&self) -> &Solution<FarmerPublicKey, RewardAddress> {
         let Self::V0 { solution, .. } = self;
         solution
+    }
+
+    /// Slot at which vote was created.
+    pub fn slot(&self) -> &Slot {
+        let Self::V0 { slot, .. } = self;
+        slot
     }
 
     /// Hash of the vote, used for signing and verifying signature.
@@ -393,25 +406,68 @@ impl KzgExtension {
     }
 }
 
+#[cfg(feature = "std")]
+sp_externalities::decl_extension! {
+    /// A Poof of space extension.
+    pub struct PosExtension(TypeId);
+}
+
+#[cfg(feature = "std")]
+impl PosExtension {
+    /// Create new instance.
+    pub fn new<PosTable>() -> Self
+    where
+        PosTable: Table,
+    {
+        Self(TypeId::of::<PosTable>())
+    }
+}
+
 /// Consensus-related runtime interface
 #[runtime_interface]
 pub trait Consensus {
-    /// Verify whether solution is valid.
+    /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
+    /// success.
     fn verify_solution(
         &mut self,
         solution: WrappedSolution,
         slot: u64,
         params: WrappedVerifySolutionParams<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<SolutionRange, String> {
         use sp_externalities::ExternalitiesExt;
+
+        let pos_table_type = self
+            .extension::<PosExtension>()
+            .expect("No `PosExtension` associated for the current context!")
+            .0;
 
         let kzg = &self
             .extension::<KzgExtension>()
             .expect("No `KzgExtension` associated for the current context!")
             .0;
 
-        subspace_verification::verify_solution(&solution.0, slot, &params.0, Some(kzg))
+        if pos_table_type == TypeId::of::<ChiaTable>() {
+            subspace_verification::verify_solution::<ChiaTable, _, _>(
+                &solution.0,
+                slot,
+                &params.0,
+                kzg,
+            )
             .map_err(|error| error.to_string())
+        } else if pos_table_type == TypeId::of::<ShimTable>() {
+            subspace_verification::verify_solution::<ShimTable, _, _>(
+                &solution.0,
+                slot,
+                &params.0,
+                kzg,
+            )
+            .map_err(|error| error.to_string())
+        } else {
+            panic!(
+                "PosTable type is unknown, only `ChiaTable` and `ShimTable` are supported \
+                at the moment`"
+            )
+        }
     }
 }
 
@@ -540,14 +596,13 @@ pub struct VerifiedHeaderInfo<RewardAddress> {
 ///
 /// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
 /// it from the header twice.
-///
-/// KZG needs to be provided if [`VerifySolutionParams::piece_check_params`] is not `None`.
-pub fn check_header<Header, RewardAddress>(
+pub fn check_header<PosTable, Header, RewardAddress>(
     params: VerificationParams<Header>,
     pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
-    kzg: Option<&Kzg>,
+    kzg: &Kzg,
 ) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
 where
+    PosTable: Table,
     Header: HeaderT,
     RewardAddress: Decode,
 {
@@ -595,7 +650,7 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(
+    verify_solution::<PosTable, _, _>(
         &pre_digest.solution,
         slot.into(),
         verify_solution_params,

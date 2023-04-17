@@ -221,12 +221,13 @@ where
             sync_from_dsn: false,
         };
 
-        let partial_components = subspace_service::new_partial::<RuntimeApi, TestExecutorDispatch>(
-            &primary_chain_config,
-        )
-        .expect("Failed to create Subspace primary node");
+        let partial_components =
+            subspace_service::new_partial::<PosTable, RuntimeApi, TestExecutorDispatch>(
+                &primary_chain_config,
+            )
+            .expect("Failed to create Subspace primary node");
 
-        subspace_service::new_full::<_, _, _>(
+        subspace_service::new_full::<PosTable, _, _, _>(
             primary_chain_config,
             partial_components,
             false,

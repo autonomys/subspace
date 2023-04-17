@@ -10,14 +10,3 @@ include = [
     "/Cargo.toml",
     "/README.md",
 ]
-
-[dependencies]
-subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-
-[features]
-default = [
-    "std",
-]
-std = [
-    "subspace-core-primitives/std",
-]

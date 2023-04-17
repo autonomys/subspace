@@ -23,9 +23,9 @@ extern crate alloc;
 mod default_weights;
 pub mod equivocation;
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod mock;
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod tests;
 
 use alloc::string::String;
@@ -58,7 +58,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, HistorySize, LegacySectorId, PublicKey, Randomness, RewardSignature,
+    ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -1349,7 +1349,10 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let sector_id = LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
+    let sector_id = SectorId::new(
+        PublicKey::from(&solution.public_key).hash(),
+        solution.sector_index,
+    );
 
     let segment_index = sector_id
         .derive_piece_index(solution.piece_offset, solution.history_size)

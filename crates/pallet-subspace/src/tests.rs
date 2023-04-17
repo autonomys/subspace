@@ -32,11 +32,9 @@ use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
-use schnorrkel::{Keypair, SignatureError};
+use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{
-    FarmerPublicKey, FarmerSignature, GlobalRandomnesses, SolutionRanges, Vote,
-};
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, GlobalRandomnesses, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
@@ -45,11 +43,12 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::SegmentIndex;
+use subspace_core_primitives::{Record, SegmentIndex, SolutionRange};
+use subspace_erasure_coding::ErasureCoding;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::Error as VerificationError;
 
 #[test]
 fn genesis_slot_is_correct() {
@@ -632,8 +631,12 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
 fn vote_block_listed() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         BlockList::<Test>::insert(
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
@@ -647,8 +650,11 @@ fn vote_block_listed() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         assert_err!(
@@ -662,8 +668,12 @@ fn vote_block_listed() {
 fn vote_after_genesis() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         // Can't submit vote right after genesis block
         let signed_vote = create_signed_vote(
@@ -672,8 +682,11 @@ fn vote_after_genesis() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         assert_err!(
@@ -687,8 +700,12 @@ fn vote_after_genesis() {
 fn vote_too_low_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 1, 1);
 
@@ -701,8 +718,11 @@ fn vote_too_low_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_err!(
@@ -717,8 +737,12 @@ fn vote_too_low_height() {
 fn vote_past_future_height() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 4, 1);
 
@@ -730,8 +754,11 @@ fn vote_past_future_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_err!(
@@ -748,8 +775,11 @@ fn vote_past_future_height() {
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_err!(
@@ -764,8 +794,12 @@ fn vote_past_future_height() {
 fn vote_wrong_parent() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -776,8 +810,11 @@ fn vote_wrong_parent() {
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         assert_err!(
@@ -791,8 +828,12 @@ fn vote_wrong_parent() {
 fn vote_past_future_slot() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         SegmentCommitment::<Test>::insert(
             archived_segment.segment_header.segment_index(),
@@ -814,8 +855,11 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 2.into(),
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_err!(
@@ -836,8 +880,11 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(2),
                 4.into(),
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_err!(
@@ -850,7 +897,6 @@ fn vote_past_future_slot() {
         // in that context it is valid
         {
             let keypair = Keypair::generate();
-            let piece = &archived_segment.pieces[0];
 
             let signed_vote = create_signed_vote(
                 &keypair,
@@ -858,8 +904,11 @@ fn vote_past_future_slot() {
                 frame_system::Pallet::<Test>::block_hash(1),
                 2.into(),
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -872,7 +921,12 @@ fn vote_past_future_slot() {
 fn vote_same_slot() {
     new_test_ext().execute_with(|| {
         let block_keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         // Move to the block 3, but time slot 4, but in two time slots
         go_to_block(&block_keypair, 3, 4, 1);
@@ -890,15 +944,17 @@ fn vote_same_slot() {
         // Same time slot in the vote as in the block is fine if height is the same (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece = &archived_segment.pieces[0];
             let signed_vote = create_signed_vote(
                 &keypair,
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, true));
@@ -908,15 +964,17 @@ fn vote_same_slot() {
         // (pre-dispatch)
         {
             let keypair = Keypair::generate();
-            let piece = &archived_segment.pieces[0];
             let signed_vote = create_signed_vote(
                 &keypair,
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 Subspace::current_slot(),
                 &Subspace::global_randomnesses().current,
-                piece,
+                &archived_segment.pieces,
                 1,
+                &kzg,
+                &erasure_coding,
+                SolutionRange::MAX,
             );
 
             assert_err!(
@@ -931,8 +989,12 @@ fn vote_same_slot() {
 fn vote_bad_reward_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -943,8 +1005,11 @@ fn vote_bad_reward_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         signed_vote.signature = FarmerSignature::unchecked_from(rand::random::<[u8; 64]>());
@@ -960,8 +1025,12 @@ fn vote_bad_reward_signature() {
 fn vote_unknown_segment_commitment() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -972,8 +1041,11 @@ fn vote_unknown_segment_commitment() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         assert_err!(
@@ -987,8 +1059,12 @@ fn vote_unknown_segment_commitment() {
 fn vote_outside_of_solution_range() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1004,69 +1080,18 @@ fn vote_outside_of_solution_range() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
-        assert_eq!(
-            super::check_vote::<Test>(&signed_vote, false),
-            Err(CheckVoteError::InvalidSolution(
-                VerificationError::OutsideSolutionRange.to_string()
-            ))
-        );
-    });
-}
-
-#[test]
-fn vote_invalid_solution_signature() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
-
-        progress_to_block(&keypair, 2, 1);
-
-        SegmentCommitment::<Test>::insert(
-            archived_segment.segment_header.segment_index(),
-            archived_segment.segment_header.segment_commitment(),
-        );
-
-        // Reset so that any solution works for votes
-        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
-            solution_ranges.voting_current = u64::MAX;
-        });
-
-        // Solution signature must be correct
-        let mut signed_vote = create_signed_vote(
-            &keypair,
-            2,
-            frame_system::Pallet::<Test>::block_hash(1),
-            Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
-            piece,
-            1,
-        );
-
-        let Vote::V0 { solution, .. } = &mut signed_vote.vote;
-        solution.chunk = Scalar::from(rand::random::<[u8; Scalar::SAFE_BYTES]>());
-
-        // Fix signed vote signature after changed contents
-        signed_vote.signature = FarmerSignature::unchecked_from(
-            keypair
-                .sign(
-                    schnorrkel::signing_context(REWARD_SIGNING_CONTEXT)
-                        .bytes(signed_vote.vote.hash().as_ref()),
-                )
-                .to_bytes(),
-        );
-
-        assert_eq!(
-            super::check_vote::<Test>(&signed_vote, false),
-            Err(CheckVoteError::InvalidSolution(
-                VerificationError::InvalidSolutionSignature(SignatureError::ScalarFormatError)
-                    .to_string()
-            ))
-        );
+        let result = super::check_vote::<Test>(&signed_vote, false);
+        assert_matches!(result, Err(CheckVoteError::InvalidSolution(_)));
+        if let Err(CheckVoteError::InvalidSolution(error)) = result {
+            assert!(error.contains("is outside of solution range"));
+        }
     });
 }
 
@@ -1074,8 +1099,12 @@ fn vote_invalid_solution_signature() {
 fn vote_correct_signature() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1096,8 +1125,11 @@ fn vote_correct_signature() {
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -1108,8 +1140,12 @@ fn vote_correct_signature() {
 fn vote_randomness_update() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         SegmentCommitment::<Test>::insert(
             archived_segment.segment_header.segment_index(),
@@ -1133,8 +1169,11 @@ fn vote_randomness_update() {
             frame_system::Pallet::<Test>::block_hash(GlobalRandomnessUpdateInterval::get() - 1),
             Subspace::current_slot() + 1,
             &Subspace::global_randomnesses().next.unwrap(),
-            piece,
+            &archived_segment.pieces,
             1,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -1145,8 +1184,12 @@ fn vote_randomness_update() {
 fn vote_equivocation_current_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1160,18 +1203,8 @@ fn vote_equivocation_current_block_plus_vote() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Current block author + slot matches that of the vote
         let slot = Subspace::current_slot() + 1;
         let reward_address = 0;
-
-        CurrentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            0,
-            Scalar::default(),
-            AuditChunkOffset(0),
-            slot,
-            reward_address,
-        ));
 
         let signed_vote = create_signed_vote(
             &keypair,
@@ -1179,9 +1212,23 @@ fn vote_equivocation_current_block_plus_vote() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             reward_address,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
+
+        // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
+        // vote
+        CurrentBlockAuthorInfo::<Test>::put((
+            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            signed_vote.vote.solution().sector_index,
+            signed_vote.vote.solution().chunk,
+            AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
+            slot,
+            reward_address,
+        ));
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, false),
@@ -1197,8 +1244,12 @@ fn vote_equivocation_current_block_plus_vote() {
 fn vote_equivocation_parent_block_plus_vote() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1212,18 +1263,8 @@ fn vote_equivocation_parent_block_plus_vote() {
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Parent block author + sector index + slot matches that of the vote
-
         let slot = Subspace::current_slot();
-        let sector_index = 0;
         let reward_address = 1;
-        ParentBlockAuthorInfo::<Test>::put((
-            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            sector_index,
-            Scalar::default(),
-            AuditChunkOffset(0),
-            slot,
-        ));
 
         let signed_vote = create_signed_vote(
             &keypair,
@@ -1231,9 +1272,22 @@ fn vote_equivocation_parent_block_plus_vote() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             reward_address,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
+
+        // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
+        // vote
+        ParentBlockAuthorInfo::<Test>::put((
+            FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+            signed_vote.vote.solution().sector_index,
+            signed_vote.vote.solution().chunk,
+            AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
+            slot,
+        ));
 
         assert_err!(
             super::check_vote::<Test>(&signed_vote, true),
@@ -1258,8 +1312,12 @@ fn vote_equivocation_parent_block_plus_vote() {
 #[test]
 fn vote_equivocation_current_voters_duplicate() {
     new_test_ext().execute_with(|| {
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
@@ -1284,8 +1342,11 @@ fn vote_equivocation_current_voters_duplicate() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             reward_address,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         CurrentBlockVoters::<Test>::put({
@@ -1294,8 +1355,8 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    Scalar::default(),
-                    AuditChunkOffset(0),
+                    signed_vote.vote.solution().chunk,
+                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1315,8 +1376,8 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    Scalar::default(),
-                    AuditChunkOffset(0),
+                    signed_vote.vote.solution().chunk,
+                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1340,8 +1401,12 @@ fn vote_equivocation_current_voters_duplicate() {
 fn vote_equivocation_parent_voters_duplicate() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
-        let archived_segment = create_archived_segment();
-        let piece = &archived_segment.pieces[0];
+        let kzg = Kzg::new(embedded_kzg_settings());
+        let erasure_coding = ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap();
+        let archived_segment = create_archived_segment(kzg.clone());
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1365,8 +1430,11 @@ fn vote_equivocation_parent_voters_duplicate() {
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
             &Subspace::global_randomnesses().current,
-            piece,
+            &archived_segment.pieces,
             reward_address,
+            &kzg,
+            &erasure_coding,
+            SolutionRange::MAX,
         );
 
         ParentBlockVoters::<Test>::put({
@@ -1375,8 +1443,8 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    Scalar::default(),
-                    AuditChunkOffset(0),
+                    signed_vote.vote.solution().chunk,
+                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1396,8 +1464,8 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
-                    Scalar::default(),
-                    AuditChunkOffset(0),
+                    signed_vote.vote.solution().chunk,
+                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),

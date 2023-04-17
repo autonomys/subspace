@@ -72,14 +72,17 @@ use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     ArchivedHistorySegment, FlatPieces, HistorySize, Piece, PieceIndex, PieceOffset, Solution,
 };
+use subspace_proof_of_space::shim::ShimTable;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use substrate_test_runtime::{Block as TestBlock, Hash};
 use tokio::runtime::{Handle, Runtime};
+
+type PosTable = ShimTable;
 
 type TestClient = substrate_test_runtime_client::client::Client<
     substrate_test_runtime_client::Backend,
@@ -126,6 +129,7 @@ impl CreateInherentDataProviders<TestBlock, SubspaceLink<TestBlock>>
 
 type SubspaceBlockImport = PanickingBlockImport<
     crate::SubspaceBlockImport<
+        PosTable,
         TestBlock,
         TestClient,
         Arc<TestClient>,
@@ -269,9 +273,9 @@ where
 
 type SubspacePeer = Peer<Option<PeerData>, SubspaceBlockImport>;
 
-#[derive(Default)]
 pub struct SubspaceTestNet {
     peers: Vec<SubspacePeer>,
+    kzg: Kzg,
 }
 
 type TestHeader = <TestBlock as BlockT>::Header;
@@ -281,6 +285,7 @@ type TestSelectChain =
 
 pub struct TestVerifier {
     inner: SubspaceVerifier<
+        PosTable,
         TestBlock,
         PeersFullClient,
         TestSelectChain,
@@ -321,6 +326,21 @@ impl TestNetFactory for SubspaceTestNet {
     type PeerData = Option<PeerData>;
     type BlockImport = SubspaceBlockImport;
 
+    fn new(n: usize) -> Self {
+        trace!(target: "test_network", "Creating test network");
+        let kzg = Kzg::new(kzg::embedded_kzg_settings());
+        let mut net = Self {
+            peers: Vec::with_capacity(n),
+            kzg,
+        };
+
+        for i in 0..n {
+            trace!(target: "test_network", "Adding peer {}", i);
+            net.add_full_peer();
+        }
+        net
+    }
+
     fn make_block_import(
         &self,
         client: PeersClient,
@@ -336,6 +356,7 @@ impl TestNetFactory for SubspaceTestNet {
             slot_duration,
             client.clone(),
             client,
+            self.kzg.clone(),
             TestCreateInherentDataProviders {
                 inner: Arc::new(|_, _| async {
                     let slot = InherentDataProvider::from_timestamp_and_slot_duration(
@@ -378,6 +399,7 @@ impl TestNetFactory for SubspaceTestNet {
         TestVerifier {
             inner: SubspaceVerifier {
                 client,
+                kzg: self.kzg.clone(),
                 select_chain: longest_chain,
                 slot_now: Box::new(|| {
                     Slot::from_timestamp(Timestamp::current(), SlotDuration::from_millis(6000))
@@ -387,7 +409,8 @@ impl TestNetFactory for SubspaceTestNet {
                     REWARD_SIGNING_CONTEXT,
                 ),
                 is_authoring_blocks: true,
-                block: PhantomData::default(),
+                _pos_table: PhantomData::<PosTable>::default(),
+                _block: PhantomData::default(),
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
         }
@@ -508,34 +531,35 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
             }
         });
 
-        let subspace_worker = start_subspace(SubspaceParams {
-            block_import: data
-                .block_import
-                .lock()
-                .take()
-                .expect("import set up during init"),
-            select_chain,
-            client,
-            env: environ,
-            sync_oracle: DummyOracle,
-            create_inherent_data_providers: Box::new(|_, _| async {
-                let slot = InherentDataProvider::from_timestamp_and_slot_duration(
-                    Timestamp::current(),
-                    SlotDuration::from_millis(6000),
-                    vec![],
-                );
+        let subspace_worker =
+            start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(SubspaceParams {
+                block_import: data
+                    .block_import
+                    .lock()
+                    .take()
+                    .expect("import set up during init"),
+                select_chain,
+                client,
+                env: environ,
+                sync_oracle: DummyOracle,
+                create_inherent_data_providers: Box::new(|_, _| async {
+                    let slot = InherentDataProvider::from_timestamp_and_slot_duration(
+                        Timestamp::current(),
+                        SlotDuration::from_millis(6000),
+                        vec![],
+                    );
 
-                Ok((slot,))
-            }),
-            force_authoring: false,
-            backoff_authoring_blocks: Some(BackoffAuthoringOnFinalizedHeadLagging::default()),
-            subspace_link: data.link.clone(),
-            justification_sync_link: (),
-            block_proposal_slot_portion: SlotProportion::new(0.5),
-            max_block_proposal_slot_portion: None,
-            telemetry: None,
-        })
-        .expect("Starts Subspace");
+                    Ok((slot,))
+                }),
+                force_authoring: false,
+                backoff_authoring_blocks: Some(BackoffAuthoringOnFinalizedHeadLagging::default()),
+                subspace_link: data.link.clone(),
+                justification_sync_link: (),
+                block_proposal_slot_portion: SlotProportion::new(0.5),
+                max_block_proposal_slot_portion: None,
+                telemetry: None,
+            })
+            .expect("Starts Subspace");
 
         let mut new_slot_notification_stream = data.link.new_slot_notification_stream().subscribe();
         let subspace_farmer = async move {

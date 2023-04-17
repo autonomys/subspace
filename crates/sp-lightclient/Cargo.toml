@@ -50,6 +50,5 @@ std = [
     "sp-runtime/std",
     "sp-std/std",
     "subspace-core-primitives/std",
-    "subspace-solving/std",
     "subspace-verification/std"
 ]

@@ -15,6 +15,8 @@ use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 
+type PosTable = ChiaTable;
+
 fn criterion_benchmark(c: &mut Criterion) {
     println!("Initializing...");
     let pieces_in_sector = env::var("PIECES_IN_SECTOR")
@@ -50,7 +52,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(sector_size(pieces_in_sector) as u64));
     group.bench_function("no-writes", |b| {
         b.iter(|| {
-            block_on(plot_sector::<_, _, _, ChiaTable>(
+            block_on(plot_sector::<_, _, _, PosTable>(
                 black_box(&public_key),
                 black_box(sector_index),
                 black_box(&archived_history_segment),

@@ -23,6 +23,8 @@ use subspace_farmer_components::sector::{sector_size, SectorContentsMap, SectorM
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 
+type PosTable = ChiaTable;
+
 pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Initializing...");
     let base_path = env::var("BASE_PATH")
@@ -104,7 +106,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, ChiaTable>(
+        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
             &public_key,
             sector_index,
             &archived_history_segment,
@@ -156,7 +158,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let num_actual_solutions = solution_candidates
             .clone()
-            .into_iter::<_, _, ChiaTable>(
+            .into_iter::<_, _, PosTable>(
                 &reward_address,
                 &kzg,
                 &erasure_coding,
@@ -176,7 +178,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             solution_candidates
                 .clone()
-                .into_iter::<_, _, ChiaTable>(
+                .into_iter::<_, _, PosTable>(
                     black_box(&reward_address),
                     black_box(&kzg),
                     black_box(&erasure_coding),
@@ -228,7 +230,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     for plotted_sector_bytes in plot_mmap.chunks_exact(sector_size) {
                         solution_candidates
                             .clone()
-                            .into_iter::<_, _, ChiaTable>(
+                            .into_iter::<_, _, PosTable>(
                                 black_box(&reward_address),
                                 black_box(&kzg),
                                 black_box(&erasure_coding),

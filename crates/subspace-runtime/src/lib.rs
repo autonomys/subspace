@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_option)]
+#![feature(const_num_from_num, const_option, const_trait_impl)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -42,6 +42,7 @@ pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+use core::mem;
 use core::time::Duration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
@@ -68,9 +69,11 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
+    SolutionRange, PIECES_IN_SECTOR,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -142,8 +145,16 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
 // We assume initial plot size starts with the a single sector, where we effectively audit each
 // chunk of every piece.
-const INITIAL_SOLUTION_RANGE: SolutionRange =
-    SolutionRange::MAX / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0;
+const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
+    // Account for number of pieces plotted initially (assuming 1 sector)
+    / SolutionRange::from(PIECES_IN_SECTOR)
+    // Account for slot probability
+    / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
+    // Account for probability of hitting occupied s-bucket in sector (for one piece)
+    / Record::NUM_S_BUCKETS as u64 * Record::NUM_CHUNKS as u64
+    // Account for how many audit chunks each chunk has
+    / mem::size_of::<SolutionRange>() as u64)
+    .saturating_mul(Scalar::FULL_BYTES as u64);
 
 /// Number of votes expected per block.
 ///
@@ -311,12 +322,19 @@ pub struct TotalSpacePledged;
 impl Get<u128> for TotalSpacePledged {
     fn get() -> u128 {
         // Operations reordered to avoid data loss, but essentially are:
-        // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
+        // SolutionRange::MAX * SlotProbability
+        //     / solution_range * Piece::SIZE
+        //     / Record::NUM_S_BUCKETS * Record::NUM_CHUNKS
+        //     / SolutionRange::SIZE * Scalar::FULL_BYTES
         u128::from(u64::MAX)
             .saturating_mul(Piece::SIZE as u128)
             .saturating_mul(u128::from(SlotProbability::get().0))
+            / Record::NUM_S_BUCKETS as u128
+            * Record::NUM_CHUNKS as u128
             / u128::from(Subspace::solution_ranges().current)
             / u128::from(SlotProbability::get().1)
+            * Scalar::FULL_BYTES as u128
+            / mem::size_of::<SolutionRange>() as u128
     }
 }
 

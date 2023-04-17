@@ -189,7 +189,7 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
     shuffling_seed: Randomness,
 ) -> Vec<Extrinsic> {
-    let mut rng = ChaCha8Rng::from_seed(shuffling_seed);
+    let mut rng = ChaCha8Rng::from_seed(*shuffling_seed);
 
     let mut positions = extrinsics
         .iter()
@@ -508,6 +508,7 @@ mod tests {
     use super::shuffle_extrinsics;
     use sp_keyring::sr25519::Keyring;
     use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+    use subspace_core_primitives::Randomness;
 
     #[test]
     fn shuffle_extrinsics_should_work() {
@@ -528,7 +529,7 @@ mod tests {
             (Some(alice), 12),
         ];
 
-        let dummy_seed = BlakeTwo256::hash_of(&[1u8; 64]).into();
+        let dummy_seed = Randomness::from(BlakeTwo256::hash_of(&[1u8; 64]).to_fixed_bytes());
         let shuffled_extrinsics = shuffle_extrinsics(extrinsics, dummy_seed);
 
         assert_eq!(

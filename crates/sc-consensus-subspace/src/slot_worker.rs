@@ -41,13 +41,13 @@ use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{LegacySectorId, Randomness, RewardSignature, Solution};
-use subspace_solving::derive_global_challenge;
+use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, SectorId, Solution};
+use subspace_proof_of_space::Table;
 use subspace_verification::{
-    check_reward_signature, derive_audit_chunk, is_within_solution_range_legacy, verify_solution,
-    PieceCheckParams, VerifySolutionParams,
+    check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 
 #[derive(Clone)]
@@ -75,7 +75,7 @@ where
     }
 }
 
-pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
+pub(super) struct SubspaceSlotWorker<PosTable, Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) client: Arc<Client>,
     pub(super) block_import: I,
     pub(super) env: E,
@@ -88,12 +88,14 @@ pub(super) struct SubspaceSlotWorker<Block: BlockT, Client, E, I, SO, L, BS> {
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
+    pub(super) _pos_table: PhantomData<PosTable>,
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, E, I, Error, SO, L, BS> SimpleSlotWorker<Block>
-    for SubspaceSlotWorker<Block, Client, E, I, SO, L, BS>
+impl<PosTable, Block, Client, E, I, Error, SO, L, BS> SimpleSlotWorker<Block>
+    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + HeaderBackend<Block>
@@ -176,7 +178,7 @@ where
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
-        let global_challenge = derive_global_challenge(&global_randomness, slot.into());
+        let global_challenge = global_randomness.derive_global_challenge(slot.into());
 
         let maybe_root_plot_public_key = self
             .client
@@ -227,8 +229,10 @@ where
                 continue;
             }
 
-            let sector_id =
-                LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
+            let sector_id = SectorId::new(
+                PublicKey::from(&solution.public_key).hash(),
+                solution.sector_index,
+            );
 
             let segment_index = sector_id
                 .derive_piece_index(solution.piece_offset, solution.history_size)
@@ -260,7 +264,7 @@ where
                 }
             };
 
-            let solution_verification_result = verify_solution(
+            let solution_verification_result = verify_solution::<PosTable, _, _>(
                 &solution,
                 slot.into(),
                 &VerifySolutionParams {
@@ -268,34 +272,28 @@ where
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams { segment_commitment }),
                 },
-                Some(&self.subspace_link.kzg),
+                &self.subspace_link.kzg,
             );
 
-            if let Err(error) = solution_verification_result {
-                warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
-            } else {
-                let sector_slot_challenge =
-                    sector_id.derive_sector_slot_challenge(&global_challenge);
+            match solution_verification_result {
+                Ok(solution_distance) => {
+                    // If solution is of high enough quality and block pre-digest wasn't produced yet,
+                    // block reward is claimed
+                    if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
+                        info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
-                // If solution is of high enough quality and block pre-digest wasn't produced yet,
-                // block reward is claimed
-                if maybe_pre_digest.is_none()
-                    && is_within_solution_range_legacy(
-                        sector_slot_challenge,
-                        derive_audit_chunk(&solution.chunk.to_bytes()),
-                        solution_range,
-                    )
-                {
-                    info!(target: "subspace", "🚜 Claimed block at slot {slot}");
+                        maybe_pre_digest.replace(PreDigest { solution, slot });
+                    } else if !parent_header.number().is_zero() {
+                        // Not sending vote on top of genesis block since segment headers since piece
+                        // verification wouldn't be possible due to missing (for now) segment commitment
+                        info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
-                    maybe_pre_digest.replace(PreDigest { solution, slot });
-                } else if !parent_header.number().is_zero() {
-                    // Not sending vote on top of genesis block since segment headers since piece
-                    // verification wouldn't be possible due to missing (for now) segment commitment
-                    info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
-
-                    self.create_vote(solution, slot, parent_header, parent_hash)
-                        .await;
+                        self.create_vote(solution, slot, parent_header, parent_hash)
+                            .await;
+                    }
+                }
+                Err(error) => {
+                    warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
                 }
             }
         }
@@ -408,8 +406,10 @@ where
     }
 }
 
-impl<Block, Client, E, I, Error, SO, L, BS> SubspaceSlotWorker<Block, Client, E, I, SO, L, BS>
+impl<PosTable, Block, Client, E, I, Error, SO, L, BS>
+    SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + HeaderBackend<Block>

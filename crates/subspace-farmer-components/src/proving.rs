@@ -130,7 +130,7 @@ impl<'a> SolutionCandidates<'a> {
     where
         S: io::Read + io::Seek,
         RewardAddress: Copy,
-        PosTable: Table + 'a,
+        PosTable: Table,
     {
         SolutionCandidatesIterator::<'a, RewardAddress, PosTable>::new(
             self.public_key,

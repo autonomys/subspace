@@ -50,6 +50,8 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
+use subspace_proof_of_space::shim::ShimTable;
+use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_service::{DsnConfig, SubspaceNetworking};
 use subspace_test_service::mock::MockPrimaryNode;
@@ -62,6 +64,8 @@ use domain_service::{DomainConfiguration, FullPool};
 pub use domain_test_runtime as runtime;
 use sp_domains::DomainId;
 pub use sp_keyring::Sr25519Keyring as Keyring;
+
+type PosTable = ShimTable;
 
 /// The signature of the announce block fn.
 pub type WrapAnnounceBlockFn = Arc<dyn Fn(Hash, Option<Vec<u8>>) + Send + Sync>;
@@ -108,7 +112,7 @@ pub type Client =
 /// the production.
 /// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
 #[sc_tracing::logging::prefix_logs_with(system_domain_config.network.node_name.as_str())]
-async fn run_executor(
+async fn run_executor<PosTable>(
     system_domain_config: ServiceConfiguration,
     primary_chain_config: ServiceConfiguration,
 ) -> sc_service::error::Result<(
@@ -120,7 +124,10 @@ async fn run_executor(
     Arc<SyncingService<Block>>,
     RpcHandlers,
     Executor,
-)> {
+)>
+where
+    PosTable: Table,
+{
     let primary_chain_full_node = {
         let span = tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -155,6 +162,7 @@ async fn run_executor(
         };
 
         let partial_components = subspace_service::new_partial::<
+            PosTable,
             subspace_test_runtime::RuntimeApi,
             subspace_test_client::TestExecutorDispatch,
         >(&primary_chain_config)
@@ -162,7 +170,7 @@ async fn run_executor(
             sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
         })?;
 
-        subspace_service::new_full(
+        subspace_service::new_full::<PosTable, _, _, _>(
             primary_chain_config,
             partial_components,
             false,
@@ -520,7 +528,7 @@ impl SystemDomainNodeBuilder {
             sync_service,
             rpc_handlers,
             executor,
-        ) = run_executor(system_domain_config, primary_chain_config)
+        ) = run_executor::<PosTable>(system_domain_config, primary_chain_config)
             .await
             .expect("could not start system domain node");
 

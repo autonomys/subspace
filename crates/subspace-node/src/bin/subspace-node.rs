@@ -41,9 +41,12 @@ use std::collections::BTreeMap;
 use subspace_node::{
     AccountId32ToAccountId20Converter, Cli, ExecutorDispatch, Subcommand, SystemDomainCli,
 };
+use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
+
+type PosTable = ChiaTable;
 
 /// System domain executor instance.
 pub struct SystemDomainExecutorDispatch;
@@ -181,7 +184,9 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                    &config,
+                )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -196,7 +201,9 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                    &config,
+                )?;
                 Ok((
                     cmd.run(client, config.database)
                         .map_err(Error::SubstrateCli),
@@ -212,7 +219,9 @@ fn main() -> Result<(), Error> {
                     client,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                    &config,
+                )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
                         .map_err(Error::SubstrateCli),
@@ -229,7 +238,9 @@ fn main() -> Result<(), Error> {
                     import_queue,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                    &config,
+                )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
                     task_manager,
@@ -246,7 +257,9 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     other: (_block_import, subspace_link, _telemetry, _bundle_validator),
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                    &config,
+                )?;
 
                 let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
                     &subspace_link,
@@ -327,7 +340,9 @@ fn main() -> Result<(), Error> {
                     backend,
                     task_manager,
                     ..
-                } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                    &config,
+                )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
                     task_manager,
@@ -357,15 +372,20 @@ fn main() -> Result<(), Error> {
                         cmd.run::<Block, ExecutorDispatch>(config)
                     }
                     BenchmarkCmd::Block(cmd) => {
-                        let PartialComponents { client, .. } =
-                            subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                        let PartialComponents { client, .. } = subspace_service::new_partial::<
+                            PosTable,
+                            RuntimeApi,
+                            ExecutorDispatch,
+                        >(&config)?;
 
                         cmd.run(client)
                     }
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
-                        } = subspace_service::new_partial::<RuntimeApi, ExecutorDispatch>(&config)?;
+                        } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                            &config,
+                        )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
@@ -509,17 +529,17 @@ fn main() -> Result<(), Error> {
                         sync_from_dsn: cli.sync_from_dsn,
                     };
 
-                    let partial_components = subspace_service::new_partial::<
-                        RuntimeApi,
-                        ExecutorDispatch,
-                    >(&primary_chain_config)
+                    let partial_components =
+                        subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
+                            &primary_chain_config,
+                        )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
                                 "Failed to build a full subspace node: {error:?}"
                             ))
                         })?;
 
-                    subspace_service::new_full(
+                    subspace_service::new_full::<PosTable, _, _, _>(
                         primary_chain_config,
                         partial_components,
                         true,

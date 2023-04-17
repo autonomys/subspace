@@ -30,7 +30,7 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::online_status_informer;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
-use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 use zeroize::Zeroizing;
@@ -39,11 +39,14 @@ const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expe
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
-pub(crate) async fn farm_multi_disk(
+pub(crate) async fn farm_multi_disk<PosTable>(
     base_path: PathBuf,
     disk_farms: Vec<DiskFarm>,
     farming_args: FarmingArgs,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), anyhow::Error>
+where
+    PosTable: Table,
+{
     if disk_farms.is_empty() {
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
@@ -158,7 +161,7 @@ pub(crate) async fn farm_multi_disk(
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-        let single_disk_plot_fut = SingleDiskPlot::new::<_, _, ChiaTable>(
+        let single_disk_plot_fut = SingleDiskPlot::new::<_, _, PosTable>(
             SingleDiskPlotOptions {
                 directory: disk_farm.directory.clone(),
                 allocated_space: disk_farm.allocated_plotting_space,

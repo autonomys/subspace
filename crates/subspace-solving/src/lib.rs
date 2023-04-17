@@ -20,15 +20,5 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
-use subspace_core_primitives::{Blake2b256Hash, Randomness};
-
 /// Signing context used for creating reward signatures by farmers.
 pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
-
-// TODO: Separate type for global challenge
-// TODO: Transform this function into a method on `Randomness`
-/// Derive global slot challenge from global randomness.
-pub fn derive_global_challenge(global_randomness: &Randomness, slot: u64) -> Blake2b256Hash {
-    blake2b_256_hash_list(&[global_randomness, &slot.to_le_bytes()])
-}
