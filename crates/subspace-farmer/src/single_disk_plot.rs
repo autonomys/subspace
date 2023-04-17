@@ -48,7 +48,7 @@ use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
 /// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(30).expect("Not zero; qed");
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters

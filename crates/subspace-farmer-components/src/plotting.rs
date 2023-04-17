@@ -2,12 +2,16 @@ use crate::piece_caching::PieceMemoryCache;
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::{FarmerProtocolInfo, SectorMetadata};
 use async_trait::async_trait;
+use backoff::future::retry;
+use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
+use parking_lot::Mutex;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::{Scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
@@ -15,7 +19,17 @@ use subspace_core_primitives::{
     LegacySectorId, Piece, PieceIndex, PieceIndexHash, PublicKey, SectorIndex, PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
-use tracing::info;
+use tracing::{info, warn};
+
+fn default_backoff() -> ExponentialBackoff {
+    ExponentialBackoff {
+        initial_interval: Duration::from_secs(15),
+        max_interval: Duration::from_secs(10 * 60),
+        // Try until we get a valid piece
+        max_elapsed_time: None,
+        ..ExponentialBackoff::default()
+    }
+}
 
 /// Defines retry policy on error during piece acquiring.
 #[derive(PartialEq, Eq, Clone, Debug, Copy)]
@@ -139,19 +153,35 @@ where
         })
         .collect();
 
-    let mut in_memory_sector_scalars =
-        Vec::with_capacity(PLOT_SECTOR_SIZE as usize / Scalar::FULL_BYTES);
+    let in_memory_sector_scalars = Mutex::new(Vec::with_capacity(
+        PLOT_SECTOR_SIZE as usize / Scalar::FULL_BYTES,
+    ));
 
-    plot_pieces_in_batches_non_blocking(
-        &mut in_memory_sector_scalars,
-        sector_index,
-        piece_getter,
-        piece_getter_retry_policy,
-        kzg,
-        &piece_indexes,
-        piece_memory_cache,
-    )
+    retry(default_backoff(), || async {
+        let mut in_memory_sector_scalars = in_memory_sector_scalars.lock();
+        in_memory_sector_scalars.clear();
+
+        if let Err(error) = download_pieces_in_batches_non_blocking(
+            &mut in_memory_sector_scalars,
+            sector_index,
+            piece_getter,
+            piece_getter_retry_policy,
+            kzg,
+            &piece_indexes,
+            piece_memory_cache.clone(),
+        )
+        .await
+        {
+            warn!(%error, "Sector plotting attempt failed, will retry later");
+
+            return Err(BackoffError::transient(error));
+        }
+
+        Ok(())
+    })
     .await?;
+
+    let mut in_memory_sector_scalars = in_memory_sector_scalars.into_inner();
 
     sector_codec
         .encode(&mut in_memory_sector_scalars)
@@ -213,7 +243,7 @@ where
     })
 }
 
-async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
+async fn download_pieces_in_batches_non_blocking<PG: PieceGetter>(
     in_memory_sector_scalars: &mut Vec<ScalarLegacy>,
     sector_index: u64,
     piece_getter: &PG,
