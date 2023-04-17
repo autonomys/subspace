@@ -57,7 +57,7 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
             return Err(DispatchError::Other("feed processor data is invalid"));
         }
 
-        let mut metadata = vec![];
+        let mut maybe_metadata: Option<FeedMetadata> = None;
 
         // Indicating that this feed processor signed the request
         let feed_processor_origin = RawOrigin::Signed(self.derived_account_id.clone());
@@ -89,11 +89,13 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
                 .header_update
                 .expect("already checked for none; qed");
 
-            metadata = (
-                header_update.execution_header.block_hash,
-                header_update.execution_header.block_number,
-            )
-                .encode();
+            maybe_metadata = Some(
+                (
+                    header_update.execution_header.block_hash,
+                    header_update.execution_header.block_number,
+                )
+                    .encode(),
+            );
 
             Pallet::<Runtime>::import_execution_header(
                 feed_processor_origin.into(),
@@ -101,7 +103,7 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
             )?;
         }
 
-        Ok(Some(metadata))
+        Ok(maybe_metadata)
     }
 
     fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
