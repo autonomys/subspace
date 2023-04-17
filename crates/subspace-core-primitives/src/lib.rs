@@ -451,11 +451,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
     }
 }
 
-impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress>
-where
-    PublicKey: Clone,
-    RewardAddress: Clone,
-{
+impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
     /// Dummy solution for the genesis block
     pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
         Self {
