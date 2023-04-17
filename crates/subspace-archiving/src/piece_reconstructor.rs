@@ -234,7 +234,11 @@ impl PiecesReconstructor {
             piece.witness_mut().copy_from_slice(
                 &self
                     .kzg
-                    .create_witness(&polynomial, position as u32)
+                    .create_witness(
+                        &polynomial,
+                        ArchivedHistorySegment::NUM_PIECES,
+                        position as u32,
+                    )
                     // TODO: Update this proof here and in other places, we don't use Merkle
                     //  trees anymore
                     .expect("Position is statically known to be valid; qed")
@@ -263,7 +267,11 @@ impl PiecesReconstructor {
         piece.witness_mut().copy_from_slice(
             &self
                 .kzg
-                .create_witness(&polynomial, piece_position as u32)
+                .create_witness(
+                    &polynomial,
+                    ArchivedHistorySegment::NUM_PIECES,
+                    piece_position as u32,
+                )
                 .expect("Position is verified to be valid above; qed")
                 .to_bytes(),
         );
