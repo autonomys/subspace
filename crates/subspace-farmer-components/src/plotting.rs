@@ -225,24 +225,30 @@ async fn plot_pieces_in_batches_non_blocking<PG: PieceGetter>(
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| async {
-            let piece_result = piece_getter
-                .get_piece(*piece_index, piece_getter_retry_policy)
-                .await;
+            let piece_index = *piece_index;
 
-            let failed = piece_result
-                .as_ref()
-                .map(|piece| piece.is_none())
-                .unwrap_or(true);
-
-            // all retries failed
-            if failed {
-                let recovered_piece =
-                    recover_missing_piece(piece_getter, kzg.clone(), *piece_index).await;
-
-                return (*piece_index, recovered_piece.map(Some).map_err(Into::into));
+            if let Some(piece) = piece_memory_cache.get_piece(&piece_index.hash()) {
+                return (piece_index, Ok(Some(piece)));
             }
 
-            (*piece_index, piece_result)
+            let piece_result = piece_getter
+                .get_piece(piece_index, piece_getter_retry_policy)
+                .await;
+
+            let succeeded = piece_result
+                .as_ref()
+                .map(|piece| piece.is_some())
+                .unwrap_or_default();
+
+            // all retries failed
+            if !succeeded {
+                let recovered_piece =
+                    recover_missing_piece(piece_getter, kzg.clone(), piece_index).await;
+
+                return (piece_index, recovered_piece.map(Some).map_err(Into::into));
+            }
+
+            (piece_index, piece_result)
         })
         .collect::<FuturesOrdered<_>>();
 
