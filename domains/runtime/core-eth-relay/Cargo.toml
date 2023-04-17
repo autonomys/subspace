@@ -25,6 +25,7 @@ log = { version = "0.4.17", default-features = false }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-registry", default-features = false }
 pallet-executor-registry = { version = "0.1.0", path = "../../pallets/executor-registry", default-features = false }
+pallet-feeds = { version = "0.1.0", path = "../../../crates/pallet-feeds", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger", default-features = false }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
@@ -32,8 +33,8 @@ pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "
 pallet-transporter = { version = "0.1.0", path = "../../pallets/transporter", default-features = false }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
 # Light client pallet and primitives
-snowbridge-beacon-primitives = { git = "https://github.com/Snowfork/snowbridge", rev = "4f5bfd68456afd41f6c7626c53268d726149a972", default-features = false }
-snowbridge-ethereum-beacon-client = { git = "https://github.com/Snowfork/snowbridge", rev = "4f5bfd68456afd41f6c7626c53268d726149a972", default-features = false }
+snowbridge-beacon-primitives = { git = "https://github.com/Snowfork/snowbridge", rev = "cac98d860b8f24a9c3a3eabb5bcbee8dc2880960", default-features = false }
+snowbridge-ethereum-beacon-client = { git = "https://github.com/Snowfork/snowbridge", rev = "cac98d860b8f24a9c3a3eabb5bcbee8dc2880960", default-features = false }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
@@ -48,6 +49,9 @@ sp-std = { version = "5.0.0", default-features = false, git = "https://github.co
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
+
+[dev-dependencies]
+hex-literal = "0.3.4"
 
 [build-dependencies]
 subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
