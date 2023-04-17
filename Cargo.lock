@@ -10232,9 +10232,10 @@ dependencies = [
 [[package]]
 name = "subspace-chiapos"
 version = "0.1.0"
-source = "git+https://github.com/subspace/chiapos?rev=7eeb29380eb6f8036d4f980e8d15038bda1184f7#7eeb29380eb6f8036d4f980e8d15038bda1184f7"
+source = "git+https://github.com/subspace/chiapos?rev=100f861378c3f450434ef9e94723f50c804d333f#100f861378c3f450434ef9e94723f50c804d333f"
 dependencies = [
  "cc",
+ "zstd-sys",
 ]
 
 [[package]]

@@ -18,7 +18,7 @@ impl<'a> Quality<'a> {
 
     /// Create proof for this solution
     pub fn create_proof(&self) -> PosProof {
-        PosProof(self.quality.create_proof())
+        PosProof::from(self.quality.create_proof())
     }
 }
 

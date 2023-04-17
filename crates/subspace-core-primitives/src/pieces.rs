@@ -144,11 +144,11 @@ impl PieceIndexHash {
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
-pub struct RawRecord([[u8; Scalar::SAFE_BYTES]; Self::SIZE / Scalar::SAFE_BYTES]);
+pub struct RawRecord([[u8; Scalar::SAFE_BYTES]; Self::NUM_CHUNKS]);
 
 impl Default for RawRecord {
     fn default() -> Self {
-        Self([Default::default(); Self::SIZE / Scalar::SAFE_BYTES])
+        Self([Default::default(); Self::NUM_CHUNKS])
     }
 }
 
@@ -165,6 +165,8 @@ impl AsMut<[u8]> for RawRecord {
 }
 
 impl RawRecord {
+    /// Number of chunks (scalars) within one raw record.
+    pub const NUM_CHUNKS: usize = Self::SIZE / Scalar::SAFE_BYTES;
     /// Size of raw record in bytes, is guaranteed to be a multiple of [`Scalar::SAFE_BYTES`].
     pub const SIZE: usize = Record::SIZE / Scalar::FULL_BYTES * Scalar::SAFE_BYTES;
 
@@ -181,21 +183,23 @@ impl RawRecord {
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut)]
 #[repr(transparent)]
-pub struct Record([u8; Self::SIZE]);
+pub struct Record([[u8; Scalar::FULL_BYTES]; Self::NUM_CHUNKS]);
 
 impl AsRef<[u8]> for Record {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.0.flatten()
     }
 }
 
 impl AsMut<[u8]> for Record {
     fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.0
+        self.0.flatten_mut()
     }
 }
 
 impl Record {
+    /// Number of chunks (scalars) within one record.
+    const NUM_CHUNKS: usize = RawRecord::NUM_CHUNKS;
     /// Size of a segment record given the global piece size (in bytes) after erasure coding
     /// [`RawRecord`], is guaranteed to be a multiple of [`Scalar::FULL_BYTES`].
     pub const SIZE: usize = RECORD_SIZE;
@@ -233,20 +237,6 @@ impl Record {
     pub fn slice_mut_from_repr(value: &mut [[u8; Self::SIZE]]) -> &mut [Self] {
         // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
-    }
-
-    /// Get a stream of arrays, each containing scalar bytes.
-    pub fn full_scalar_arrays(
-        &self,
-    ) -> impl ExactSizeIterator<Item = &'_ [u8; Scalar::FULL_BYTES]> + '_ {
-        self.0.array_chunks::<{ Scalar::FULL_BYTES }>()
-    }
-
-    /// Get a stream of mutable arrays, each containing scalar bytes.
-    pub fn full_scalar_arrays_mut(
-        &mut self,
-    ) -> impl ExactSizeIterator<Item = &'_ mut [u8; Scalar::FULL_BYTES]> + '_ {
-        self.0.array_chunks_mut::<{ Scalar::FULL_BYTES }>()
     }
 }
 
