@@ -5,8 +5,8 @@
 
 #![warn(missing_docs)]
 
-use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, Index as Nonce};
+use frame_benchmarking::frame_support::inherent::BlockT;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
@@ -32,10 +32,11 @@ pub struct FullDeps<C, P> {
 }
 
 /// Instantiate all RPC extensions.
-pub fn create_full<C, P>(
+pub fn create_full<Block, C, P>(
     deps: FullDeps<C, P>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
+    Block: BlockT,
     C: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>

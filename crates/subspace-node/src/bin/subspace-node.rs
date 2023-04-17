@@ -18,6 +18,7 @@
 
 use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
 use domain_client_executor::ExecutorStreams;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -650,6 +651,7 @@ fn main() -> Result<(), Error> {
                             DomainId::CORE_PAYMENTS => {
                                 let core_domain_node =
                                     domain_service::new_full_core::<
+                                        DomainBlock,
                                         _,
                                         _,
                                         _,
@@ -676,6 +678,7 @@ fn main() -> Result<(), Error> {
                             DomainId::CORE_ETH_RELAY => {
                                 let core_domain_node =
                                     domain_service::new_full_core::<
+                                        DomainBlock,
                                         _,
                                         _,
                                         _,

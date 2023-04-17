@@ -49,10 +49,10 @@ use system_runtime_primitives::SystemDomainApi;
 type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<
     Block,
     PBlock,
-    FullClient<RuntimeApi, ExecutorDispatch>,
+    FullClient<Block, RuntimeApi, ExecutorDispatch>,
     PClient,
     FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
-    FullBackend,
+    FullBackend<Block>,
     NativeElseWasmExecutor<ExecutorDispatch>,
 >;
 
@@ -71,7 +71,7 @@ where
         + Sync
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
@@ -95,7 +95,7 @@ where
     /// Full client.
     pub client: C,
     /// Backend.
-    pub backend: Arc<FullBackend>,
+    pub backend: Arc<FullBackend<Block>>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network service.
@@ -114,14 +114,14 @@ where
 
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
     Block,
-    FullClient<RuntimeApi, Executor>,
+    FullClient<Block, RuntimeApi, Executor>,
     SystemDomainTxPreValidator<
         Block,
         PBlock,
-        FullClient<RuntimeApi, Executor>,
+        FullClient<Block, RuntimeApi, Executor>,
         FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
         PClient,
-        RuntimeApiFull<FullClient<RuntimeApi, Executor>>,
+        RuntimeApiFull<FullClient<Block, RuntimeApi, Executor>>,
     >,
 >;
 
@@ -132,12 +132,12 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        PrePostStateRootVerifier<FullClient<RuntimeApi, Executor>, Block>,
+        PrePostStateRootVerifier<FullClient<Block, RuntimeApi, Executor>, Block>,
         CoreDomainExtrinsicsBuilder<
             PBlock,
             Block,
             PClient,
-            FullClient<RuntimeApi, Executor>,
+            FullClient<Block, RuntimeApi, Executor>,
             NativeElseWasmExecutor<Executor>,
         >,
     >;
@@ -155,10 +155,10 @@ fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient>(
     primary_chain_client: Arc<PClient>,
 ) -> Result<
     PartialComponents<
-        FullClient<RuntimeApi, ExecutionDispatch>,
-        FullBackend,
+        FullClient<Block, RuntimeApi, ExecutionDispatch>,
+        FullBackend<Block>,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutionDispatch>>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>,
         FullPool<PBlock, PClient, RuntimeApi, ExecutionDispatch>,
         (
             Option<Telemetry>,
@@ -179,7 +179,7 @@ where
         + Sync
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash>,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutionDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>
         + Send
         + Sync
         + 'static,
@@ -286,7 +286,7 @@ pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi,
     gossip_message_sink: GossipMessageSink,
 ) -> sc_service::error::Result<
     NewFullSystem<
-        Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+        Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
         PBlock,
         PClient,
@@ -311,7 +311,7 @@ where
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
@@ -377,7 +377,7 @@ where
                 deny_unsafe,
             };
 
-            crate::rpc::create_full(deps).map_err(Into::into)
+            crate::rpc::create_full::<Block, _, _>(deps).map_err(Into::into)
         })
     };
 

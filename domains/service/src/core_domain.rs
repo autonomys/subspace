@@ -7,8 +7,9 @@ use domain_client_executor::{
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
-use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, RelayerId};
+use frame_benchmarking::frame_support::codec::FullCodec;
+use frame_benchmarking::frame_support::dispatch::TypeInfo;
 use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
@@ -40,26 +41,26 @@ use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::FullPool;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
-type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
+type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
     CoreExecutor<
         Block,
         SBlock,
         PBlock,
-        FullClient<RuntimeApi, ExecutorDispatch>,
+        FullClient<Block, RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
         FullPool<
             Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
+            FullClient<Block, RuntimeApi, ExecutorDispatch>,
             CoreDomainTxPreValidator<Block, SBlock, PBlock, SClient>,
         >,
-        FullBackend,
+        FullBackend<Block>,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
 
@@ -67,6 +68,7 @@ type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDi
 pub struct NewFullCore<
     C,
     CodeExecutor,
+    Block,
     SBlock,
     PBlock,
     SClient,
@@ -76,8 +78,9 @@ pub struct NewFullCore<
 > where
     SBlock: BlockT,
     PBlock: BlockT,
+    Block: BlockT,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
@@ -101,7 +104,7 @@ pub struct NewFullCore<
     /// Full client.
     pub client: C,
     /// Backend.
-    pub backend: Arc<FullBackend>,
+    pub backend: Arc<FullBackend<Block>>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network service.
@@ -114,25 +117,25 @@ pub struct NewFullCore<
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor:
-        CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+        CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
 }
 
 /// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
+fn new_partial<RuntimeApi, Executor, SDC, Block, SBlock, PBlock>(
     config: &ServiceConfiguration,
     system_domain_client: Arc<SDC>,
 ) -> Result<
     PartialComponents<
-        FullClient<RuntimeApi, Executor>,
+        FullClient<Block, RuntimeApi, Executor>,
         TFullBackend<Block>,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, Executor>>,
         FullPool<
             Block,
-            FullClient<RuntimeApi, Executor>,
+            FullClient<Block, RuntimeApi, Executor>,
             CoreDomainTxPreValidator<Block, SBlock, PBlock, SDC>,
         >,
         (
@@ -145,10 +148,11 @@ fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
 >
 where
     RuntimeApi:
-        ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
+        ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, Executor>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
     Executor: NativeExecutionDispatch + 'static,
+    Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
     <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
@@ -239,6 +243,7 @@ where
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[allow(clippy::too_many_arguments)]
 pub async fn new_full_core<
+    Block,
     SBlock,
     PBlock,
     SClient,
@@ -253,8 +258,9 @@ pub async fn new_full_core<
     core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>,
 ) -> sc_service::error::Result<
     NewFullCore<
-        Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+        Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
+        Block,
         SBlock,
         PBlock,
         SClient,
@@ -264,10 +270,14 @@ pub async fn new_full_core<
     >,
 >
 where
+    Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Hash> + From<Hash>,
-    NumberFor<SBlock>: Into<BlockNumber>,
+    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
+    Block::Hash: FullCodec + TypeInfo + Unpin,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
+    <Block as BlockT>::Header: Unpin,
+    NumberFor<Block>: FullCodec + TypeInfo,
     <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock, AccountId>
@@ -283,12 +293,12 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
@@ -325,7 +335,7 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial::<_, _, _, SBlock, PBlock>(
+    let params = new_partial::<_, _, _, Block, SBlock, PBlock>(
         &core_domain_config.service_config,
         system_domain_client.clone(),
     )?;
@@ -362,7 +372,7 @@ where
                 deny_unsafe,
             };
 
-            crate::rpc::create_full(deps).map_err(Into::into)
+            crate::rpc::create_full::<Block, _, _>(deps).map_err(Into::into)
         })
     };
 
@@ -399,7 +409,7 @@ where
         system_domain_client.clone(),
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
-        EssentialExecutorParams {
+        EssentialExecutorParams::<Block, _, _, _, _, _, _, _, _, _> {
             primary_chain_client: primary_chain_client.clone(),
             primary_network_sync_oracle,
             client: client.clone(),
