@@ -10,7 +10,7 @@ use sp_runtime::traits::AccountIdConversion;
 use sp_runtime::DispatchError;
 use sp_std::prelude::*;
 
-/// A feed processor identifier. It is used by the feed processor to derive soverign account id
+/// A feed processor identifier. It is used by the feed processor to derive sovereign account id
 #[derive(Clone, Copy, Eq, PartialEq, Encode, Decode, TypeInfo)]
 pub struct FeedProcessorId(pub [u8; 8]);
 
@@ -63,33 +63,21 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
         // Indicating that this feed processor signed the request
         let feed_processor_origin = RawOrigin::Signed(self.derived_account_id.clone());
 
-        if feed_data.sync_committee_update.is_some() {
-            let sync_committee_period_update = feed_data
-                .sync_committee_update
-                .expect("already checked for Some variant; qed");
-
+        if let Some(sync_committee_update) = feed_data.sync_committee_update {
             Pallet::<Runtime>::sync_committee_period_update(
                 feed_processor_origin.clone().into(),
-                sync_committee_period_update,
+                sync_committee_update,
             )?;
         }
 
-        if feed_data.finalized_header_update.is_some() {
-            let finalized_header_update = feed_data
-                .finalized_header_update
-                .expect("already checked for Some variant; qed");
-
+        if let Some(finalized_header_update) = feed_data.finalized_header_update {
             Pallet::<Runtime>::import_finalized_header(
                 feed_processor_origin.clone().into(),
                 finalized_header_update,
             )?;
         }
 
-        if feed_data.header_update.is_some() {
-            let header_update = feed_data
-                .header_update
-                .expect("already checked for Some variant; qed");
-
+        if let Some(header_update) = feed_data.header_update {
             maybe_metadata = Some(
                 (
                     header_update.execution_header.block_hash,
@@ -114,32 +102,24 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
             Err(_) => return vec![],
         };
 
-        // If there is no header update in feed data, there is nothing to index.
-        if feed_data.header_update.is_none() {
-            return vec![];
-        }
-
-        let header_update = feed_data
-            .header_update
-            .expect("already checked for none; qed");
+        let header_update = match feed_data.header_update {
+            Some(header_update) => header_update,
+            None => return vec![], // Nothing to index if no header update in feed data.
+        };
 
         // calculating header update offset as per the encoding size hints.
         // We are adding one to account for byte pushed at encoding to identify
         // `Option` enum variant.
-        let maybe_header_update_offset = u32::try_from(
-            feed_data.sync_committee_update.encoded_size()
-                + feed_data.finalized_header_update.encoded_size()
-                + 1,
-        );
+        let header_update_offset = feed_data.sync_committee_update.encoded_size()
+            + feed_data.finalized_header_update.encoded_size()
+            + 1;
 
-        // Type conversion failed this would mean size of data structure is too large
-        // While this is unlikely, We should just return empty vec in that case.
-        if maybe_header_update_offset.is_err() {
-            return vec![];
-        }
-
-        let header_update_offset =
-            maybe_header_update_offset.expect("already checked for error above; qed");
+        let header_update_offset = match u32::try_from(header_update_offset) {
+            Ok(offset) => offset,
+            // Type conversion failed this would mean size of data structure is too large
+            // While this is unlikely, We should just return empty vec in that case.
+            Err(_) => return vec![],
+        };
 
         // we send two mappings pointed to the same object
         // block height and block hash
