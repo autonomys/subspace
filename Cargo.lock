@@ -10692,7 +10692,7 @@ dependencies = [
 [[package]]
 name = "subspace-chiapos"
 version = "0.1.0"
-source = "git+https://github.com/subspace/chiapos?rev=100f861378c3f450434ef9e94723f50c804d333f#100f861378c3f450434ef9e94723f50c804d333f"
+source = "git+https://github.com/subspace/chiapos?rev=3b1ab3ca24764d25da30e0c8243e0bf304b776a5#3b1ab3ca24764d25da30e0c8243e0bf304b776a5"
 dependencies = [
  "cc",
  "zstd-sys",
@@ -10794,6 +10794,7 @@ name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "backoff",
  "criterion",
  "fs2",
  "futures",

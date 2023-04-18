@@ -7,8 +7,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
-use sp_domains::{Bundle, SignedBundle};
+use sp_domains::SignedBundle;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
 use std::sync::Arc;
@@ -25,10 +24,18 @@ pub struct SystemGossipMessageValidator<
     E,
     ParentChain,
 > {
-    parent_chain: ParentChain,
     client: Arc<Client>,
-    transaction_pool: Arc<TransactionPool>,
-    gossip_message_validator: GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>,
+    gossip_message_validator: GossipMessageValidator<
+        Block,
+        PBlock,
+        PBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    >,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain> Clone
@@ -47,9 +54,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            parent_chain: self.parent_chain.clone(),
             client: self.client.clone(),
-            transaction_pool: self.transaction_pool.clone(),
             gossip_message_validator: self.gossip_message_validator.clone(),
         }
     }
@@ -83,7 +88,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<PBlock>,
+    ParentChain: ParentChainInterface<PBlock> + Send + Sync + Clone + 'static,
 {
     pub fn new(
         parent_chain: ParentChain,
@@ -92,12 +97,15 @@ where
         transaction_pool: Arc<TransactionPool>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
-        let gossip_message_validator =
-            GossipMessageValidator::new(client.clone(), spawner, fraud_proof_generator);
-        Self {
+        let gossip_message_validator = GossipMessageValidator::new(
+            client.clone(),
+            spawner,
             parent_chain,
-            client,
             transaction_pool,
+            fraud_proof_generator,
+        );
+        Self {
+            client,
             gossip_message_validator,
         }
     }
@@ -132,7 +140,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<PBlock>,
+    ParentChain: ParentChainInterface<PBlock> + Send + Sync + Clone + 'static,
 {
     type Error = GossipMessageError;
 
@@ -151,23 +159,8 @@ where
             signature,
         } = signed_bundle;
 
-        let check_equivocation =
-            |_bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>| {
-                // TODO: check bundle equivocation
-                let bundle_is_an_equivocation = false;
-                if bundle_is_an_equivocation {
-                    Some(BundleEquivocationProof::dummy_at(bundle.header.slot_number))
-                } else {
-                    None
-                }
-            };
-
-        // A bundle equivocation occurs.
-        if let Some(equivocation_proof) = check_equivocation(bundle) {
-            let fraud_proof = FraudProof::BundleEquivocation(equivocation_proof);
-            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-            return Err(GossipMessageError::BundleEquivocation);
-        }
+        self.gossip_message_validator
+            .check_bundle_equivocation(bundle)?;
 
         let bundle_exists = false;
 
@@ -184,30 +177,12 @@ where
 
             // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
             let domain_id = bundle_solution.proof_of_election().domain_id;
-            for receipt in &bundle.receipts {
-                self.gossip_message_validator
-                    .validate_gossiped_execution_receipt::<PBlock, _>(
-                        &self.parent_chain,
-                        receipt,
-                        domain_id,
-                    )?;
-            }
 
-            for extrinsic in bundle.extrinsics.iter() {
-                let tx_hash = self.transaction_pool.hash_of(extrinsic);
+            self.gossip_message_validator
+                .validate_bundle_receipts(&bundle.receipts, domain_id)?;
 
-                if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
-                    // TODO: Set the status of each tx in the bundle to seen
-                } else {
-                    // TODO: check the legality
-                    //
-                    // if illegal => illegal tx proof
-                    let invalid_transaction_proof = InvalidTransactionProof { domain_id };
-                    let fraud_proof = FraudProof::InvalidTransaction(invalid_transaction_proof);
-
-                    self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-                }
-            }
+            self.gossip_message_validator
+                .validate_bundle_transactions(&bundle.extrinsics, domain_id)?;
 
             // TODO: all checks pass, add to the bundle pool
 

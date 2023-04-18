@@ -19,7 +19,7 @@ pub(super) struct DomainBundleProposer<Block, Client, PBlock, PClient, Transacti
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
     transaction_pool: Arc<TransactionPool>,
-    _phantom_data: PhantomData<(Block, PBlock, PClient)>,
+    _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
 impl<Block, Client, PBlock, PClient, TransactionPool> Clone
@@ -65,7 +65,6 @@ where
         parent_chain: ParentChain,
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
-        PBlock: BlockT,
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<ParentChainBlock>,
     {
@@ -79,8 +78,7 @@ where
             res = t1 => res,
             _ = t2 => {
                 tracing::warn!(
-                    "Timeout fired waiting for transaction pool at #{}, proceeding with production.",
-                    parent_number,
+                    "Timeout fired waiting for transaction pool at #{parent_number}, proceeding with production."
                 );
                 self.transaction_pool.ready()
             }
@@ -142,7 +140,6 @@ where
         parent_chain: ParentChain,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
-        PBlock: BlockT,
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<ParentChainBlock>,
     {

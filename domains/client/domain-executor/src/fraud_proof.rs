@@ -87,7 +87,7 @@ where
         }
     }
 
-    pub(crate) fn generate_proof<PCB>(
+    pub(crate) fn generate_invalid_state_transition_proof<PCB>(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,

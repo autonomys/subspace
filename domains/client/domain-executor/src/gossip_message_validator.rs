@@ -7,11 +7,17 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorPublicKey};
+use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
+use sp_domains::{Bundle, DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
+use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::BlockNumber;
+
+type FraudProof<ParentChainBlock> = sp_domains::fraud_proof::FraudProof<
+    NumberFor<ParentChainBlock>,
+    <ParentChainBlock as BlockT>::Hash,
+>;
 
 /// Error type for domain gossip handling.
 #[derive(Debug, thiserror::Error)]
@@ -44,29 +50,88 @@ impl From<sp_blockchain::Error> for GossipMessageError {
 }
 
 /// Base domain gossip message validator.
-pub struct GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E> {
+pub struct GossipMessageValidator<
+    Block,
+    PBlock,
+    ParentChainBlock,
+    Client,
+    PClient,
+    Backend,
+    E,
+    TransactionPool,
+    ParentChain,
+> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
+    parent_chain: ParentChain,
+    transaction_pool: Arc<TransactionPool>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+    _phantom_data: PhantomData<ParentChainBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
+impl<
+        Block,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    > Clone
+    for GossipMessageValidator<
+        Block,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    >
+where
+    ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
             spawner: self.spawner.clone(),
+            parent_chain: self.parent_chain.clone(),
+            transaction_pool: self.transaction_pool.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
+            _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E>
-    GossipMessageValidator<Block, PBlock, Client, PClient, Backend, E>
+impl<
+        Block,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    >
+    GossipMessageValidator<
+        Block,
+        PBlock,
+        ParentChainBlock,
+        Client,
+        PClient,
+        Backend,
+        E,
+        TransactionPool,
+        ParentChain,
+    >
 where
     Block: BlockT,
     PBlock: BlockT,
+    ParentChainBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -79,17 +144,88 @@ where
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
+    ParentChain: ParentChainInterface<ParentChainBlock> + Send + Sync + Clone + 'static,
 {
     pub(crate) fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed + Send + Sync>,
+        parent_chain: ParentChain,
+        transaction_pool: Arc<TransactionPool>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     ) -> Self {
         Self {
             client,
             spawner,
+            parent_chain,
+            transaction_pool,
             fraud_proof_generator,
+            _phantom_data: Default::default(),
         }
+    }
+
+    pub(crate) fn check_bundle_equivocation(
+        &self,
+        bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    ) -> Result<(), GossipMessageError> {
+        // TODO: check bundle equivocation
+        let bundle_is_an_equivocation = false;
+
+        if bundle_is_an_equivocation {
+            let equivocation_proof = BundleEquivocationProof::dummy_at(bundle.header.slot_number);
+            let fraud_proof =
+                FraudProof::<ParentChainBlock>::BundleEquivocation(equivocation_proof);
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+            Err(GossipMessageError::BundleEquivocation)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn validate_bundle_receipts(
+        &self,
+        receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
+        domain_id: DomainId,
+    ) -> Result<(), GossipMessageError> {
+        let head_receipt_number = self
+            .parent_chain
+            .head_receipt_number(self.parent_chain.best_hash())?;
+        let head_receipt_number = to_number_primitive(head_receipt_number);
+
+        for receipt in receipts {
+            if let Some(fraud_proof) =
+                self.validate_execution_receipt(receipt, head_receipt_number, domain_id)?
+            {
+                self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_bundle_transactions(
+        &self,
+        extrinsics: &[Block::Extrinsic],
+        domain_id: DomainId,
+    ) -> Result<(), GossipMessageError> {
+        for extrinsic in extrinsics {
+            let tx_hash = self.transaction_pool.hash_of(extrinsic);
+
+            if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
+                // TODO: Set the status of each tx in the bundle to seen
+            } else {
+                // TODO: check the legality
+                //
+                // if illegal => illegal tx proof
+                let invalid_transaction_proof = InvalidTransactionProof { domain_id };
+                let fraud_proof =
+                    FraudProof::<ParentChainBlock>::InvalidTransaction(invalid_transaction_proof);
+
+                self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// The background is that a receipt received from the network points to a future block
@@ -150,40 +286,12 @@ where
         }
     }
 
-    pub(crate) fn validate_gossiped_execution_receipt<PCB, ParentChain>(
-        &self,
-        parent_chain: &ParentChain,
-        execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
-        domain_id: DomainId,
-    ) -> Result<(), GossipMessageError>
-    where
-        PCB: BlockT,
-        ParentChain: ParentChainInterface<PCB>,
-    {
-        let head_receipt_number = parent_chain.head_receipt_number(parent_chain.best_hash())?;
-        let head_receipt_number = to_number_primitive(head_receipt_number);
-
-        if let Some(fraud_proof) = self.validate_execution_receipt::<PCB>(
-            execution_receipt,
-            head_receipt_number,
-            domain_id,
-        )? {
-            parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-        }
-
-        Ok(())
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn validate_execution_receipt<PCB>(
+    fn validate_execution_receipt(
         &self,
         execution_receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         head_receipt_number: BlockNumber,
         domain_id: DomainId,
-    ) -> Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>, GossipMessageError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<Option<FraudProof<ParentChainBlock>>, GossipMessageError> {
         let primary_number = to_number_primitive(execution_receipt.primary_number);
 
         // Just ignore it if the receipt is too old and has been pruned.
@@ -225,12 +333,14 @@ where
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
         if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
-            let fraud_proof = self.fraud_proof_generator.generate_proof::<PCB>(
-                domain_id,
-                trace_mismatch_index,
-                &local_receipt,
-                execution_receipt.hash(),
-            )?;
+            let fraud_proof = self
+                .fraud_proof_generator
+                .generate_invalid_state_transition_proof::<ParentChainBlock>(
+                    domain_id,
+                    trace_mismatch_index,
+                    &local_receipt,
+                    execution_receipt.hash(),
+                )?;
             Ok(Some(fraud_proof))
         } else {
             Ok(None)
