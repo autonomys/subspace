@@ -5586,10 +5586,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lightclient"
-version = "0.1.0"
-
-[[package]]
 name = "link-cplusplus"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10137,7 +10133,6 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "frame-support",
  "futures",
  "parity-scale-codec",
@@ -11111,7 +11106,6 @@ dependencies = [
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "futures",
  "sc-chain-spec",
  "sc-client-api",

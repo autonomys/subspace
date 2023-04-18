@@ -16,7 +16,8 @@ use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::{Scalar, ScalarLegacy};
 use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
 use subspace_core_primitives::{
-    LegacySectorId, Piece, PieceIndex, PieceIndexHash, PublicKey, SectorIndex, PLOT_SECTOR_SIZE,
+    ArchivedHistorySegment, LegacySectorId, Piece, PieceIndex, PieceIndexHash, PublicKey,
+    SectorIndex, PLOT_SECTOR_SIZE,
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -68,6 +69,19 @@ where
         retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         self.as_ref().get_piece(piece_index, retry_policy).await
+    }
+}
+
+#[async_trait]
+impl PieceGetter for ArchivedHistorySegment {
+    async fn get_piece(
+        &self,
+        piece_index: PieceIndex,
+        _retry_policy: PieceGetterRetryPolicy,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        Ok(self
+            .get(usize::try_from(u64::from(piece_index))?)
+            .map(Piece::from))
     }
 }
 
