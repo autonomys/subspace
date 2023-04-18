@@ -26,15 +26,16 @@ pub struct FeedProcessorData<T: snowbridge_ethereum_beacon_client::Config> {
 }
 
 impl<T: snowbridge_ethereum_beacon_client::Config> FeedProcessorData<T> {
-    /// We cannot allow all components of feed processor data to be none
-    fn is_valid(&self) -> bool {
+    /// checks if the feed data we got is valid or not.
+    /// As of now, only constraint is at least one component need to be `Some`
+    pub fn is_valid(&self) -> bool {
         self.sync_committee_update.is_some()
             || self.finalized_header_update.is_some()
             || self.header_update.is_some()
     }
 }
 
-/// Type used to represent a FeedId or ChainId
+/// Type representing implementation of the ethereum feed processor
 struct EthereumFeedProcessorImpl {
     derived_account_id: AccountId,
 }
@@ -65,7 +66,7 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
         if feed_data.sync_committee_update.is_some() {
             let sync_committee_period_update = feed_data
                 .sync_committee_update
-                .expect("already checked for none; qed");
+                .expect("already checked for Some variant; qed");
 
             Pallet::<Runtime>::sync_committee_period_update(
                 feed_processor_origin.clone().into(),
@@ -76,7 +77,7 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
         if feed_data.finalized_header_update.is_some() {
             let finalized_header_update = feed_data
                 .finalized_header_update
-                .expect("already checked for none; qed");
+                .expect("already checked for Some variant; qed");
 
             Pallet::<Runtime>::import_finalized_header(
                 feed_processor_origin.clone().into(),
@@ -87,7 +88,7 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
         if feed_data.header_update.is_some() {
             let header_update = feed_data
                 .header_update
-                .expect("already checked for none; qed");
+                .expect("already checked for Some variant; qed");
 
             maybe_metadata = Some(
                 (
