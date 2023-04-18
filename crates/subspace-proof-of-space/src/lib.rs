@@ -5,6 +5,8 @@
 
 #[cfg(feature = "std")]
 pub mod chia;
+#[cfg(feature = "shim")]
+pub mod shim;
 
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
 
