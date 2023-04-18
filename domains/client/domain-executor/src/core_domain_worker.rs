@@ -24,7 +24,7 @@ use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
-    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider,
+    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
 };
 use sc_consensus::BlockImport;
@@ -93,6 +93,7 @@ pub(super) async fn start_worker<
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
+        + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + BlockBuilder<Block>

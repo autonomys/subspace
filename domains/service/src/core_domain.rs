@@ -36,6 +36,7 @@ use sp_core::Encode;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
+use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
@@ -272,7 +273,8 @@ where
     SClient::Api: DomainCoreApi<SBlock, AccountId>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
-        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
+        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>
+        + ReceiptsApi<SBlock, Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
@@ -386,6 +388,12 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("core_domain_bundle_stream", 100);
 
+    let domain_confirmation_depth = system_domain_client
+        .runtime_api()
+        .receipts_pruning_depth(system_domain_client.info().best_hash)
+        .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
+        .into();
+
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
@@ -403,6 +411,7 @@ where
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
+            domain_confirmation_depth,
         },
     )
     .await?;

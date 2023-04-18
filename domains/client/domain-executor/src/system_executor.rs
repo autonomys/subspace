@@ -9,7 +9,7 @@ use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
-    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider,
+    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
 };
 use sp_api::ProvideRuntimeApi;
@@ -25,7 +25,10 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
 /// System domain executor.
-pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E> {
+pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+where
+    Block: BlockT,
+{
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
@@ -37,6 +40,8 @@ pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
     for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+where
+    Block: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -63,6 +68,7 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
+        + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + MessengerApi<Block, NumberFor<Block>>
@@ -147,6 +153,7 @@ where
             params.primary_network_sync_oracle,
             params.backend.clone(),
             fraud_proof_generator.clone(),
+            params.domain_confirmation_depth,
         );
 
         let bundle_processor = SystemBundleProcessor::new(

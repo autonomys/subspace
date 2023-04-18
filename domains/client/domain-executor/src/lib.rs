@@ -189,6 +189,7 @@ pub struct EssentialExecutorParams<
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
     pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
+    pub domain_confirmation_depth: NumberFor<Block>,
 }
 
 /// Returns the active leaves the overseer should start with.

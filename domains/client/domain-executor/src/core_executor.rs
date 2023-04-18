@@ -9,7 +9,7 @@ use domain_runtime_primitives::{AccountId, DomainCoreApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
-    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider,
+    AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
 };
 use sp_api::ProvideRuntimeApi;
@@ -64,6 +64,7 @@ where
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
+        + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
@@ -152,6 +153,7 @@ where
             params.primary_network_sync_oracle,
             params.backend.clone(),
             fraud_proof_generator.clone(),
+            params.domain_confirmation_depth,
         );
 
         let bundle_processor = CoreBundleProcessor::new(

@@ -68,6 +68,9 @@ mod pallet {
         type MaximumReceiptDrift: Get<Self::BlockNumber>;
 
         /// Number of execution receipts kept in the state.
+        ///
+        /// This parameter specifies the fraud proof period. The challenge window is closed once
+        /// the receipts are pruned.
         #[pallet::constant]
         type ReceiptsPruningDepth: Get<Self::BlockNumber>;
     }
