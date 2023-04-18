@@ -421,8 +421,8 @@ where
             .zip(new_header.digest().logs().iter());
         for (header_item, computed_item) in items_zip {
             header_item.check_equal(computed_item);
-            assert!(
-                header_item == computed_item,
+            assert_eq!(
+                header_item, computed_item,
                 "Digest item must match that calculated."
             );
         }
