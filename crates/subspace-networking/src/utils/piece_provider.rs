@@ -12,9 +12,9 @@ use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use tracing::{debug, error, trace, warn};
 
 /// Defines initial duration between get_piece calls.
-const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(1);
+const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(3);
 /// Defines max duration between get_piece calls.
-const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(5);
+const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(10);
 
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
