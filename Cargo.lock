@@ -10335,6 +10335,7 @@ name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "backoff",
  "criterion",
  "fs2",
  "futures",
