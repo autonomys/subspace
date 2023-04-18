@@ -11,8 +11,12 @@ include = [
     "/Cargo.toml",
 ]
 
+[lib]
+# Necessary for CLI options to work on benches
+bench = false
+
 [dependencies]
-subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "100f861378c3f450434ef9e94723f50c804d333f" }
+subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "3b1ab3ca24764d25da30e0c8243e0bf304b776a5", optional = true }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
@@ -21,3 +25,13 @@ criterion = "0.4.0"
 [[bench]]
 name = "pos"
 harness = false
+
+[features]
+default = ["std"]
+std = [
+    "subspace-chiapos",
+    "subspace-core-primitives/std",
+]
+# Enables shim proof of space that works much faster than original and can be used for testing purposes to reduce memory
+# and CPU usage
+shim = []

@@ -313,7 +313,7 @@ pub(crate) async fn farm_multi_disk(
                     tokio::spawn(async move {
                         let result =
                             select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
-                        if !matches!(result, Either::Right(_)) {
+                        if matches!(result, Either::Right(_)) {
                             debug!("Piece publishing was cancelled due to shutdown.");
                         }
                     });

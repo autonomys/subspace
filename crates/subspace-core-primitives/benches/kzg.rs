@@ -23,11 +23,13 @@ fn criterion_benchmark(c: &mut Criterion) {
         })
     });
 
+    let num_values = values.len();
+
     c.bench_function("create-witness", |b| {
         let polynomial = kzg.poly(&values).unwrap();
 
         b.iter(|| {
-            kzg.create_witness(black_box(&polynomial), black_box(0))
+            kzg.create_witness(black_box(&polynomial), black_box(num_values), black_box(0))
                 .unwrap();
         })
     });
@@ -36,8 +38,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         let polynomial = kzg.poly(&values).unwrap();
         let commitment = kzg.commit(&polynomial).unwrap();
         let index = 0;
-        let witness = kzg.create_witness(&polynomial, index).unwrap();
-        let num_values = values.len();
+        let witness = kzg.create_witness(&polynomial, num_values, index).unwrap();
         let value = values.first().unwrap();
 
         b.iter(|| {

@@ -24,7 +24,7 @@ fn basic() {
     for (index, value) in values.iter().enumerate() {
         let index = index.try_into().unwrap();
 
-        let witness = kzg.create_witness(&polynomial, index).unwrap();
+        let witness = kzg.create_witness(&polynomial, num_values, index).unwrap();
 
         assert!(
             kzg.verify(&commitment, num_values, index, value, &witness),

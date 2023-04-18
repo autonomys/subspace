@@ -21,7 +21,7 @@ use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
-use kzg::{FFTFr, FFTSettings, KZGSettings};
+use kzg::{FFTFr, FFTSettings, Fr, KZGSettings};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 #[cfg(feature = "std")]
 use parking_lot::Mutex;
@@ -94,6 +94,22 @@ pub fn embedded_kzg_settings() -> FsKZGSettings {
 /// Commitment to polynomial
 #[derive(Debug, Clone)]
 pub struct Polynomial(FsPoly);
+
+impl Polynomial {
+    /// Normalize polynomial by removing trailing zeroes
+    pub fn normalize(&mut self) {
+        let trailing_zeroes = self
+            .0
+            .coeffs
+            .iter()
+            .rev()
+            .take_while(|coeff| coeff.is_zero())
+            .count();
+        self.0
+            .coeffs
+            .truncate(self.0.coeffs.len() - trailing_zeroes);
+    }
+}
 
 /// Commitment to polynomial
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, From, Into, AsRef, AsMut, Deref, DerefMut)]
@@ -472,9 +488,14 @@ impl Kzg {
     }
 
     /// Computes a `Witness` of evaluation of `polynomial` at `index`
-    pub fn create_witness(&self, polynomial: &Polynomial, index: u32) -> Result<Witness, String> {
+    pub fn create_witness(
+        &self,
+        polynomial: &Polynomial,
+        num_values: usize,
+        index: u32,
+    ) -> Result<Witness, String> {
         let x = self
-            .get_fft_settings(polynomial.0.coeffs.len())?
+            .get_fft_settings(num_values)?
             .get_expanded_roots_of_unity_at(index as usize);
         self.inner
             .kzg_settings
