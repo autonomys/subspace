@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "3b1ab3ca24764d25da30e0c8243e0bf304b776a5" }
+subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "3b1ab3ca24764d25da30e0c8243e0bf304b776a5", optional = true }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
@@ -21,3 +21,10 @@ criterion = "0.4.0"
 [[bench]]
 name = "pos"
 harness = false
+
+[features]
+default = ["std"]
+std = [
+    "subspace-chiapos",
+    "subspace-core-primitives/std",
+]

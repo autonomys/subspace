@@ -1,9 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use subspace_core_primitives::PosSeed;
-use subspace_proof_of_space::{is_proof_valid, Table};
+use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::{Quality, Table};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let seed = PosSeed([
+    let seed = PosSeed::from([
         35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
         198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
     ]);
@@ -16,11 +17,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("table", |b| {
         b.iter(|| {
-            Table::generate(black_box(&seed));
+            ChiaTable::generate(black_box(&seed));
         });
     });
 
-    let table = Table::generate(&seed);
+    let table = ChiaTable::generate(&seed);
 
     group.bench_function("quality/no-solution", |b| {
         b.iter(|| {
@@ -50,7 +51,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("verification", |b| {
         b.iter(|| {
-            assert!(is_proof_valid(&seed, challenge_index_with_solution, &proof).is_some());
+            assert!(
+                ChiaTable::is_proof_valid(&seed, challenge_index_with_solution, &proof).is_some()
+            );
         });
     });
     group.finish();
