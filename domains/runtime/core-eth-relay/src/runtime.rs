@@ -1,3 +1,4 @@
+use crate::feed_processor::{feed_processor, FeedProcessorId, FeedProcessorKind};
 use core::time::Duration;
 use domain_runtime_primitives::opaque;
 pub use domain_runtime_primitives::{
@@ -9,6 +10,7 @@ use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeigh
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_feeds::feed_processor::FeedProcessor;
 use pallet_transporter::EndpointHandler;
 use snowbridge_beacon_primitives::{Fork, ForkVersions};
 use snowbridge_ethereum_beacon_client as pallet_ethereum_beacon_client;
@@ -327,6 +329,10 @@ parameter_types! {
             version: [2, 0, 16, 32], // 0x02001020
             epoch: 112260,
         },
+        capella: Fork {
+            version: [3, 0, 16, 32], // 0x03001020
+            epoch: 162304,
+        },
     };
 }
 
@@ -346,6 +352,27 @@ impl pallet_ethereum_beacon_client::Config for Runtime {
     type ForkVersions = ChainForkVersions;
     type WeakSubjectivityPeriodSeconds = WeakSubjectivityPeriodSeconds;
     type WeightInfo = pallet_ethereum_beacon_client::weights::SnowbridgeWeight<Self>;
+}
+
+pub type FeedId = u64;
+
+parameter_types! {
+    // Limit maximum number of feeds per account
+    pub const MaxFeeds: u32 = 1;
+    pub const EthereumFeedProcessorId: FeedProcessorId  = FeedProcessorId(*b"py/feprx");
+}
+
+impl pallet_feeds::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type FeedId = FeedId;
+    type FeedProcessorKind = FeedProcessorKind;
+    type MaxFeeds = MaxFeeds;
+
+    fn feed_processor(
+        feed_processor_kind: Self::FeedProcessorKind,
+    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
+        feed_processor(EthereumFeedProcessorId::get(), feed_processor_kind)
+    }
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -373,7 +400,8 @@ construct_runtime!(
         // Having beacon client at 90 to have plenty of room for system domain runtime pallets
         // (w.r.t future upgrade of system domain runtime) as well as some room for adding light client
         // related pallets after 90
-        EthereumBeaconClient: pallet_ethereum_beacon_client = 90,
+        EthereumBeaconClient: pallet_ethereum_beacon_client::{Pallet, Config<T>, Storage, Event<T>} = 90,
+        Feeds: pallet_feeds = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,

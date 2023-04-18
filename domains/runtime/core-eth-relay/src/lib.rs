@@ -11,6 +11,8 @@ mod runtime;
 // functions
 #[cfg(any(feature = "wasm-builder", feature = "std"))]
 pub use runtime::*;
+#[cfg(any(feature = "wasm-builder", feature = "std"))]
+mod feed_processor;
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
