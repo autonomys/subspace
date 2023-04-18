@@ -15,9 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::core_domain::{core_eth_relay_chain_spec, core_payments_chain_spec};
-use crate::parser::parse_relayer_id;
 use clap::Parser;
-use domain_runtime_primitives::RelayerId;
 use domain_service::DomainConfiguration;
 use once_cell::sync::OnceCell;
 use sc_cli::{
@@ -26,6 +24,8 @@ use sc_cli::{
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
+use sp_core::bytes::from_hex;
+use sp_core::ByteArray;
 use sp_domains::DomainId;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
@@ -59,8 +59,8 @@ pub struct CoreDomainCli {
     pub domain_id: DomainId,
 
     /// Optional relayer address to relay messages on behalf.
-    #[clap(long, value_parser = parse_relayer_id)]
-    pub relayer_id: Option<RelayerId>,
+    #[clap(long)]
+    pub relayer_id: Option<String>,
 
     /// The base path that should be used by the core domain.
     #[clap(skip)]
@@ -105,9 +105,15 @@ impl CoreDomainCli {
     ) -> sc_cli::Result<DomainConfiguration> {
         // if is dev, use the known key ring to start relayer
         let maybe_relayer_id = if self.shared_params().is_dev() && self.relayer_id.is_none() {
-            self.run.get_keyring().map(|kr| kr.to_account_id())
+            self.run
+                .get_keyring()
+                .map(|kr| kr.to_account_id().to_raw_vec())
+        } else if let Some(relayer_id) = self.relayer_id.clone() {
+            from_hex(&relayer_id)
+                .map(Some)
+                .map_err(|err| sc_cli::Error::Input(format!("Invalid Relayer Id: {err}")))?
         } else {
-            self.relayer_id.clone()
+            None
         };
 
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;

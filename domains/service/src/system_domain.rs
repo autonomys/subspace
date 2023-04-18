@@ -29,7 +29,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_core::Encode;
+use sp_core::{ByteArray, Encode};
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
@@ -450,6 +450,8 @@ where
     );
 
     if let Some(relayer_id) = system_domain_config.maybe_relayer_id {
+        let relayer_id = RelayerId::from_slice(&relayer_id)
+            .map_err(|_err| sc_service::Error::Other("Invalid RelayerId".into()))?;
         tracing::info!(
             "Starting system domain relayer with relayer_id[{:?}]",
             relayer_id

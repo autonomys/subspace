@@ -232,8 +232,6 @@ parameter_types! {
         .build_or_panic();
 }
 
-// Configure FRAME pallets to include in runtime.
-
 impl frame_system::Config for Runtime {
     /// The identifier used to distinguish between accounts.
     type AccountId = AccountId;

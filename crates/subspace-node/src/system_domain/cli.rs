@@ -15,9 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::core_domain::cli::CoreDomainCli;
-use crate::parser::parse_relayer_id;
 use clap::Parser;
-use domain_runtime_primitives::RelayerId;
 use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -27,6 +25,8 @@ use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use serde_json::Value;
+use sp_core::bytes::from_hex;
+use sp_core::ByteArray;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
@@ -52,8 +52,8 @@ pub struct DomainCli {
     pub run_system: SubstrateRunCmd,
 
     /// Optional relayer address to relay messages on behalf.
-    #[clap(long, value_parser = parse_relayer_id)]
-    pub relayer_id: Option<RelayerId>,
+    #[clap(long)]
+    pub relayer_id: Option<String>,
 
     #[clap(raw = true)]
     pub core_domain_args: Vec<String>,
@@ -112,9 +112,13 @@ impl SystemDomainCli {
             self.run
                 .run_system
                 .get_keyring()
-                .map(|kr| kr.to_account_id())
+                .map(|kr| kr.to_account_id().to_raw_vec())
+        } else if let Some(relayer_id) = self.run.relayer_id.clone() {
+            from_hex(&relayer_id)
+                .map(Some)
+                .map_err(|err| sc_cli::Error::Input(format!("Invalid Relayer Id: {err}")))?
         } else {
-            self.run.relayer_id.clone()
+            None
         };
 
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
