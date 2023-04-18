@@ -1,5 +1,6 @@
 use crate::precompiles::FrontierPrecompiles;
 use codec::{Decode, Encode};
+use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
 use fp_evm::weight_per_gas;
@@ -51,14 +52,8 @@ pub type Signature = EthereumSignature;
 /// to the public key of our transaction signing scheme.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
-/// The type we use to represent relayer id. This is same as account Id.
-pub type RelayerId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
-
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
-
-/// Block header type as expected by this runtime.
-pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
@@ -78,6 +73,7 @@ pub type SignedExtra = (
     frame_system::CheckMortality<Runtime>,
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 
 /// Unchecked extrinsic type as expected by this runtime.
@@ -644,13 +640,14 @@ impl_runtime_apis! {
         }
     }
 
-    impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
+    impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
+        ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
             use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            extrinsics.into_iter().map(|xt| (xt.0.signer(&lookup), xt)).collect()
+            // TODO: we should return the actual eth transaction signer.
+            extrinsics.into_iter().map(|xt| (xt.0.signer(&lookup).map(|signer| signer.encode()), xt)).collect()
         }
 
         fn intermediate_roots() -> Vec<[u8; 32]> {
@@ -691,7 +688,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
+    impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
         fn domain_id() -> DomainId {
             CorePaymentsDomainId::get()
         }
@@ -708,7 +705,7 @@ impl_runtime_apis! {
             None
         }
 
-        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
+        fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
             Messenger::relayer_assigned_messages(relayer_id)
         }
 

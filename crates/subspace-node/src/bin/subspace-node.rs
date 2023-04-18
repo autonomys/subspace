@@ -19,7 +19,7 @@
 use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
 use domain_client_executor::ExecutorStreams;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::RelayerId as RelayerId32;
+use domain_runtime_primitives::AccountId as AccountId32;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -663,7 +663,7 @@ fn main() -> Result<(), Error> {
                                         _,
                                         core_payments_domain_runtime::RuntimeApi,
                                         CorePaymentsDomainExecutorDispatch,
-                                        RelayerId32,
+                                        AccountId32,
                                     >(core_domain_params)
                                     .await?;
 
@@ -691,7 +691,7 @@ fn main() -> Result<(), Error> {
                                         _,
                                         core_eth_relay_runtime::RuntimeApi,
                                         CoreEthRelayDomainExecutorDispatch,
-                                        RelayerId32,
+                                        AccountId32,
                                     >(core_domain_params)
                                     .await?;
 

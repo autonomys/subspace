@@ -17,7 +17,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use parity_scale_codec::{Decode, Encode};
 use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
@@ -44,9 +43,6 @@ pub type BlockNumber = u32;
 
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
-
-/// The type we use to represent relayer id. This is same as account Id.
-pub type RelayerId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// Extracts the signer from an unchecked extrinsic.
 ///
@@ -79,6 +75,7 @@ pub mod opaque {
     use sp_runtime::generic;
     use sp_runtime::traits::BlakeTwo256;
     pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
+    use sp_std::vec::Vec;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -86,15 +83,17 @@ pub mod opaque {
     pub type Block = generic::Block<Header, UncheckedExtrinsic>;
     /// Opaque block identifier type.
     pub type BlockId = generic::BlockId<Block>;
+    /// Opaque account identifier type.
+    pub type AccountId = Vec<u8>;
 }
 
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
-    pub trait DomainCoreApi<AccountId: Encode + Decode> {
+    pub trait DomainCoreApi {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+        ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)>;
 
         /// Returns the intermediate storage roots in an encoded form.
         fn intermediate_roots() -> Vec<[u8; 32]>;

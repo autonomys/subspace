@@ -649,16 +649,15 @@ where
 
         let wasm_bundle = match *domain_id {
             DomainId::SYSTEM => system_wasm_bundle,
-            DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => read_core_domain_runtime_blob(
-                system_wasm_bundle.as_ref(),
-                *domain_id,
-            )
-            .map_err(|err| {
-                VerificationError::RuntimeCode(format!(
+            DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => {
+                read_core_domain_runtime_blob(system_wasm_bundle.as_ref(), *domain_id)
+                    .map_err(|err| {
+                        VerificationError::RuntimeCode(format!(
                     "failed to read core domain {domain_id:?} runtime blob file, error {err:?}"
                 ))
-            })?
-            .into(),
+                    })?
+                    .into()
+            }
             _ => {
                 return Err(VerificationError::RuntimeCode(format!(
                     "No runtime code for {domain_id:?}"

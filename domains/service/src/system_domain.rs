@@ -9,7 +9,7 @@ use domain_client_executor::{
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash};
 use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
@@ -80,13 +80,13 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + DomainCoreApi<Block, AccountId>
+        + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>
+        + RelayerApi<Block, AccountId, NumberFor<Block>>
         + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
 {
@@ -320,13 +320,13 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + DomainCoreApi<Block, AccountId>
+        + DomainCoreApi<Block>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>
+        + RelayerApi<Block, AccountId, NumberFor<Block>>
         + ReceiptsApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -370,14 +370,14 @@ where
         let chain_spec = system_domain_config.service_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
-            let deps = crate::rpc::FullDeps {
-                client: client.clone(),
-                pool: transaction_pool.clone(),
-                chain_spec: chain_spec.cloned_box(),
+            let deps = crate::rpc::FullDeps::new(
+                client.clone(),
+                transaction_pool.clone(),
+                chain_spec.cloned_box(),
                 deny_unsafe,
-            };
+            );
 
-            crate::rpc::create_full::<Block, _, _>(deps).map_err(Into::into)
+            crate::rpc::create_full::<Block, _, _, AccountId>(deps).map_err(Into::into)
         })
     };
 
@@ -450,8 +450,8 @@ where
     );
 
     if let Some(relayer_id) = system_domain_config.maybe_relayer_id {
-        let relayer_id = RelayerId::from_slice(&relayer_id)
-            .map_err(|_err| sc_service::Error::Other("Invalid RelayerId".into()))?;
+        let relayer_id = AccountId::from_slice(&relayer_id)
+            .map_err(|_err| sc_service::Error::Other("Invalid AccountId".into()))?;
         tracing::info!(
             "Starting system domain relayer with relayer_id[{:?}]",
             relayer_id

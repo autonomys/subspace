@@ -3,7 +3,7 @@ use crate::utils::{to_number_primitive, translate_number_type};
 use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
@@ -86,7 +86,7 @@ where
         + ProvideRuntimeApi<Block>
         + Finalizer<Block, Backend>
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
+    Client::Api: DomainCoreApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
@@ -367,7 +367,7 @@ where
                 return Err(sp_consensus::Error::ClientImport(format!(
                     "Parent state of block #{header_number}({header_hash:?}) is missing, parent: {parent_hash:?}"
                 ))
-                .into());
+                    .into());
             }
         }
 

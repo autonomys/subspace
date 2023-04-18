@@ -19,7 +19,6 @@
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
-use domain_runtime_primitives::RelayerId;
 use frame_support::weights::Weight;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
@@ -345,7 +344,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
                 Some(sudo_account.clone()),
                 vec![(
                     sudo_account,
-                    RelayerId::from_ss58check("5D7kgfacBsP6pkMB628221HG98mz2euaytthdoeZPGceQusS")
+                    AccountId::from_ss58check("5D7kgfacBsP6pkMB628221HG98mz2euaytthdoeZPGceQusS")
                         .expect("Invalid relayer id account"),
                 )],
             )
@@ -369,7 +368,7 @@ fn testnet_genesis(
     executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
     domains: Vec<(AccountId, Balance, DomainConfig, AccountId, Percent)>,
     maybe_sudo_account: Option<AccountId>,
-    relayers: Vec<(AccountId, RelayerId)>,
+    relayers: Vec<(AccountId, AccountId)>,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {

@@ -27,7 +27,7 @@ use crate::xdm_verifier::{
     verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
 };
 use codec::{Decode, Encode};
-use domain_runtime_primitives::AccountId;
+use domain_runtime_primitives::opaque::AccountId;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -149,7 +149,7 @@ fn deduplicate_and_shuffle_extrinsics<Block, SE>(
 ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
 where
     Block: BlockT,
-    SE: SignerExtractor<Block, AccountId>,
+    SE: SignerExtractor<Block>,
 {
     let mut seen = Vec::new();
     extrinsics.retain(|uxt| match seen.contains(uxt) {
@@ -174,7 +174,8 @@ where
         }
     };
 
-    let extrinsics = shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(extrinsics, shuffling_seed);
+    let extrinsics =
+        shuffle_extrinsics::<<Block as BlockT>::Extrinsic, AccountId>(extrinsics, shuffling_seed);
 
     Ok(extrinsics)
 }
@@ -184,7 +185,7 @@ where
 /// The extrinsics are grouped by the signer. The extrinsics without a signer, i.e., unsigned
 /// extrinsics, are considered as a special group. The items in different groups are cross shuffled,
 /// while the order of items inside the same group is still maintained.
-fn shuffle_extrinsics<Extrinsic: Debug>(
+fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
     shuffling_seed: Randomness,
 ) -> Vec<Extrinsic> {
@@ -252,7 +253,7 @@ where
     PBlock::Hash: From<Block::Hash>,
     NumberFor<PBlock>: From<NumberFor<Block>>,
     RuntimeApi: CoreBundleConstructor<PBlock, Block>
-        + SignerExtractor<Block, AccountId>
+        + SignerExtractor<Block>
         + StateRootExtractor<Block>
         + SetCodeConstructor<Block>,
     PClient: HeaderBackend<PBlock>
@@ -396,8 +397,7 @@ where
     SBlock: BlockT,
     SBlock::Hash: From<Block::Hash>,
     NumberFor<SBlock>: From<NumberFor<Block>>,
-    RuntimeApi:
-        SignerExtractor<Block, AccountId> + SetCodeConstructor<Block> + StateRootExtractor<Block>,
+    RuntimeApi: SignerExtractor<Block> + SetCodeConstructor<Block> + StateRootExtractor<Block>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
@@ -451,7 +451,7 @@ where
 
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
 
-        let mut extrinsics = deduplicate_and_shuffle_extrinsics(
+        let mut extrinsics = deduplicate_and_shuffle_extrinsics::<_, _>(
             domain_hash,
             &self.runtime_api,
             extrinsics,

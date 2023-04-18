@@ -5,7 +5,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::CoreDomainParentChain;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
@@ -67,7 +67,7 @@ where
         + ProofProvider<Block>
         + Finalizer<Block, Backend>
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
+    Client::Api: DomainCoreApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
@@ -77,7 +77,7 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: DomainCoreApi<SBlock, AccountId>
+    SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>

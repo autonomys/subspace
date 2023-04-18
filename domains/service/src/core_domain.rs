@@ -7,7 +7,7 @@ use domain_client_executor::{
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi};
+use domain_runtime_primitives::{Balance, DomainCoreApi};
 use frame_benchmarking::frame_support::codec::FullCodec;
 use frame_benchmarking::frame_support::dispatch::TypeInfo;
 use futures::channel::mpsc;
@@ -27,6 +27,7 @@ use sc_service::{
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
+use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Decode, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -40,7 +41,7 @@ use sp_offchain::OffchainWorkerApi;
 use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
@@ -83,7 +84,7 @@ pub struct NewFullCore<
     PClient,
     RuntimeApi,
     ExecutorDispatch,
-    RelayerId,
+    AccountId,
 > where
     SBlock: BlockT,
     PBlock: BlockT,
@@ -100,16 +101,16 @@ pub struct NewFullCore<
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + DomainCoreApi<Block, AccountId>
+        + DomainCoreApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+        + RelayerApi<Block, AccountId, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
-    RelayerId: Encode + Decode + Clone,
+    AccountId: Encode + Decode,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -132,7 +133,7 @@ pub struct NewFullCore<
         CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
-    _data: PhantomData<RelayerId>,
+    _data: PhantomData<AccountId>,
 }
 
 /// Constructs a partial core domain node.
@@ -276,7 +277,7 @@ pub async fn new_full_core<
     NSNS,
     RuntimeApi,
     ExecutorDispatch,
-    RelayerId,
+    AccountId,
 >(
     core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>,
 ) -> sc_service::error::Result<
@@ -290,7 +291,7 @@ pub async fn new_full_core<
         PClient,
         RuntimeApi,
         ExecutorDispatch,
-        RelayerId,
+        AccountId,
     >,
 >
 where
@@ -303,11 +304,11 @@ where
     <Block as BlockT>::Header: Unpin,
     NumberFor<Block>: FullCodec + TypeInfo,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: DomainCoreApi<SBlock, AccountId>
+    SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
-        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>
-        + ReceiptsApi<SBlock, Hash>,
+        + RelayerApi<SBlock, AccountId, NumberFor<SBlock>>
+        + ReceiptsApi<SBlock, <Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
@@ -330,14 +331,23 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + DomainCoreApi<Block, AccountId>
+        + DomainCoreApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+        + RelayerApi<Block, AccountId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
-    RelayerId: Encode + Decode + Clone + Debug + ByteArray + Send + 'static,
+    AccountId: DeserializeOwned
+        + Encode
+        + Decode
+        + Clone
+        + Debug
+        + Display
+        + ByteArray
+        + Sync
+        + Send
+        + 'static,
 {
     let CoreDomainParams {
         domain_id,
@@ -390,14 +400,14 @@ where
         let chain_spec = core_domain_config.service_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
-            let deps = crate::rpc::FullDeps {
-                client: client.clone(),
-                pool: transaction_pool.clone(),
-                chain_spec: chain_spec.cloned_box(),
+            let deps = crate::rpc::FullDeps::new(
+                client.clone(),
+                transaction_pool.clone(),
+                chain_spec.cloned_box(),
                 deny_unsafe,
-            };
+            );
 
-            crate::rpc::create_full::<Block, _, _>(deps).map_err(Into::into)
+            crate::rpc::create_full::<Block, _, _, AccountId>(deps).map_err(Into::into)
         })
     };
 
@@ -429,7 +439,7 @@ where
         .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
         .into();
 
-    let executor = CoreExecutor::new(
+    let executor = CoreExecutor::<_, _, _, _, _, _, _, _, _>::new(
         domain_id,
         system_domain_client.clone(),
         Box::new(task_manager.spawn_essential_handle()),
@@ -473,7 +483,7 @@ where
     spawn_essential.spawn_essential_blocking("core-domain-gossip", None, Box::pin(executor_gossip));
 
     if let Some(relayer_id) = core_domain_config.maybe_relayer_id {
-        let relayer_id = RelayerId::from_slice(&relayer_id)
+        let relayer_id = AccountId::from_slice(&relayer_id)
             .map_err(|_err| sc_service::Error::Other("Invalid RelayerId".into()))?;
         tracing::info!(
             "Starting core domain relayer with relayer_id[{:?}]",

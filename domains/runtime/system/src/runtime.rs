@@ -1,5 +1,5 @@
-use codec::Decode;
-use domain_runtime_primitives::{opaque, RelayerId};
+use codec::{Decode, Encode};
+use domain_runtime_primitives::opaque;
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -512,13 +512,13 @@ impl_runtime_apis! {
         }
     }
 
-    impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
+    impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)> {
+        ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
             use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            extrinsics.into_iter().map(|xt| (xt.signer(&lookup), xt)).collect()
+            extrinsics.into_iter().map(|xt| (xt.signer(&lookup).map(|signer| signer.encode()), xt)).collect()
         }
 
         fn intermediate_roots() -> Vec<[u8; 32]> {
@@ -642,7 +642,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
+    impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
         fn domain_id() -> DomainId {
             SystemDomainId::get()
         }
@@ -659,7 +659,7 @@ impl_runtime_apis! {
             Receipts::domain_state_root_at(domain_id, number, hash)
         }
 
-        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
+        fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
             Messenger::relayer_assigned_messages(relayer_id)
         }
 
