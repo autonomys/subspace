@@ -798,7 +798,11 @@ impl Archiver {
                 witness.copy_from_slice(
                     &self
                         .kzg
-                        .create_witness(&polynomial, position as u32)
+                        .create_witness(
+                            &polynomial,
+                            ArchivedHistorySegment::NUM_PIECES,
+                            position as u32,
+                        )
                         .expect("Position is statically known to be valid; qed")
                         .to_bytes(),
                 );

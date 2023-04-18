@@ -5,14 +5,14 @@
 // Skip in regular `no-std` environment, such that we don't cause conflicts of globally exported
 // functions
 #[cfg(any(feature = "wasm-builder", feature = "std"))]
+mod precompiles;
+#[cfg(any(feature = "wasm-builder", feature = "std"))]
 mod runtime;
 
 // Skip in regular `no-std` environment, such that we don't cause conflicts of globally exported
 // functions
 #[cfg(any(feature = "wasm-builder", feature = "std"))]
 pub use runtime::*;
-#[cfg(any(feature = "wasm-builder", feature = "std"))]
-mod feed_processor;
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]

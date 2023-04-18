@@ -113,52 +113,65 @@ pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 const VRF_OUTPUT_LENGTH: usize = 32;
 const VRF_PROOF_LENGTH: usize = 64;
 
-/// Size of proof of space seed in bytes.
-const POS_SEED_SIZE: usize = 32;
-
 /// Proof of space seed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosSeed(pub [u8; POS_SEED_SIZE]);
+pub struct PosSeed([u8; Self::SIZE]);
+
+impl const From<[u8; PosSeed::SIZE]> for PosSeed {
+    fn from(value: [u8; Self::SIZE]) -> Self {
+        Self(value)
+    }
+}
+
+impl const From<PosSeed> for [u8; PosSeed::SIZE] {
+    fn from(value: PosSeed) -> Self {
+        value.0
+    }
+}
 
 impl PosSeed {
     /// Size of proof of space seed in bytes.
-    pub const SIZE: usize = POS_SEED_SIZE;
+    pub const SIZE: usize = 32;
 }
-
-/// Size of proof of space quality in bytes.
-const POS_QUALITY_SIZE: usize = 32;
 
 /// Proof of space quality.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosQualityBytes(pub [u8; POS_QUALITY_SIZE]);
+pub struct PosQualityBytes([u8; Self::SIZE]);
+
+impl const From<[u8; PosQualityBytes::SIZE]> for PosQualityBytes {
+    fn from(value: [u8; Self::SIZE]) -> Self {
+        Self(value)
+    }
+}
+
+impl const From<PosQualityBytes> for [u8; PosQualityBytes::SIZE] {
+    fn from(value: PosQualityBytes) -> Self {
+        value.0
+    }
+}
 
 impl PosQualityBytes {
     /// Size of proof of space quality in bytes.
-    pub const SIZE: usize = POS_QUALITY_SIZE;
-
-    /// Quality hash.
-    pub fn hash(&self) -> Blake2b256Hash {
-        blake2b_256_hash(&self.0)
-    }
+    pub const SIZE: usize = 32;
 }
 
 /// Proof of space proof bytes.
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    From,
-    Into,
-    Deref,
-    DerefMut,
-    Encode,
-    Decode,
-    TypeInfo,
-    MaxEncodedLen,
+    Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,
 )]
-pub struct PosProof([u8; PosProof::SIZE]);
+pub struct PosProof([u8; Self::SIZE]);
+
+impl const From<[u8; PosProof::SIZE]> for PosProof {
+    fn from(value: [u8; Self::SIZE]) -> Self {
+        Self(value)
+    }
+}
+
+impl const From<PosProof> for [u8; PosProof::SIZE] {
+    fn from(value: PosProof) -> Self {
+        value.0
+    }
+}
 
 impl Default for PosProof {
     fn default() -> Self {
@@ -451,11 +464,7 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
     }
 }
 
-impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress>
-where
-    PublicKey: Clone,
-    RewardAddress: Clone,
-{
+impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
     /// Dummy solution for the genesis block
     pub fn genesis_solution(public_key: PublicKey, reward_address: RewardAddress) -> Self {
         Self {
