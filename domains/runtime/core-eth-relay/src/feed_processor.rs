@@ -127,8 +127,8 @@ impl FeedProcessor<FeedId> for EthereumFeedProcessorImpl {
         // We are adding one to account for byte pushed at encoding to identify
         // `Option` enum variant.
         let maybe_header_update_offset = u32::try_from(
-            feed_data.sync_committee_update.size_hint()
-                + feed_data.finalized_header_update.size_hint()
+            feed_data.sync_committee_update.encoded_size()
+                + feed_data.finalized_header_update.encoded_size()
                 + 1,
         );
 
