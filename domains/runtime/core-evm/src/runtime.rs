@@ -1,6 +1,6 @@
 use crate::precompiles::FrontierPrecompiles;
 use codec::{Decode, Encode};
-pub use domain_runtime_primitives::{Balance, BlockNumber, Hash, Index, RelayerId};
+pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
 use fp_evm::weight_per_gas;
 use frame_support::dispatch::DispatchClass;
@@ -8,7 +8,7 @@ use frame_support::traits::{ConstU16, ConstU32, Everything, FindAuthor, UnixTime
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
 };
-use frame_support::weights::Weight;
+use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_ethereum::Call::transact;
@@ -16,9 +16,15 @@ use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, Transa
 use pallet_evm::{
     Account as EVMAccount, EnsureAccountId20, FeeCalculator, IdentityAddressMapping, Runner,
 };
+use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
+use sp_domains::DomainId;
+use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
+use sp_messenger::messages::{
+    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable, IdentifyAccount,
     PostDispatchInfoOf, UniqueSaturatedInto, Verify,
@@ -30,12 +36,13 @@ use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 use sp_std::time::Duration;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::SHANNON;
+use subspace_runtime_primitives::{SHANNON, SSC};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -43,6 +50,9 @@ pub type Signature = EthereumSignature;
 /// Some way of identifying an account on the chain. We intentionally make it equivalent
 /// to the public key of our transaction signing scheme.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
+
+/// The type we use to represent relayer id. This is same as account Id.
+pub type RelayerId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
@@ -77,20 +87,6 @@ pub type UncheckedExtrinsic =
 /// Extrinsic type that has already been checked.
 pub type CheckedExtrinsic =
     fp_self_contained::CheckedExtrinsic<AccountId, RuntimeCall, SignedExtra, H160>;
-
-pub mod opaque {
-    use domain_runtime_primitives::BlockNumber;
-    use sp_runtime::generic;
-    use sp_runtime::traits::BlakeTwo256;
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
-
-    /// Opaque block header type.
-    pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
-    /// Opaque block type.
-    pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-    /// Opaque block identifier type.
-    pub type BlockId = generic::BlockId<Block>;
-}
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = domain_pallet_executive::Executive<
@@ -254,7 +250,7 @@ impl frame_system::Config for Runtime {
     /// The hashing algorithm used.
     type Hashing = BlakeTwo256;
     /// The header type.
-    type Header = generic::Header<BlockNumber, BlakeTwo256>;
+    type Header = Header;
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
     /// The ubiquitous origin type.
@@ -312,6 +308,20 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
+parameter_types! {
+    pub const TransactionByteFee: Balance = 1;
+    pub const OperationalFeeMultiplier: u8 = 5;
+}
+
+impl pallet_transaction_payment::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type OnChargeTransaction = pallet_transaction_payment::CurrencyAdapter<Balances, ()>;
+    type WeightToFee = IdentityFee<Balance>;
+    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    type FeeMultiplierUpdate = ();
+    type OperationalFeeMultiplier = OperationalFeeMultiplier;
+}
+
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
@@ -320,6 +330,58 @@ impl domain_pallet_executive::Config for Runtime {
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
+}
+
+parameter_types! {
+    pub const StateRootsBound: u32 = 50;
+    pub const RelayConfirmationDepth: BlockNumber = 7;
+}
+
+parameter_types! {
+    pub const MaximumRelayers: u32 = 100;
+    pub const RelayerDeposit: Balance = 100 * SSC;
+    pub const CorePaymentsDomainId: DomainId = DomainId::CORE_PAYMENTS;
+}
+
+impl pallet_messenger::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = CorePaymentsDomainId;
+
+    fn get_endpoint_response_handler(
+        endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>::default())))
+        } else {
+            None
+        }
+    }
+
+    type Currency = Balances;
+    type MaximumRelayers = MaximumRelayers;
+    type RelayerDeposit = RelayerDeposit;
+    type DomainInfo = ();
+    type ConfirmationDepth = RelayConfirmationDepth;
+}
+
+impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    type Extrinsic = UncheckedExtrinsic;
+    type OverarchingCall = RuntimeCall;
+}
+
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = CorePaymentsDomainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
 }
 
 impl pallet_evm_chain_id::Config for Runtime {}
@@ -433,8 +495,14 @@ construct_runtime!(
         System: frame_system = 0,
         ExecutivePallet: domain_pallet_executive = 1,
 
+        // messenger stuff
+        // Note: Indexes should match the indexes of the System domain runtime
+        Messenger: pallet_messenger = 6,
+        Transporter: pallet_transporter = 7,
+
         // monetary stuff
         Balances: pallet_balances = 25,
+        TransactionPayment: pallet_transaction_payment = 26,
 
         // evm stuff
         Ethereum: pallet_ethereum = 50,
@@ -557,6 +625,27 @@ impl_runtime_apis! {
         }
     }
 
+    impl pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance> for Runtime {
+        fn query_info(
+            uxt: <Block as BlockT>::Extrinsic,
+            len: u32,
+        ) -> pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo<Balance> {
+            TransactionPayment::query_info(uxt, len)
+        }
+        fn query_fee_details(
+            uxt: <Block as BlockT>::Extrinsic,
+            len: u32,
+        ) -> pallet_transaction_payment::FeeDetails<Balance> {
+            TransactionPayment::query_fee_details(uxt, len)
+        }
+        fn query_weight_to_fee(weight: Weight) -> Balance {
+            TransactionPayment::weight_to_fee(weight)
+        }
+        fn query_length_to_fee(length: u32) -> Balance {
+            TransactionPayment::length_to_fee(length)
+        }
+    }
+
     impl domain_runtime_primitives::DomainCoreApi<Block, AccountId> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
@@ -589,6 +678,56 @@ impl_runtime_apis! {
                     weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
+        }
+    }
+
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, RelayerId, BlockNumber> for Runtime {
+        fn domain_id() -> DomainId {
+            CorePaymentsDomainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
+            None
+        }
+
+        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+            None
+        }
+
+        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey {
+            Messenger::relayer_assigned_messages(relayer_id)
+        }
+
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::outbox_message_unsigned(msg)
+        }
+
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_domain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
         }
     }
 
@@ -793,5 +932,23 @@ impl_runtime_apis! {
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
         }
+    }
+}
+
+fn extract_xdm_proof_state_roots(
+    encoded_ext: Vec<u8>,
+) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
+        match &ext.0.function {
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            _ => None,
+        }
+    } else {
+        None
     }
 }
