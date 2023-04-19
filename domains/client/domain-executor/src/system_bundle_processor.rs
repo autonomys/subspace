@@ -4,7 +4,7 @@ use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
-use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -18,7 +18,10 @@ use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E> {
+pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+where
+    Block: BlockT,
+{
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
@@ -30,6 +33,8 @@ pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend,
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+where
+    Block: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -50,8 +55,12 @@ where
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>>,
     PBlock::Hash: From<Block::Hash>,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + Finalizer<Block, Backend>
+        + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>

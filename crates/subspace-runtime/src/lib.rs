@@ -719,6 +719,10 @@ impl_runtime_apis! {
         fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
             Receipts::primary_hash(domain_id, domain_block_number)
         }
+
+        fn receipts_pruning_depth() -> BlockNumber {
+            ReceiptsPruningDepth::get()
+        }
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {

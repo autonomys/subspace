@@ -40,5 +40,8 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
             domain_block_number: NumberFor<Block>,
         ) -> Option<Block::Hash>;
+
+        /// Returns the receipts pruning depth.
+        fn receipts_pruning_depth() -> NumberFor<Block>;
     }
 }

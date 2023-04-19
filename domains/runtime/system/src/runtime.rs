@@ -563,6 +563,10 @@ impl_runtime_apis! {
         fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
             Receipts::primary_hash(domain_id, domain_block_number)
         }
+
+        fn receipts_pruning_depth() -> BlockNumber {
+            ReceiptsPruningDepth::get()
+        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {

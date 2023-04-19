@@ -296,7 +296,7 @@ pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi,
 >
 where
     PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
+    NumberFor<PBlock>: From<NumberFor<Block>> + Into<u32>,
     PBlock::Hash: From<Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -306,7 +306,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash> + ReceiptsApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
@@ -403,6 +403,12 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream", 100);
 
+    let domain_confirmation_depth = primary_chain_client
+        .runtime_api()
+        .receipts_pruning_depth(primary_chain_client.info().best_hash)
+        .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
+        .into();
+
     let executor = SystemExecutor::new(
         Box::new(task_manager.spawn_essential_handle()),
         select_chain,
@@ -418,6 +424,7 @@ where
             spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
+            domain_confirmation_depth,
         },
     )
     .await?;

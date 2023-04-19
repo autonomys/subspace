@@ -4,7 +4,7 @@ use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::{AccountId, DomainCoreApi};
-use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
@@ -15,7 +15,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, ExecutorApi};
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -30,17 +30,23 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E> {
+pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
+where
+    Block: BlockT,
+{
     domain_id: DomainId,
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+    domain_confirmation_depth: NumberFor<Block>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>
+where
+    Block: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -50,6 +56,7 @@ impl<Block, PBlock, Client, PClient, Backend, E> Clone
             primary_network_sync_oracle: self.primary_network_sync_oracle.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
+            domain_confirmation_depth: self.domain_confirmation_depth,
         }
     }
 }
@@ -73,8 +80,12 @@ impl<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + Finalizer<Block, Backend>
+        + 'static,
     Client::Api: DomainCoreApi<Block, AccountId>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
@@ -100,6 +111,7 @@ where
         primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
         backend: Arc<Backend>,
         fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+        domain_confirmation_depth: NumberFor<Block>,
     ) -> Self {
         Self {
             domain_id,
@@ -108,6 +120,7 @@ where
             primary_network_sync_oracle,
             backend,
             fraud_proof_generator,
+            domain_confirmation_depth,
         }
     }
 
@@ -234,6 +247,22 @@ where
             "Built new domain block #{header_number},{header_hash} from primary block #{primary_number},{primary_hash} \
             on top of parent block #{header_number},{header_hash}"
         );
+
+        if let Some(to_finalize_block_number) =
+            header_number.checked_sub(&self.domain_confirmation_depth)
+        {
+            let to_finalize_block_hash =
+                self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Header for #{to_finalize_block_number} not found"
+                    ))
+                })?;
+            self.client
+                .finalize_block(to_finalize_block_hash, None, true)?;
+            tracing::debug!(
+                "Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}"
+            );
+        }
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
 
