@@ -15,7 +15,6 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.68"
 futures = "0.3.28"
 schnorrkel = "0.9.1"
 sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }

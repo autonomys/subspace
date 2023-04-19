@@ -10,14 +10,9 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{
-    Piece, PublicKey, RecordedHistorySegment, SegmentIndex, PLOT_SECTOR_SIZE,
-};
+use subspace_core_primitives::{PublicKey, RecordedHistorySegment, SegmentIndex, PLOT_SECTOR_SIZE};
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::FarmerProtocolInfo;
-use utils::BenchPieceGetter;
-
-mod utils;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::default();
@@ -27,23 +22,20 @@ fn criterion_benchmark(c: &mut Criterion) {
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
-    let piece = Piece::from(
-        &archiver
-            .add_block(
-                AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
-                Default::default(),
-            )
-            .into_iter()
-            .next()
-            .unwrap()
-            .pieces[0],
-    );
+    let archived_history_segment = archiver
+        .add_block(
+            AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
+            Default::default(),
+        )
+        .into_iter()
+        .next()
+        .unwrap()
+        .pieces;
 
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces: NonZeroU64::new(1).unwrap(),
         sector_expiration: SegmentIndex::ONE,
     };
-    let piece_getter = BenchPieceGetter::new(piece);
 
     let mut group = c.benchmark_group("sector-plotting");
     group.throughput(Throughput::Bytes(PLOT_SECTOR_SIZE));
@@ -52,7 +44,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             block_on(plot_sector(
                 black_box(&public_key),
                 black_box(sector_index),
-                black_box(&piece_getter),
+                black_box(&archived_history_segment),
                 black_box(PieceGetterRetryPolicy::default()),
                 black_box(&farmer_protocol_info),
                 black_box(&kzg),
@@ -76,7 +68,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     block_on(plot_sector(
                         black_box(&public_key),
                         black_box(sector_index),
-                        black_box(&piece_getter),
+                        black_box(&archived_history_segment),
                         black_box(PieceGetterRetryPolicy::default()),
                         black_box(&farmer_protocol_info),
                         black_box(&kzg),

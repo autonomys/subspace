@@ -3,7 +3,6 @@ use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
     NumberOf, Storage, StorageBound,
 };
-use async_trait::async_trait;
 use codec::{Decode, Encode};
 use frame_support::{assert_err, assert_ok};
 use futures::executor::block_on;
@@ -21,7 +20,6 @@ use sp_runtime::app_crypto::UncheckedFrom;
 use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
-use std::error::Error;
 use std::io::Cursor;
 use std::num::NonZeroU64;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
@@ -29,11 +27,11 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::sector_codec::SectorCodec;
 use subspace_core_primitives::{
-    LegacySectorId, Piece, PieceIndex, PublicKey, Randomness, RecordedHistorySegment,
-    SegmentCommitment, SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
+    LegacySectorId, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange, PLOT_SECTOR_SIZE,
 };
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
 use subspace_verification::{derive_audit_chunk, derive_randomness};
@@ -95,7 +93,6 @@ impl Farmer {
         let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
         let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
         let sector_index = 0;
-        let piece_getter = TestPieceGetter { archived_segment };
         let public_key = PublicKey::from(keypair.public.to_bytes());
         let farmer_protocol_info = FarmerProtocolInfo {
             total_pieces,
@@ -106,7 +103,7 @@ impl Farmer {
         block_on(plot_sector(
             &public_key,
             sector_index,
-            &piece_getter,
+            &archived_segment.pieces,
             PieceGetterRetryPolicy::default(),
             &farmer_protocol_info,
             &kzg,
@@ -132,26 +129,6 @@ struct ValidHeaderParams<'a> {
     keypair: &'a Keypair,
     randomness: Randomness,
     farmer: &'a Farmer,
-}
-
-struct TestPieceGetter {
-    archived_segment: NewArchivedSegment,
-}
-
-#[async_trait]
-impl PieceGetter for TestPieceGetter {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-        _: PieceGetterRetryPolicy,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(self
-            .archived_segment
-            .pieces
-            .iter()
-            .nth(u64::from(piece_index) as usize)
-            .map(Piece::from))
-    }
 }
 
 fn valid_header(
