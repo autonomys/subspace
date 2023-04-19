@@ -309,7 +309,7 @@ where
         NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
         SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-        SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
+        SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>,
     {
         let core_domain_id = Self::domain_id(core_domain_client)?;
         let core_domain_block_header = core_domain_client.expect_header(confirmed_block_hash)?;

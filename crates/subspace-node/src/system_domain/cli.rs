@@ -16,6 +16,7 @@
 
 use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
+use domain_runtime_primitives::AccountId;
 use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -25,8 +26,7 @@ use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use serde_json::Value;
-use sp_core::bytes::from_hex;
-use sp_core::ByteArray;
+use sp_core::crypto::Ss58Codec;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
@@ -106,17 +106,15 @@ impl SystemDomainCli {
     pub fn create_domain_configuration(
         &self,
         tokio_handle: tokio::runtime::Handle,
-    ) -> sc_cli::Result<DomainConfiguration> {
+    ) -> sc_cli::Result<DomainConfiguration<AccountId>> {
         // if is dev, use the known key ring to start relayer
         let maybe_relayer_id = if self.shared_params().is_dev() && self.run.relayer_id.is_none() {
             self.run
                 .run_system
                 .get_keyring()
-                .map(|kr| kr.to_account_id().to_raw_vec())
+                .map(|kr| kr.to_account_id())
         } else if let Some(relayer_id) = self.run.relayer_id.clone() {
-            from_hex(&relayer_id)
-                .map(Some)
-                .map_err(|err| sc_cli::Error::Input(format!("Invalid Relayer Id: {err}")))?
+            Some(AccountId::from_ss58check(&relayer_id).map_err(sc_cli::Error::InvalidUri)?)
         } else {
             None
         };

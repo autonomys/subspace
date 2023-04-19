@@ -10900,6 +10900,7 @@ dependencies = [
  "bytesize",
  "clap 4.2.2",
  "core-eth-relay-runtime",
+ "core-evm-runtime",
  "core-payments-domain-runtime",
  "cross-domain-message-gossip",
  "dirs",

@@ -29,7 +29,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_core::{ByteArray, Encode};
+use sp_core::Encode;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
@@ -278,7 +278,7 @@ where
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi, ExecutorDispatch>(
-    mut system_domain_config: DomainConfiguration,
+    mut system_domain_config: DomainConfiguration<AccountId>,
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     select_chain: &SC,
@@ -450,8 +450,6 @@ where
     );
 
     if let Some(relayer_id) = system_domain_config.maybe_relayer_id {
-        let relayer_id = AccountId::from_slice(&relayer_id)
-            .map_err(|_err| sc_service::Error::Other("Invalid AccountId".into()))?;
         tracing::info!(
             "Starting system domain relayer with relayer_id[{:?}]",
             relayer_id

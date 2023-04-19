@@ -16,6 +16,7 @@
 
 //! Subspace node implementation.
 
+use core_evm_runtime::AccountId as AccountId20;
 use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
 use domain_client_executor::ExecutorStreams;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -36,7 +37,10 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
 use std::any::TypeId;
 use std::collections::BTreeMap;
-use subspace_node::{Cli, ExecutorDispatch, Subcommand, SystemDomainCli};
+use subspace_node::{
+    AccountId32ToAccountId20Converter, AccountIdentityConverter, Cli, ExecutorDispatch, Subcommand,
+    SystemDomainCli,
+};
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
@@ -92,6 +96,24 @@ impl NativeExecutionDispatch for CoreEthRelayDomainExecutorDispatch {
 
     fn native_version() -> sc_executor::NativeVersion {
         core_eth_relay_runtime::native_version()
+    }
+}
+
+/// Core evm domain executor instance.
+pub struct CoreEVMDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for crate::CoreEVMDomainExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_evm_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_evm_runtime::native_version()
     }
 }
 
@@ -448,7 +470,7 @@ fn main() -> Result<(), Error> {
                             subspace_networking::libp2p::identity::Keypair::from_protobuf_encoding(
                                 &encoded_keypair,
                             )
-                            .expect("Keypair-from-protobuf decoding should succeed.");
+                                .expect("Keypair-from-protobuf decoding should succeed.");
 
                         DsnConfig {
                             keypair,
@@ -491,11 +513,11 @@ fn main() -> Result<(), Error> {
                         RuntimeApi,
                         ExecutorDispatch,
                     >(&primary_chain_config)
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to build a full subspace node: {error:?}"
-                        ))
-                    })?;
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to build a full subspace node: {error:?}"
+                            ))
+                        })?;
 
                     subspace_service::new_full(
                         primary_chain_config,
@@ -503,12 +525,12 @@ fn main() -> Result<(), Error> {
                         true,
                         SlotProportion::new(2f32 / 3f32),
                     )
-                    .await
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to build a full subspace node: {error:?}"
-                        ))
-                    })?
+                        .await
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to build a full subspace node: {error:?}"
+                            ))
+                        })?
                 };
 
                 StorageMonitorService::try_spawn(
@@ -516,9 +538,9 @@ fn main() -> Result<(), Error> {
                     database_source,
                     &primary_chain_node.task_manager.spawn_essential_handle(),
                 )
-                .map_err(|error| {
-                    sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
-                })?;
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
+                    })?;
 
                 // Run an executor node, an optional component of Subspace full node.
                 if !cli.domain_args.is_empty() {
@@ -601,7 +623,7 @@ fn main() -> Result<(), Error> {
                         executor_streams,
                         gossip_msg_sink.clone(),
                     )
-                    .await?;
+                        .await?;
 
                     let mut domain_tx_pool_sinks = BTreeMap::new();
                     domain_tx_pool_sinks.insert(DomainId::SYSTEM, system_domain_node.tx_pool_sink);
@@ -617,18 +639,10 @@ fn main() -> Result<(), Error> {
                         );
                         let _enter = span.enter();
 
-                        let core_domain_config = core_domain_cli
-                            .create_domain_configuration(tokio_handle)
-                            .map_err(|error| {
-                                sc_service::Error::Other(format!(
-                                    "Failed to create core domain configuration: {error:?}"
-                                ))
-                            })?;
-
                         let executor_streams = ExecutorStreams {
                             primary_block_import_throttling_buffer_size,
                             block_importing_notification_stream:
-                                block_importing_notification_stream(),
+                            block_importing_notification_stream(),
                             imported_block_notification_stream: primary_chain_node
                                 .client
                                 .every_import_notification_stream(),
@@ -636,20 +650,32 @@ fn main() -> Result<(), Error> {
                             _phantom: Default::default(),
                         };
 
-                        let core_domain_params = domain_service::CoreDomainParams {
-                            domain_id: core_domain_cli.domain_id,
-                            core_domain_config,
-                            system_domain_client: system_domain_node.client.clone(),
-                            system_domain_sync_service: system_domain_node.sync_service.clone(),
-                            primary_chain_client: primary_chain_node.client.clone(),
-                            primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
-                            select_chain: primary_chain_node.select_chain.clone(),
-                            executor_streams,
-                            gossip_message_sink: gossip_msg_sink,
-                        };
-
                         match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
+                                let core_domain_config = core_domain_cli
+                                    .create_domain_configuration::<_, AccountIdentityConverter>(tokio_handle)
+                                    .map_err(|error| {
+                                        sc_service::Error::Other(format!(
+                                            "Failed to create core domain configuration: {error:?}"
+                                        ))
+                                    })?;
+
+                                let core_domain_params = domain_service::CoreDomainParams {
+                                    domain_id: core_domain_cli.domain_id,
+                                    core_domain_config,
+                                    system_domain_client: system_domain_node.client.clone(),
+                                    system_domain_sync_service: system_domain_node
+                                        .sync_service
+                                        .clone(),
+                                    primary_chain_client: primary_chain_node.client.clone(),
+                                    primary_network_sync_oracle: primary_chain_node
+                                        .sync_service
+                                        .clone(),
+                                    select_chain: primary_chain_node.select_chain.clone(),
+                                    executor_streams,
+                                    gossip_message_sink: gossip_msg_sink,
+                                };
+
                                 let core_domain_node =
                                     domain_service::new_full_core::<
                                         DomainBlock,
@@ -665,7 +691,7 @@ fn main() -> Result<(), Error> {
                                         CorePaymentsDomainExecutorDispatch,
                                         AccountId32,
                                     >(core_domain_params)
-                                    .await?;
+                                        .await?;
 
                                 domain_tx_pool_sinks.insert(
                                     core_domain_cli.domain_id,
@@ -678,6 +704,30 @@ fn main() -> Result<(), Error> {
                                 core_domain_node.network_starter.start_network();
                             }
                             DomainId::CORE_ETH_RELAY => {
+                                let core_domain_config = core_domain_cli
+                                    .create_domain_configuration::<_, AccountIdentityConverter>(tokio_handle)
+                                    .map_err(|error| {
+                                        sc_service::Error::Other(format!(
+                                            "Failed to create core domain configuration: {error:?}"
+                                        ))
+                                    })?;
+
+                                let core_domain_params = domain_service::CoreDomainParams {
+                                    domain_id: core_domain_cli.domain_id,
+                                    core_domain_config,
+                                    system_domain_client: system_domain_node.client.clone(),
+                                    system_domain_sync_service: system_domain_node
+                                        .sync_service
+                                        .clone(),
+                                    primary_chain_client: primary_chain_node.client.clone(),
+                                    primary_network_sync_oracle: primary_chain_node
+                                        .sync_service
+                                        .clone(),
+                                    select_chain: primary_chain_node.select_chain.clone(),
+                                    executor_streams,
+                                    gossip_message_sink: gossip_msg_sink,
+                                };
+
                                 let core_domain_node =
                                     domain_service::new_full_core::<
                                         DomainBlock,
@@ -693,7 +743,61 @@ fn main() -> Result<(), Error> {
                                         CoreEthRelayDomainExecutorDispatch,
                                         AccountId32,
                                     >(core_domain_params)
-                                    .await?;
+                                        .await?;
+
+                                domain_tx_pool_sinks.insert(
+                                    core_domain_cli.domain_id,
+                                    core_domain_node.tx_pool_sink,
+                                );
+                                primary_chain_node
+                                    .task_manager
+                                    .add_child(core_domain_node.task_manager);
+
+                                core_domain_node.network_starter.start_network();
+                            }
+                            DomainId::CORE_EVM => {
+                                let core_domain_config = core_domain_cli
+                                    .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
+                                        tokio_handle,
+                                    )
+                                    .map_err(|error| {
+                                        sc_service::Error::Other(format!(
+                                            "Failed to create core domain configuration: {error:?}"
+                                        ))
+                                    })?;
+
+                                let core_domain_params = domain_service::CoreDomainParams {
+                                    domain_id: core_domain_cli.domain_id,
+                                    core_domain_config,
+                                    system_domain_client: system_domain_node.client.clone(),
+                                    system_domain_sync_service: system_domain_node
+                                        .sync_service
+                                        .clone(),
+                                    primary_chain_client: primary_chain_node.client.clone(),
+                                    primary_network_sync_oracle: primary_chain_node
+                                        .sync_service
+                                        .clone(),
+                                    select_chain: primary_chain_node.select_chain.clone(),
+                                    executor_streams,
+                                    gossip_message_sink: gossip_msg_sink,
+                                };
+
+                                let core_domain_node =
+                                    domain_service::new_full_core::<
+                                        DomainBlock,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        _,
+                                        core_evm_runtime::RuntimeApi,
+                                        CoreEVMDomainExecutorDispatch,
+                                        AccountId20,
+                                    >(core_domain_params)
+                                        .await?;
 
                                 domain_tx_pool_sinks.insert(
                                     core_domain_cli.domain_id,

@@ -34,7 +34,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_core::{ByteArray, Encode};
+use sp_core::Encode;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
@@ -43,6 +43,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
+use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
@@ -245,13 +246,13 @@ where
     Ok(params)
 }
 
-pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>
+pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS, AccountId>
 where
     SBlock: BlockT,
     PBlock: BlockT,
 {
     pub domain_id: DomainId,
-    pub core_domain_config: DomainConfiguration,
+    pub core_domain_config: DomainConfiguration<AccountId>,
     pub system_domain_client: Arc<SClient>,
     pub system_domain_sync_service: Arc<SyncingService<SBlock>>,
     pub primary_chain_client: Arc<PClient>,
@@ -279,7 +280,17 @@ pub async fn new_full_core<
     ExecutorDispatch,
     AccountId,
 >(
-    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>,
+    core_domain_params: CoreDomainParams<
+        SBlock,
+        PBlock,
+        SClient,
+        PClient,
+        SC,
+        IBNS,
+        CIBNS,
+        NSNS,
+        AccountId,
+    >,
 ) -> sc_service::error::Result<
     NewFullCore<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
@@ -307,7 +318,7 @@ where
     SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
-        + RelayerApi<SBlock, AccountId, NumberFor<SBlock>>
+        + RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
         + ReceiptsApi<SBlock, <Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -344,7 +355,7 @@ where
         + Clone
         + Debug
         + Display
-        + ByteArray
+        + FromStr
         + Sync
         + Send
         + 'static,
@@ -483,8 +494,6 @@ where
     spawn_essential.spawn_essential_blocking("core-domain-gossip", None, Box::pin(executor_gossip));
 
     if let Some(relayer_id) = core_domain_config.maybe_relayer_id {
-        let relayer_id = AccountId::from_slice(&relayer_id)
-            .map_err(|_err| sc_service::Error::Other("Invalid RelayerId".into()))?;
         tracing::info!(
             "Starting core domain relayer with relayer_id[{:?}]",
             relayer_id
