@@ -451,7 +451,7 @@ where
 
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
 
-        let mut extrinsics = deduplicate_and_shuffle_extrinsics::<_, _>(
+        let mut extrinsics = deduplicate_and_shuffle_extrinsics(
             domain_hash,
             &self.runtime_api,
             extrinsics,

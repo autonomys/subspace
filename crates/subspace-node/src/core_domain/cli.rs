@@ -30,6 +30,7 @@ use sc_service::BasePath;
 use sp_core::crypto::AccountId32;
 use sp_core::{ByteArray, H160};
 use sp_domains::DomainId;
+use sp_runtime::traits::Convert;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
 use std::path::PathBuf;
@@ -71,24 +72,12 @@ pub struct CoreDomainCli {
     pub base_path: Option<PathBuf>,
 }
 
-pub trait ConvertAccounts<FromAccountId, ToAccountId> {
-    fn convert(acc: FromAccountId) -> ToAccountId;
-}
-
 pub struct AccountId32ToAccountId20Converter;
 
-impl ConvertAccounts<AccountId32, AccountId20> for AccountId32ToAccountId20Converter {
+impl Convert<AccountId32, AccountId20> for AccountId32ToAccountId20Converter {
     fn convert(acc: AccountId32) -> AccountId20 {
         // Using the full hex key, truncating to the first 20 bytes (the first 40 hex chars)
         H160::from_slice(&acc.as_slice()[0..20]).into()
-    }
-}
-
-pub struct AccountIdentityConverter;
-
-impl<T> ConvertAccounts<T, T> for AccountIdentityConverter {
-    fn convert(acc: T) -> T {
-        acc
     }
 }
 
@@ -129,7 +118,7 @@ impl CoreDomainCli {
         tokio_handle: tokio::runtime::Handle,
     ) -> sc_cli::Result<DomainConfiguration<AccountId>>
     where
-        CA: ConvertAccounts<AccountId32, AccountId>,
+        CA: Convert<AccountId32, AccountId>,
         AccountId: FromStr,
     {
         // if is dev, use the known key ring to start relayer

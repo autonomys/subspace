@@ -450,7 +450,7 @@ where
         .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
         .into();
 
-    let executor = CoreExecutor::<_, _, _, _, _, _, _, _, _>::new(
+    let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
         Box::new(task_manager.spawn_essential_handle()),

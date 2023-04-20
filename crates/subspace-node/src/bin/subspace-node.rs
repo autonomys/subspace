@@ -35,11 +35,11 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
+use sp_runtime::traits::Identity;
 use std::any::TypeId;
 use std::collections::BTreeMap;
 use subspace_node::{
-    AccountId32ToAccountId20Converter, AccountIdentityConverter, Cli, ExecutorDispatch, Subcommand,
-    SystemDomainCli,
+    AccountId32ToAccountId20Converter, Cli, ExecutorDispatch, Subcommand, SystemDomainCli,
 };
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
@@ -653,7 +653,7 @@ fn main() -> Result<(), Error> {
                         match core_domain_cli.domain_id {
                             DomainId::CORE_PAYMENTS => {
                                 let core_domain_config = core_domain_cli
-                                    .create_domain_configuration::<_, AccountIdentityConverter>(tokio_handle)
+                                    .create_domain_configuration::<_, Identity>(tokio_handle)
                                     .map_err(|error| {
                                         sc_service::Error::Other(format!(
                                             "Failed to create core domain configuration: {error:?}"
@@ -705,7 +705,7 @@ fn main() -> Result<(), Error> {
                             }
                             DomainId::CORE_ETH_RELAY => {
                                 let core_domain_config = core_domain_cli
-                                    .create_domain_configuration::<_, AccountIdentityConverter>(tokio_handle)
+                                    .create_domain_configuration::<_, Identity>(tokio_handle)
                                     .map_err(|error| {
                                         sc_service::Error::Other(format!(
                                             "Failed to create core domain configuration: {error:?}"
