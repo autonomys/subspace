@@ -21,7 +21,7 @@ use derive_more::{
     MulAssign, Sub, SubAssign,
 };
 use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use scale_info::TypeInfo;
 
@@ -765,7 +765,7 @@ impl FlatPieces {
     }
 }
 
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 impl FlatPieces {
     /// Parallel iterator over source pieces (even indices).
     pub fn par_source(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {

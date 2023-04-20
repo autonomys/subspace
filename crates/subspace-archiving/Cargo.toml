@@ -31,13 +31,13 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 
 [features]
 default = ["std"]
-rayon = [
+parallel = [
     "dep:rayon",
-    "subspace-core-primitives/rayon",
+    "subspace-core-primitives/parallel",
 ]
 std = [
     "parity-scale-codec/std",
-    "rayon",
+    "parallel",
     "serde",
     "subspace-core-primitives/std",
     "subspace-erasure-coding/std",

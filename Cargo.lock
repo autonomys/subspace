@@ -921,6 +921,7 @@ dependencies = [
  "libc",
  "once_cell",
  "rand 0.8.5",
+ "rayon",
  "sha2 0.10.6",
 ]
 

@@ -1,6 +1,6 @@
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use rand::{thread_rng, Rng};
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::assert_matches::assert_matches;
 use std::io::Write;
@@ -183,9 +183,9 @@ fn archiver() {
         compare_block_objects_to_piece_objects(block_objects, piece_objects);
     }
 
-    #[cfg(not(feature = "rayon"))]
+    #[cfg(not(feature = "parallel"))]
     let iter = first_archived_segment.pieces.iter().enumerate();
-    #[cfg(feature = "rayon")]
+    #[cfg(feature = "parallel")]
     let iter = first_archived_segment.pieces.par_iter().enumerate();
     let results = iter
         .map(|(position, piece)| {
@@ -300,9 +300,9 @@ fn archiver() {
             previous_segment_header_hash
         );
 
-        #[cfg(not(feature = "rayon"))]
+        #[cfg(not(feature = "parallel"))]
         let iter = archived_segment.pieces.iter().enumerate();
-        #[cfg(feature = "rayon")]
+        #[cfg(feature = "parallel")]
         let iter = archived_segment.pieces.par_iter().enumerate();
         let results = iter
             .map(|(position, piece)| {
@@ -358,9 +358,9 @@ fn archiver() {
         assert_eq!(last_archived_block.number, 3);
         assert_eq!(last_archived_block.partial_archived(), None);
 
-        #[cfg(not(feature = "rayon"))]
+        #[cfg(not(feature = "parallel"))]
         let iter = archived_segment.pieces.iter().enumerate();
-        #[cfg(feature = "rayon")]
+        #[cfg(feature = "parallel")]
         let iter = archived_segment.pieces.par_iter().enumerate();
         let results = iter
             .map(|(position, piece)| {

@@ -48,9 +48,14 @@ default = [
     "embedded-kzg-settings",
     "serde",
     "std",
+    "parallel",
 ]
 embedded-kzg-settings = []
-rayon = ["dep:rayon"]
+# Enables some APIs and internal parallelism for KZG
+parallel = [
+    "blst_from_scratch/parallel",
+    "dep:rayon",
+]
 serde = [
     "dep:serde",
     # TODO: `serde_arrays` doesn't support `no_std` right now: https://github.com/Kromey/serde_arrays/issues/8
