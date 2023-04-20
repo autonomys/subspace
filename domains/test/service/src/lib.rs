@@ -83,6 +83,17 @@ pub type Executor = domain_client_executor::SystemExecutor<
     CodeExecutor,
 >;
 
+type SystemGossipMessageValidator = domain_client_executor::SystemGossipMessageValidator<
+    Block,
+    PBlock,
+    Client,
+    subspace_test_client::Client,
+    FullPool<PBlock, subspace_test_client::Client, runtime::RuntimeApi, RuntimeExecutor>,
+    Backend,
+    CodeExecutor,
+    domain_client_executor::SystemDomainParentChain<subspace_test_client::Client, Block, PBlock>,
+>;
+
 /// Native executor instance.
 pub struct RuntimeExecutor;
 
@@ -120,6 +131,7 @@ async fn run_executor(
     Arc<SyncingService<Block>>,
     RpcHandlers,
     Executor,
+    SystemGossipMessageValidator,
 )> {
     let primary_chain_full_node = {
         let span = tracing::info_span!(
@@ -235,6 +247,7 @@ async fn run_executor(
         network_starter,
         rpc_handlers,
         executor,
+        gossip_message_validator,
         tx_pool_sink,
     } = system_domain_node;
 
@@ -269,6 +282,7 @@ async fn run_executor(
         sync_service,
         rpc_handlers,
         executor,
+        gossip_message_validator,
     ))
 }
 
@@ -286,6 +300,7 @@ async fn run_executor_with_mock_primary_node(
     Arc<SyncingService<Block>>,
     RpcHandlers,
     Executor,
+    SystemGossipMessageValidator,
 )> {
     let (gossip_msg_sink, gossip_msg_stream) =
         sc_utils::mpsc::tracing_unbounded("cross_domain_gossip_messages", 100);
@@ -334,6 +349,7 @@ async fn run_executor_with_mock_primary_node(
         network_starter,
         rpc_handlers,
         executor,
+        gossip_message_validator,
         tx_pool_sink,
     } = system_domain_node;
 
@@ -364,6 +380,7 @@ async fn run_executor_with_mock_primary_node(
         sync_service,
         rpc_handlers,
         executor,
+        gossip_message_validator,
     ))
 }
 
@@ -390,6 +407,8 @@ pub struct SystemDomainNode {
     pub rpc_handlers: RpcHandlers,
     /// System domain executor.
     pub executor: Executor,
+    /// System domain gossip message validator.
+    pub gossip_message_validator: SystemGossipMessageValidator,
 }
 
 /// A builder to create a [`SystemDomainNode`].
@@ -520,6 +539,7 @@ impl SystemDomainNodeBuilder {
             sync_service,
             rpc_handlers,
             executor,
+            gossip_message_validator,
         ) = run_executor(system_domain_config, primary_chain_config)
             .await
             .expect("could not start system domain node");
@@ -538,6 +558,7 @@ impl SystemDomainNodeBuilder {
             addr,
             rpc_handlers,
             executor,
+            gossip_message_validator,
         }
     }
 
@@ -567,6 +588,7 @@ impl SystemDomainNodeBuilder {
             sync_service,
             rpc_handlers,
             executor,
+            gossip_message_validator,
         ) = run_executor_with_mock_primary_node(system_domain_config, mock_primary_node)
             .await
             .expect("could not start system domain node");
@@ -585,6 +607,7 @@ impl SystemDomainNodeBuilder {
             addr,
             rpc_handlers,
             executor,
+            gossip_message_validator,
         }
     }
 }
