@@ -225,6 +225,10 @@ mod pallet {
         #[pallet::constant]
         type ExpectedVotesPerBlock: Get<u32>;
 
+        /// How many pieces one sector is supposed to contain (max)
+        #[pallet::constant]
+        type MaxPiecesInSector: Get<u16>;
+
         type ShouldAdjustSolutionRange: Get<bool>;
 
         /// Subspace requires periodic global randomness update.
@@ -1375,7 +1379,10 @@ fn check_vote<T: Config>(
         (&VerifySolutionParams {
             global_randomness: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
-            piece_check_params: Some(PieceCheckParams { segment_commitment }),
+            piece_check_params: Some(PieceCheckParams {
+                max_pieces_in_sector: T::MaxPiecesInSector::get(),
+                segment_commitment,
+            }),
         })
             .into(),
     ) {

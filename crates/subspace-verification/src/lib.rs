@@ -41,6 +41,14 @@ use subspace_proof_of_space::Table;
 pub enum Error {
     /// Piece verification failed
     #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
+    InvalidPieceOffset {
+        /// Index of the piece that failed verification
+        piece_offset: u16,
+        /// How many pieces one sector is supposed to contain (max)
+        max_pieces_in_sector: u16,
+    },
+    /// Piece verification failed
+    #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
     InvalidPiece,
     /// Solution is outside of challenge range
     #[cfg_attr(
@@ -65,9 +73,6 @@ pub enum Error {
     /// Invalid chunk witness
     #[cfg_attr(feature = "thiserror", error("Invalid chunk witness"))]
     InvalidChunkWitness,
-    /// Missing KZG instance
-    #[cfg_attr(feature = "thiserror", error("Missing KZG instance"))]
-    MissingKzgInstance,
 }
 
 /// Check the reward signature validity.
@@ -80,31 +85,6 @@ pub fn check_reward_signature(
     let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())?;
     let signature = schnorrkel::Signature::from_bytes(signature.as_ref())?;
     public_key.verify(reward_signing_context.bytes(hash), &signature)
-}
-
-/// Check piece validity.
-///
-/// If `segment_commitment` is `None`, piece validity check will be skipped.
-pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
-    kzg: &Kzg,
-    segment_commitment: &SegmentCommitment,
-    position: u32,
-    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
-) -> Result<(), Error>
-where
-    &'a FarmerPublicKey: Into<PublicKey>,
-{
-    if !archiver::is_record_commitment_hash_valid(
-        kzg,
-        &blake2b_256_254_hash_to_scalar(&solution.record_commitment.to_bytes()),
-        segment_commitment,
-        &solution.record_witness,
-        position,
-    ) {
-        return Err(Error::InvalidPiece);
-    }
-
-    Ok(())
 }
 
 /// Calculates solution distance for given parameters, is used as a primitive to check whether
@@ -146,6 +126,8 @@ pub fn is_within_solution_range(
 /// Parameters for checking piece validity
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct PieceCheckParams {
+    /// How many pieces one sector is supposed to contain (max)
+    pub max_pieces_in_sector: u16,
     /// Segment commitment of segment to which piece belongs
     pub segment_commitment: SegmentCommitment,
 }
@@ -287,13 +269,32 @@ where
 
     // TODO: Check if sector already expired once we have such notion
 
-    if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
+    if let Some(PieceCheckParams {
+        max_pieces_in_sector,
+        segment_commitment,
+    }) = piece_check_params
+    {
+        if u16::from(solution.piece_offset) >= *max_pieces_in_sector {
+            return Err(Error::InvalidPieceOffset {
+                piece_offset: u16::from(solution.piece_offset),
+                max_pieces_in_sector: *max_pieces_in_sector,
+            });
+        }
+
         let position = sector_id
             .derive_piece_index(solution.piece_offset, solution.history_size)
             .position();
 
         // Check that piece is part of the blockchain history
-        check_piece(kzg, segment_commitment, position, solution)?;
+        if !archiver::is_record_commitment_hash_valid(
+            kzg,
+            &blake2b_256_254_hash_to_scalar(&solution.record_commitment.to_bytes()),
+            segment_commitment,
+            &solution.record_witness,
+            position,
+        ) {
+            return Err(Error::InvalidPiece);
+        }
     }
 
     Ok(solution_distance)

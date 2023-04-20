@@ -509,6 +509,9 @@ sp_api::decl_runtime_apis! {
         /// Size of the blockchain history
         fn history_size() -> HistorySize;
 
+        /// How many pieces one sector is supposed to contain (max)
+        fn max_pieces_in_sector() -> u16;
+
         /// Get the segment commitment of records for specified segment index
         fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
 

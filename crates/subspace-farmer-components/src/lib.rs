@@ -38,6 +38,8 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 pub struct FarmerProtocolInfo {
     /// Size of the blockchain history
     pub history_size: HistorySize,
+    /// How many pieces one sector is supposed to contain (max)
+    pub max_pieces_in_sector: u16,
     /// Number of segments after which sector expires
     pub sector_expiration: SegmentIndex,
 }

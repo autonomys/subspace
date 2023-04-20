@@ -85,7 +85,8 @@ use subspace_core_primitives::{
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
-    calculate_block_weight, Error as VerificationPrimitiveError, VerifySolutionParams,
+    calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
+    VerifySolutionParams,
 };
 
 /// Information about new slot that just arrived
@@ -201,6 +202,16 @@ pub enum Error<Header: HeaderT> {
     #[error("Invalid chunk witness")]
     InvalidChunkWitness,
     /// Piece verification failed
+    #[error("Piece verification failed")]
+    InvalidPieceOffset {
+        /// Time slot
+        slot: Slot,
+        /// Index of the piece that failed verification
+        piece_offset: u16,
+        /// How many pieces one sector is supposed to contain (max)
+        max_pieces_in_sector: u16,
+    },
+    /// Piece verification failed
     #[error("Piece verification failed for slot {0}")]
     InvalidPiece(Slot),
     /// Parent block has no associated weight
@@ -263,6 +274,14 @@ where
                 Error::BadRewardSignature(block_hash)
             }
             VerificationError::VerificationError(slot, error) => match error {
+                VerificationPrimitiveError::InvalidPieceOffset {
+                    piece_offset,
+                    max_pieces_in_sector,
+                } => Error::InvalidPieceOffset {
+                    slot,
+                    piece_offset,
+                    max_pieces_in_sector,
+                },
                 VerificationPrimitiveError::InvalidPiece => Error::InvalidPiece(slot),
                 VerificationPrimitiveError::OutsideSolutionRange {
                     half_solution_range,
@@ -277,9 +296,6 @@ where
                     Error::InvalidAuditChunkOffset
                 }
                 VerificationPrimitiveError::InvalidChunkWitness => Error::InvalidChunkWitness,
-                VerificationPrimitiveError::MissingKzgInstance => {
-                    unreachable!("Implementation bug");
-                }
             },
         }
     }
@@ -940,7 +956,6 @@ where
             pre_digest.solution.piece_offset,
             pre_digest.solution.history_size,
         );
-        let position = piece_index.position();
         let segment_index = piece_index.segment_index();
 
         // This is not a very nice hack due to the fact that at the time first block is produced
@@ -971,12 +986,26 @@ where
             maybe_segment_commitment.ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
 
         // Piece is not checked during initial block verification because it requires access to
-        // segment header, check it now.
-        subspace_verification::check_piece(
-            &self.subspace_link.kzg,
-            &segment_commitment,
-            position,
+        // segment header and runtime, check it now.
+        subspace_verification::verify_solution::<PosTable, _, _>(
             &pre_digest.solution,
+            // Slot was already checked during initial block verification
+            pre_digest.slot.into(),
+            &VerifySolutionParams {
+                global_randomness: subspace_digest_items.global_randomness,
+                solution_range: subspace_digest_items.solution_range,
+                piece_check_params: Some(PieceCheckParams {
+                    // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
+                    //  should (though we don't support fast sync yet, so doesn't matter in
+                    //  practice)
+                    max_pieces_in_sector: self
+                        .client
+                        .runtime_api()
+                        .max_pieces_in_sector(parent_hash)?,
+                    segment_commitment,
+                }),
+            },
+            &self.subspace_link.kzg,
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 

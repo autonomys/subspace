@@ -73,7 +73,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange, PIECES_IN_SECTOR,
+    SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -85,6 +85,9 @@ sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
     }
 }
+
+/// How many pieces one sector is supposed to contain (max)
+const MAX_PIECES_IN_SECTOR: u16 = 1300;
 
 // To learn more about runtime versioning and what each of the following value means:
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
@@ -147,7 +150,7 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 // chunk of every piece.
 const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
     // Account for number of pieces plotted initially (assuming 1 sector)
-    / SolutionRange::from(PIECES_IN_SECTOR)
+    / SolutionRange::from(MAX_PIECES_IN_SECTOR)
     // Account for slot probability
     / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
     // Account for probability of hitting occupied s-bucket in sector (for one piece)
@@ -261,6 +264,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -651,6 +655,10 @@ impl_runtime_apis! {
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
         fn history_size() -> HistorySize {
             <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
         }
 
         fn slot_duration() -> Duration {

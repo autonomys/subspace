@@ -242,6 +242,7 @@ where
                 .ok()?;
             // TODO: This will be necessary for verifying sector expiration in the future
             let _history_size = runtime_api.history_size(parent_hash).ok()?;
+            let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with segment headers are not yet in runtime.
@@ -270,7 +271,10 @@ where
                 &VerifySolutionParams {
                     global_randomness,
                     solution_range: voting_solution_range,
-                    piece_check_params: Some(PieceCheckParams { segment_commitment }),
+                    piece_check_params: Some(PieceCheckParams {
+                        max_pieces_in_sector,
+                        segment_commitment,
+                    }),
                 },
                 &self.subspace_link.kzg,
             );

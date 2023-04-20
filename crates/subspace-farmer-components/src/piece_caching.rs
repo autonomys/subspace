@@ -2,10 +2,11 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndexHash, PIECES_IN_SECTOR};
+use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::trace;
 
-const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(usize::from(PIECES_IN_SECTOR))
+// TODO: Re-think this number
+const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(2000)
     .expect("Archived history segment contains at very least one piece; qed");
 
 #[derive(Clone)]

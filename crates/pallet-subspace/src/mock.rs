@@ -23,7 +23,7 @@ use crate::{
 };
 use frame_support::pallet_prelude::Weight;
 use frame_support::parameter_types;
-use frame_support::traits::{ConstU128, ConstU32, ConstU64, GenesisBuild, OnInitialize};
+use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, GenesisBuild, OnInitialize};
 use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;
@@ -58,6 +58,8 @@ type PosTable = ShimTable;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+const MAX_PIECES_IN_SECTOR: u16 = 1;
 
 frame_support::construct_runtime!(
     pub struct Test
@@ -172,13 +174,14 @@ impl Config for Test {
     type ExpectedBlockTime = ConstU64<1>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
+    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
-    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
 }
 
 pub fn go_to_block(
@@ -386,12 +389,13 @@ pub fn create_signed_vote(
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
-    let pieces_in_sector = 1;
-    let sector_size = sector_size(pieces_in_sector);
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(SegmentIndex::ZERO),
+        max_pieces_in_sector: MAX_PIECES_IN_SECTOR,
         sector_expiration: SegmentIndex::ONE,
     };
+    let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
+    let sector_size = sector_size(pieces_in_sector);
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = Vec::with_capacity(sector_size);

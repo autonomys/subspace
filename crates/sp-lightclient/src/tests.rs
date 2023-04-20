@@ -90,6 +90,7 @@ impl FarmerParameters {
         let archived_segment = archived_segment(kzg.clone());
         let farmer_protocol_info = FarmerProtocolInfo {
             history_size: HistorySize::from(SegmentIndex::ZERO),
+            max_pieces_in_sector: 1,
             sector_expiration: SegmentIndex::ONE,
         };
 
@@ -139,7 +140,7 @@ fn valid_header(
         .segment_commitment();
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
-    let pieces_in_sector = 1;
+    let pieces_in_sector = farmer_parameters.farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {

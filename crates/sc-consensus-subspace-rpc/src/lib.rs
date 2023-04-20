@@ -206,6 +206,7 @@ where
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
             let protocol_info = FarmerProtocolInfo {
                 history_size: runtime_api.history_size(best_hash)?,
+                max_pieces_in_sector: runtime_api.max_pieces_in_sector(best_hash)?,
                 // TODO: Fetch this from the runtime
                 sector_expiration: SegmentIndex::from(100),
             };

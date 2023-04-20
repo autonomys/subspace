@@ -7,7 +7,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    HistorySize, PublicKey, Record, RecordedHistorySegment, SegmentIndex, PIECES_IN_SECTOR,
+    HistorySize, PublicKey, Record, RecordedHistorySegment, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
@@ -17,11 +17,13 @@ use subspace_proof_of_space::chia::ChiaTable;
 
 type PosTable = ChiaTable;
 
+const MAX_PIECES_IN_SECTOR: u16 = 1300;
+
 fn criterion_benchmark(c: &mut Criterion) {
     println!("Initializing...");
     let pieces_in_sector = env::var("PIECES_IN_SECTOR")
         .map(|base_path| base_path.parse().unwrap())
-        .unwrap_or_else(|_error| PIECES_IN_SECTOR);
+        .unwrap_or_else(|_error| MAX_PIECES_IN_SECTOR);
 
     let public_key = PublicKey::default();
     let sector_index = 0;
@@ -45,6 +47,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
+        max_pieces_in_sector: pieces_in_sector,
         sector_expiration: SegmentIndex::ONE,
     };
 

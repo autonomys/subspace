@@ -14,6 +14,9 @@ pub(crate) type PosTable = ShimTable;
 
 pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
+// Smaller value for testing purposes
+const MAX_PIECES_IN_SECTOR: u16 = 32;
+
 #[derive(Debug)]
 struct StorageData {
     constants: ChainConstants<Header>,
@@ -32,6 +35,7 @@ pub(crate) struct TestOverrides {
 
 #[derive(Debug)]
 pub(crate) struct MockStorage(StorageData);
+
 impl Storage<Header> for MockStorage {
     fn chain_constants(&self) -> ChainConstants<Header> {
         self.0.constants.clone()
@@ -129,6 +133,10 @@ impl Storage<Header> for MockStorage {
 
     fn number_of_segments(&self) -> u64 {
         self.0.segment_commitments.len() as u64
+    }
+
+    fn max_pieces_in_sector(&self) -> u16 {
+        MAX_PIECES_IN_SECTOR
     }
 }
 

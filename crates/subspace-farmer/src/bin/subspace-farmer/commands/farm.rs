@@ -15,9 +15,11 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PieceIndexHash, PieceOffset, Record, PIECES_IN_SECTOR};
+use subspace_core_primitives::{PieceIndexHash, PieceOffset, Record};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_farmer::single_disk_plot::{
+    SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
+};
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
@@ -25,14 +27,13 @@ use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces}
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
-use subspace_farmer_components::sector::sector_size;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::online_status_informer;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
@@ -59,6 +60,7 @@ where
         node_rpc_url,
         reward_address,
         plot_size: _,
+        max_pieces_in_sector,
         disk_concurrency,
         disable_farming,
         mut dsn,
@@ -76,6 +78,11 @@ where
 
     let piece_memory_cache = PieceMemoryCache::default();
 
+    let farmer_app_info = node_client
+        .farmer_app_info()
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -87,13 +94,8 @@ where
         let identity = Identity::open_or_create(&directory).unwrap();
         let keypair = derive_libp2p_keypair(identity.secret_key());
 
-        let farmer_app_info = node_client
-            .farmer_app_info()
-            .await
-            .map_err(|error| anyhow::anyhow!(error))?;
-
         if dsn.bootstrap_nodes.is_empty() {
-            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes;
+            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
         }
 
         configure_dsn(
@@ -139,33 +141,36 @@ where
     ));
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
-    // TODO: Dynamic change for number of pieces is not supported yet
-    let pieces_in_sector = PIECES_IN_SECTOR;
-    let sector_size = sector_size(pieces_in_sector);
+    let max_pieces_in_sector = match max_pieces_in_sector {
+        Some(max_pieces_in_sector) => {
+            if max_pieces_in_sector > farmer_app_info.protocol_info.max_pieces_in_sector {
+                warn!(
+                    protocol_value = farmer_app_info.protocol_info.max_pieces_in_sector,
+                    desired_value = max_pieces_in_sector,
+                    "Can't set max pieces in sector higher than protocol value, using protocol \
+                    value"
+                );
+
+                farmer_app_info.protocol_info.max_pieces_in_sector
+            } else {
+                max_pieces_in_sector
+            }
+        }
+        None => farmer_app_info.protocol_info.max_pieces_in_sector,
+    };
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
-        let minimum_plot_size = get_required_plot_space_with_overhead(sector_size as u64);
-        let allocated_plotting_space_with_overhead =
-            get_required_plot_space_with_overhead(disk_farm.allocated_plotting_space);
-
-        if allocated_plotting_space_with_overhead < minimum_plot_size {
-            return Err(anyhow::anyhow!(
-                "Plot size is too low ({} bytes). Minimum is {}",
-                allocated_plotting_space_with_overhead,
-                minimum_plot_size
-            ));
-        }
-
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
         let single_disk_plot_fut = SingleDiskPlot::new::<_, _, PosTable>(
             SingleDiskPlotOptions {
                 directory: disk_farm.directory.clone(),
+                farmer_app_info: farmer_app_info.clone(),
                 allocated_space: disk_farm.allocated_plotting_space,
-                pieces_in_sector,
+                max_pieces_in_sector,
                 node_client,
                 reward_address,
                 kzg: kzg.clone(),
@@ -177,7 +182,26 @@ where
             disk_farm_index,
         );
 
-        let single_disk_plot = single_disk_plot_fut.await?;
+        let single_disk_plot = match single_disk_plot_fut.await {
+            Ok(single_disk_plot) => single_disk_plot,
+            Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                min_size,
+                allocated_space,
+            }) => {
+                let minimum_plot_size = get_required_plot_space_with_overhead(min_size as u64);
+                let allocated_plotting_space_with_overhead =
+                    get_required_plot_space_with_overhead(allocated_space);
+
+                return Err(anyhow::anyhow!(
+                    "Plot size is too low ({} bytes). Minimum is {}",
+                    allocated_plotting_space_with_overhead,
+                    minimum_plot_size
+                ));
+            }
+            Err(error) => {
+                return Err(error.into());
+            }
+        };
 
         if !farming_args.no_info {
             print_disk_farm_info(disk_farm.directory, disk_farm_index);

@@ -83,6 +83,9 @@ sp_runtime::impl_opaque_keys! {
     }
 }
 
+// Smaller value for testing purposes
+const MAX_PIECES_IN_SECTOR: u16 = 32;
+
 // To learn more about runtime versioning and what each of the following value means:
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
@@ -245,6 +248,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -1063,6 +1067,10 @@ impl_runtime_apis! {
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
         fn history_size() -> HistorySize {
             <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
         }
 
         fn slot_duration() -> Duration {

@@ -33,9 +33,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{
-    HistorySize, PublicKey, Record, SegmentIndex, Solution, PIECES_IN_SECTOR,
-};
+use subspace_core_primitives::{HistorySize, PublicKey, Record, SegmentIndex, Solution};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
@@ -48,6 +46,9 @@ use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_transaction_pool::bundle_validator::BundleValidator;
 use zeroize::Zeroizing;
+
+// Smaller value for testing purposes
+const MAX_PIECES_IN_SECTOR: u16 = 32;
 
 /// Subspace native executor instance.
 pub struct TestExecutorDispatch;
@@ -156,7 +157,7 @@ async fn start_farming<PosTable, Client>(
             let (sector, sector_metadata) = block_on(plot_one_segment::<PosTable, _>(
                 client.as_ref(),
                 &keypair,
-                PIECES_IN_SECTOR,
+                MAX_PIECES_IN_SECTOR,
                 &erasure_coding,
             ));
             plotting_result_sender
@@ -236,7 +237,7 @@ where
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size,
-        // TODO: This constant should come from the chain itself
+        max_pieces_in_sector: pieces_in_sector,
         sector_expiration: SegmentIndex::from(100),
     };
 

@@ -39,7 +39,7 @@ use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::{auditing, plotting, proving};
 use subspace_proof_of_space::Table;
-use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
+use subspace_rpc_primitives::{FarmerAppInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, OwnedSemaphorePermit};
@@ -129,6 +129,8 @@ pub enum SingleDiskPlotInfo {
         /// sector indexes or else they'll essentially plot the same data and will not result in
         /// increased probability of winning the reward.
         first_sector_index: SectorIndex,
+        /// How many pieces does one sector contain.
+        pieces_in_sector: u16,
         /// How much space in bytes is allocated for this plot
         allocated_space: u64,
     },
@@ -142,6 +144,7 @@ impl SingleDiskPlotInfo {
         genesis_hash: [u8; 32],
         public_key: PublicKey,
         first_sector_index: SectorIndex,
+        pieces_in_sector: u16,
         allocated_space: u64,
     ) -> Self {
         Self::V0 {
@@ -149,6 +152,7 @@ impl SingleDiskPlotInfo {
             genesis_hash,
             public_key,
             first_sector_index,
+            pieces_in_sector,
             allocated_space,
         }
     }
@@ -210,6 +214,14 @@ impl SingleDiskPlotInfo {
         *first_sector_index
     }
 
+    /// How many pieces does one sector contain.
+    pub fn pieces_in_sector(&self) -> u16 {
+        let Self::V0 {
+            pieces_in_sector, ..
+        } = self;
+        *pieces_in_sector
+    }
+
     /// How much space in bytes is allocated for this plot
     pub fn allocated_space(&self) -> u64 {
         let Self::V0 {
@@ -263,10 +275,12 @@ impl PlotMetadataHeader {
 pub struct SingleDiskPlotOptions<NC, PG> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
+    /// Information necessary for farmer application
+    pub farmer_app_info: FarmerAppInfo,
     /// How much space in bytes can plot use for plot
     pub allocated_space: u64,
-    /// How many pieces one sector is supposed to contain
-    pub pieces_in_sector: u16,
+    /// How many pieces one sector is supposed to contain (max)
+    pub max_pieces_in_sector: u16,
     /// RPC client connected to Subspace node
     pub node_client: NC,
     /// Address where farming rewards should go
@@ -330,6 +344,19 @@ pub enum SingleDiskPlotError {
         /// Current public key
         wrong_public_key: PublicKey,
     },
+    /// Invalid number pieces in sector
+    #[error(
+        "Invalid number pieces in sector: max supported {max_supported}, plot initialized with \
+        {initialized_with}"
+    )]
+    InvalidPiecesInSector {
+        /// Plot ID
+        id: SingleDiskPlotId,
+        /// Max supported pieces in sector
+        max_supported: u16,
+        /// Number of pieces in sector plot is initialized with
+        initialized_with: u16,
+    },
     /// Failed to decode metadata header
     #[error("Failed to decode metadata header: {0}")]
     FailedToDecodeMetadataHeader(parity_scale_codec::Error),
@@ -339,9 +366,6 @@ pub enum SingleDiskPlotError {
     /// Unexpected metadata version
     #[error("Unexpected metadata version {0}")]
     UnexpectedMetadataVersion(u8),
-    /// Node RPC error
-    #[error("Node RPC error: {0}")]
-    NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
     /// Allocated space is not enough for one sector
     #[error(
         "Allocated space is not enough for one sector. \
@@ -349,7 +373,9 @@ pub enum SingleDiskPlotError {
         you provided: {allocated_space}."
     )]
     InsufficientAllocatedSpace {
+        /// Minimal allocated space
         min_size: usize,
+        /// Current allocated space
         allocated_space: u64,
     },
 }
@@ -482,8 +508,9 @@ impl SingleDiskPlot {
 
         let SingleDiskPlotOptions {
             directory,
+            farmer_app_info,
             allocated_space,
-            pieces_in_sector,
+            max_pieces_in_sector,
             node_client,
             reward_address,
             piece_getter,
@@ -492,17 +519,6 @@ impl SingleDiskPlot {
             concurrent_plotting_semaphore,
             piece_memory_cache,
         } = options;
-        let sector_size = sector_size(pieces_in_sector);
-
-        // TODO: Account for plot overhead
-        let target_sector_count = (allocated_space / sector_size as u64) as usize;
-        if target_sector_count == 0 {
-            return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
-                min_size: sector_size,
-                allocated_space,
-            });
-        }
-
         fs::create_dir_all(&directory)?;
 
         // TODO: Parametrize concurrency, much higher default due to SSD focus
@@ -513,11 +529,6 @@ impl SingleDiskPlot {
         // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
-
-        let farmer_app_info = node_client
-            .farmer_app_info()
-            .await
-            .map_err(SingleDiskPlotError::NodeRpcError)?;
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
             Some(single_disk_plot_info) => {
@@ -545,9 +556,39 @@ impl SingleDiskPlot {
                     });
                 }
 
+                let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
+
+                if max_pieces_in_sector < pieces_in_sector {
+                    return Err(SingleDiskPlotError::InvalidPiecesInSector {
+                        id: *single_disk_plot_info.id(),
+                        max_supported: max_pieces_in_sector,
+                        initialized_with: pieces_in_sector,
+                    });
+                }
+
+                if max_pieces_in_sector > pieces_in_sector {
+                    info!(
+                        pieces_in_sector,
+                        max_pieces_in_sector,
+                        "Plot initialized with smaller number of pieces in sector, plot needs to \
+                        be re-created for increase"
+                    );
+                }
+
                 single_disk_plot_info
             }
             None => {
+                let sector_size = sector_size(max_pieces_in_sector);
+
+                // TODO: Account for plot overhead
+                let target_sector_count = (allocated_space / sector_size as u64) as usize;
+                if target_sector_count == 0 {
+                    return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                        min_size: sector_size,
+                        allocated_space,
+                    });
+                }
+
                 // TODO: Global generator that makes sure to avoid returning the same sector index
                 //  for multiple disks
                 let first_sector_index = SystemTime::UNIX_EPOCH
@@ -561,6 +602,7 @@ impl SingleDiskPlot {
                     farmer_app_info.genesis_hash,
                     public_key,
                     first_sector_index,
+                    max_pieces_in_sector,
                     allocated_space,
                 );
 
@@ -570,6 +612,10 @@ impl SingleDiskPlot {
             }
         };
 
+        let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
+        let sector_size = sector_size(max_pieces_in_sector);
+        let target_sector_count =
+            (single_disk_plot_info.allocated_space() / sector_size as u64) as usize;
         let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Consider file locking to prevent other apps from modifying it

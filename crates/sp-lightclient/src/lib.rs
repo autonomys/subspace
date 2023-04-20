@@ -213,6 +213,9 @@ pub trait Storage<Header: HeaderT> {
 
     /// Returns the stored segment count.
     fn number_of_segments(&self) -> u64;
+
+    /// How many pieces one sector is supposed to contain (max)
+    fn max_pieces_in_sector(&self) -> u16;
 }
 
 /// Error type that holds the current finalized number and the header number we are trying to import.
@@ -361,7 +364,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&VerifySolutionParams {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
-                piece_check_params: Some(PieceCheckParams { segment_commitment }),
+                piece_check_params: Some(PieceCheckParams {
+                    max_pieces_in_sector: self.store.max_pieces_in_sector(),
+                    segment_commitment,
+                }),
             })
                 .into(),
         )

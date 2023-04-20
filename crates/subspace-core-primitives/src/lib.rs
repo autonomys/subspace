@@ -66,10 +66,6 @@ const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-// TODO: This should become consensus parameter rather than a constant
-/// How many pieces we have in a sector
-pub const PIECES_IN_SECTOR: u16 = 1300;
-
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
