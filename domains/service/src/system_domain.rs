@@ -119,6 +119,8 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    pub gossip_message_validator:
+        SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
 }
@@ -508,7 +510,7 @@ where
         domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
             network: network_service.clone(),
             sync: sync_service.clone(),
-            executor: gossip_message_validator,
+            executor: gossip_message_validator.clone(),
             bundle_receiver,
         });
     spawn_essential.spawn_essential_blocking(
@@ -588,6 +590,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        gossip_message_validator,
         tx_pool_sink: msg_sender,
     };
 
