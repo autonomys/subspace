@@ -362,6 +362,7 @@ where
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
             warp_sync_params: None,
+			block_relay: None,
         })?;
 
     let rpc_builder = {
