@@ -720,7 +720,7 @@ where
             import_queue,
             block_announce_validator_builder: None,
             warp_sync_params: None,
-			block_relay: None,
+            block_relay: None,
         })?;
 
     let sync_oracle = sync_service.clone();
