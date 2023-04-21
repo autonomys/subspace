@@ -77,12 +77,14 @@ pub type StakeWeight = u128;
 pub struct DomainId(u32);
 
 impl From<u32> for DomainId {
+    #[inline]
     fn from(x: u32) -> Self {
         Self(x)
     }
 }
 
 impl From<DomainId> for u32 {
+    #[inline]
     fn from(domain_id: DomainId) -> Self {
         domain_id.0
     }

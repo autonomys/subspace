@@ -358,6 +358,7 @@ pub enum Error {
 
 #[cfg(feature = "std")]
 impl From<Error> for String {
+    #[inline]
     fn from(error: Error) -> String {
         error.to_string()
     }

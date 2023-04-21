@@ -55,6 +55,7 @@ impl<PBlock: BlockT, Block: BlockT>
     From<SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     for GossipMessage<PBlock, Block>
 {
+    #[inline]
     fn from(
         bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Self {

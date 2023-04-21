@@ -14,6 +14,7 @@ pub struct PieceMemoryCache {
     cache: Arc<Mutex<LruCache<PieceIndexHash, Piece>>>,
 }
 impl Default for PieceMemoryCache {
+    #[inline]
     fn default() -> Self {
         Self::new(CACHE_ITEMS_LIMIT)
     }

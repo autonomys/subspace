@@ -26,6 +26,7 @@ where
 }
 
 impl<R> Default for FrontierPrecompiles<R> {
+    #[inline]
     fn default() -> Self {
         Self(PhantomData::default())
     }

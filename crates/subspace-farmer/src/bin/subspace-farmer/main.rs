@@ -112,6 +112,7 @@ enum WriteToDisk {
 }
 
 impl Default for WriteToDisk {
+    #[inline]
     fn default() -> Self {
         Self::Everything
     }

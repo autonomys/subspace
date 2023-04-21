@@ -41,12 +41,14 @@ where
 pub struct HexPiece(#[serde(with = "hex::serde")] Vec<u8>);
 
 impl From<Piece> for HexPiece {
+    #[inline]
     fn from(piece: Piece) -> Self {
         HexPiece(piece.into())
     }
 }
 
 impl From<HexPiece> for Piece {
+    #[inline]
     fn from(piece: HexPiece) -> Self {
         piece
             .0
@@ -58,24 +60,28 @@ impl From<HexPiece> for Piece {
 
 impl Deref for HexPiece {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl DerefMut for HexPiece {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
 impl AsRef<[u8]> for HexPiece {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl AsMut<[u8]> for HexPiece {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
@@ -86,12 +92,14 @@ impl AsMut<[u8]> for HexPiece {
 pub struct HexBlake2b256Hash(#[serde(with = "hex::serde")] Blake2b256Hash);
 
 impl From<Blake2b256Hash> for HexBlake2b256Hash {
+    #[inline]
     fn from(hash: Blake2b256Hash) -> Self {
         HexBlake2b256Hash(hash)
     }
 }
 
 impl From<HexBlake2b256Hash> for Blake2b256Hash {
+    #[inline]
     fn from(piece: HexBlake2b256Hash) -> Self {
         piece.0
     }
@@ -99,24 +107,28 @@ impl From<HexBlake2b256Hash> for Blake2b256Hash {
 
 impl Deref for HexBlake2b256Hash {
     type Target = [u8];
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl DerefMut for HexBlake2b256Hash {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
 impl AsRef<[u8]> for HexBlake2b256Hash {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl AsMut<[u8]> for HexBlake2b256Hash {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }

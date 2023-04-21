@@ -78,6 +78,7 @@ impl SectorMetadata {
     /// Size of encoded sector metadata.
     ///
     /// For sector plot size use [`sector_size()`].
+    #[inline]
     pub fn encoded_size() -> usize {
         let default = SectorMetadata {
             sector_index: 0,
@@ -216,6 +217,7 @@ pub struct SectorContentsMap {
 }
 
 impl AsRef<[u8]> for SectorContentsMap {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         let slice = self.encoded_record_chunks_used.as_slice();
         // SAFETY: `BitArray` is a transparent data structure containing array of bytes

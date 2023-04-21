@@ -24,12 +24,14 @@ pub(super) struct IncrementalRecordCommitmentsState {
 impl Deref for IncrementalRecordCommitmentsState {
     type Target = Vec<Commitment>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.state
     }
 }
 
 impl DerefMut for IncrementalRecordCommitmentsState {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.state
     }

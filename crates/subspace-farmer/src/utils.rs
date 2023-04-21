@@ -42,6 +42,7 @@ impl JoinOnDrop {
 impl Deref for JoinOnDrop {
     type Target = thread::JoinHandle<()>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         self.0.as_ref().expect("Only dropped in Drop impl; qed")
     }

@@ -259,6 +259,7 @@ pub enum ImportError<Header: HeaderT> {
 }
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
+    #[inline]
     fn from(error: DigestError) -> Self {
         ImportError::DigestError(error)
     }

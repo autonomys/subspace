@@ -82,6 +82,7 @@ pub enum GetValueError {
 }
 
 impl From<oneshot::Canceled> for GetValueError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -98,6 +99,7 @@ pub enum PutValueError {
 }
 
 impl From<oneshot::Canceled> for PutValueError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -114,6 +116,7 @@ pub enum GetClosestPeersError {
 }
 
 impl From<oneshot::Canceled> for GetClosestPeersError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -140,6 +143,7 @@ pub enum SubscribeError {
 }
 
 impl From<oneshot::Canceled> for SubscribeError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -159,6 +163,7 @@ pub enum PublishError {
 }
 
 impl From<oneshot::Canceled> for PublishError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -178,6 +183,7 @@ pub enum GetProvidersError {
 }
 
 impl From<oneshot::Canceled> for GetProvidersError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -194,6 +200,7 @@ pub enum AnnounceError {
 }
 
 impl From<oneshot::Canceled> for AnnounceError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -213,6 +220,7 @@ pub enum StopAnnouncingError {
 }
 
 impl From<oneshot::Canceled> for StopAnnouncingError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -235,6 +243,7 @@ pub enum SendRequestError {
 }
 
 impl From<oneshot::Canceled> for SendRequestError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
@@ -251,6 +260,7 @@ pub enum CircuitRelayClientError {
 }
 
 impl From<oneshot::Canceled> for CircuitRelayClientError {
+    #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::FailedToRetrieveMemoryAddress
     }

@@ -60,12 +60,14 @@ impl RecordProof {
 
 /// Will return [`RecordProof::No`] as default value.
 impl Default for RecordProof {
+    #[inline]
     fn default() -> Self {
         Self::No
     }
 }
 
 impl From<bool> for RecordProof {
+    #[inline]
     fn from(val: bool) -> Self {
         if val {
             Self::Yes

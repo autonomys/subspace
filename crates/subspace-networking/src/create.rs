@@ -236,6 +236,7 @@ impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
 }
 
 impl Default for Config<MemoryProviderStorage> {
+    #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
 

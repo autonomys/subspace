@@ -204,6 +204,7 @@ struct ParityDbKeyCollection {
 }
 
 impl From<ParityDbKeyCollection> for Vec<u8> {
+    #[inline]
     fn from(value: ParityDbKeyCollection) -> Self {
         value.encode()
     }
@@ -212,6 +213,7 @@ impl From<ParityDbKeyCollection> for Vec<u8> {
 impl TryFrom<Vec<u8>> for ParityDbKeyCollection {
     type Error = parity_scale_codec::Error;
 
+    #[inline]
     fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
         ParityDbKeyCollection::decode(&mut data.as_slice()).map(Into::into)
     }

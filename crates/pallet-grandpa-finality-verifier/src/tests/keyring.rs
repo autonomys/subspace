@@ -50,6 +50,7 @@ impl Account {
 }
 
 impl From<Account> for AuthorityId {
+    #[inline]
     fn from(p: Account) -> Self {
         sp_application_crypto::UncheckedFrom::unchecked_from(p.public().to_bytes())
     }

@@ -265,6 +265,7 @@ impl<Header> From<VerificationError<Header>> for Error<Header>
 where
     Header: HeaderT,
 {
+    #[inline]
     fn from(error: VerificationError<Header>) -> Self {
         match error {
             VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
@@ -305,6 +306,7 @@ impl<Header> From<Error<Header>> for String
 where
     Header: HeaderT,
 {
+    #[inline]
     fn from(error: Error<Header>) -> String {
         error.to_string()
     }

@@ -116,6 +116,7 @@ impl Encode for Scalar {
         f(&self.to_bytes())
     }
 
+    #[inline]
     fn encoded_size(&self) -> usize {
         Self::FULL_BYTES
     }
@@ -131,6 +132,7 @@ impl Decode for Scalar {
         })
     }
 
+    #[inline]
     fn encoded_fixed_size() -> Option<usize> {
         Some(Self::FULL_BYTES)
     }
@@ -152,6 +154,7 @@ impl TypeInfo for Scalar {
 }
 
 impl MaxEncodedLen for Scalar {
+    #[inline]
     fn max_encoded_len() -> usize {
         Self::FULL_BYTES
     }
@@ -187,6 +190,7 @@ mod scalar_serde {
 }
 
 impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
+    #[inline]
     fn from(value: &[u8; Self::SAFE_BYTES]) -> Self {
         let mut bytes = [0u8; Self::FULL_BYTES];
         bytes[..Self::SAFE_BYTES].copy_from_slice(value);
@@ -195,6 +199,7 @@ impl From<&[u8; Self::SAFE_BYTES]> for Scalar {
 }
 
 impl From<[u8; Self::SAFE_BYTES]> for Scalar {
+    #[inline]
     fn from(value: [u8; Self::SAFE_BYTES]) -> Self {
         Self::from(&value)
     }
@@ -203,6 +208,7 @@ impl From<[u8; Self::SAFE_BYTES]> for Scalar {
 impl TryFrom<&[u8; Self::FULL_BYTES]> for Scalar {
     type Error = String;
 
+    #[inline]
     fn try_from(value: &[u8; Self::FULL_BYTES]) -> Result<Self, Self::Error> {
         Self::try_from(*value)
     }
@@ -211,6 +217,7 @@ impl TryFrom<&[u8; Self::FULL_BYTES]> for Scalar {
 impl TryFrom<[u8; Self::FULL_BYTES]> for Scalar {
     type Error = String;
 
+    #[inline]
     fn try_from(value: [u8; Self::FULL_BYTES]) -> Result<Self, Self::Error> {
         FsFr::from_scalar(value)
             .map_err(|error_code| {
@@ -221,12 +228,14 @@ impl TryFrom<[u8; Self::FULL_BYTES]> for Scalar {
 }
 
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
+    #[inline]
     fn from(value: &Scalar) -> Self {
         value.0.to_scalar()
     }
 }
 
 impl From<Scalar> for [u8; Scalar::FULL_BYTES] {
+    #[inline]
     fn from(value: Scalar) -> Self {
         Self::from(&value)
     }
@@ -250,6 +259,7 @@ impl Scalar {
 
     /// Convenient conversion from slice of scalar to underlying representation for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_to_repr(value: &[Self]) -> &[FsFr] {
         // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -257,6 +267,7 @@ impl Scalar {
 
     /// Convenient conversion from slice of underlying representation to scalar for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_from_repr(value: &[FsFr]) -> &[Self] {
         // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -278,6 +289,7 @@ impl Scalar {
 
     /// Convenient conversion from mutable slice of scalar to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [FsFr] {
         // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -285,6 +297,7 @@ impl Scalar {
 
     /// Convenient conversion from mutable slice of underlying representation to scalar for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_mut_from_repr(value: &mut [FsFr]) -> &mut [Self] {
         // SAFETY: `Scalar` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }

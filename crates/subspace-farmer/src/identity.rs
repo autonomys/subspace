@@ -38,6 +38,7 @@ pub struct Identity {
 impl Deref for Identity {
     type Target = Keypair;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.keypair
     }

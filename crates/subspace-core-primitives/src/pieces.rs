@@ -55,14 +55,17 @@ use scale_info::TypeInfo;
 pub struct SBucket(u16);
 
 impl Step for SBucket {
+    #[inline]
     fn steps_between(start: &Self, end: &Self) -> Option<usize> {
         u16::steps_between(&start.0, &end.0)
     }
 
+    #[inline]
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
         u16::forward_checked(start.0, count).map(Self)
     }
 
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u16::backward_checked(start.0, count).map(Self)
     }
@@ -71,30 +74,35 @@ impl Step for SBucket {
 impl const TryFrom<usize> for SBucket {
     type Error = TryFromIntError;
 
+    #[inline]
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Ok(Self(u16::try_from(value)?))
     }
 }
 
 impl const From<u16> for SBucket {
+    #[inline]
     fn from(original: u16) -> Self {
         Self(original)
     }
 }
 
 impl const From<SBucket> for u16 {
+    #[inline]
     fn from(original: SBucket) -> Self {
         original.0
     }
 }
 
 impl const From<SBucket> for u32 {
+    #[inline]
     fn from(original: SBucket) -> Self {
         u32::from(original.0)
     }
 }
 
 impl const From<SBucket> for usize {
+    #[inline]
     fn from(original: SBucket) -> Self {
         usize::from(original.0)
     }
@@ -137,26 +145,31 @@ impl SBucket {
 pub struct PieceIndex(u64);
 
 impl Step for PieceIndex {
+    #[inline]
     fn steps_between(start: &Self, end: &Self) -> Option<usize> {
         u64::steps_between(&start.0, &end.0)
     }
 
+    #[inline]
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
         u64::forward_checked(start.0, count).map(Self)
     }
 
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u64::backward_checked(start.0, count).map(Self)
     }
 }
 
 impl const From<u64> for PieceIndex {
+    #[inline]
     fn from(original: u64) -> Self {
         Self(original)
     }
 }
 
 impl const From<PieceIndex> for u64 {
+    #[inline]
     fn from(original: PieceIndex) -> Self {
         original.0
     }
@@ -174,16 +187,19 @@ impl PieceIndex {
     }
 
     /// Convert piece index to bytes.
+    #[inline]
     pub const fn to_bytes(self) -> [u8; mem::size_of::<u64>()] {
         self.0.to_le_bytes()
     }
 
     /// Segment index piece index corresponds to
+    #[inline]
     pub const fn segment_index(&self) -> SegmentIndex {
         SegmentIndex::from(self.0 / ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
     /// Position of a piece in a segment
+    #[inline]
     pub const fn position(&self) -> u32 {
         // Position is statically guaranteed to fit into u32
         (self.0 % ArchivedHistorySegment::NUM_PIECES as u64) as u32
@@ -220,32 +236,38 @@ impl PieceIndex {
 pub struct PieceOffset(u16);
 
 impl Step for PieceOffset {
+    #[inline]
     fn steps_between(start: &Self, end: &Self) -> Option<usize> {
         u16::steps_between(&start.0, &end.0)
     }
 
+    #[inline]
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
         u16::forward_checked(start.0, count).map(Self)
     }
 
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u16::backward_checked(start.0, count).map(Self)
     }
 }
 
 impl const From<u16> for PieceOffset {
+    #[inline]
     fn from(original: u16) -> Self {
         Self(original)
     }
 }
 
 impl const From<PieceOffset> for u16 {
+    #[inline]
     fn from(original: PieceOffset) -> Self {
         original.0
     }
 }
 
 impl const From<PieceOffset> for usize {
+    #[inline]
     fn from(original: PieceOffset) -> Self {
         usize::from(original.0)
     }
@@ -258,6 +280,7 @@ impl PieceOffset {
     pub const ONE: PieceOffset = PieceOffset(1);
 
     /// Convert piece offset to bytes.
+    #[inline]
     pub const fn to_bytes(self) -> [u8; mem::size_of::<u16>()] {
         self.0.to_le_bytes()
     }
@@ -269,6 +292,7 @@ impl PieceOffset {
 pub struct PieceIndexHash(Blake2b256Hash);
 
 impl AsRef<[u8]> for PieceIndexHash {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
@@ -277,6 +301,7 @@ impl AsRef<[u8]> for PieceIndexHash {
 impl PieceIndexHash {
     // TODO: Remove and replace uses with `index.hash()`
     /// Constructs `PieceIndexHash` from `PieceIndex`
+    #[inline]
     pub fn from_index(index: PieceIndex) -> Self {
         index.hash()
     }
@@ -290,18 +315,21 @@ impl PieceIndexHash {
 pub struct RawRecord([[u8; Scalar::SAFE_BYTES]; Self::NUM_CHUNKS]);
 
 impl Default for RawRecord {
+    #[inline]
     fn default() -> Self {
         Self([Default::default(); Self::NUM_CHUNKS])
     }
 }
 
 impl AsRef<[u8]> for RawRecord {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.0.as_slice().flatten()
     }
 }
 
 impl AsMut<[u8]> for RawRecord {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         self.0.as_mut_slice().flatten_mut()
     }
@@ -314,6 +342,7 @@ impl RawRecord {
     pub const SIZE: usize = Scalar::SAFE_BYTES * Self::NUM_CHUNKS;
 
     /// Create boxed value without hitting stack overflow
+    #[inline]
     pub fn new_boxed() -> Box<Self> {
         // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
         // SAFETY: Data structure filled with zeroes is a valid invariant
@@ -329,18 +358,21 @@ impl RawRecord {
 pub struct Record([[u8; Scalar::FULL_BYTES]; Self::NUM_CHUNKS]);
 
 impl Default for Record {
+    #[inline]
     fn default() -> Self {
         Self([Default::default(); Self::NUM_CHUNKS])
     }
 }
 
 impl AsRef<[u8]> for Record {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.0.flatten()
     }
 }
 
 impl AsMut<[u8]> for Record {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         self.0.flatten_mut()
     }
@@ -360,6 +392,7 @@ impl Record {
     pub const SIZE: usize = Scalar::FULL_BYTES * Self::NUM_CHUNKS;
 
     /// Create boxed value without hitting stack overflow
+    #[inline]
     pub fn new_boxed() -> Box<Self> {
         // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
         // SAFETY: Data structure filled with zeroes is a valid invariant
@@ -368,6 +401,7 @@ impl Record {
 
     /// Convenient conversion from slice of record to underlying representation for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_to_repr(value: &[Self]) -> &[[u8; Self::SIZE]] {
         // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -375,6 +409,7 @@ impl Record {
 
     /// Convenient conversion from slice of underlying representation to record for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_from_repr(value: &[[u8; Self::SIZE]]) -> &[Self] {
         // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -382,6 +417,7 @@ impl Record {
 
     /// Convenient conversion from mutable slice of record to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [[u8; Self::SIZE]] {
         // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -389,6 +425,7 @@ impl Record {
 
     /// Convenient conversion from mutable slice of underlying representation to record for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_mut_from_repr(value: &mut [[u8; Self::SIZE]]) -> &mut [Self] {
         // SAFETY: `Record` is `#[repr(transparent)]` and guaranteed to have the same memory layout
         unsafe { mem::transmute(value) }
@@ -415,6 +452,7 @@ impl Record {
 pub struct RecordCommitment([u8; RecordCommitment::SIZE]);
 
 impl Default for RecordCommitment {
+    #[inline]
     fn default() -> Self {
         Self([0; Self::SIZE])
     }
@@ -423,18 +461,21 @@ impl Default for RecordCommitment {
 impl TryFrom<&[u8]> for RecordCommitment {
     type Error = TryFromSliceError;
 
+    #[inline]
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         <[u8; Self::SIZE]>::try_from(slice).map(Self)
     }
 }
 
 impl AsRef<[u8]> for RecordCommitment {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl AsMut<[u8]> for RecordCommitment {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
@@ -465,6 +506,7 @@ impl RecordCommitment {
 pub struct RecordWitness([u8; RecordWitness::SIZE]);
 
 impl Default for RecordWitness {
+    #[inline]
     fn default() -> Self {
         Self([0; Self::SIZE])
     }
@@ -473,18 +515,21 @@ impl Default for RecordWitness {
 impl TryFrom<&[u8]> for RecordWitness {
     type Error = TryFromSliceError;
 
+    #[inline]
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         <[u8; Self::SIZE]>::try_from(slice).map(Self)
     }
 }
 
 impl AsRef<[u8]> for RecordWitness {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl AsMut<[u8]> for RecordWitness {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
@@ -507,6 +552,7 @@ impl RecordWitness {
 pub struct Piece(Box<PieceArray>);
 
 impl Default for Piece {
+    #[inline]
     fn default() -> Self {
         Self(PieceArray::new_boxed())
     }
@@ -526,6 +572,7 @@ impl Decode for Piece {
 }
 
 impl From<Piece> for Vec<u8> {
+    #[inline]
     fn from(piece: Piece) -> Self {
         piece.0.to_vec()
     }
@@ -533,6 +580,7 @@ impl From<Piece> for Vec<u8> {
 impl TryFrom<&[u8]> for Piece {
     type Error = TryFromSliceError;
 
+    #[inline]
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
         <[u8; Self::SIZE]>::try_from(slice).map(|bytes| Piece(Box::new(PieceArray(bytes))))
     }
@@ -541,6 +589,7 @@ impl TryFrom<&[u8]> for Piece {
 impl TryFrom<Vec<u8>> for Piece {
     type Error = TryFromSliceError;
 
+    #[inline]
     fn try_from(vec: Vec<u8>) -> Result<Self, Self::Error> {
         // TODO: Maybe possible to transmute boxed slice into boxed array
         Self::try_from(vec.as_slice())
@@ -548,6 +597,7 @@ impl TryFrom<Vec<u8>> for Piece {
 }
 
 impl From<&PieceArray> for Piece {
+    #[inline]
     fn from(value: &PieceArray) -> Self {
         let mut piece = Piece::default();
         piece.as_mut().copy_from_slice(value.as_ref());
@@ -558,24 +608,28 @@ impl From<&PieceArray> for Piece {
 impl Deref for Piece {
     type Target = PieceArray;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl DerefMut for Piece {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
 impl AsRef<[u8]> for Piece {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.0.as_slice()
     }
 }
 
 impl AsMut<[u8]> for Piece {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         self.0.as_mut_slice()
     }
@@ -615,18 +669,21 @@ impl Piece {
 pub struct PieceArray([u8; Piece::SIZE]);
 
 impl Default for PieceArray {
+    #[inline]
     fn default() -> Self {
         Self([0u8; Piece::SIZE])
     }
 }
 
 impl AsRef<[u8]> for PieceArray {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl AsMut<[u8]> for PieceArray {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
@@ -634,6 +691,7 @@ impl AsMut<[u8]> for PieceArray {
 
 impl PieceArray {
     /// Create boxed value without hitting stack overflow
+    #[inline]
     pub fn new_boxed() -> Box<Self> {
         // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
         // SAFETY: Data structure filled with zeroes is a valid invariant
@@ -641,6 +699,7 @@ impl PieceArray {
     }
 
     /// Split piece into underlying components.
+    #[inline]
     pub fn split(&self) -> (&Record, &RecordCommitment, &RecordWitness) {
         let (record, extra) = self.0.split_at(Record::SIZE);
         let (commitment, witness) = extra.split_at(RecordCommitment::SIZE);
@@ -663,6 +722,7 @@ impl PieceArray {
     }
 
     /// Split piece into underlying mutable components.
+    #[inline]
     pub fn split_mut(&mut self) -> (&mut Record, &mut RecordCommitment, &mut RecordWitness) {
         let (record, extra) = self.0.split_at_mut(Record::SIZE);
         let (commitment, witness) = extra.split_at_mut(RecordCommitment::SIZE);
@@ -685,31 +745,37 @@ impl PieceArray {
     }
 
     /// Record contained within a piece.
+    #[inline]
     pub fn record(&self) -> &Record {
         self.split().0
     }
 
     /// Mutable record contained within a piece.
+    #[inline]
     pub fn record_mut(&mut self) -> &mut Record {
         self.split_mut().0
     }
 
     /// Commitment contained within a piece.
+    #[inline]
     pub fn commitment(&self) -> &RecordCommitment {
         self.split().1
     }
 
     /// Mutable commitment contained within a piece.
+    #[inline]
     pub fn commitment_mut(&mut self) -> &mut RecordCommitment {
         self.split_mut().1
     }
 
     /// Witness contained within a piece.
+    #[inline]
     pub fn witness(&self) -> &RecordWitness {
         self.split().2
     }
 
     /// Mutable witness contained within a piece.
+    #[inline]
     pub fn witness_mut(&mut self) -> &mut RecordWitness {
         self.split_mut().2
     }
@@ -735,31 +801,37 @@ pub struct FlatPieces(Vec<PieceArray>);
 
 impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
+    #[inline]
     pub fn new(piece_count: usize) -> Self {
         Self(vec![PieceArray::default(); piece_count])
     }
 
     /// Extract internal representation.
+    #[inline]
     pub fn into_inner(self) -> Vec<PieceArray> {
         self.0
     }
 
     /// Iterator over source pieces (even indices).
+    #[inline]
     pub fn source(&self) -> impl ExactSizeIterator<Item = &'_ PieceArray> + '_ {
         self.0.iter().step_by(2)
     }
 
     /// Mutable iterator over source pieces (even indices).
+    #[inline]
     pub fn source_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
         self.0.iter_mut().step_by(2)
     }
 
     /// Iterator over parity pieces (odd indices).
+    #[inline]
     pub fn parity(&self) -> impl ExactSizeIterator<Item = &'_ PieceArray> + '_ {
         self.0.iter().skip(1).step_by(2)
     }
 
     /// Mutable iterator over parity pieces (odd indices).
+    #[inline]
     pub fn parity_mut(&mut self) -> impl ExactSizeIterator<Item = &'_ mut PieceArray> + '_ {
         self.0.iter_mut().skip(1).step_by(2)
     }
@@ -768,11 +840,13 @@ impl FlatPieces {
 #[cfg(feature = "parallel")]
 impl FlatPieces {
     /// Parallel iterator over source pieces (even indices).
+    #[inline]
     pub fn par_source(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {
         self.0.par_iter().step_by(2)
     }
 
     /// Mutable parallel iterator over source pieces (even indices).
+    #[inline]
     pub fn par_source_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
@@ -780,11 +854,13 @@ impl FlatPieces {
     }
 
     /// Parallel iterator over parity pieces (odd indices).
+    #[inline]
     pub fn par_parity(&self) -> impl IndexedParallelIterator<Item = &'_ PieceArray> + '_ {
         self.0.par_iter().skip(1).step_by(2)
     }
 
     /// Mutable parallel iterator over parity pieces (odd indices).
+    #[inline]
     pub fn par_parity_mut(
         &mut self,
     ) -> impl IndexedParallelIterator<Item = &'_ mut PieceArray> + '_ {
@@ -793,12 +869,14 @@ impl FlatPieces {
 }
 
 impl From<PieceArray> for FlatPieces {
+    #[inline]
     fn from(value: PieceArray) -> Self {
         Self(vec![value])
     }
 }
 
 impl AsRef<[u8]> for FlatPieces {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let pieces: &[[u8; Piece::SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
@@ -807,6 +885,7 @@ impl AsRef<[u8]> for FlatPieces {
 }
 
 impl AsMut<[u8]> for FlatPieces {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let pieces: &mut [[u8; Piece::SIZE]] = unsafe { mem::transmute(self.0.as_mut_slice()) };

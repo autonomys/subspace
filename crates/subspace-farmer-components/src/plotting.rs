@@ -47,6 +47,7 @@ pub enum PieceGetterRetryPolicy {
 }
 
 impl Default for PieceGetterRetryPolicy {
+    #[inline]
     fn default() -> Self {
         Self::Limited(0)
     }

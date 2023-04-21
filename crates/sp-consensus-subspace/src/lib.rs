@@ -74,6 +74,7 @@ mod app {
 pub type FarmerSignature = app::Signature;
 
 impl From<&FarmerSignature> for RewardSignature {
+    #[inline]
     fn from(signature: &FarmerSignature) -> Self {
         RewardSignature::from(
             TryInto::<[u8; REWARD_SIGNATURE_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(signature))
@@ -87,6 +88,7 @@ impl From<&FarmerSignature> for RewardSignature {
 pub type FarmerPublicKey = app::Public;
 
 impl From<&FarmerPublicKey> for PublicKey {
+    #[inline]
     fn from(pub_key: &FarmerPublicKey) -> Self {
         PublicKey::from(
             TryInto::<[u8; PUBLIC_KEY_LENGTH]>::try_into(AsRef::<[u8]>::as_ref(pub_key))
@@ -291,6 +293,7 @@ pub struct SolutionRanges {
 }
 
 impl Default for SolutionRanges {
+    #[inline]
     fn default() -> Self {
         Self {
             current: u64::MAX,
@@ -357,6 +360,7 @@ impl ChainConstants {
 pub struct WrappedSolution(Solution<FarmerPublicKey, ()>);
 
 impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedSolution {
+    #[inline]
     fn from(solution: &Solution<FarmerPublicKey, RewardAddress>) -> Self {
         Self(Solution {
             public_key: solution.public_key.clone(),
@@ -383,6 +387,7 @@ impl PassBy for WrappedSolution {
 pub struct WrappedVerifySolutionParams<'a>(Cow<'a, VerifySolutionParams>);
 
 impl<'a> From<&'a VerifySolutionParams> for WrappedVerifySolutionParams<'a> {
+    #[inline]
     fn from(value: &'a VerifySolutionParams) -> Self {
         Self(Cow::Borrowed(value))
     }
