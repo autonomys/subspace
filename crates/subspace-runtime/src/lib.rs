@@ -87,7 +87,7 @@ sp_runtime::impl_opaque_keys! {
 }
 
 /// How many pieces one sector is supposed to contain (max)
-const MAX_PIECES_IN_SECTOR: u16 = 1300;
+const MAX_PIECES_IN_SECTOR: u16 = 32;
 
 // To learn more about runtime versioning and what each of the following value means:
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
@@ -132,11 +132,11 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 1000;
+const SLOT_DURATION: u64 = 3000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
-const SLOT_PROBABILITY: (u64, u64) = (1, 6);
+const SLOT_PROBABILITY: (u64, u64) = (3, 6);
 
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;

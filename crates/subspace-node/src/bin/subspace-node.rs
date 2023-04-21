@@ -543,7 +543,7 @@ fn main() -> Result<(), Error> {
                         primary_chain_config,
                         partial_components,
                         true,
-                        SlotProportion::new(2f32 / 3f32),
+                        SlotProportion::new(3f32 / 4f32),
                     )
                         .await
                         .map_err(|error| {

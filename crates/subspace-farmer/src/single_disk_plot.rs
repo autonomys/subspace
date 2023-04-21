@@ -60,7 +60,7 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 ///
 /// Only useful for initial network bootstrapping where due to initial plot size there might be too
 /// many solutions.
-const SOLUTIONS_LIMIT: usize = 10;
+const SOLUTIONS_LIMIT: usize = 1;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization

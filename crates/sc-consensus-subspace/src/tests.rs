@@ -555,7 +555,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
                 backoff_authoring_blocks: Some(BackoffAuthoringOnFinalizedHeadLagging::default()),
                 subspace_link: data.link.clone(),
                 justification_sync_link: (),
-                block_proposal_slot_portion: SlotProportion::new(0.5),
+                block_proposal_slot_portion: SlotProportion::new(0.9),
                 max_block_proposal_slot_portion: None,
                 telemetry: None,
             })
