@@ -132,6 +132,9 @@ pub enum VerificationError {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(parity_scale_codec::Error),
+    /// Transaction validity check passes.
+    #[cfg_attr(feature = "thiserror", error("Valid transaction"))]
+    ValidTransaction,
     /// Decode error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
@@ -140,6 +143,20 @@ pub enum VerificationError {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
     RuntimeApi(#[from] sp_api::ApiError),
+    /// Runtime api error.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Client error: {0}"))]
+    Client(#[from] sp_blockchain::Error),
+    /// Invalid storage proof.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
+    InvalidStorageProof,
+    /// Can not find signer from the domain extrinsic.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Can not find signer from the domain extrinsic")
+    )]
+    SignerNotFound,
     /// Fail to get runtime code.
     // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
     // error, but it will be improper to use `WasmError` directly here since it will make

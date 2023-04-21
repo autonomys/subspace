@@ -9,6 +9,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::H256;
 use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
 use sp_domains::{Bundle, DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
@@ -135,6 +136,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     ParentChainBlock: BlockT,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore

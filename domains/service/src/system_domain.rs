@@ -299,6 +299,7 @@ pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi,
 where
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>> + Into<u32>,
+    <Block as BlockT>::Hash: From<Hash>,
     PBlock::Hash: From<Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
