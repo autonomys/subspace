@@ -20,7 +20,6 @@
 
 pub mod chain_spec;
 
-use async_trait::async_trait;
 use futures::executor::block_on;
 use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -29,20 +28,16 @@ use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
-use std::error::Error;
 use std::io::Cursor;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{
-    Piece, PieceIndex, PublicKey, SegmentIndex, Solution, PLOT_SECTOR_SIZE,
-};
+use subspace_core_primitives::{PublicKey, SegmentIndex, Solution, PLOT_SECTOR_SIZE};
 use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
@@ -196,26 +191,6 @@ async fn start_farming<Client>(
     }
 }
 
-struct TestPieceGetter {
-    archived_segment: NewArchivedSegment,
-}
-
-#[async_trait]
-impl PieceGetter for TestPieceGetter {
-    async fn get_piece(
-        &self,
-        piece_index: PieceIndex,
-        _: PieceGetterRetryPolicy,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        Ok(self
-            .archived_segment
-            .pieces
-            .iter()
-            .nth(u64::from(piece_index) as usize)
-            .map(Piece::from))
-    }
-}
-
 async fn plot_one_segment<Client>(
     client: &Client,
     keypair: &schnorrkel::Keypair,
@@ -238,7 +213,6 @@ where
     let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;
-    let piece_getter = TestPieceGetter { archived_segment };
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
         total_pieces,
@@ -249,7 +223,7 @@ where
     plot_sector(
         &public_key,
         sector_index,
-        &piece_getter,
+        &archived_segment.pieces,
         PieceGetterRetryPolicy::default(),
         &farmer_protocol_info,
         &kzg,

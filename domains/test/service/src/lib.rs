@@ -35,8 +35,8 @@ use sc_service::config::{
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration as ServiceConfiguration, Error as ServiceError,
-    NetworkStarter, Role, RpcHandlers, TFullBackend, TFullClient, TaskManager,
+    BasePath, BlocksPruning, Configuration as ServiceConfiguration, Error as ServiceError, Role,
+    RpcHandlers, TFullBackend, TFullClient, TaskManager,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -770,27 +770,4 @@ pub fn construct_extrinsic(
         runtime::Signature::Sr25519(signature),
         extra,
     )
-}
-
-/// Run a primary-chain validator node without the executor functionality.
-///
-/// This is essentially a wrapper around
-/// [`run_validator_node`](subspace_test_service::run_validator_node).
-/// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
-pub async fn run_primary_chain_validator_node(
-    tokio_handle: tokio::runtime::Handle,
-    key: Sr25519Keyring,
-    boot_nodes: Vec<MultiaddrWithPeerId>,
-    base_path: BasePath,
-) -> (subspace_test_service::PrimaryTestNode, NetworkStarter) {
-    subspace_test_service::run_validator_node(
-        tokio_handle,
-        key,
-        boot_nodes,
-        true,
-        true,
-        true,
-        base_path,
-    )
-    .await
 }
