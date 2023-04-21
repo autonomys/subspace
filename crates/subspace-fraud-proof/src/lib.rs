@@ -7,6 +7,7 @@ mod domain_runtime_code;
 pub mod invalid_state_transition_proof;
 #[cfg(test)]
 mod tests;
+pub mod verifier_api;
 
 use futures::channel::oneshot;
 use futures::FutureExt;

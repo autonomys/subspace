@@ -1,7 +1,6 @@
 use crate::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
-use crate::invalid_state_transition_proof::{
-    ExecutionProver, InvalidStateTransitionProofVerifier, VerifyPrePostStateRoot,
-};
+use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
+use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
@@ -25,11 +24,11 @@ use subspace_test_client::Client;
 use subspace_test_service::mock::MockPrimaryNode;
 use tempfile::TempDir;
 
-struct SkipPreStateRootVerification {
+struct TestVerifierClient {
     primary_chain_client: Arc<Client>,
 }
 
-impl SkipPreStateRootVerification {
+impl TestVerifierClient {
     fn new(primary_chain_client: Arc<Client>) -> Self {
         Self {
             primary_chain_client,
@@ -37,7 +36,7 @@ impl SkipPreStateRootVerification {
     }
 }
 
-impl VerifyPrePostStateRoot for SkipPreStateRootVerification {
+impl VerifierApi for TestVerifierClient {
     fn verify_pre_state_root(
         &self,
         _invalid_state_transition_proof: &InvalidStateTransitionProof,
@@ -263,7 +262,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
-        SkipPreStateRootVerification::new(ferdie.client.clone()),
+        TestVerifierClient::new(ferdie.client.clone()),
         SystemDomainExtrinsicsBuilder::new(
             ferdie.client.clone(),
             Arc::new(ferdie.executor.clone()),
@@ -565,7 +564,7 @@ async fn invalid_execution_proof_should_not_work() {
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
-        SkipPreStateRootVerification::new(ferdie.client.clone()),
+        TestVerifierClient::new(ferdie.client.clone()),
         SystemDomainExtrinsicsBuilder::new(
             ferdie.client.clone(),
             Arc::new(ferdie.executor.clone()),

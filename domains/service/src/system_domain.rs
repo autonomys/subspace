@@ -40,7 +40,7 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_fraud_proof::domain_extrinsics_builder::CoreDomainExtrinsicsBuilder;
-use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
+use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -131,7 +131,7 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        PrePostStateRootVerifier<FullClient<Block, RuntimeApi, Executor>, Block>,
+        VerifierClient<FullClient<Block, RuntimeApi, Executor>, Block>,
         CoreDomainExtrinsicsBuilder<
             PBlock,
             Block,
@@ -229,7 +229,7 @@ where
             primary_chain_client.clone(),
             executor.clone(),
             task_manager.spawn_handle(),
-            PrePostStateRootVerifier::new(client.clone()),
+            VerifierClient::new(client.clone()),
             CoreDomainExtrinsicsBuilder::new(
                 primary_chain_client.clone(),
                 client.clone(),
