@@ -11,7 +11,7 @@ use domain_runtime_primitives::opaque::Block;
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::{backend, HeaderBackend};
 use sp_api::{ProvideRuntimeApi, StorageProof};
-use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode, SpawnNamed};
+use sp_core::traits::{CodeExecutor, RuntimeCode, SpawnNamed};
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
@@ -24,7 +24,6 @@ use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_wasm_tools::read_core_domain_runtime_blob;
 
 /// Creates storage proof for verifying an execution without owning the whole state.
 pub struct ExecutionProver<Block, B, Exec> {
@@ -184,16 +183,6 @@ where
             Some(v) => Ok(Some(v)),
             None => Ok(self.backend.get(key, prefix)?),
         }
-    }
-}
-
-struct RuntimCodeFetcher<'a> {
-    wasm_bundle: &'a [u8],
-}
-
-impl<'a> FetchRuntimeCode for RuntimCodeFetcher<'a> {
-    fn fetch_runtime_code(&self) -> Option<std::borrow::Cow<[u8]>> {
-        Some(self.wasm_bundle.into())
     }
 }
 
@@ -466,37 +455,14 @@ where
             ..
         } = invalid_state_transition_proof;
 
-        let at = PBlock::Hash::decode(&mut primary_parent_hash.encode().as_slice())?;
-        let system_wasm_bundle = self
-            .client
-            .runtime_api()
-            .system_domain_wasm_bundle(at)
-            .map_err(VerificationError::RuntimeApi)?;
-
-        let wasm_bundle = match *domain_id {
-            DomainId::SYSTEM => system_wasm_bundle,
-            DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => {
-                read_core_domain_runtime_blob(system_wasm_bundle.as_ref(), *domain_id)
-                    .map_err(|err| {
-                        VerificationError::RuntimeCode(format!(
-                    "failed to read core domain {domain_id:?} runtime blob file, error {err:?}"
-                ))
-                    })?
-                    .into()
-            }
-            _ => {
-                return Err(VerificationError::RuntimeCode(format!(
-                    "No runtime code for {domain_id:?}"
-                )));
-            }
-        };
-
-        let code_fetcher = RuntimCodeFetcher {
-            wasm_bundle: &wasm_bundle,
-        };
+        let domain_runtime_code = crate::domain_runtime_code::retrieve_domain_runtime_code(
+            *domain_id,
+            (*primary_parent_hash).into(),
+            &self.client,
+        )?;
 
         let runtime_code = RuntimeCode {
-            code_fetcher: &code_fetcher,
+            code_fetcher: &domain_runtime_code.as_runtime_code_fetcher(),
             hash: b"Hash of the code does not matter in terms of the execution proof check"
                 .to_vec(),
             heap_pages: None,
@@ -538,7 +504,11 @@ where
                     .primary_hash(*domain_id, parent_number + 1)?;
                 let domain_extrinsics = self
                     .domain_extrinsics_builder
-                    .build_domain_extrinsics(*domain_id, primary_hash.into(), wasm_bundle.to_vec())
+                    .build_domain_extrinsics(
+                        *domain_id,
+                        primary_hash.into(),
+                        domain_runtime_code.wasm_bundle.to_vec(),
+                    )
                     .map_err(|_| VerificationError::FailedToBuildDomainExtrinsics)?;
                 domain_extrinsics
                     .into_iter()
