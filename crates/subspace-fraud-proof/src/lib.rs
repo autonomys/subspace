@@ -2,6 +2,7 @@
 
 #![warn(missing_docs)]
 
+pub mod domain_extrinsics_builder;
 pub mod invalid_state_transition_proof;
 #[cfg(test)]
 mod tests;

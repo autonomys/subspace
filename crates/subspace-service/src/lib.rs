@@ -76,9 +76,8 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_fraud_proof::invalid_state_transition_proof::{
-    PrePostStateRootVerifier, SystemDomainExtrinsicsBuilder,
-};
+use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::online_status_informer;

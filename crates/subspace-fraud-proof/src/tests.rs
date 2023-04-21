@@ -1,6 +1,6 @@
+use crate::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
 use crate::invalid_state_transition_proof::{
-    ExecutionProver, InvalidStateTransitionProofVerifier, SystemDomainExtrinsicsBuilder,
-    VerifyPrePostStateRoot,
+    ExecutionProver, InvalidStateTransitionProofVerifier, VerifyPrePostStateRoot,
 };
 use crate::ProofVerifier;
 use codec::Encode;

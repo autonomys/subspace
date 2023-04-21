@@ -39,9 +39,8 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use subspace_fraud_proof::invalid_state_transition_proof::{
-    CoreDomainExtrinsicsBuilder, PrePostStateRootVerifier,
-};
+use subspace_fraud_proof::domain_extrinsics_builder::CoreDomainExtrinsicsBuilder;
+use subspace_fraud_proof::invalid_state_transition_proof::PrePostStateRootVerifier;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;

@@ -32,8 +32,9 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, Solution};
+use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
 use subspace_fraud_proof::invalid_state_transition_proof::{
-    InvalidStateTransitionProofVerifier, PrePostStateRootVerifier, SystemDomainExtrinsicsBuilder,
+    InvalidStateTransitionProofVerifier, PrePostStateRootVerifier,
 };
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
