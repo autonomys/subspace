@@ -19,21 +19,23 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Verify fraud proof.
-pub trait VerifyFraudProof<FPBlock: BlockT> {
+///
+/// Verifier is either the primary chain client or the system domain client.
+pub trait VerifyFraudProof<VerifierBlock: BlockT> {
     /// Verifies fraud proof.
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
+        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
     ) -> Result<(), VerificationError>;
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<FPBlock, ISTPVerifier> {
+pub struct ProofVerifier<VerifierBlock, ISTPVerifier> {
     invalid_state_transition_proof_verifier: Arc<ISTPVerifier>,
-    _phantom: PhantomData<FPBlock>,
+    _phantom: PhantomData<VerifierBlock>,
 }
 
-impl<FPBlock, ISTPVerifier> Clone for ProofVerifier<FPBlock, ISTPVerifier> {
+impl<VerifierBlock, ISTPVerifier> Clone for ProofVerifier<VerifierBlock, ISTPVerifier> {
     fn clone(&self) -> Self {
         Self {
             invalid_state_transition_proof_verifier: self
@@ -44,9 +46,9 @@ impl<FPBlock, ISTPVerifier> Clone for ProofVerifier<FPBlock, ISTPVerifier> {
     }
 }
 
-impl<FPBlock, ISTPVerifier> ProofVerifier<FPBlock, ISTPVerifier>
+impl<VerifierBlock, ISTPVerifier> ProofVerifier<VerifierBlock, ISTPVerifier>
 where
-    FPBlock: BlockT,
+    VerifierBlock: BlockT,
     ISTPVerifier: VerifyInvalidStateTransitionProof,
 {
     /// Constructs a new instance of [`ProofVerifier`].
@@ -60,7 +62,7 @@ where
     /// Verifies the fraud proof.
     pub fn verify(
         &self,
-        fraud_proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
+        fraud_proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
     ) -> Result<(), VerificationError> {
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => self
@@ -71,14 +73,15 @@ where
     }
 }
 
-impl<FPBlock, ISTPVerifier> VerifyFraudProof<FPBlock> for ProofVerifier<FPBlock, ISTPVerifier>
+impl<VerifierBlock, ISTPVerifier> VerifyFraudProof<VerifierBlock>
+    for ProofVerifier<VerifierBlock, ISTPVerifier>
 where
-    FPBlock: BlockT,
+    VerifierBlock: BlockT,
     ISTPVerifier: VerifyInvalidStateTransitionProof,
 {
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<FPBlock>, FPBlock::Hash>,
+        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
     ) -> Result<(), VerificationError> {
         self.verify(proof)
     }

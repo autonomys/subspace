@@ -189,14 +189,14 @@ where
 /// Invalid state transition proof verifier.
 pub struct InvalidStateTransitionProofVerifier<
     PBlock,
-    C,
+    PClient,
     Exec,
     Spawn,
     Hash,
     VerifierClient,
     DomainExtrinsicsBuilder,
 > {
-    client: Arc<C>,
+    primary_chain_client: Arc<PClient>,
     executor: Exec,
     spawn_handle: Spawn,
     verifier_client: VerifierClient,
@@ -204,10 +204,10 @@ pub struct InvalidStateTransitionProofVerifier<
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
+impl<PBlock, PClient, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
     for InvalidStateTransitionProofVerifier<
         PBlock,
-        C,
+        PClient,
         Exec,
         Spawn,
         Hash,
@@ -222,7 +222,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
+            primary_chain_client: self.primary_chain_client.clone(),
             executor: self.executor.clone(),
             spawn_handle: self.spawn_handle.clone(),
             verifier_client: self.verifier_client.clone(),
@@ -232,10 +232,10 @@ where
     }
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder>
+impl<PBlock, PClient, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder>
     InvalidStateTransitionProofVerifier<
         PBlock,
-        C,
+        PClient,
         Exec,
         Spawn,
         Hash,
@@ -245,8 +245,8 @@ impl<PBlock, C, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder>
 where
     PBlock: BlockT,
     H256: Into<PBlock::Hash>,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
+    PClient: ProvideRuntimeApi<PBlock> + Send + Sync,
+    PClient::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
@@ -255,14 +255,14 @@ where
 {
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
-        client: Arc<C>,
+        primary_chain_client: Arc<PClient>,
         executor: Exec,
         spawn_handle: Spawn,
         verifier_client: VerifierClient,
         domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
-            client,
+            primary_chain_client,
             executor,
             spawn_handle,
             verifier_client,
@@ -296,7 +296,7 @@ where
         let domain_runtime_code = crate::domain_runtime_code::retrieve_domain_runtime_code(
             *domain_id,
             (*primary_parent_hash).into(),
-            &self.client,
+            &self.primary_chain_client,
         )?;
 
         let runtime_code = RuntimeCode {
