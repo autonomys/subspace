@@ -132,6 +132,12 @@ pub enum VerificationError {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(parity_scale_codec::Error),
+    /// Sender of transaction has enough balance to pay the transaction fee.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Sender of transaction has enough balance to pay the transaction fee")
+    )]
+    SufficientBalance,
     /// Decode error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
@@ -140,6 +146,20 @@ pub enum VerificationError {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
     RuntimeApi(#[from] sp_api::ApiError),
+    /// Runtime api error.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Client error: {0}"))]
+    Client(#[from] sp_blockchain::Error),
+    /// Invalid storage proof.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
+    InvalidStorageProof,
+    /// Can not find signer from the domain extrinsic.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Can not find signer from the domain extrinsic")
+    )]
+    SignerNotFound,
     /// Fail to get runtime code.
     // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
     // error, but it will be improper to use `WasmError` directly here since it will make
@@ -252,6 +272,8 @@ pub struct InvalidTransactionProof {
     pub domain_id: DomainId,
     /// Number of the block at which the invalid transaction occurred.
     pub block_number: u32,
+    ///
+    pub domain_block_hash: H256,
     ///
     pub extrinsic_index: u32,
     ///

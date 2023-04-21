@@ -8,6 +8,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::H256;
 use sp_domains::fraud_proof::{BundleEquivocationProof, InvalidTransactionProof};
 use sp_domains::{Bundle, DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
@@ -133,6 +134,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     ParentChainBlock: BlockT,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -243,6 +245,7 @@ where
                 let invalid_transaction_proof = InvalidTransactionProof {
                     domain_id,
                     block_number: to_number_primitive(block_number),
+                    domain_block_hash: at.into(),
                     extrinsic_index: index
                         .try_into()
                         .expect("Extrinsic index must fit into u32; qed"),

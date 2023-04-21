@@ -5,6 +5,7 @@
 pub mod domain_extrinsics_builder;
 mod domain_runtime_code;
 pub mod invalid_state_transition_proof;
+pub mod invalid_transaction_proof;
 #[cfg(test)]
 mod tests;
 pub mod verifier_api;

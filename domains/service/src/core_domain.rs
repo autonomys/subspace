@@ -34,7 +34,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_core::Encode;
+use sp_core::{Encode, H256};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
@@ -310,7 +310,7 @@ where
     PBlock: BlockT,
     SBlock: BlockT,
     SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
-    Block::Hash: FullCodec + TypeInfo + Unpin,
+    Block::Hash: From<H256> + Into<H256> + FullCodec + TypeInfo + Unpin,
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     <Block as BlockT>::Header: Unpin,
     NumberFor<Block>: FullCodec + TypeInfo,

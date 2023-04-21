@@ -15,8 +15,11 @@ targets = ["x86_64-unknown-linux-gnu"]
 codec = { package = "parity-scale-codec", version = "3.4.0", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
+frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 futures = "0.3.28"
 hash-db = "0.16.0"
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
@@ -35,7 +38,6 @@ tracing = "0.1.37"
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
 domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
