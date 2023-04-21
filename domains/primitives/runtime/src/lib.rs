@@ -94,18 +94,15 @@ pub enum CheckTransactionFeeError {
     /// Can not find the sender from address.
     Lookup,
     /// Can not pay the transaction fee.
-    DispatchError(DispatchError),
+    DispatchError {
+        error: DispatchError,
+        storage_keys: Vec<Vec<u8>>,
+    },
 }
 
 impl From<LookupError> for CheckTransactionFeeError {
     fn from(_lookup_error: LookupError) -> Self {
         Self::Lookup
-    }
-}
-
-impl From<DispatchError> for CheckTransactionFeeError {
-    fn from(dispatch_error: DispatchError) -> Self {
-        Self::DispatchError(dispatch_error)
     }
 }
 

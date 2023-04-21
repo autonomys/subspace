@@ -487,9 +487,23 @@ impl_runtime_apis! {
                     WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
                 };
 
-                Balances::withdraw(&sender, fee, withdraw_reason, ExistenceRequirement::KeepAlive)
-                    .map(|_| ())
-                    .map_err(Into::into)
+                Balances::withdraw(
+                    &sender,
+                    fee,
+                    withdraw_reason,
+                    ExistenceRequirement::KeepAlive,
+                )
+                .map(|_| ())
+                .map_err(|dispatch_error| {
+                    let storage_keys = sp_std::vec![
+                        frame_system::Account::<Runtime>::hashed_key_for(&sender),
+                        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+                    ];
+                    domain_runtime_primitives::CheckTransactionFeeError::DispatchError {
+                        error: dispatch_error,
+                        storage_keys,
+                    }
+                })
             } else {
                 Ok(())
             }

@@ -2,7 +2,7 @@ use crate::fraud_proof::{find_trace_mismatch, FraudProofError, FraudProofGenerat
 use crate::parent_chain::ParentChainInterface;
 use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{CheckTransactionFeeError, DomainCoreApi};
 use futures::FutureExt;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
@@ -211,19 +211,44 @@ where
         domain_id: DomainId,
         at: Block::Hash,
     ) -> Result<(), GossipMessageError> {
-        for extrinsic in extrinsics {
+        let block_number = self
+            .client
+            .number(at)?
+            .ok_or_else(|| sp_blockchain::Error::Backend(format!("Header for #{at} not found")))?;
+
+        for (index, extrinsic) in extrinsics.iter().enumerate() {
             let tx_hash = self.transaction_pool.hash_of(extrinsic);
 
             if self.transaction_pool.ready_transaction(&tx_hash).is_some() {
                 // TODO: Set the status of each tx in the bundle to seen
-            } else if let Err(_err) = self
+            } else if let Err(transaction_fee_err) = self
                 .client
                 .runtime_api()
                 .check_transaction_fee(at, extrinsic.clone())?
             {
-                // TODO: Generate an invalid transaction proof.
+                let storage_keys = match transaction_fee_err {
+                    CheckTransactionFeeError::Lookup => Default::default(),
+                    CheckTransactionFeeError::DispatchError {
+                        error,
+                        storage_keys,
+                    } => {
+                        tracing::debug!(?extrinsic, ?error, "Invalid transaction");
+                        storage_keys
+                    }
+                };
+                let storage_proof = self
+                    .client
+                    .read_proof(at, &mut storage_keys.iter().map(|s| s.as_slice()))?;
 
-                let invalid_transaction_proof = InvalidTransactionProof { domain_id };
+                let invalid_transaction_proof = InvalidTransactionProof {
+                    domain_id,
+                    block_number: to_number_primitive(block_number),
+                    extrinsic_index: index
+                        .try_into()
+                        .expect("Extrinsic index must fit into u32; qed"),
+                    storage_proof,
+                };
+
                 let fraud_proof =
                     FraudProof::<ParentChainBlock>::InvalidTransaction(invalid_transaction_proof);
 

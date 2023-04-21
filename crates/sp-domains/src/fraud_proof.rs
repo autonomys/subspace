@@ -250,6 +250,12 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 pub struct InvalidTransactionProof {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
+    /// Number of the block at which the invalid transaction occurred.
+    pub block_number: u32,
+    ///
+    pub extrinsic_index: u32,
+    ///
+    pub storage_proof: StorageProof,
 }
 
 /// Represents an invalid transaction proof.
