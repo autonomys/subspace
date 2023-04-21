@@ -20,7 +20,7 @@ use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifi
 use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::{ExecutorStreams, TransactionFor};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
@@ -86,8 +86,9 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -95,8 +96,9 @@ pub(super) async fn start_worker<
         + ProofProvider<Block>
         + Finalizer<Block, Backend>
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
+    Client::Api: DomainCoreApi<Block>
         + BlockBuilder<Block>
+        + MessengerApi<Block, NumberFor<Block>>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
@@ -104,7 +106,7 @@ pub(super) async fn start_worker<
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: DomainCoreApi<SBlock, AccountId>
+    SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>

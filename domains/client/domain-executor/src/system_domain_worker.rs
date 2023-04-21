@@ -20,7 +20,7 @@ use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::{ExecutorStreams, TransactionFor};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
@@ -84,7 +84,7 @@ pub(super) async fn start_worker<
         + ProofProvider<Block>
         + Finalizer<Block, Backend>
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
+    Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + BlockBuilder<Block>

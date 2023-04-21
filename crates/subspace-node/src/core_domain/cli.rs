@@ -14,10 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_domain::{core_eth_relay_chain_spec, core_payments_chain_spec};
-use crate::parser::parse_relayer_id;
+use crate::core_domain::{
+    core_eth_relay_chain_spec, core_evm_chain_spec, core_payments_chain_spec,
+};
 use clap::Parser;
-use domain_runtime_primitives::RelayerId;
+use core_evm_runtime::AccountId as AccountId20;
 use domain_service::DomainConfiguration;
 use once_cell::sync::OnceCell;
 use sc_cli::{
@@ -26,10 +27,14 @@ use sc_cli::{
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
+use sp_core::crypto::AccountId32;
+use sp_core::{ByteArray, H160};
 use sp_domains::DomainId;
+use sp_runtime::traits::Convert;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -59,12 +64,21 @@ pub struct CoreDomainCli {
     pub domain_id: DomainId,
 
     /// Optional relayer address to relay messages on behalf.
-    #[clap(long, value_parser = parse_relayer_id)]
-    pub relayer_id: Option<RelayerId>,
+    #[clap(long)]
+    pub relayer_id: Option<String>,
 
     /// The base path that should be used by the core domain.
     #[clap(skip)]
     pub base_path: Option<PathBuf>,
+}
+
+pub struct AccountId32ToAccountId20Converter;
+
+impl Convert<AccountId32, AccountId20> for AccountId32ToAccountId20Converter {
+    fn convert(acc: AccountId32) -> AccountId20 {
+        // Using the full hex key, truncating to the first 20 bytes (the first 40 hex chars)
+        H160::from_slice(&acc.as_slice()[0..20]).into()
+    }
 }
 
 static CORE_DOMAIN_ID: OnceCell<DomainId> = OnceCell::new();
@@ -99,15 +113,25 @@ impl CoreDomainCli {
     }
 
     /// Creates domain configuration from Core domain cli.
-    pub fn create_domain_configuration(
+    pub fn create_domain_configuration<AccountId, CA>(
         &self,
         tokio_handle: tokio::runtime::Handle,
-    ) -> sc_cli::Result<DomainConfiguration> {
+    ) -> sc_cli::Result<DomainConfiguration<AccountId>>
+    where
+        CA: Convert<AccountId32, AccountId>,
+        AccountId: FromStr,
+    {
         // if is dev, use the known key ring to start relayer
         let maybe_relayer_id = if self.shared_params().is_dev() && self.relayer_id.is_none() {
-            self.run.get_keyring().map(|kr| kr.to_account_id())
+            self.run
+                .get_keyring()
+                .map(|kr| CA::convert(kr.to_account_id()))
+        } else if let Some(relayer_id) = self.relayer_id.clone() {
+            Some(AccountId::from_str(&relayer_id).map_err(|_err| {
+                sc_cli::Error::Input(format!("Invalid Relayer Id: {relayer_id}"))
+            })?)
         } else {
-            self.relayer_id.clone()
+            None
         };
 
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
@@ -154,6 +178,7 @@ impl SubstrateCli for CoreDomainCli {
         match self.domain_id {
             DomainId::CORE_PAYMENTS => core_payments_chain_spec::load_chain_spec(id),
             DomainId::CORE_ETH_RELAY => core_eth_relay_chain_spec::load_chain_spec(id),
+            DomainId::CORE_EVM => core_evm_chain_spec::load_chain_spec(id),
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         }
     }
@@ -165,6 +190,7 @@ impl SubstrateCli for CoreDomainCli {
         {
             &DomainId::CORE_PAYMENTS => &core_payments_domain_runtime::VERSION,
             &DomainId::CORE_ETH_RELAY => &core_eth_relay_runtime::VERSION,
+            &DomainId::CORE_EVM => &core_evm_runtime::VERSION,
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         }
     }

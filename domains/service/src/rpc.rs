@@ -5,22 +5,26 @@
 
 #![warn(missing_docs)]
 
-use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, Index as Nonce};
+use domain_runtime_primitives::{Balance, Index as Nonce};
+use frame_benchmarking::frame_support::inherent::BlockT;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_rpc::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
 use sc_transaction_pool_api::TransactionPool;
+use serde::de::DeserializeOwned;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use sp_core::{Decode, Encode};
+use std::fmt::{Debug, Display};
+use std::marker::PhantomData;
 use std::sync::Arc;
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies
-pub struct FullDeps<C, P> {
+pub struct FullDeps<C, P, AccountId> {
     /// The client instance to use.
     pub client: Arc<C>,
     /// Transaction pool instance.
@@ -29,13 +33,32 @@ pub struct FullDeps<C, P> {
     pub chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
     /// Whether to deny unsafe calls
     pub deny_unsafe: DenyUnsafe,
+    _data: PhantomData<AccountId>,
+}
+
+impl<C, P, AccountId> FullDeps<C, P, AccountId> {
+    pub fn new(
+        client: Arc<C>,
+        pool: Arc<P>,
+        chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
+        deny_unsafe: DenyUnsafe,
+    ) -> Self {
+        Self {
+            client,
+            pool,
+            chain_spec,
+            deny_unsafe,
+            _data: Default::default(),
+        }
+    }
 }
 
 /// Instantiate all RPC extensions.
-pub fn create_full<C, P>(
-    deps: FullDeps<C, P>,
+pub fn create_full<Block, C, P, AccountId>(
+    deps: FullDeps<C, P, AccountId>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
+    Block: BlockT,
     C: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
@@ -48,6 +71,7 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
     C::Api: BlockBuilder<Block>,
     P: TransactionPool + Sync + Send + 'static,
+    AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -55,6 +79,7 @@ where
         pool,
         chain_spec,
         deny_unsafe,
+        _data,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();

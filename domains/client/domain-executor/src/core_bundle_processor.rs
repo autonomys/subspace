@@ -4,7 +4,7 @@ use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::CoreDomainBlockPreprocessor;
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
@@ -64,7 +64,8 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
 where
     Block: BlockT,
     SBlock: BlockT,
-    Block::Extrinsic: Into<SBlock::Extrinsic>,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -72,7 +73,8 @@ where
         + ProvideRuntimeApi<Block>
         + Finalizer<Block, Backend>
         + 'static,
-    Client::Api: DomainCoreApi<Block, AccountId>
+    Client::Api: DomainCoreApi<Block>
+        + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<
@@ -81,7 +83,7 @@ where
         Error = sp_consensus::Error,
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: DomainCoreApi<SBlock, AccountId>
+    SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>

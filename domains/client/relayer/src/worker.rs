@@ -1,7 +1,6 @@
 use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
-use domain_runtime_primitives::RelayerId;
 use futures::StreamExt;
-use parity_scale_codec::FullCodec;
+use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
@@ -14,7 +13,7 @@ use system_runtime_primitives::SystemDomainApi;
 
 /// Starts relaying system domain messages to other domains.
 /// If the node is in major sync, worker waits waits until the sync is finished.
-pub async fn relay_system_domain_messages<Client, Block, SO>(
+pub async fn relay_system_domain_messages<Client, Block, SO, RelayerId>(
     relayer_id: RelayerId,
     system_domain_client: Arc<Client>,
     system_domain_sync_oracle: SO,
@@ -27,6 +26,7 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
+    RelayerId: Encode + Decode + Clone,
     SO: SyncOracle,
 {
     // there is not confirmation depth for relayer on system domain
@@ -65,7 +65,7 @@ pub async fn relay_system_domain_messages<Client, Block, SO>(
 /// Starts relaying core domain messages to other domains.
 /// If the either system domain or core domain node is in major sync,
 /// worker waits waits until the sync is finished.
-pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, CDSO>(
+pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, CDSO, RelayerId>(
     relayer_id: RelayerId,
     core_domain_client: Arc<CDC>,
     system_domain_client: Arc<SDC>,
@@ -87,10 +87,11 @@ pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, C
         + ProvideRuntimeApi<Block>,
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>
+    SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
+    RelayerId: Encode + Decode + Clone,
 {
     let combined_sync_oracle =
         CombinedSyncOracle::new(system_domain_sync_oracle, core_domain_sync_oracle);
@@ -136,7 +137,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, C
     }
 }
 
-async fn relay_domain_messages<Client, Block, MP, SO, SRM>(
+async fn relay_domain_messages<Client, Block, MP, SO, SRM, RelayerId>(
     relayer_id: RelayerId,
     relay_confirmation_depth: NumberFor<Block>,
     domain_client: Arc<Client>,
@@ -155,6 +156,7 @@ where
     MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
     SO: SyncOracle,
     SRM: Fn(DomainId, NumberFor<Block>) -> Result<bool, ApiError>,
+    RelayerId: Encode + Decode + Clone,
 {
     let domain_id = Relayer::domain_id(&domain_client)?;
     tracing::info!(

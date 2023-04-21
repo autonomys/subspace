@@ -4,7 +4,7 @@ use crate::runtime_api::{
 };
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
-use domain_runtime_primitives::{AccountId, DomainCoreApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -42,7 +42,7 @@ where
     }
 }
 
-impl<Block, Executor> DomainCoreApi<Block, AccountId> for RuntimeApiLight<Executor>
+impl<Block, Executor> DomainCoreApi<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
     Executor: CodeExecutor,
@@ -195,7 +195,7 @@ where
     }
 }
 
-impl<Executor, Block> SignerExtractor<Block, AccountId> for RuntimeApiLight<Executor>
+impl<Executor, Block> SignerExtractor<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
     Executor: CodeExecutor,
@@ -204,8 +204,8 @@ where
         &self,
         at: Block::Hash,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-    ) -> Result<ExtractSignerResult<Block, AccountId>, ApiError> {
-        <Self as DomainCoreApi<Block, AccountId>>::extract_signer(self, at, extrinsics)
+    ) -> Result<ExtractSignerResult<Block>, ApiError> {
+        <Self as DomainCoreApi<Block>>::extract_signer(self, at, extrinsics)
     }
 }
 
@@ -219,10 +219,6 @@ where
         at: Block::Hash,
         runtime_code: Vec<u8>,
     ) -> Result<Vec<u8>, ApiError> {
-        <Self as DomainCoreApi<Block, AccountId>>::construct_set_code_extrinsic(
-            self,
-            at,
-            runtime_code,
-        )
+        <Self as DomainCoreApi<Block>>::construct_set_code_extrinsic(self, at, runtime_code)
     }
 }

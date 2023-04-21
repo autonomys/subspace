@@ -26,6 +26,7 @@ pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::system_domain::cli::SystemDomainCli;
 use bytesize::ByteSize;
 use clap::Parser;
+pub use core_domain::cli::AccountId32ToAccountId20Converter;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
@@ -315,15 +316,5 @@ impl SubstrateCli for Cli {
 
     fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
         &subspace_runtime::VERSION
-    }
-}
-
-pub mod parser {
-    use domain_runtime_primitives::RelayerId;
-    use sp_core::crypto::Ss58Codec;
-
-    /// Parses relayer id in string format. Used for Cli.
-    pub fn parse_relayer_id(s: &str) -> Result<RelayerId, sp_core::crypto::PublicError> {
-        RelayerId::from_ss58check(s)
     }
 }

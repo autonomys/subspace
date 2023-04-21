@@ -1,3 +1,4 @@
+use domain_runtime_primitives::opaque::AccountId;
 use sp_api::{ApiError, BlockT};
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::messages::ExtractedStateRootsFromProof;
@@ -40,14 +41,13 @@ pub trait SetCodeConstructor<Block: BlockT> {
     ) -> Result<Vec<u8>, ApiError>;
 }
 
-pub type ExtractSignerResult<Block, AccountId> =
-    Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
 
 /// Trait to extract the signer of the extrinsic.
-pub trait SignerExtractor<Block: BlockT, AccountId> {
+pub trait SignerExtractor<Block: BlockT> {
     fn extract_signer(
         &self,
         at: Block::Hash,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-    ) -> Result<ExtractSignerResult<Block, AccountId>, ApiError>;
+    ) -> Result<ExtractSignerResult<Block>, ApiError>;
 }

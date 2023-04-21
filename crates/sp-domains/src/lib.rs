@@ -115,6 +115,8 @@ impl DomainId {
 
     pub const CORE_ETH_RELAY: Self = Self::new(2);
 
+    pub const CORE_EVM: Self = Self::new(3);
+
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)

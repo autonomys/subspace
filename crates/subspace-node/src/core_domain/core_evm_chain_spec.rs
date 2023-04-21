@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
+// Copyright (C) 2023 Subspace Labs, Inc.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This program is free software: you can redistribute it and/or modify
@@ -14,17 +14,36 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Core payments domain configurations.
+//! Core EVM domain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
-use core_payments_domain_runtime::{
-    AccountId, BalancesConfig, GenesisConfig, MessengerConfig, SudoConfig, SystemConfig,
-    WASM_BINARY,
+use crate::chain_spec_utils::chain_spec_properties;
+use core_evm_runtime::{
+    AccountId, BalancesConfig, EVMChainIdConfig, GenesisConfig, MessengerConfig, Signature,
+    SudoConfig, SystemConfig, WASM_BINARY,
 };
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
-use sp_core::crypto::Ss58Codec;
+use sp_core::{ecdsa, Pair, Public};
+use sp_runtime::traits::{IdentifyAccount, Verify};
+use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
+
+/// Generate a crypto pair from seed.
+pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
+    TPublic::Pair::from_string(&format!("//{}", seed), None)
+        .expect("static values are valid; qed")
+        .public()
+}
+
+type AccountPublic = <Signature as Verify>::Signer;
+
+/// Generate an account ID from seed.
+pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
+where
+    AccountPublic: From<<TPublic::Pair as Pair>::Public>,
+{
+    AccountPublic::from(get_from_seed::<TPublic>(seed)).into_account()
+}
 
 pub type ChainSpec = ExecutionChainSpec<GenesisConfig>;
 
@@ -33,21 +52,22 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Development",
         // ID
-        "core_payments_domain_dev",
+        "core_evm_domain_dev",
         ChainType::Development,
         move || {
             testnet_genesis(
                 vec![
-                    get_account_id_from_seed("Alice"),
-                    get_account_id_from_seed("Bob"),
-                    get_account_id_from_seed("Alice//stash"),
-                    get_account_id_from_seed("Bob//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
+                    get_account_id_from_seed::<ecdsa::Public>("Bob"),
+                    get_account_id_from_seed::<ecdsa::Public>("Alice//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Bob//stash"),
                 ],
-                Some(get_account_id_from_seed("Alice")),
+                Some(get_account_id_from_seed::<ecdsa::Public>("Alice")),
                 vec![(
-                    get_account_id_from_seed("Alice"),
-                    get_account_id_from_seed("Alice"),
+                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
+                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
                 )],
+                42,
             )
         },
         vec![],
@@ -64,35 +84,36 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Local Testnet",
         // ID
-        "core_payments_domain_local_testnet",
+        "core_evm_domain_local_testnet",
         ChainType::Local,
         move || {
             testnet_genesis(
                 vec![
-                    get_account_id_from_seed("Alice"),
-                    get_account_id_from_seed("Bob"),
-                    get_account_id_from_seed("Charlie"),
-                    get_account_id_from_seed("Dave"),
-                    get_account_id_from_seed("Eve"),
-                    get_account_id_from_seed("Ferdie"),
-                    get_account_id_from_seed("Alice//stash"),
-                    get_account_id_from_seed("Bob//stash"),
-                    get_account_id_from_seed("Charlie//stash"),
-                    get_account_id_from_seed("Dave//stash"),
-                    get_account_id_from_seed("Eve//stash"),
-                    get_account_id_from_seed("Ferdie//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
+                    get_account_id_from_seed::<ecdsa::Public>("Bob"),
+                    get_account_id_from_seed::<ecdsa::Public>("Charlie"),
+                    get_account_id_from_seed::<ecdsa::Public>("Dave"),
+                    get_account_id_from_seed::<ecdsa::Public>("Eve"),
+                    get_account_id_from_seed::<ecdsa::Public>("Ferdie"),
+                    get_account_id_from_seed::<ecdsa::Public>("Alice//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Bob//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Charlie//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Dave//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Eve//stash"),
+                    get_account_id_from_seed::<ecdsa::Public>("Ferdie//stash"),
                 ],
-                Some(get_account_id_from_seed("Alice")),
+                Some(get_account_id_from_seed::<ecdsa::Public>("Alice")),
                 vec![
                     (
-                        get_account_id_from_seed("Alice"),
-                        get_account_id_from_seed("Alice"),
+                        get_account_id_from_seed::<ecdsa::Public>("Alice"),
+                        get_account_id_from_seed::<ecdsa::Public>("Alice"),
                     ),
                     (
-                        get_account_id_from_seed("Bob"),
-                        get_account_id_from_seed("Bob"),
+                        get_account_id_from_seed::<ecdsa::Public>("Bob"),
+                        get_account_id_from_seed::<ecdsa::Public>("Bob"),
                     ),
                 ],
+                43,
             )
         },
         // Bootnodes
@@ -100,7 +121,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("template-local"),
+        Some("core-evm-local"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -112,24 +133,24 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
 pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3d Core Payments Domain",
+        "Subspace Gemini 3d Core EVM Domain",
         // ID
-        "subspace_gemini_3d_core_payments_domain",
+        "subspace_gemini_3d_core_evm_domain",
         ChainType::Live,
         move || {
-            let sudo_account =
-                AccountId::from_ss58check("5CZy4hcmaVZUMZLfB41v1eAKvtZ8W7axeWuDvwjhjPwfhAqt")
-                    .expect("Invalid Sudo account");
+            let sudo_account = AccountId::from_str("f31e60022e290708c17d6997c34de6a30d09438f")
+                .expect("Invalid Sudo account");
             testnet_genesis(
                 vec![
                     // Genesis executor
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                    AccountId::from_str("2ac6c70c106138c8cd80da6b6a0e886b7eeee249")
                         .expect("Wrong executor account address"),
                     // Sudo account
-                    sudo_account.clone(),
+                    sudo_account,
                 ],
                 Some(sudo_account),
                 Default::default(),
+                44,
             )
         },
         // Bootnodes
@@ -137,7 +158,7 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3d-core-payments-domain"),
+        Some("subspace-gemini-3d-core-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -149,28 +170,28 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
 pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Devnet Core Payments Domain",
+        "Subspace Devnet Core EVM Domain",
         // ID
-        "subspace_devnet_core_payments_domain",
+        "subspace_devnet_core_evm_domain",
         ChainType::Custom("Testnet".to_string()),
         move || {
-            let sudo_account =
-                AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
-                    .expect("Invalid Sudo account");
+            let sudo_account = AccountId::from_str("b66a91845249464309fad766fd0ece8144547736")
+                .expect("Invalid Sudo account");
             testnet_genesis(
                 vec![
                     // Genesis executor
-                    AccountId::from_ss58check("5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ")
+                    AccountId::from_str("cfdf9f58d9e532c3807ce62a5489cb19cfa6942d")
                         .expect("Wrong executor account address"),
                     // Sudo account
-                    sudo_account.clone(),
+                    sudo_account,
                 ],
-                Some(sudo_account.clone()),
+                Some(sudo_account),
                 vec![(
                     sudo_account,
-                    AccountId::from_ss58check("5D7kgfacBsP6pkMB628221HG98mz2euaytthdoeZPGceQusS")
+                    AccountId::from_str("5b267fd1ba3ace6e3c3234f9576c49c877b5beb9")
                         .expect("Wrong relayer account address"),
                 )],
+                45,
             )
         },
         // Bootnodes
@@ -178,7 +199,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-devnet-core-payments-domain"),
+        Some("subspace-devnet-core-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -202,6 +223,7 @@ fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,
     relayers: Vec<(AccountId, AccountId)>,
+    chain_id: u64,
 ) -> GenesisConfig {
     GenesisConfig {
         system: SystemConfig {
@@ -221,5 +243,10 @@ fn testnet_genesis(
                 .collect(),
         },
         messenger: MessengerConfig { relayers },
+        evm_chain_id: EVMChainIdConfig { chain_id },
+        evm: Default::default(),
+        ethereum: Default::default(),
+        dynamic_fee: Default::default(),
+        base_fee: Default::default(),
     }
 }

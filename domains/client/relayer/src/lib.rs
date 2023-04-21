@@ -4,7 +4,6 @@ pub mod worker;
 
 use async_channel::TrySendError;
 use cross_domain_message_gossip::Message as GossipMessage;
-use domain_runtime_primitives::RelayerId;
 use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -25,7 +24,7 @@ use std::sync::Arc;
 const LOG_TARGET: &str = "message::relayer";
 
 /// Relayer relays messages between core domains using system domain as trusted third party.
-struct Relayer<Client, Block>(PhantomData<(Client, Block)>);
+struct Relayer<Client, Block, RelayerId>(PhantomData<(Client, Block, RelayerId)>);
 
 /// Sink used to submit all the gossip messages.
 pub type GossipMessageSink = TracingUnboundedSender<GossipMessage>;
@@ -80,11 +79,12 @@ impl From<sp_api::ApiError> for Error {
 type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
 type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
-impl<Client, Block> Relayer<Client, Block>
+impl<Client, Block, RelayerId> Relayer<Client, Block, RelayerId>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
+    RelayerId: Encode + Decode,
 {
     pub(crate) fn domain_id(client: &Arc<Client>) -> Result<DomainId, Error> {
         client
@@ -309,7 +309,7 @@ where
         NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
         SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
         SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-        SDC::Api: RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>,
+        SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>,
     {
         let core_domain_id = Self::domain_id(core_domain_client)?;
         let core_domain_block_header = core_domain_client.expect_header(confirmed_block_hash)?;

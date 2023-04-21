@@ -15,9 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::core_domain::cli::CoreDomainCli;
-use crate::parser::parse_relayer_id;
 use clap::Parser;
-use domain_runtime_primitives::RelayerId;
+use domain_runtime_primitives::AccountId;
 use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -27,6 +26,7 @@ use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use serde_json::Value;
+use sp_core::crypto::Ss58Codec;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
@@ -52,8 +52,8 @@ pub struct DomainCli {
     pub run_system: SubstrateRunCmd,
 
     /// Optional relayer address to relay messages on behalf.
-    #[clap(long, value_parser = parse_relayer_id)]
-    pub relayer_id: Option<RelayerId>,
+    #[clap(long)]
+    pub relayer_id: Option<String>,
 
     #[clap(raw = true)]
     pub core_domain_args: Vec<String>,
@@ -106,15 +106,17 @@ impl SystemDomainCli {
     pub fn create_domain_configuration(
         &self,
         tokio_handle: tokio::runtime::Handle,
-    ) -> sc_cli::Result<DomainConfiguration> {
+    ) -> sc_cli::Result<DomainConfiguration<AccountId>> {
         // if is dev, use the known key ring to start relayer
         let maybe_relayer_id = if self.shared_params().is_dev() && self.run.relayer_id.is_none() {
             self.run
                 .run_system
                 .get_keyring()
                 .map(|kr| kr.to_account_id())
+        } else if let Some(relayer_id) = self.run.relayer_id.clone() {
+            Some(AccountId::from_ss58check(&relayer_id).map_err(sc_cli::Error::InvalidUri)?)
         } else {
-            self.run.relayer_id.clone()
+            None
         };
 
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;

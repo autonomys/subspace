@@ -7,8 +7,9 @@ use domain_client_executor::{
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
-use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, RelayerId};
+use domain_runtime_primitives::{Balance, DomainCoreApi};
+use frame_benchmarking::frame_support::codec::FullCodec;
+use frame_benchmarking::frame_support::dispatch::TypeInfo;
 use futures::channel::mpsc;
 use futures::{Stream, StreamExt};
 use jsonrpsee::tracing;
@@ -26,7 +27,8 @@ use sc_service::{
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
-use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
+use serde::de::DeserializeOwned;
+use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Decode, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
@@ -39,27 +41,36 @@ use sp_offchain::OffchainWorkerApi;
 use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::fmt::{Debug, Display};
+use std::marker::PhantomData;
+use std::str::FromStr;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::FullPool;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
-type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
+type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
     CoreExecutor<
         Block,
         SBlock,
         PBlock,
-        FullClient<RuntimeApi, ExecutorDispatch>,
+        FullClient<Block, RuntimeApi, ExecutorDispatch>,
         SClient,
         PClient,
         FullPool<
             Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            CoreDomainTxPreValidator<Block, SBlock, PBlock, SClient>,
+            FullClient<Block, RuntimeApi, ExecutorDispatch>,
+            CoreDomainTxPreValidator<
+                Block,
+                SBlock,
+                PBlock,
+                FullClient<Block, RuntimeApi, ExecutorDispatch>,
+                SClient,
+            >,
         >,
-        FullBackend,
+        FullBackend<Block>,
         NativeElseWasmExecutor<ExecutorDispatch>,
     >;
 
@@ -67,17 +78,22 @@ type CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDi
 pub struct NewFullCore<
     C,
     CodeExecutor,
+    Block,
     SBlock,
     PBlock,
     SClient,
     PClient,
     RuntimeApi,
     ExecutorDispatch,
+    AccountId,
 > where
     SBlock: BlockT,
     PBlock: BlockT,
+    Block: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
@@ -86,22 +102,23 @@ pub struct NewFullCore<
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + DomainCoreApi<Block, AccountId>
+        + DomainCoreApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
+        + MessengerApi<Block, NumberFor<Block>>
+        + RelayerApi<Block, AccountId, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    AccountId: Encode + Decode,
 {
     /// Task manager.
     pub task_manager: TaskManager,
     /// Full client.
     pub client: C,
     /// Backend.
-    pub backend: Arc<FullBackend>,
+    pub backend: Arc<FullBackend<Block>>,
     /// Code executor.
     pub code_executor: Arc<CodeExecutor>,
     /// Network service.
@@ -114,26 +131,33 @@ pub struct NewFullCore<
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor:
-        CoreDomainExecutor<SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+        CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
+    _data: PhantomData<AccountId>,
 }
 
 /// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
+fn new_partial<RuntimeApi, Executor, SDC, Block, SBlock, PBlock>(
     config: &ServiceConfiguration,
     system_domain_client: Arc<SDC>,
 ) -> Result<
     PartialComponents<
-        FullClient<RuntimeApi, Executor>,
+        FullClient<Block, RuntimeApi, Executor>,
         TFullBackend<Block>,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<RuntimeApi, Executor>>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, Executor>>,
         FullPool<
             Block,
-            FullClient<RuntimeApi, Executor>,
-            CoreDomainTxPreValidator<Block, SBlock, PBlock, SDC>,
+            FullClient<Block, RuntimeApi, Executor>,
+            CoreDomainTxPreValidator<
+                Block,
+                SBlock,
+                PBlock,
+                FullClient<Block, RuntimeApi, Executor>,
+                SDC,
+            >,
         >,
         (
             Option<Telemetry>,
@@ -145,13 +169,16 @@ fn new_partial<RuntimeApi, Executor, SDC, SBlock, PBlock>(
 >
 where
     RuntimeApi:
-        ConstructRuntimeApi<Block, FullClient<RuntimeApi, Executor>> + Send + Sync + 'static,
+        ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, Executor>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
-        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
+        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+        + MessengerApi<Block, NumberFor<Block>>,
     Executor: NativeExecutionDispatch + 'static,
+    Block: BlockT,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
-    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
@@ -190,7 +217,8 @@ where
         telemetry
     });
 
-    let core_domain_tx_pre_validator = CoreDomainTxPreValidator::new(system_domain_client);
+    let core_domain_tx_pre_validator =
+        CoreDomainTxPreValidator::new(client.clone(), system_domain_client);
     let transaction_pool = subspace_transaction_pool::new_full(
         config,
         &task_manager,
@@ -218,13 +246,13 @@ where
     Ok(params)
 }
 
-pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>
+pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS, AccountId>
 where
     SBlock: BlockT,
     PBlock: BlockT,
 {
     pub domain_id: DomainId,
-    pub core_domain_config: DomainConfiguration,
+    pub core_domain_config: DomainConfiguration<AccountId>,
     pub system_domain_client: Arc<SClient>,
     pub system_domain_sync_service: Arc<SyncingService<SBlock>>,
     pub primary_chain_client: Arc<PClient>,
@@ -239,6 +267,7 @@ where
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 #[allow(clippy::too_many_arguments)]
 pub async fn new_full_core<
+    Block,
     SBlock,
     PBlock,
     SClient,
@@ -249,32 +278,48 @@ pub async fn new_full_core<
     NSNS,
     RuntimeApi,
     ExecutorDispatch,
+    AccountId,
 >(
-    core_domain_params: CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS>,
+    core_domain_params: CoreDomainParams<
+        SBlock,
+        PBlock,
+        SClient,
+        PClient,
+        SC,
+        IBNS,
+        CIBNS,
+        NSNS,
+        AccountId,
+    >,
 ) -> sc_service::error::Result<
     NewFullCore<
-        Arc<FullClient<RuntimeApi, ExecutorDispatch>>,
+        Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
+        Block,
         SBlock,
         PBlock,
         SClient,
         PClient,
         RuntimeApi,
         ExecutorDispatch,
+        AccountId,
     >,
 >
 where
+    Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Hash> + From<Hash>,
-    NumberFor<SBlock>: Into<BlockNumber>,
-    <Block as BlockT>::Extrinsic: Into<SBlock::Extrinsic>,
+    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
+    Block::Hash: FullCodec + TypeInfo + Unpin,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
+    <Block as BlockT>::Header: Unpin,
+    NumberFor<Block>: FullCodec + TypeInfo,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
-    SClient::Api: DomainCoreApi<SBlock, AccountId>
+    SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
-        + RelayerApi<SBlock, RelayerId, NumberFor<SBlock>>
-        + ReceiptsApi<SBlock, Hash>,
+        + RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
+        + ReceiptsApi<SBlock, <Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
@@ -283,12 +328,12 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
@@ -297,12 +342,23 @@ where
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
-        + DomainCoreApi<Block, AccountId>
+        + DomainCoreApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, RelayerId, NumberFor<Block>>,
+        + MessengerApi<Block, NumberFor<Block>>
+        + RelayerApi<Block, AccountId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
+    AccountId: DeserializeOwned
+        + Encode
+        + Decode
+        + Clone
+        + Debug
+        + Display
+        + FromStr
+        + Sync
+        + Send
+        + 'static,
 {
     let CoreDomainParams {
         domain_id,
@@ -325,7 +381,7 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial::<_, _, _, SBlock, PBlock>(
+    let params = new_partial::<_, _, _, Block, SBlock, PBlock>(
         &core_domain_config.service_config,
         system_domain_client.clone(),
     )?;
@@ -355,14 +411,14 @@ where
         let chain_spec = core_domain_config.service_config.chain_spec.cloned_box();
 
         Box::new(move |deny_unsafe, _| {
-            let deps = crate::rpc::FullDeps {
-                client: client.clone(),
-                pool: transaction_pool.clone(),
-                chain_spec: chain_spec.cloned_box(),
+            let deps = crate::rpc::FullDeps::new(
+                client.clone(),
+                transaction_pool.clone(),
+                chain_spec.cloned_box(),
                 deny_unsafe,
-            };
+            );
 
-            crate::rpc::create_full(deps).map_err(Into::into)
+            crate::rpc::create_full::<Block, _, _, AccountId>(deps).map_err(Into::into)
         })
     };
 
@@ -399,7 +455,7 @@ where
         system_domain_client.clone(),
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
-        EssentialExecutorParams {
+        EssentialExecutorParams::<Block, _, _, _, _, _, _, _, _, _> {
             primary_chain_client: primary_chain_client.clone(),
             primary_network_sync_oracle,
             client: client.clone(),
@@ -446,6 +502,7 @@ where
             _,
             _,
             PBlock,
+            _,
             _,
             _,
             _,
@@ -519,6 +576,7 @@ where
         network_starter,
         executor,
         tx_pool_sink: msg_sender,
+        _data: Default::default(),
     };
 
     Ok(new_full)

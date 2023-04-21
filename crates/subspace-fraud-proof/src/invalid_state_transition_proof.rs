@@ -502,17 +502,18 @@ where
     PBlock: BlockT,
     PBlock::Hash: From<sp_core::H256>,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<<Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
-    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
     Executor: CodeExecutor,
 {
     /// Constructs a new instance of [`CoreDomainExtrinsicsBuilder`].
@@ -554,17 +555,18 @@ where
     PBlock: BlockT,
     PBlock::Hash: From<sp_core::H256>,
     SBlock: BlockT,
+    NumberFor<SBlock>: From<NumberFor<Block>>,
+    SBlock::Hash: From<<Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
-    sp_runtime::OpaqueExtrinsic: Into<SBlock::Extrinsic>,
     Executor: CodeExecutor,
 {
     fn build_domain_extrinsics(
