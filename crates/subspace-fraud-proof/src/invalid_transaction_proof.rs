@@ -156,8 +156,12 @@ where
             .nth(*extrinsic_index as usize)
             .ok_or(VerificationError::DomainExtrinsicNotFound(*extrinsic_index))?;
 
+        let state_root = self
+            .verifier_client
+            .state_root(*domain_id, *block_number, *domain_block_hash)
+            .expect("Can not fetch state root");
+
         let db = storage_proof.clone().into_memory_db::<BlakeTwo256>();
-        let state_root = H256::default();
         let read_value = |storage_key| {
             read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, &state_root, storage_key, None, None)
                 .map_err(|_| VerificationError::InvalidStorageProof)

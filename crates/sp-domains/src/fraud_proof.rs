@@ -160,6 +160,9 @@ pub enum VerificationError {
         error("Can not find signer from the domain extrinsic")
     )]
     SignerNotFound,
+    /// Domain state root not found.
+    #[cfg_attr(feature = "thiserror", error("Domain state root not found"))]
+    DomainStateRootNotFound,
     /// Fail to get runtime code.
     // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
     // error, but it will be improper to use `WasmError` directly here since it will make

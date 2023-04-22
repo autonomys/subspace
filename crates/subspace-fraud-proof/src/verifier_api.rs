@@ -3,6 +3,7 @@
 //! proof verification.
 
 use codec::{Decode, Encode};
+use domain_runtime_primitives::Hash;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
@@ -33,6 +34,14 @@ pub trait VerifierApi {
         domain_id: DomainId,
         domain_block_number: u32,
     ) -> Result<H256, VerificationError>;
+
+    ///
+    fn state_root(
+        &self,
+        domain_id: DomainId,
+        domain_block_number: u32,
+        domain_block_hash: H256,
+    ) -> Result<Hash, VerificationError>;
 }
 
 /// A wrapper of primary chain client/system domain client in common.
@@ -172,5 +181,22 @@ where
             )?
             .and_then(|primary_hash| Decode::decode(&mut primary_hash.encode().as_slice()).ok())
             .ok_or(VerificationError::PrimaryHashNotFound)
+    }
+
+    fn state_root(
+        &self,
+        domain_id: DomainId,
+        domain_block_number: u32,
+        domain_block_hash: H256,
+    ) -> Result<Hash, VerificationError> {
+        self.client
+            .runtime_api()
+            .state_root(
+                self.client.info().best_hash,
+                domain_id,
+                NumberFor::<Block>::from(domain_block_number),
+                Block::Hash::decode(&mut domain_block_hash.encode().as_slice())?,
+            )?
+            .ok_or(VerificationError::DomainStateRootNotFound)
     }
 }
