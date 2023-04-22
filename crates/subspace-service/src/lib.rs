@@ -131,6 +131,20 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
+pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
+    subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        Hash,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+        SystemDomainExtrinsicsBuilder<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            NativeElseWasmExecutor<ExecutorDispatch>,
+        >,
+    >;
+
 pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
     subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
         Block,
@@ -148,6 +162,7 @@ pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
+    InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
     InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -305,15 +320,29 @@ where
 
     let bundle_validator = BundleValidator::new(client.clone());
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
-        InvalidStateTransitionProofVerifier::new(
-            client.clone(),
-            executor.clone(),
-            task_manager.spawn_handle(),
-            VerifierClient::new(client.clone()),
-            SystemDomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor)),
-        ),
-    ));
+    let domain_extrinsics_builder =
+        SystemDomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor.clone()));
+
+    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        client.clone(),
+        Arc::new(executor.clone()),
+        VerifierClient::new(client.clone()),
+        domain_extrinsics_builder.clone(),
+    );
+
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
+        client.clone(),
+        executor,
+        task_manager.spawn_handle(),
+        VerifierClient::new(client.clone()),
+        domain_extrinsics_builder,
+    );
+
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
+
     let tx_pre_validator = PrimaryChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
