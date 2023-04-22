@@ -151,8 +151,11 @@ where
         // verifiable way.
         let extrinsic = OpaqueExtrinsic::from_bytes(invalid_extrinsic)?;
 
-        // TODO: proper state_root
-        let state_root = H256::default();
+        let state_root = self
+            .verifier_client
+            .state_root(*domain_id, *block_number, *domain_block_hash)
+            .expect("Can not fetch state root");
+
         let db = storage_proof.clone().into_memory_db::<BlakeTwo256>();
         let read_value = |storage_key| {
             read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, &state_root, storage_key, None, None)

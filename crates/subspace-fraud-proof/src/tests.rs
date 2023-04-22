@@ -67,6 +67,15 @@ impl VerifierApi for TestVerifierClient {
             .unwrap()
             .unwrap())
     }
+
+    fn state_root(
+        &self,
+        _domain_id: DomainId,
+        _domain_block_number: u32,
+        _domain_block_hash: H256,
+    ) -> Result<Hash, VerificationError> {
+        unimplemented!("Not used in tests")
+    }
 }
 
 // Use the system domain id for testing
