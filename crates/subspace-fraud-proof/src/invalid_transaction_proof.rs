@@ -215,3 +215,40 @@ where
         }
     }
 }
+
+/// Verifies invalid transaction proof.
+pub trait VerifyInvalidTransactionProof {
+    /// Returns `Ok(())` if given `invalid_transaction_proof` is legitimate.
+    fn verify_invalid_transaction_proof(
+        &self,
+        invalid_transaction_proof: &InvalidTransactionProof,
+    ) -> Result<(), VerificationError>;
+}
+
+impl<PBlock, Client, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
+    VerifyInvalidTransactionProof
+    for InvalidTransactionProofVerifier<
+        PBlock,
+        Client,
+        Hash,
+        Exec,
+        VerifierClient,
+        DomainExtrinsicsBuilder,
+    >
+where
+    PBlock: BlockT,
+    Hash: Encode + Decode,
+    H256: Into<PBlock::Hash>,
+    Client: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
+    Client::Api: ExecutorApi<PBlock, Hash>,
+    VerifierClient: VerifierApi,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
+    Exec: CodeExecutor + 'static,
+{
+    fn verify_invalid_transaction_proof(
+        &self,
+        invalid_transaction_proof: &InvalidTransactionProof,
+    ) -> Result<(), VerificationError> {
+        self.verify(invalid_transaction_proof)
+    }
+}

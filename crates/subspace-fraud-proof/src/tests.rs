@@ -1,5 +1,6 @@
 use crate::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
 use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
+use crate::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
 use codec::Encode;
@@ -259,6 +260,11 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
+    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+    );
+
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
@@ -269,8 +275,18 @@ async fn execution_proof_creation_and_verification_should_work() {
             Arc::new(ferdie.executor.clone()),
         ),
     );
-    let proof_verifier =
-        ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
+
+    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+        TestVerifierClient::new(ferdie.client.clone()),
+        domain_extrinsics_builder,
+    );
+
+    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
 
     let parent_number_alice = *parent_header.number();
     let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
@@ -565,8 +581,23 @@ async fn invalid_execution_proof_should_not_work() {
             Arc::new(ferdie.executor.clone()),
         ),
     );
-    let proof_verifier =
-        ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
+
+    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+    );
+
+    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+        TestVerifierClient::new(ferdie.client.clone()),
+        domain_extrinsics_builder,
+    );
+
+    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
 
     let parent_number_alice = *parent_header.number();
     let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
