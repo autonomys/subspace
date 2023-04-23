@@ -17,14 +17,15 @@
 //! Core EVM domain configurations.
 
 use crate::chain_spec_utils::chain_spec_properties;
+use crate::AccountId32ToAccountId20Converter;
 use core_evm_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, GenesisConfig, MessengerConfig, Signature,
     SudoConfig, SystemConfig, WASM_BINARY,
 };
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
-use sp_core::{ecdsa, Pair, Public};
-use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_core::{ecdsa, sr25519, Pair, Public};
+use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
 
@@ -65,7 +66,9 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                 Some(get_account_id_from_seed::<ecdsa::Public>("Alice")),
                 vec![(
                     get_account_id_from_seed::<ecdsa::Public>("Alice"),
-                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
+                    AccountId32ToAccountId20Converter::convert(
+                        get_from_seed::<sr25519::Public>("Alice").into(),
+                    ),
                 )],
                 42,
             )

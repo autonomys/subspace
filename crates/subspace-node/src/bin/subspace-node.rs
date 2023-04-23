@@ -774,11 +774,15 @@ fn main() -> Result<(), Error> {
                                         ))
                                     })?;
 
-                                let base_path = core_domain_config
+                                let evm_base_path = core_domain_config
                                     .service_config
                                     .base_path
                                     .as_ref()
-                                    .map(|base_path| BasePath::new(base_path.path()));
+                                    .map(|base_path| {
+                                        BasePath::new(
+                                            base_path.config_dir(core_domain_config.service_config.chain_spec.id()),
+                                        )
+                                    });
                                 let eth_provider = EthProvider::<
                                     core_evm_runtime::TransactionConverter,
                                     DefaultEthConfig<
@@ -789,7 +793,7 @@ fn main() -> Result<(), Error> {
                                         >,
                                         FullBackend<DomainBlock>,
                                     >,
-                                >::new(base_path, core_domain_cli.additional_args());
+                                >::new(evm_base_path, core_domain_cli.additional_args());
                                 let core_domain_params = domain_service::CoreDomainParams {
                                     domain_id: core_domain_cli.domain_id,
                                     core_domain_config,

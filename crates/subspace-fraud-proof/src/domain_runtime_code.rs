@@ -46,9 +46,10 @@ where
         .system_domain_wasm_bundle(at)
         .map_err(VerificationError::RuntimeApi)?;
 
-    let wasm_bundle = match domain_id {
-        DomainId::SYSTEM => system_wasm_bundle,
-        DomainId::CORE_PAYMENTS | DomainId::CORE_ETH_RELAY => {
+    let wasm_bundle = {
+        if domain_id.is_system() {
+            system_wasm_bundle
+        } else if domain_id.is_core() {
             read_core_domain_runtime_blob(system_wasm_bundle.as_ref(), domain_id)
                 .map_err(|err| {
                     VerificationError::RuntimeCode(format!(
@@ -56,8 +57,7 @@ where
                     ))
                 })?
                 .into()
-        }
-        _ => {
+        } else {
             return Err(VerificationError::RuntimeCode(format!(
                 "No runtime code for {domain_id:?}"
             )));
