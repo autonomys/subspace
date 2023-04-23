@@ -38,10 +38,12 @@ tracing = "0.1.37"
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
 domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
+pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
 sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-client" }
+subspace-test-runtime = { version = "0.1.0", path = "../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }

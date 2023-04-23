@@ -83,6 +83,16 @@ where
             proof => unimplemented!("Can not verify {proof:?}"),
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn verify_invalid_transaction_proof(
+        &self,
+        extrinsic: Vec<u8>,
+        invalid_transaction_proof: &sp_domains::fraud_proof::InvalidTransactionProof,
+    ) -> Result<(), VerificationError> {
+        self.invalid_transaction_proof_verifier
+            .verify_with_extrinsic(extrinsic, invalid_transaction_proof)
+    }
 }
 
 impl<VerifierBlock, ITPVerifier, ISTPVerifier> VerifyFraudProof<VerifierBlock>

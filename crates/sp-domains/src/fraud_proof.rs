@@ -138,6 +138,12 @@ pub enum VerificationError {
         error("Sender of transaction has enough balance to pay the transaction fee")
     )]
     SufficientBalance,
+    /// State not found in the storage proof.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("State under storage key ({0:?}) not found in the storage proof")
+    )]
+    StateNotFound(Vec<u8>),
     /// Decode error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
