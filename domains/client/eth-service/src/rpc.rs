@@ -1,4 +1,9 @@
+use domain_service::rpc::FullDeps;
 use fc_db::Backend as FrontierBackend;
+use fc_rpc::{
+    Eth, EthApiServer, EthDevSigner, EthFilter, EthFilterApiServer, EthPubSub, EthPubSubApiServer,
+    EthSigner, Net, NetApiServer, Web3, Web3ApiServer,
+};
 pub use fc_rpc::{EthBlockDataCacheTask, EthConfig, StorageOverride};
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
 pub use fc_storage::overrides_handle;
@@ -7,10 +12,8 @@ use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRP
 use jsonrpsee::RpcModule;
 use sc_client_api::backend::{Backend, StorageProvider};
 use sc_client_api::client::BlockchainEvents;
-use sc_network::NetworkService;
-use sc_network_sync::SyncingService;
 use sc_rpc::SubscriptionTaskExecutor;
-use sc_transaction_pool::{ChainApi, Pool};
+use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -18,43 +21,33 @@ use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
-pub struct DefaultEthConfig<C, BE>(std::marker::PhantomData<(C, BE)>);
+pub struct DefaultEthConfig<Client, Backend>(std::marker::PhantomData<(Client, Backend)>);
 
-impl<Block, C, BE> fc_rpc::EthConfig<Block, C> for DefaultEthConfig<C, BE>
+impl<Block, Client, BE> EthConfig<Block, Client> for DefaultEthConfig<Client, BE>
 where
     Block: BlockT,
-    C: sc_client_api::StorageProvider<Block, BE> + Sync + Send + 'static,
+    Client: StorageProvider<Block, BE> + Sync + Send + 'static,
     BE: Backend<Block> + 'static,
 {
     type EstimateGasAdapter = ();
     type RuntimeStorageOverride =
-        fc_rpc::frontier_backend_client::SystemAccountId20StorageOverride<Block, C, BE>;
+        fc_rpc::frontier_backend_client::SystemAccountId20StorageOverride<Block, Client, BE>;
 }
 
 /// Extra dependencies for Ethereum compatibility.
-pub struct EthDeps<C, P, A: ChainApi, CT, B: BlockT> {
-    /// The client instance to use.
-    pub client: Arc<C>,
-    /// Transaction pool instance.
-    pub pool: Arc<P>,
-    /// Graph pool instance.
-    pub graph: Arc<Pool<A>>,
+pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE> {
+    /// Full Rpc deps
+    pub full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
     /// Ethereum transaction converter.
     pub converter: Option<CT>,
-    /// The Node authority flag
-    pub is_authority: bool,
     /// Whether to enable dev signer
     pub enable_dev_signer: bool,
-    /// Network service
-    pub network: Arc<NetworkService<B, B::Hash>>,
-    /// Chain syncing service
-    pub sync: Arc<SyncingService<B>>,
     /// Frontier Backend.
-    pub frontier_backend: Arc<FrontierBackend<B>>,
+    pub frontier_backend: Arc<FrontierBackend<Block>>,
     /// Ethereum data access overrides.
-    pub overrides: Arc<OverrideHandle<B>>,
+    pub overrides: Arc<OverrideHandle<Block>>,
     /// Cache for Ethereum block data.
-    pub block_data_cache: Arc<EthBlockDataCacheTask<B>>,
+    pub block_data_cache: Arc<EthBlockDataCacheTask<Block>>,
     /// EthFilterApi pool.
     pub filter_pool: Option<FilterPool>,
     /// Maximum number of logs in a query.
@@ -68,17 +61,14 @@ pub struct EthDeps<C, P, A: ChainApi, CT, B: BlockT> {
     pub execute_gas_limit_multiplier: u64,
 }
 
-impl<C, P, A: ChainApi, CT: Clone, B: BlockT> Clone for EthDeps<C, P, A, CT, B> {
+impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE> Clone
+    for EthDeps<Client, TxPool, CA, CT, Block, BE>
+{
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
-            pool: self.pool.clone(),
-            graph: self.graph.clone(),
+            full_deps: self.full_deps.clone(),
             converter: self.converter.clone(),
-            is_authority: self.is_authority,
             enable_dev_signer: self.enable_dev_signer,
-            network: self.network.clone(),
-            sync: self.sync.clone(),
             frontier_backend: self.frontier_backend.clone(),
             overrides: self.overrides.clone(),
             block_data_cache: self.block_data_cache.clone(),
@@ -92,36 +82,29 @@ impl<C, P, A: ChainApi, CT: Clone, B: BlockT> Clone for EthDeps<C, P, A, CT, B> 
 }
 
 /// Instantiate Ethereum-compatible RPC extensions.
-pub fn create_eth<C, BE, P, A, CT, B, EC: EthConfig<B, C>>(
+pub(crate) fn create_eth_rpc<Client, BE, TxPool, CA, CT, Block, EC: EthConfig<Block, Client>>(
     mut io: RpcModule<()>,
-    deps: EthDeps<C, P, A, CT, B>,
+    deps: EthDeps<Client, TxPool, CA, CT, Block, BE>,
     subscription_task_executor: SubscriptionTaskExecutor,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
-    B: BlockT,
-    C: CallApiAt<B> + ProvideRuntimeApi<B>,
-    C::Api: BlockBuilderApi<B> + EthereumRuntimeRPCApi<B> + ConvertTransactionRuntimeApi<B>,
-    C: BlockchainEvents<B> + 'static,
-    C: HeaderBackend<B> + HeaderMetadata<B, Error = BlockChainError> + StorageProvider<B, BE>,
-    BE: Backend<B> + 'static,
-    P: TransactionPool<Block = B> + 'static,
-    A: ChainApi<Block = B> + 'static,
-    CT: ConvertTransaction<<B as BlockT>::Extrinsic> + Send + Sync + 'static,
+    Block: BlockT,
+    Client: CallApiAt<Block> + ProvideRuntimeApi<Block>,
+    Client::Api:
+        BlockBuilderApi<Block> + EthereumRuntimeRPCApi<Block> + ConvertTransactionRuntimeApi<Block>,
+    Client: BlockchainEvents<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = BlockChainError>
+        + StorageProvider<Block, BE>,
+    BE: Backend<Block> + 'static,
+    TxPool: TransactionPool<Block = Block> + 'static,
+    CA: ChainApi<Block = Block> + 'static,
+    CT: ConvertTransaction<<Block as BlockT>::Extrinsic> + Send + Sync + 'static,
 {
-    use fc_rpc::{
-        Eth, EthApiServer, EthDevSigner, EthFilter, EthFilterApiServer, EthPubSub,
-        EthPubSubApiServer, EthSigner, Net, NetApiServer, Web3, Web3ApiServer,
-    };
-
     let EthDeps {
-        client,
-        pool,
-        graph,
+        full_deps,
         converter,
-        is_authority,
         enable_dev_signer,
-        network,
-        sync,
         frontier_backend,
         overrides,
         block_data_cache,
@@ -131,6 +114,16 @@ where
         fee_history_cache_limit,
         execute_gas_limit_multiplier,
     } = deps;
+
+    let FullDeps {
+        client,
+        pool,
+        graph,
+        network,
+        sync,
+        is_authority,
+        ..
+    } = full_deps;
 
     let mut signers = Vec::new();
     if enable_dev_signer {

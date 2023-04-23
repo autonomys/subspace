@@ -3,13 +3,12 @@ pub use fc_db::frontier_database_dir;
 use fc_mapping_sync::{MappingSyncWorker, SyncStrategy};
 use fc_rpc::{EthTask, OverrideHandle};
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
-use futures::future;
-use futures::prelude::*;
+use futures::{future, StreamExt};
 use sc_client_api::{BlockchainEvents, StorageProvider};
 use sc_service::error::Error as ServiceError;
-use sc_service::TaskManager;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::{NumberFor, Zero};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -50,13 +49,13 @@ pub struct EthConfiguration {
     pub eth_statuses_cache: usize,
 }
 
-struct FrontierPartialComponents {
-    filter_pool: Option<FilterPool>,
-    fee_history_cache: FeeHistoryCache,
-    fee_history_cache_limit: FeeHistoryCacheLimit,
+pub(crate) struct FrontierPartialComponents {
+    pub(crate) filter_pool: Option<FilterPool>,
+    pub(crate) fee_history_cache: FeeHistoryCache,
+    pub(crate) fee_history_cache_limit: FeeHistoryCacheLimit,
 }
 
-fn new_frontier_partial(
+pub(crate) fn new_frontier_partial(
     fee_history_cache_limit: u64,
 ) -> Result<FrontierPartialComponents, ServiceError> {
     Ok(FrontierPartialComponents {
@@ -66,8 +65,8 @@ fn new_frontier_partial(
     })
 }
 
-fn spawn_frontier_tasks<Block, Client, Backend>(
-    task_manager: &TaskManager,
+pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
+    essential_task_spawner: SE,
     client: Arc<Client>,
     backend: Arc<Backend>,
     frontier_backend: Arc<FrontierBackend<Block>>,
@@ -86,22 +85,25 @@ fn spawn_frontier_tasks<Block, Client, Backend>(
     Client::Api: sp_api::ApiExt<Block>
         + fp_rpc::EthereumRuntimeRPCApi<Block>
         + fp_rpc::ConvertTransactionRuntimeApi<Block>,
+    SE: SpawnEssentialNamed,
 {
-    task_manager.spawn_essential_handle().spawn(
+    essential_task_spawner.spawn_essential(
         "frontier-mapping-sync-worker",
         Some("frontier"),
-        MappingSyncWorker::new(
-            client.import_notification_stream(),
-            Duration::new(6, 0),
-            client.clone(),
-            backend,
-            overrides.clone(),
-            frontier_backend,
-            3,
-            NumberFor::<Block>::zero(),
-            SyncStrategy::Normal,
-        )
-        .for_each(|()| future::ready(())),
+        Box::pin(
+            MappingSyncWorker::new(
+                client.import_notification_stream(),
+                Duration::new(6, 0),
+                client.clone(),
+                backend,
+                overrides.clone(),
+                frontier_backend,
+                3,
+                NumberFor::<Block>::zero(),
+                SyncStrategy::Normal,
+            )
+            .for_each(|()| future::ready(())),
+        ),
     );
 
     let FrontierPartialComponents {
@@ -114,22 +116,26 @@ fn spawn_frontier_tasks<Block, Client, Backend>(
     if let Some(filter_pool) = filter_pool {
         // Each filter is allowed to stay in the pool for 100 blocks.
         const FILTER_RETAIN_THRESHOLD: u64 = 100;
-        task_manager.spawn_essential_handle().spawn(
+        essential_task_spawner.spawn_essential(
             "frontier-filter-pool",
             Some("frontier"),
-            EthTask::filter_pool_task(client.clone(), filter_pool, FILTER_RETAIN_THRESHOLD),
+            Box::pin(EthTask::filter_pool_task(
+                client.clone(),
+                filter_pool,
+                FILTER_RETAIN_THRESHOLD,
+            )),
         );
     }
 
     // Spawn Frontier FeeHistory cache maintenance task.
-    task_manager.spawn_essential_handle().spawn(
+    essential_task_spawner.spawn_essential(
         "frontier-fee-history",
         Some("frontier"),
-        EthTask::fee_history_task(
+        Box::pin(EthTask::fee_history_task(
             client,
             overrides,
             fee_history_cache,
             fee_history_cache_limit,
-        ),
+        )),
     );
 }

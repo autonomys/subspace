@@ -446,6 +446,7 @@ parameter_types! {
     pub BoundDivision: U256 = U256::from(1024);
 }
 
+// TODO: This pallet needs inherents to pass target_gas price for each block.
 impl pallet_dynamic_fee::Config for Runtime {
     type MinGasPriceBoundDivisor = BoundDivision;
 }
@@ -510,7 +511,7 @@ construct_runtime!(
     }
 );
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TransactionConverter;
 
 impl fp_rpc::ConvertTransaction<UncheckedExtrinsic> for TransactionConverter {

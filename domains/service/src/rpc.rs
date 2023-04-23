@@ -6,60 +6,81 @@
 #![warn(missing_docs)]
 
 use domain_runtime_primitives::{Balance, Index as Nonce};
-use frame_benchmarking::frame_support::inherent::BlockT;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
+use sc_network::NetworkService;
+use sc_network_sync::SyncingService;
 use sc_rpc::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
+use sc_service::{DatabaseSource, SpawnTaskHandle};
+use sc_transaction_pool::{ChainApi, Pool};
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_core::{Decode, Encode};
+use sp_runtime::traits::Block as BlockT;
 use std::fmt::{Debug, Display};
-use std::marker::PhantomData;
 use std::sync::Arc;
 use substrate_frame_rpc_system::{System, SystemApiServer};
+use substrate_prometheus_endpoint::Registry;
 
-/// Full client dependencies
-pub struct FullDeps<C, P, AccountId> {
+/// Full RPC dependencies.
+pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE> {
     /// The client instance to use.
-    pub client: Arc<C>,
+    pub client: Arc<Client>,
+    /// The chain backend.
+    pub backend: Arc<BE>,
     /// Transaction pool instance.
-    pub pool: Arc<P>,
+    pub pool: Arc<TP>,
+    /// Graph pool instance.
+    pub graph: Arc<Pool<CA>>,
     /// A copy of the chain spec.
     pub chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
     /// Whether to deny unsafe calls
     pub deny_unsafe: DenyUnsafe,
-    _data: PhantomData<AccountId>,
+    /// Network service
+    pub network: Arc<NetworkService<Block, Block::Hash>>,
+    /// Chain syncing service
+    pub sync: Arc<SyncingService<Block>>,
+    /// Is node running as authority.
+    pub is_authority: bool,
+    /// Prometheus registry
+    pub prometheus_registry: Option<Registry>,
+    /// Database source
+    pub database_source: DatabaseSource,
+    /// Task Spawner.
+    pub task_spawner: SpawnTaskHandle,
 }
 
-impl<C, P, AccountId> FullDeps<C, P, AccountId> {
-    pub fn new(
-        client: Arc<C>,
-        pool: Arc<P>,
-        chain_spec: Box<dyn sc_chain_spec::ChainSpec>,
-        deny_unsafe: DenyUnsafe,
-    ) -> Self {
+impl<Block: BlockT, Client, TP, CA: ChainApi, BE> Clone for FullDeps<Block, Client, TP, CA, BE> {
+    fn clone(&self) -> Self {
         Self {
-            client,
-            pool,
-            chain_spec,
-            deny_unsafe,
-            _data: Default::default(),
+            client: self.client.clone(),
+            backend: self.backend.clone(),
+            pool: self.pool.clone(),
+            graph: self.graph.clone(),
+            chain_spec: self.chain_spec.cloned_box(),
+            deny_unsafe: self.deny_unsafe,
+            network: self.network.clone(),
+            sync: self.sync.clone(),
+            is_authority: self.is_authority,
+            task_spawner: self.task_spawner.clone(),
+            prometheus_registry: self.prometheus_registry.clone(),
+            database_source: self.database_source.clone(),
         }
     }
 }
 
 /// Instantiate all RPC extensions.
-pub fn create_full<Block, C, P, AccountId>(
-    deps: FullDeps<C, P, AccountId>,
+pub fn create_full<Block, Client, P, CA, AccountId, BE>(
+    deps: FullDeps<Block, Client, P, CA, BE>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     Block: BlockT,
-    C: ProvideRuntimeApi<Block>
+    Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
         + AuxStore
@@ -67,10 +88,11 @@ where
         + Send
         + Sync
         + 'static,
-    C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
-    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
-    C::Api: BlockBuilder<Block>,
+    Client::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
+        + substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
+        + BlockBuilder<Block>,
     P: TransactionPool + Sync + Send + 'static,
+    CA: ChainApi,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
 {
     let mut module = RpcModule::new(());
@@ -79,7 +101,7 @@ where
         pool,
         chain_spec,
         deny_unsafe,
-        _data,
+        ..
     } = deps;
 
     let chain_name = chain_spec.name().to_string();

@@ -2579,6 +2579,7 @@ dependencies = [
  "subspace-transaction-pool",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
+ "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
  "system-runtime-primitives",
  "tracing",
 ]
@@ -2902,6 +2903,8 @@ name = "eth-service"
 version = "0.1.0"
 dependencies = [
  "clap 4.2.2",
+ "domain-runtime-primitives",
+ "domain-service",
  "fc-consensus",
  "fc-db",
  "fc-mapping-sync",
@@ -2911,17 +2914,20 @@ dependencies = [
  "fp-rpc",
  "futures",
  "jsonrpsee",
+ "pallet-transaction-payment-rpc",
  "sc-client-api",
- "sc-network",
- "sc-network-sync",
+ "sc-executor",
  "sc-rpc",
  "sc-service",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
+ "serde",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
+ "sp-core",
  "sp-runtime",
+ "substrate-frame-rpc-system",
 ]
 
 [[package]]
@@ -11033,6 +11039,7 @@ dependencies = [
  "domain-client-executor",
  "domain-runtime-primitives",
  "domain-service",
+ "eth-service",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-support",

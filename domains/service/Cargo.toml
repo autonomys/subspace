@@ -65,6 +65,7 @@ subspace-fraud-proof = { version = "0.1.0", path = "../../crates/subspace-fraud-
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 subspace-transaction-pool = { version = "0.1.0", path = "../../crates/subspace-transaction-pool" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 tracing = "0.1.37"
 
 [build-dependencies]

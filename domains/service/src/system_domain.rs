@@ -16,6 +16,7 @@ use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
@@ -363,24 +364,28 @@ where
             warp_sync_params: None,
         })?;
 
-    let rpc_builder = {
-        let client = client.clone();
-        let transaction_pool = transaction_pool.clone();
-        let chain_spec = system_domain_config.service_config.chain_spec.cloned_box();
-
-        Box::new(move |deny_unsafe, _| {
-            let deps = crate::rpc::FullDeps::new(
-                client.clone(),
-                transaction_pool.clone(),
-                chain_spec.cloned_box(),
-                deny_unsafe,
-            );
-
-            crate::rpc::create_full::<Block, _, _, AccountId>(deps).map_err(Into::into)
-        })
-    };
-
     let is_authority = system_domain_config.service_config.role.is_authority();
+    let rpc_builder = {
+        let deps = crate::rpc::FullDeps {
+            client: client.clone(),
+            pool: transaction_pool.clone(),
+            graph: transaction_pool.pool().clone(),
+            chain_spec: system_domain_config.service_config.chain_spec.cloned_box(),
+            deny_unsafe: DenyUnsafe::Yes,
+            network: network_service.clone(),
+            sync: sync_service.clone(),
+            is_authority,
+            prometheus_registry: system_domain_config
+                .service_config
+                .prometheus_registry()
+                .cloned(),
+            database_source: system_domain_config.service_config.database.clone(),
+            task_spawner: task_manager.spawn_handle(),
+            backend: backend.clone(),
+        };
+
+        Box::new(move |_, _| crate::rpc::create_full(deps.clone()).map_err(Into::into))
+    };
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
