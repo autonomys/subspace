@@ -5,7 +5,8 @@ use crate::verifier_api::VerifierApi;
 use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Index};
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, Index};
+use sc_client_api::StorageProof;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
@@ -15,6 +16,7 @@ use sp_domains::ExecutorApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, Storage};
 use sp_trie::{read_trie_value, LayoutV1};
+use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -73,6 +75,66 @@ type AccountStorageMap = frame_support::storage::types::StorageMap<
     AccountId,
     frame_system::AccountInfo<Index, pallet_balances::AccountData<Balance>>,
 >;
+
+fn create_runtime_api_light<Exec>(
+    storage_proof: StorageProof,
+    state_root: &Hash,
+    executor: Arc<Exec>,
+    wasm_bundle: Cow<'static, [u8]>,
+    extrinsic: OpaqueExtrinsic,
+) -> Result<RuntimeApiLight<Exec>, VerificationError>
+where
+    Exec: CodeExecutor + 'static,
+{
+    let db = storage_proof.into_memory_db::<BlakeTwo256>();
+    let read_value = |storage_key| {
+        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key, None, None)
+            .map_err(|_| VerificationError::InvalidStorageProof)
+    };
+
+    let next_fee_multiplier_storage_key = [
+        63, 20, 103, 160, 150, 188, 215, 26, 91, 106, 12, 129, 85, 226, 8, 16, 63, 46, 223, 59,
+        223, 56, 29, 235, 227, 49, 171, 116, 70, 173, 223, 220,
+    ];
+    let next_fee_multiplier_value =
+        read_value(&next_fee_multiplier_storage_key)?.ok_or_else(|| {
+            VerificationError::StateNotFound(next_fee_multiplier_storage_key.to_vec())
+        })?;
+
+    let mut runtime_api_light = RuntimeApiLight::new(executor, wasm_bundle);
+
+    let sender = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extract_signer(
+        &runtime_api_light,
+        Default::default(),
+        vec![extrinsic],
+    )?
+    .into_iter()
+    .next()
+    .and_then(|(maybe_signer, _)| maybe_signer)
+    .ok_or(VerificationError::SignerNotFound)?;
+    let sender = AccountId::decode(&mut sender.as_slice())?;
+
+    let account_storage_key = AccountStorageMap::hashed_key_for(sender);
+    let account_value = read_value(&account_storage_key)?
+        .ok_or_else(|| VerificationError::StateNotFound(account_storage_key.clone()))?;
+
+    let storage = Storage {
+        top: [
+            (
+                next_fee_multiplier_storage_key.to_vec(),
+                next_fee_multiplier_value,
+            ),
+            (account_storage_key, account_value),
+        ]
+        .into_iter()
+        .collect(),
+        children_default: Default::default(),
+    };
+
+    runtime_api_light.set_storage(storage);
+
+    Ok(runtime_api_light)
+}
 
 impl<PBlock, PClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
     InvalidTransactionProofVerifier<
@@ -151,54 +213,17 @@ where
         // verifiable way.
         let extrinsic = OpaqueExtrinsic::from_bytes(invalid_extrinsic)?;
 
-        let state_root = self
-            .verifier_client
-            .state_root(*domain_id, *block_number, *domain_block_hash)
-            .expect("Can not fetch state root");
+        let state_root =
+            self.verifier_client
+                .state_root(*domain_id, *block_number, *domain_block_hash)?;
 
-        let db = storage_proof.clone().into_memory_db::<BlakeTwo256>();
-        let read_value = |storage_key| {
-            read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, &state_root, storage_key, None, None)
-                .map_err(|_| VerificationError::InvalidStorageProof)
-        };
-
-        let next_fee_multiplier_storage_key = [
-            63, 20, 103, 160, 150, 188, 215, 26, 91, 106, 12, 129, 85, 226, 8, 16, 63, 46, 223, 59,
-            223, 56, 29, 235, 227, 49, 171, 116, 70, 173, 223, 220,
-        ];
-        let next_fee_multiplier_value = read_value(&next_fee_multiplier_storage_key)?;
-
-        let mut runtime_api_light =
-            RuntimeApiLight::new(self.executor.clone(), domain_runtime_code.wasm_bundle);
-
-        let sender = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extract_signer(
-            &runtime_api_light,
-            Default::default(),
-            vec![extrinsic.clone()],
-        )?
-        .into_iter()
-        .next()
-        .and_then(|(maybe_signer, _)| maybe_signer)
-        .ok_or(VerificationError::SignerNotFound)?;
-        let sender = AccountId::decode(&mut sender.as_slice())?;
-
-        let account_storage_key = AccountStorageMap::hashed_key_for(sender);
-        let account_value = read_value(&account_storage_key)?;
-
-        let storage = Storage {
-            top: [
-                (
-                    next_fee_multiplier_storage_key.to_vec(),
-                    next_fee_multiplier_value.encode(),
-                ),
-                (account_storage_key, account_value.encode()),
-            ]
-            .into_iter()
-            .collect(),
-            children_default: Default::default(),
-        };
-
-        runtime_api_light.set_storage(storage);
+        let runtime_api_light = create_runtime_api_light(
+            storage_proof.clone(),
+            &state_root,
+            self.executor.clone(),
+            domain_runtime_code.wasm_bundle,
+            extrinsic.clone(),
+        )?;
 
         let check_result =
             <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::check_transaction_validity(

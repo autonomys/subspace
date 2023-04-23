@@ -80,6 +80,9 @@ where
             FraudProof::InvalidStateTransition(proof) => self
                 .invalid_state_transition_proof_verifier
                 .verify_invalid_state_transition_proof(proof),
+            FraudProof::InvalidTransaction(proof) => self
+                .invalid_transaction_proof_verifier
+                .verify_invalid_transaction_proof(proof),
             proof => unimplemented!("Can not verify {proof:?}"),
         }
     }

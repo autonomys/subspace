@@ -25,7 +25,7 @@ use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::Get;
 pub use pallet::*;
-use sp_domains::fraud_proof::{FraudProof, InvalidStateTransitionProof};
+use sp_domains::fraud_proof::{FraudProof, InvalidStateTransitionProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use sp_std::vec::Vec;
@@ -300,6 +300,10 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidStateTransition(proof) => {
                 Self::process_invalid_state_transition_proof(proof)
             }
+            FraudProof::InvalidTransaction(_proof) => {
+                // TODO: slash the executor accordingly.
+                Ok(())
+            }
             _ => Err(FraudProofError::Unimplemented.into()),
         }
     }
@@ -343,6 +347,9 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidStateTransition(proof) => {
                 Self::validate_invalid_state_transition_proof(proof)
             }
+            FraudProof::InvalidTransaction(proof) => {
+                Self::validate_invalid_transaction_proof(proof)
+            }
             _ => Err(FraudProofError::Unimplemented.into()),
         }
     }
@@ -372,6 +379,24 @@ impl<T: Config> Pallet<T> {
         );
 
         // TODO: prevent the spamming of fraud proof transaction.
+
+        Ok(())
+    }
+
+    fn validate_invalid_transaction_proof(
+        fraud_proof: &InvalidTransactionProof,
+    ) -> Result<(), Error> {
+        let best_number = Self::head_receipt_number(fraud_proof.domain_id);
+        let to_prove: T::BlockNumber = fraud_proof.block_number.into();
+        ensure!(
+            to_prove > best_number.saturating_sub(T::ReceiptsPruningDepth::get()),
+            FraudProofError::ExecutionReceiptPruned
+        );
+
+        ensure!(
+            to_prove <= best_number,
+            FraudProofError::ExecutionReceiptInFuture
+        );
 
         Ok(())
     }

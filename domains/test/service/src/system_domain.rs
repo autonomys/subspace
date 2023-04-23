@@ -358,6 +358,26 @@ impl SystemDomainNode {
         )
     }
 
+    /// Construct an extrinsic.
+    pub fn construct_extrinsic_with_caller(
+        &mut self,
+        caller: Sr25519Keyring,
+        function: impl Into<system_domain_test_runtime::RuntimeCall>,
+    ) -> system_domain_test_runtime::UncheckedExtrinsic {
+        let nonce = self
+            .client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, caller.into())
+            .expect("Fail to get account nonce");
+        crate::construct_extrinsic_generic::<system_domain_test_runtime::Runtime, _>(
+            &self.client,
+            function,
+            caller,
+            false,
+            nonce,
+        )
+    }
+
     /// Send an extrinsic to this node.
     pub async fn send_extrinsic(
         &self,
