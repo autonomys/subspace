@@ -309,7 +309,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     );
 
     // Run Alice (a system domain authority node)
-    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -331,18 +331,11 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .1
         .unwrap();
 
-    let transfer_to_bob = domain_test_service::construct_extrinsic(
-        &alice.client,
-        pallet_balances::Call::transfer {
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer {
             dest: Address::Id(Bob.public().into()),
             value: 1,
-        },
-        Alice,
-        false,
-        0,
-    );
-    alice
-        .send_extrinsic(transfer_to_bob)
+        })
         .await
         .expect("Failed to send extrinsic");
 

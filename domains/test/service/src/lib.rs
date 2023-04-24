@@ -22,6 +22,9 @@ pub mod chain_spec;
 pub mod core_domain;
 pub mod system_domain;
 
+use domain_runtime_primitives::opaque::Block;
+use domain_runtime_primitives::{Address, Signature};
+use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_network::config::{NonReservedPeerMode, TransportConfig};
 use sc_network::multiaddr;
@@ -34,10 +37,12 @@ use sc_service::{
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
+use sp_core::{Get, H256};
 use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::codec::Encode;
 use sp_runtime::generic;
+use sp_runtime::traits::Dispatchable;
 
 pub use sp_keyring::Sr25519Keyring as Keyring;
 pub use system_domain::*;
@@ -148,61 +153,80 @@ pub fn node_config(
     })
 }
 
+type SignedExtraFor<Runtime> = (
+    frame_system::CheckNonZeroSender<Runtime>,
+    frame_system::CheckSpecVersion<Runtime>,
+    frame_system::CheckTxVersion<Runtime>,
+    frame_system::CheckGenesis<Runtime>,
+    frame_system::CheckMortality<Runtime>,
+    frame_system::CheckNonce<Runtime>,
+    frame_system::CheckWeight<Runtime>,
+    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+);
+
+type UncheckedExtrinsicFor<Runtime> = generic::UncheckedExtrinsic<
+    Address,
+    <Runtime as frame_system::Config>::RuntimeCall,
+    Signature,
+    SignedExtraFor<Runtime>,
+>;
+
+type BalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
+
 /// Construct an extrinsic that can be applied to the test runtime.
-pub fn construct_extrinsic(
-    client: &SClient,
-    function: impl Into<system_domain_test_runtime::RuntimeCall>,
+pub fn construct_extrinsic_generic<Runtime, Client>(
+    client: impl AsRef<Client>,
+    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     caller: Sr25519Keyring,
     immortal: bool,
     nonce: u32,
-) -> system_domain_test_runtime::UncheckedExtrinsic {
+) -> UncheckedExtrinsicFor<Runtime>
+where
+    Runtime: frame_system::Config<Hash = H256, BlockNumber = u32>
+        + pallet_transaction_payment::Config
+        + Send
+        + Sync,
+    Runtime::RuntimeCall:
+        Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    Client: HeaderBackend<Block>,
+{
     let function = function.into();
-    let current_block_hash = client.info().best_hash;
-    let current_block = client.info().best_number.saturated_into();
-    let genesis_block = client.hash(0).unwrap().unwrap();
-    let period = system_domain_test_runtime::BlockHashCount::get()
+    let current_block_hash = client.as_ref().info().best_hash;
+    let current_block = client.as_ref().info().best_number.saturated_into();
+    let genesis_block = client.as_ref().hash(0).unwrap().unwrap();
+    let period = <Runtime as frame_system::Config>::BlockHashCount::get()
         .checked_next_power_of_two()
         .map(|c| c / 2)
         .unwrap_or(2) as u64;
     let tip = 0;
-    let extra: system_domain_test_runtime::SignedExtra =
-        (
-            frame_system::CheckNonZeroSender::<system_domain_test_runtime::Runtime>::new(),
-            frame_system::CheckSpecVersion::<system_domain_test_runtime::Runtime>::new(),
-            frame_system::CheckTxVersion::<system_domain_test_runtime::Runtime>::new(),
-            frame_system::CheckGenesis::<system_domain_test_runtime::Runtime>::new(),
-            frame_system::CheckMortality::<system_domain_test_runtime::Runtime>::from(
-                if immortal {
-                    generic::Era::Immortal
-                } else {
-                    generic::Era::mortal(period, current_block)
-                },
-            ),
-            frame_system::CheckNonce::<system_domain_test_runtime::Runtime>::from(nonce),
-            frame_system::CheckWeight::<system_domain_test_runtime::Runtime>::new(),
-            pallet_transaction_payment::ChargeTransactionPayment::<
-                system_domain_test_runtime::Runtime,
-            >::from(tip),
-        );
-    let raw_payload = system_domain_test_runtime::SignedPayload::from_raw(
+    let extra: SignedExtraFor<Runtime> = (
+        frame_system::CheckNonZeroSender::<Runtime>::new(),
+        frame_system::CheckSpecVersion::<Runtime>::new(),
+        frame_system::CheckTxVersion::<Runtime>::new(),
+        frame_system::CheckGenesis::<Runtime>::new(),
+        frame_system::CheckMortality::<Runtime>::from(if immortal {
+            generic::Era::Immortal
+        } else {
+            generic::Era::mortal(period, current_block)
+        }),
+        frame_system::CheckNonce::<Runtime>::from(nonce.into()),
+        frame_system::CheckWeight::<Runtime>::new(),
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip.into()),
+    );
+    let raw_payload = generic::SignedPayload::<
+        <Runtime as frame_system::Config>::RuntimeCall,
+        SignedExtraFor<Runtime>,
+    >::from_raw(
         function.clone(),
         extra.clone(),
-        (
-            (),
-            system_domain_test_runtime::VERSION.spec_version,
-            system_domain_test_runtime::VERSION.transaction_version,
-            genesis_block,
-            current_block_hash,
-            (),
-            (),
-            (),
-        ),
+        ((), 0, 0, genesis_block, current_block_hash, (), (), ()),
     );
     let signature = raw_payload.using_encoded(|e| caller.sign(e));
-    system_domain_test_runtime::UncheckedExtrinsic::new_signed(
+    UncheckedExtrinsicFor::<Runtime>::new_signed(
         function,
         subspace_test_runtime::Address::Id(caller.public().into()),
-        system_domain_test_runtime::Signature::Sr25519(signature),
+        Signature::Sr25519(signature),
         extra,
     )
 }

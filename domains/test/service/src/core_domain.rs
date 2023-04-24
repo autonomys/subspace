@@ -1,11 +1,14 @@
 //! Utilities used for testing with the system domain.
 #![warn(missing_docs)]
 use crate::system_domain::SClient;
-use crate::{node_config, Backend, SystemDomainNode};
+use crate::{
+    construct_extrinsic_generic, node_config, Backend, SystemDomainNode, UncheckedExtrinsicFor,
+};
 use domain_client_executor::ExecutorStreams;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi};
 use domain_service::FullClient;
+use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockchainEvents, StateBackendFor};
 use sc_executor::NativeExecutionDispatch;
@@ -20,6 +23,7 @@ use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
+use sp_runtime::traits::Dispatchable;
 use sp_runtime::OpaqueExtrinsic;
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -89,6 +93,9 @@ where
         + pallet_transaction_payment::Config
         + Send
         + Sync,
+    Runtime::RuntimeCall:
+        Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
+    crate::BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
     RuntimeApi:
         ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, Executor>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
@@ -213,6 +220,37 @@ where
     /// the test execution.
     pub fn wait_for_blocks(&self, count: usize) -> impl Future<Output = ()> {
         self.client.wait_for_blocks(count)
+    }
+
+    /// Construct and send an extrinsic to this node, only update the next nonce if success.
+    pub async fn construct_and_send_extrinsic(
+        &mut self,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> Result<RpcTransactionOutput, RpcTransactionError> {
+        let extrinsic = construct_extrinsic_generic::<Runtime, _>(
+            &self.client,
+            function,
+            self.key,
+            false,
+            self.next_nonce,
+        );
+        match self.rpc_handlers.send_transaction(extrinsic.into()).await {
+            res @ Ok(_) => {
+                self.next_nonce += 1;
+                res
+            }
+            err => err,
+        }
+    }
+
+    /// Construct an extrinsic and update the next nonce accordingly.
+    pub fn construct_extrinsic(
+        &mut self,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> UncheckedExtrinsicFor<Runtime> {
+        let nonce = self.next_nonce;
+        self.next_nonce += 1;
+        construct_extrinsic_generic::<Runtime, _>(&self.client, function, self.key, false, nonce)
     }
 
     /// Send an extrinsic to this node.
