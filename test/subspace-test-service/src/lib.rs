@@ -21,13 +21,15 @@
 use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{select, FutureExt, SinkExt, StreamExt};
+use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_client_api::{backend, BlockchainEvents};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::{BlockImport, BoxBlockImport, StateAction};
+use sc_consensus::{BlockImport, StateAction};
+use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::multiaddr;
@@ -197,8 +199,12 @@ pub struct MockPrimaryNode {
     new_slot_notification_subscribers:
         Vec<TracingUnboundedSender<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)>>,
     /// Block import pipeline
-    block_import:
-        MockBlockImport<BoxBlockImport<Block, TransactionFor<Client, Block>>, Client, Block>,
+    #[allow(clippy::type_complexity)]
+    block_import: MockBlockImport<
+        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, H256>,
+        Client,
+        Block,
+    >,
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
     log_prefix: &'static str,
@@ -262,10 +268,7 @@ impl MockPrimaryNode {
         let fraud_proof_block_import =
             sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-        let mut block_import =
-            MockBlockImport::<BoxBlockImport<Block, TransactionFor<Client, Block>>, _, _>::new(
-                Box::new(fraud_proof_block_import),
-            );
+        let mut block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
 
         // The `maintain-bundles-stored-in-last-k` worker here is different from the one in the production code
         // that it subscribes the `block_importing_notification_stream`, which is intended to ensure the bundle
@@ -640,10 +643,11 @@ fn log_new_block(block: &Block, used_time_ms: u128) {
 
 // `MockBlockImport` is mostly port from `sc-consensus-subspace::SubspaceBlockImport` with all
 // the consensus related logic removed.
+#[allow(clippy::type_complexity)]
 struct MockBlockImport<Inner, Client, Block: BlockT> {
     inner: Inner,
     block_importing_notification_subscribers:
-        Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>,
+        Arc<Mutex<Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>>>,
     _phantom_data: PhantomData<Client>,
 }
 
@@ -651,7 +655,7 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
     fn new(inner: Inner) -> Self {
         MockBlockImport {
             inner,
-            block_importing_notification_subscribers: Vec::new(),
+            block_importing_notification_subscribers: Arc::new(Mutex::new(Vec::new())),
             _phantom_data: Default::default(),
         }
     }
@@ -661,8 +665,22 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
         &mut self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
-        self.block_importing_notification_subscribers.push(tx);
+        self.block_importing_notification_subscribers
+            .lock()
+            .push(tx);
         rx
+    }
+}
+
+impl<Inner: Clone, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
+    fn clone(&self) -> Self {
+        MockBlockImport {
+            inner: self.inner.clone(),
+            block_importing_notification_subscribers: self
+                .block_importing_notification_subscribers
+                .clone(),
+            _phantom_data: Default::default(),
+        }
     }
 }
 
@@ -695,6 +713,7 @@ where
         {
             let value = (block_number, acknowledgement_sender);
             self.block_importing_notification_subscribers
+                .lock()
                 .retain(|subscriber| {
                     // It is necessary to notify the subscriber twice for each importing block in the test to ensure
                     // the imported block must be fully processed by the executor when all acknowledgements responded.
@@ -718,7 +737,7 @@ where
                 },
                 // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
                 _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
-                    self.block_importing_notification_subscribers.retain(|subscriber| !subscriber.is_closed());
+                    self.block_importing_notification_subscribers.lock().retain(|subscriber| !subscriber.is_closed());
                 }
             }
         }
