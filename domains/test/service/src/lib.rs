@@ -21,8 +21,6 @@
 pub mod chain_spec;
 
 use domain_client_executor::ExecutorStreams;
-use domain_test_runtime::opaque::Block;
-use domain_test_runtime::Hash;
 use futures::StreamExt;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_client_api::BlockchainEvents;
@@ -56,12 +54,14 @@ use subspace_test_service::mock::MockPrimaryNode;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };
+use system_domain_test_runtime::opaque::Block;
+use system_domain_test_runtime::Hash;
 
 use cross_domain_message_gossip::GossipWorker;
 use domain_service::{DomainConfiguration, FullPool};
-pub use domain_test_runtime as runtime;
 use sp_domains::DomainId;
 pub use sp_keyring::Sr25519Keyring as Keyring;
+pub use system_domain_test_runtime as runtime;
 
 /// The signature of the announce block fn.
 pub type WrapAnnounceBlockFn = Arc<dyn Fn(Hash, Option<Vec<u8>>) + Send + Sync>;
@@ -90,11 +90,11 @@ impl sc_executor::NativeExecutionDispatch for RuntimeExecutor {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        domain_test_runtime::api::dispatch(method, data)
+        system_domain_test_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        domain_test_runtime::native_version()
+        system_domain_test_runtime::native_version()
     }
 }
 
@@ -213,7 +213,7 @@ async fn run_executor(
         _,
         _,
         _,
-        domain_test_runtime::RuntimeApi,
+        system_domain_test_runtime::RuntimeApi,
         RuntimeExecutor,
     >(
         system_domain_config,
@@ -312,7 +312,7 @@ async fn run_executor_with_mock_primary_node(
         _,
         _,
         _,
-        domain_test_runtime::RuntimeApi,
+        system_domain_test_runtime::RuntimeApi,
         RuntimeExecutor,
     >(
         system_domain_config,

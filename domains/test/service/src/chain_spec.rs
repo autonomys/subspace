@@ -1,6 +1,5 @@
 //! Chain specification for the domain test runtime.
 
-use domain_test_runtime::{AccountId, Balance, Hash, Signature};
 use frame_support::weights::Weight;
 use sc_service::ChainType;
 use sp_core::{sr25519, Pair, Public};
@@ -8,9 +7,10 @@ use sp_domains::ExecutorPublicKey;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::Percent;
 use subspace_runtime_primitives::SSC;
+use system_domain_test_runtime::{AccountId, Balance, Hash, Signature};
 
 /// Specialized `ChainSpec` for the normal parachain runtime.
-pub type ChainSpec = sc_service::GenericChainSpec<domain_test_runtime::GenesisConfig>;
+pub type ChainSpec = sc_service::GenericChainSpec<system_domain_test_runtime::GenesisConfig>;
 
 /// Helper function to generate a crypto pair from seed
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -48,7 +48,7 @@ pub fn get_chain_spec() -> ChainSpec {
 }
 
 /// Local testnet genesis for testing.
-pub fn local_testnet_genesis() -> domain_test_runtime::GenesisConfig {
+pub fn local_testnet_genesis() -> system_domain_test_runtime::GenesisConfig {
     testnet_genesis(
         get_account_id_from_seed::<sr25519::Public>("Alice"),
         vec![
@@ -93,26 +93,26 @@ fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     executors: Vec<(AccountId, Balance, AccountId, ExecutorPublicKey)>,
     domains: Vec<(AccountId, Balance, DomainConfig, AccountId, Percent)>,
-) -> domain_test_runtime::GenesisConfig {
-    domain_test_runtime::GenesisConfig {
-        system: domain_test_runtime::SystemConfig {
-            code: domain_test_runtime::WASM_BINARY
+) -> system_domain_test_runtime::GenesisConfig {
+    system_domain_test_runtime::GenesisConfig {
+        system: system_domain_test_runtime::SystemConfig {
+            code: system_domain_test_runtime::WASM_BINARY
                 .expect("WASM binary was not build, please build it!")
                 .to_vec(),
         },
         transaction_payment: Default::default(),
-        balances: domain_test_runtime::BalancesConfig {
+        balances: system_domain_test_runtime::BalancesConfig {
             balances: endowed_accounts
                 .iter()
                 .cloned()
                 .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
-        executor_registry: domain_test_runtime::ExecutorRegistryConfig {
+        executor_registry: system_domain_test_runtime::ExecutorRegistryConfig {
             executors,
             slot_probability: (1, 1),
         },
-        domain_registry: domain_test_runtime::DomainRegistryConfig { domains },
+        domain_registry: system_domain_test_runtime::DomainRegistryConfig { domains },
         messenger: Default::default(),
     }
 }

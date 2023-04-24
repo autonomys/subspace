@@ -16,10 +16,10 @@
 
 fn main() {
     subspace_wasm_tools::create_runtime_bundle_inclusion_file(
-        "domain-test-runtime",
+        "system-domain-test-runtime",
         "TEST_DOMAIN_WASM_BUNDLE",
         None,
-        "test_domain_wasm_bundle.rs",
+        "test_system_domain_wasm_bundle.rs",
     );
 
     #[cfg(feature = "std")]
