@@ -903,7 +903,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blst"
 version = "0.3.10"
-source = "git+https://github.com/subspace/blst.git?rev=079887d2d05bb2d61df4ceef3d4c836228ebc6ff#079887d2d05bb2d61df4ceef3d4c836228ebc6ff"
+source = "git+https://github.com/subspace/blst.git?rev=017edf9d7b943813b9ba2804a9eda20607b48139#017edf9d7b943813b9ba2804a9eda20607b48139"
 dependencies = [
  "cc",
  "glob",
@@ -914,15 +914,15 @@ dependencies = [
 [[package]]
 name = "blst_from_scratch"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=49e7b60ea51d918f04779dd83191ae0e01afcb30#49e7b60ea51d918f04779dd83191ae0e01afcb30"
+source = "git+https://github.com/subspace/rust-kzg?rev=fad8d358548301424f20f7fc7aaa02e75041d03b#fad8d358548301424f20f7fc7aaa02e75041d03b"
 dependencies = [
  "blst",
  "kzg",
  "libc",
+ "num_cpus",
  "once_cell",
  "rand 0.8.5",
  "rayon",
- "sha2 0.10.6",
 ]
 
 [[package]]
@@ -4527,7 +4527,11 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=49e7b60ea51d918f04779dd83191ae0e01afcb30#49e7b60ea51d918f04779dd83191ae0e01afcb30"
+source = "git+https://github.com/subspace/rust-kzg?rev=fad8d358548301424f20f7fc7aaa02e75041d03b#fad8d358548301424f20f7fc7aaa02e75041d03b"
+dependencies = [
+ "blst",
+ "sha2 0.10.6",
+]
 
 [[package]]
 name = "language-tags"

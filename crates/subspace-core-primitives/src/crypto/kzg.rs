@@ -13,9 +13,9 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_to_g1_rust, bytes_to_g2_rust};
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
 use blst_from_scratch::types::g1::FsG1;
+use blst_from_scratch::types::g2::FsG2;
 use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
@@ -48,7 +48,7 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
     let secret_g1 = secret_g1_bytes
         .chunks_exact(48)
         .map(|bytes| {
-            bytes_to_g1_rust(
+            FsG1::from_bytes(
                 bytes
                     .try_into()
                     .expect("Chunked into correct number of bytes above; qed"),
@@ -58,7 +58,7 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
     let secret_g2 = secret_g2_bytes
         .chunks_exact(96)
         .map(|bytes| {
-            bytes_to_g2_rust(
+            FsG2::from_bytes(
                 bytes
                     .try_into()
                     .expect("Chunked into correct number of bytes above; qed"),
@@ -122,12 +122,12 @@ impl Commitment {
 
     /// Convert commitment to raw bytes
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        bytes_from_g1_rust(&self.0)
+        self.0.to_bytes()
     }
 
     /// Try to deserialize commitment from raw bytes
     pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
-        Ok(Commitment(bytes_to_g1_rust(bytes)?))
+        Ok(Commitment(FsG1::from_bytes(bytes)?))
     }
 
     /// Convenient conversion from slice of commitment to underlying representation for efficiency
@@ -353,12 +353,12 @@ impl Witness {
 
     /// Convert witness to raw bytes
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        bytes_from_g1_rust(&self.0)
+        self.0.to_bytes()
     }
 
     /// Try to deserialize witness from raw bytes
     pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
-        Ok(Witness(bytes_to_g1_rust(bytes)?))
+        Ok(Witness(FsG1::from_bytes(bytes)?))
     }
 }
 
