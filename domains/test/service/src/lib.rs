@@ -605,7 +605,7 @@ pub fn node_config(
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
 
-    let spec = Box::new(chain_spec::get_chain_spec());
+    let spec = chain_spec::get_chain_spec(DomainId::SYSTEM);
 
     let mut network_config = NetworkConfiguration::new(
         format!("{key_seed} (SystemDomain)"),

@@ -2662,9 +2662,11 @@ name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "core-payments-domain-test-runtime",
  "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
+ "domain-runtime-primitives",
  "domain-service",
  "frame-support",
  "frame-system",
@@ -2682,6 +2684,7 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-utils",
+ "sp-application-crypto",
  "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
