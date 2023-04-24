@@ -168,7 +168,7 @@ where
             system_domain_client: system_domain_node.client.clone(),
             system_domain_sync_service: system_domain_node.sync_service.clone(),
             primary_chain_client: mock_primary_node.client.clone(),
-            primary_network_sync_oracle: MockPrimaryNode::sync_oracle(),
+            primary_network_sync_oracle: mock_primary_node.sync_service.clone(),
             select_chain: mock_primary_node.select_chain.clone(),
             executor_streams,
             gossip_message_sink: dummy_gossip_msg_sink,

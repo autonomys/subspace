@@ -119,7 +119,7 @@ async fn run_executor_with_mock_primary_node(
     >(
         system_domain_config,
         mock_primary_node.client.clone(),
-        MockPrimaryNode::sync_oracle(),
+        mock_primary_node.sync_service.clone(),
         &mock_primary_node.select_chain,
         executor_streams,
         gossip_msg_sink,
