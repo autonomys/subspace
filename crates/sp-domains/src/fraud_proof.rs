@@ -281,11 +281,11 @@ pub struct InvalidTransactionProof {
     pub domain_id: DomainId,
     /// Number of the block at which the invalid transaction occurred.
     pub block_number: u32,
-    ///
+    /// Hash of the domain block corresponding to `block_number`.
     pub domain_block_hash: H256,
-    ///
+    /// Index of the invalid domain extrinsic.
     pub extrinsic_index: u32,
-    ///
+    /// Storage witness needed for verifying this proof.
     pub storage_proof: StorageProof,
 }
 
