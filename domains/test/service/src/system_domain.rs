@@ -1,6 +1,5 @@
 //! Utilities used for testing with the system domain.
 #![warn(missing_docs)]
-use crate::Backend;
 use cross_domain_message_gossip::GossipWorker;
 use domain_client_executor::ExecutorStreams;
 use domain_service::{DomainConfiguration, FullPool};
@@ -11,7 +10,8 @@ use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{
-    BasePath, Configuration as ServiceConfiguration, Role, RpcHandlers, TFullClient, TaskManager,
+    BasePath, Configuration as ServiceConfiguration, Role, RpcHandlers, TFullBackend, TFullClient,
+    TaskManager,
 };
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
@@ -31,6 +31,9 @@ use substrate_test_client::{
 };
 use system_domain_test_runtime;
 use system_domain_test_runtime::opaque::Block;
+
+/// The backend type used by the test service.
+pub type Backend = TFullBackend<Block>;
 
 /// The system domain client type being used by the test service.
 pub type SClient = TFullClient<
@@ -459,6 +462,7 @@ impl SystemDomainNodeBuilder {
         primary_force_synced: bool,
     ) -> SystemDomainNode {
         let system_domain_config = crate::node_config(
+            DomainId::SYSTEM,
             self.tokio_handle.clone(),
             self.key,
             self.system_domain_nodes,
@@ -519,6 +523,7 @@ impl SystemDomainNodeBuilder {
         mock_primary_node: &mut MockPrimaryNode,
     ) -> SystemDomainNode {
         let system_domain_config = crate::node_config(
+            DomainId::SYSTEM,
             self.tokio_handle.clone(),
             self.key,
             self.system_domain_nodes,

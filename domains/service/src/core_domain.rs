@@ -53,7 +53,7 @@ use subspace_transaction_pool::{FullChainApiWrapper, FullPool};
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
-type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
+pub type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
     CoreExecutor<
         Block,
         SBlock,

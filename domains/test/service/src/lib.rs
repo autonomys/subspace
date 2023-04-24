@@ -19,6 +19,7 @@
 #![warn(missing_docs)]
 
 pub mod chain_spec;
+pub mod core_domain;
 pub mod system_domain;
 
 use sc_client_api::execution_extensions::ExecutionStrategies;
@@ -30,7 +31,6 @@ use sc_service::config::{
 };
 use sc_service::{
     BasePath, BlocksPruning, Configuration as ServiceConfiguration, Error as ServiceError, Role,
-    TFullBackend,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -38,14 +38,10 @@ use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::codec::Encode;
 use sp_runtime::generic;
-use system_domain_test_runtime::opaque::Block;
 
 pub use sp_keyring::Sr25519Keyring as Keyring;
 pub use system_domain::*;
 pub use system_domain_test_runtime;
-
-/// The backend type used by the test service.
-pub type Backend = TFullBackend<Block>;
 
 /// Create a system domain node `Configuration`.
 ///
@@ -53,6 +49,7 @@ pub type Backend = TFullBackend<Block>;
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect
 /// to the given `nodes` and not to any other node.
 pub fn node_config(
+    domain_id: DomainId,
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     nodes: Vec<MultiaddrWithPeerId>,
@@ -63,10 +60,15 @@ pub fn node_config(
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
 
-    let spec = chain_spec::get_chain_spec(DomainId::SYSTEM);
+    let domain_name = match domain_id {
+        DomainId::SYSTEM => "SystemDomain",
+        DomainId::CORE_PAYMENTS => "CorePaymentsDomain",
+        DomainId::CORE_ETH_RELAY => "CoreEthRelayDomain",
+        _ => panic!("{domain_id:?} unimplemented"),
+    };
 
     let mut network_config = NetworkConfiguration::new(
-        format!("{key_seed} (SystemDomain)"),
+        format!("{key_seed} ({domain_name})"),
         "network/test/0.1",
         Default::default(),
         None,
@@ -101,7 +103,7 @@ pub fn node_config(
         trie_cache_maximum_size: Some(16 * 1024 * 1024),
         state_pruning: Some(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
-        chain_spec: spec,
+        chain_spec: chain_spec::get_chain_spec(domain_id),
         wasm_method: WasmExecutionMethod::Compiled {
             instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
         },
