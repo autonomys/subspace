@@ -444,11 +444,29 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("core_domain_bundle_stream", 100);
 
-    let domain_confirmation_depth = system_domain_client
+    let system_domain_best_hash = system_domain_client.info().best_hash;
+    let receipts_api_version = system_domain_client
         .runtime_api()
-        .receipts_pruning_depth(system_domain_client.info().best_hash)
-        .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
-        .into();
+        .api_version::<dyn ReceiptsApi<SBlock, Block::Hash>>(system_domain_best_hash)
+        .ok()
+        .flatten()
+        .ok_or_else(|| {
+            sp_blockchain::Error::RuntimeApiError(sp_api::ApiError::Application(
+                format!("Could not find `ReceiptsApi` api version at {system_domain_best_hash}.",)
+                    .into(),
+            ))
+        })?;
+
+    let domain_confirmation_depth = if receipts_api_version >= 2 {
+        system_domain_client
+            .runtime_api()
+            .receipts_pruning_depth(system_domain_best_hash)
+            .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
+            .into()
+    } else {
+        // TODO: Remove the api version check once gemini-3d is retired.
+        256u32.into()
+    };
 
     let executor = CoreExecutor::new(
         domain_id,
