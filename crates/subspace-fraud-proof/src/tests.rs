@@ -5,7 +5,7 @@ use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
-use domain_test_service::runtime::Header;
+use domain_test_service::system_domain_test_runtime::{Address, Header};
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
@@ -119,7 +119,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let transfer_to_charlie = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 8,
         },
         Alice,
@@ -129,7 +129,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let transfer_to_dave = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Dave.public().into()),
+            dest: Address::Id(Dave.public().into()),
             value: 8,
         },
         Alice,
@@ -139,7 +139,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let transfer_to_charlie_again = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 88,
         },
         Alice,
@@ -445,7 +445,7 @@ async fn invalid_execution_proof_should_not_work() {
     let transfer_to_charlie = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 8,
         },
         Alice,
@@ -456,7 +456,7 @@ async fn invalid_execution_proof_should_not_work() {
     let transfer_to_charlie_again = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 8,
         },
         Alice,

@@ -217,7 +217,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::receipts_sanity_check;
-    use domain_test_service::runtime::Block;
+    use domain_test_service::system_domain_test_runtime::Block;
     use sp_core::H256;
     use sp_domains::ExecutionReceipt;
     use subspace_core_primitives::BlockNumber;

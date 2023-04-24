@@ -1,6 +1,6 @@
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
-use domain_test_service::runtime::{Header, UncheckedExtrinsic};
+use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
@@ -334,7 +334,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let transfer_to_bob = domain_test_service::construct_extrinsic(
         &alice.client,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Bob.public().into()),
+            dest: Address::Id(Bob.public().into()),
             value: 1,
         },
         Alice,
