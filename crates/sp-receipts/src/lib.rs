@@ -24,6 +24,7 @@ use sp_runtime::traits::NumberFor;
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
+    #[api_version(2)]
     pub trait ReceiptsApi<DomainHash: Encode + Decode> {
         /// Returns the trace of given domain receipt hash.
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<DomainHash>;
