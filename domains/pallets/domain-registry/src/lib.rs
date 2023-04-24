@@ -28,7 +28,7 @@ pub use pallet::*;
 use sp_domains::bundle_election::{
     verify_bundle_solution_threshold, ReadBundleElectionParamsError,
 };
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
     BundleSolution, DomainId, ExecutorPublicKey, ProofOfElection, SignedOpaqueBundle, StakeWeight,
 };
@@ -58,7 +58,7 @@ mod pallet {
     use pallet_receipts::{Error as PalletReceiptError, FraudProofError};
     use sp_domain_digests::AsPredigest;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
-    use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+    use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, SignedOpaqueBundle};
     use sp_executor_registry::ExecutorRegistry;
@@ -334,38 +334,6 @@ mod pallet {
 
             Ok(())
         }
-
-        // TODO: proper weight
-        #[pallet::call_index(7)]
-        #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_bundle_equivocation_proof(
-            origin: OriginFor<T>,
-            _bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            // TODO: slash the executor accordingly.
-
-            Self::deposit_event(Event::BundleEquivocationProofProcessed);
-
-            Ok(())
-        }
-
-        // TODO: proper weight
-        #[pallet::call_index(8)]
-        #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_invalid_transaction_proof(
-            origin: OriginFor<T>,
-            _invalid_transaction_proof: InvalidTransactionProof,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            // TODO: slash the executor accordingly.
-
-            Self::deposit_event(Event::InvalidTransactionProofProcessed);
-
-            Ok(())
-        }
     }
 
     #[pallet::hooks]
@@ -575,10 +543,6 @@ mod pallet {
         },
 
         FraudProofProcessed,
-
-        BundleEquivocationProofProcessed,
-
-        InvalidTransactionProofProcessed,
     }
 
     /// Constructs a `TransactionValidity` with pallet-domain-registry specific defaults.
@@ -606,8 +570,6 @@ mod pallet {
                     TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
                 }),
                 Call::submit_fraud_proof { .. } => Ok(()),
-                Call::submit_bundle_equivocation_proof { .. } => Ok(()),
-                Call::submit_invalid_transaction_proof { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -626,42 +588,6 @@ mod pallet {
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
-                }
-                Call::submit_bundle_equivocation_proof {
-                    bundle_equivocation_proof,
-                } => {
-                    if let Err(e) =
-                        Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
-                    {
-                        log::debug!(
-                            target: "runtime::domain-registry",
-                            "Bad bundle equivocation proof: {bundle_equivocation_proof:?}, error: {e:?}",
-                        );
-                        return InvalidTransactionCode::BundleEquivicationProof.into();
-                    }
-
-                    unsigned_validity(
-                        "SubspaceSubmitBundleEquivocationProof",
-                        bundle_equivocation_proof.hash(),
-                    )
-                }
-                Call::submit_invalid_transaction_proof {
-                    invalid_transaction_proof,
-                } => {
-                    if let Err(e) =
-                        Self::validate_invalid_transaction_proof(invalid_transaction_proof)
-                    {
-                        log::debug!(
-                            target: "runtime::domain-registry",
-                            "Bad invalid transaction proof: {invalid_transaction_proof:?}, error: {e:?}",
-                        );
-                        return InvalidTransactionCode::TrasactionProof.into();
-                    }
-
-                    unsigned_validity(
-                        "SubspaceSubmitInvalidTransactionProof",
-                        invalid_transaction_proof,
-                    )
                 }
                 _ => InvalidTransaction::Call.into(),
             }
@@ -1065,19 +991,5 @@ impl<T: Config> Pallet<T> {
 
             Ok(())
         })
-    }
-
-    // TODO: Verify bundle_equivocation_proof.
-    fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof<T::BlockNumber, T::Hash>,
-    ) -> Result<(), Error<T>> {
-        Ok(())
-    }
-
-    // TODO: Verify invalid_transaction_proof.
-    fn validate_invalid_transaction_proof(
-        _invalid_transaction_proof: &InvalidTransactionProof,
-    ) -> Result<(), Error<T>> {
-        Ok(())
     }
 }

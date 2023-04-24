@@ -35,7 +35,7 @@ pub trait VerifierApi {
         domain_block_number: u32,
     ) -> Result<H256, VerificationError>;
 
-    ///
+    /// Returns the state root of specified domain block.
     fn state_root(
         &self,
         domain_id: DomainId,

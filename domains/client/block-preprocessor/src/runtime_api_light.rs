@@ -24,8 +24,8 @@ use system_runtime_primitives::SystemDomainApi;
 /// - This is only supposed to be used when no domain client available, i.e., when the
 /// caller does not own the entire domain state.
 /// - This perfectly fits the runtime APIs that are purely stateless, but it's also usable
-/// for the stateful APIs. if some states are used inside a runtime api, they must be provided
-/// and set before dispatching otherwise [`RuntimeApiLight`] may give invalid output.
+/// for the stateful APIs. If some states are used inside a runtime api, these states must
+/// be provided and set before dispatching otherwise [`RuntimeApiLight`] may give invalid output.
 pub struct RuntimeApiLight<Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,

@@ -1,6 +1,7 @@
 //! Invalid transaction proof.
 
 use crate::domain_extrinsics_builder::BuildDomainExtrinsics;
+use crate::domain_runtime_code::retrieve_domain_runtime_code;
 use crate::verifier_api::VerifierApi;
 use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
@@ -12,7 +13,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{InvalidTransactionProof, VerificationError};
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, Storage};
 use sp_trie::{read_trie_value, LayoutV1};
@@ -60,6 +61,7 @@ where
     }
 }
 
+// TODO: Retrieve the storage key using runtime api.
 struct AccountStorageInstance;
 
 impl frame_support::traits::StorageInstance for AccountStorageInstance {
@@ -84,7 +86,7 @@ fn create_runtime_api_light<Exec>(
     extrinsic: OpaqueExtrinsic,
 ) -> Result<RuntimeApiLight<Exec>, VerificationError>
 where
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor,
 {
     let db = storage_proof.into_memory_db::<BlakeTwo256>();
     let read_value = |storage_key| {
@@ -92,6 +94,7 @@ where
             .map_err(|_| VerificationError::InvalidStorageProof)
     };
 
+    // TODO: Retrieve the storage key using runtime api.
     let next_fee_multiplier_storage_key = [
         63, 20, 103, 160, 150, 188, 215, 26, 91, 106, 12, 129, 85, 226, 8, 16, 63, 46, 223, 59,
         223, 56, 29, 235, 227, 49, 171, 116, 70, 173, 223, 220,
@@ -112,6 +115,7 @@ where
     .next()
     .and_then(|(maybe_signer, _)| maybe_signer)
     .ok_or(VerificationError::SignerNotFound)?;
+    // TODO: make sure core-evm is workable too.
     let sender = AccountId::decode(&mut sender.as_slice())?;
 
     let account_storage_key = AccountStorageMap::hashed_key_for(sender);
@@ -155,7 +159,7 @@ where
     DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
     Exec: CodeExecutor + 'static,
 {
-    /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
+    /// Constructs a new instance of [`InvalidTransactionProofVerifier`].
     pub fn new(
         primary_chain_client: Arc<PClient>,
         executor: Arc<Exec>,
@@ -169,6 +173,26 @@ where
             domain_extrinsics_builder,
             _phantom: Default::default(),
         }
+    }
+
+    fn fetch_primary_header(
+        &self,
+        domain_id: DomainId,
+        block_number: u32,
+    ) -> Result<PBlock::Header, VerificationError> {
+        let primary_hash: PBlock::Hash = self
+            .verifier_client
+            .primary_hash(domain_id, block_number)?
+            .into();
+
+        let header = self
+            .primary_chain_client
+            .header(primary_hash)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!("Header for {primary_hash} not found"))
+            })?;
+
+        Ok(header)
     }
 
     /// Verifies the invalid transaction proof.
@@ -188,20 +212,10 @@ where
         // - Bundle is valid and is produced by a legit executor.
         // - Bundle author, who will be slashed, can be extracted in runtime.
 
-        let primary_hash: PBlock::Hash = self
-            .verifier_client
-            .primary_hash(*domain_id, *block_number)?
-            .into();
-
-        let header = self
-            .primary_chain_client
-            .header(primary_hash)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("Header for {primary_hash} not found"))
-            })?;
+        let header = self.fetch_primary_header(*domain_id, *block_number)?;
         let primary_parent_hash = *header.parent_hash();
 
-        let domain_runtime_code = crate::domain_runtime_code::retrieve_domain_runtime_code(
+        let domain_runtime_code = retrieve_domain_runtime_code(
             *domain_id,
             primary_parent_hash,
             &self.primary_chain_client,
