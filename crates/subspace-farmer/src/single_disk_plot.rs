@@ -422,9 +422,6 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Low-level auditing error
-    #[error("Low-level auditing error: {0}")]
-    LowLevelAuditing(#[from] auditing::AuditingError),
     /// Low-level proving error
     #[error("Low-level proving error: {0}")]
     LowLevelProving(#[from] proving::ProvingError),
@@ -762,7 +759,7 @@ impl SingleDiskPlot {
                             });
 
                         // TODO: Concurrency
-                        for (sector_offset, sector_index, mut sector, mut sector_metadata) in
+                        for (sector_offset, sector_index, sector, sector_metadata) in
                             plot_initial_sector
                         {
                             trace!(%sector_offset, %sector_index, "Preparing to plot sector");
@@ -787,7 +784,7 @@ impl SingleDiskPlot {
                                 .await
                                 .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
 
-                            let plot_sector_fut = plot_sector::<_, _, _, PosTable>(
+                            let plot_sector_fut = plot_sector::<_, PosTable>(
                                 &public_key,
                                 sector_index,
                                 &piece_getter,
@@ -796,11 +793,12 @@ impl SingleDiskPlot {
                                 &kzg,
                                 &erasure_coding,
                                 pieces_in_sector,
-                                &mut sector,
-                                &mut sector_metadata,
+                                sector,
+                                sector_metadata,
                                 piece_memory_cache.clone(),
                             );
                             let plotted_sector = plot_sector_fut.await?;
+                            // TODO: Flushing is necessary here for both sector and sector metadata
 
                             metadata_header.sector_count += 1;
                             metadata_header_mmap
@@ -916,21 +914,18 @@ impl SingleDiskPlot {
                                     sector_index,
                                     &slot_info.global_challenge,
                                     slot_info.voting_solution_range,
-                                    &mut io::Cursor::new(sector),
+                                    sector,
                                     sector_metadata,
-                                )?;
+                                );
                                 let Some(solution_candidates) = maybe_solution_candidates else {
                                     continue;
                                 };
 
-                                for maybe_solution in solution_candidates
-                                    .into_iter::<_, _, PosTable>(
-                                        &reward_address,
-                                        &kzg,
-                                        &erasure_coding,
-                                        &mut io::Cursor::new(sector),
-                                    )?
-                                {
+                                for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
+                                    &reward_address,
+                                    &kzg,
+                                    &erasure_coding,
+                                )? {
                                     let solution = match maybe_solution {
                                         Ok(solution) => solution,
                                         Err(error) => {

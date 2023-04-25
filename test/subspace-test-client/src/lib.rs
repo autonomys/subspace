@@ -28,7 +28,6 @@ use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
-use std::io::Cursor;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -183,19 +182,13 @@ async fn start_farming<PosTable, Client>(
                 sector_index,
                 &new_slot_info.global_challenge,
                 new_slot_info.solution_range,
-                &mut Cursor::new(&sector),
+                &sector,
                 &plotted_sector.sector_metadata,
             )
-            .unwrap()
             .expect("With max solution range there must be a sector eligible; qed");
 
             let solution = solution_candidates
-                .into_iter::<_, _, PosTable>(
-                    &public_key,
-                    &kzg,
-                    &erasure_coding,
-                    &mut Cursor::new(&sector),
-                )
+                .into_iter::<_, PosTable>(&public_key, &kzg, &erasure_coding)
                 .unwrap()
                 .next()
                 .expect("With max solution range there must be a solution; qed")
@@ -241,7 +234,7 @@ where
         sector_expiration: SegmentIndex::from(100),
     };
 
-    let plotted_sector = plot_sector::<_, _, _, PosTable>(
+    let plotted_sector = plot_sector::<_, PosTable>(
         &public_key,
         sector_index,
         &archived_segment.pieces,
@@ -250,8 +243,8 @@ where
         &kzg,
         erasure_coding,
         pieces_in_sector,
-        &mut Cursor::new(sector.as_mut_slice()),
-        &mut Cursor::new(sector_metadata.as_mut_slice()),
+        &mut sector,
+        &mut sector_metadata,
         Default::default(),
     )
     .await

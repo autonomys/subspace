@@ -7,7 +7,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::time::Instant;
-use std::{env, fs, io};
+use std::{env, fs};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -108,9 +108,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     } else {
         println!("Plotting one sector...");
 
-        let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
+        let mut plotted_sector_bytes = vec![0; sector_size];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
+        let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
             sector_index,
             &archived_history_segment,
@@ -120,7 +121,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &erasure_coding,
             pieces_in_sector,
             &mut plotted_sector_bytes,
-            &mut io::sink(),
+            &mut plotted_sector_metadata_bytes,
             Default::default(),
         ))
         .unwrap();
@@ -139,7 +140,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     }
 
     println!("Searching for solutions");
-    let solution_candidates = loop {
+    let global_challenge = loop {
         let mut global_challenge = Blake2b256Hash::default();
         rng.fill_bytes(&mut global_challenge);
 
@@ -148,10 +149,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             sector_index,
             &global_challenge,
             solution_range,
-            &mut io::Cursor::new(&plotted_sector_bytes),
+            &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
-        )
-        .unwrap();
+        );
 
         let solution_candidates = match maybe_solution_candidates {
             Some(solution_candidates) => solution_candidates,
@@ -162,39 +162,45 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let num_actual_solutions = solution_candidates
             .clone()
-            .into_iter::<_, _, PosTable>(
-                &reward_address,
-                &kzg,
-                &erasure_coding,
-                &mut io::Cursor::new(&plotted_sector_bytes),
-            )
+            .into_iter::<_, PosTable>(&reward_address, &kzg, &erasure_coding)
             .unwrap()
             .len();
 
         if num_actual_solutions > 0 {
-            break solution_candidates;
+            break global_challenge;
         }
     };
 
     let mut group = c.benchmark_group("proving");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("memory", |b| {
-        b.iter(|| {
-            solution_candidates
-                .clone()
-                .into_iter::<_, _, PosTable>(
-                    black_box(&reward_address),
-                    black_box(&kzg),
-                    black_box(&erasure_coding),
-                    black_box(&mut io::Cursor::new(&plotted_sector_bytes)),
-                )
-                .unwrap()
-                // Process just one solution
-                .next()
-                .unwrap()
-                .unwrap();
-        })
-    });
+    {
+        let solution_candidates = audit_sector(
+            &public_key,
+            sector_index,
+            &global_challenge,
+            solution_range,
+            &plotted_sector_bytes,
+            &plotted_sector.sector_metadata,
+        )
+        .unwrap();
+
+        group.throughput(Throughput::Elements(1));
+        group.bench_function("memory", |b| {
+            b.iter(|| {
+                solution_candidates
+                    .clone()
+                    .into_iter::<_, PosTable>(
+                        black_box(&reward_address),
+                        black_box(&kzg),
+                        black_box(&erasure_coding),
+                    )
+                    .unwrap()
+                    // Process just one solution
+                    .next()
+                    .unwrap()
+                    .unwrap();
+            })
+        });
+    }
 
     {
         println!("Writing {sectors_count} sectors to disk...");
@@ -226,19 +232,32 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             plot_mmap.advise(memmap2::Advice::Random).unwrap();
         }
 
+        let solution_candidates = plot_mmap
+            .chunks_exact(sector_size)
+            .map(|sector| {
+                audit_sector(
+                    &public_key,
+                    sector_index,
+                    &global_challenge,
+                    solution_range,
+                    sector,
+                    &plotted_sector.sector_metadata,
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
         group.throughput(Throughput::Elements(sectors_count));
         group.bench_function("disk", |b| {
             b.iter_custom(|iters| {
                 let start = Instant::now();
                 for _i in 0..iters {
-                    for plotted_sector_bytes in plot_mmap.chunks_exact(sector_size) {
+                    for solution_candidates in solution_candidates.clone() {
                         solution_candidates
-                            .clone()
-                            .into_iter::<_, _, PosTable>(
+                            .into_iter::<_, PosTable>(
                                 black_box(&reward_address),
                                 black_box(&kzg),
                                 black_box(&erasure_coding),
-                                black_box(&mut io::Cursor::new(&plotted_sector_bytes)),
                             )
                             .unwrap()
                             // Process just one solution

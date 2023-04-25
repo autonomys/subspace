@@ -6,7 +6,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::time::Instant;
-use std::{env, fs, io};
+use std::{env, fs};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -102,9 +102,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     } else {
         println!("Plotting one sector...");
 
-        let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
+        let mut plotted_sector_bytes = vec![0; sector_size];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
+        let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
             sector_index,
             &archived_history_segment,
@@ -114,7 +115,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &erasure_coding,
             pieces_in_sector,
             &mut plotted_sector_bytes,
-            &mut io::sink(),
+            &mut plotted_sector_metadata_bytes,
             Default::default(),
         ))
         .unwrap();
