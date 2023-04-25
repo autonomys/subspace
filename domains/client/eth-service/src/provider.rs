@@ -43,6 +43,10 @@ pub struct EthProvider<CT, EC> {
 impl<CT, EC> EthProvider<CT, EC> {
     pub fn new(base_path: Option<BasePath>, eth_cli: impl Iterator<Item = String>) -> Self {
         let eth_config = EthConfiguration::parse_from(eth_cli);
+        Self::with_configuration(base_path, eth_config)
+    }
+
+    pub fn with_configuration(base_path: Option<BasePath>, eth_config: EthConfiguration) -> Self {
         Self {
             eth_config,
             base_path: base_path.map(|base_path| BasePath::new(base_path.path().join("evm"))),
