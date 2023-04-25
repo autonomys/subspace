@@ -2492,6 +2492,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-eth-service"
+version = "0.1.0"
+dependencies = [
+ "clap 4.2.2",
+ "domain-runtime-primitives",
+ "domain-service",
+ "fc-consensus",
+ "fc-db",
+ "fc-mapping-sync",
+ "fc-rpc",
+ "fc-rpc-core",
+ "fc-storage",
+ "fp-rpc",
+ "futures",
+ "jsonrpsee",
+ "pallet-transaction-payment-rpc",
+ "sc-client-api",
+ "sc-executor",
+ "sc-rpc",
+ "sc-service",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "serde",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-core",
+ "sp-runtime",
+ "substrate-frame-rpc-system",
+]
+
+[[package]]
 name = "domain-pallet-executive"
 version = "0.1.0"
 dependencies = [
@@ -2896,38 +2928,6 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "eth-service"
-version = "0.1.0"
-dependencies = [
- "clap 4.2.2",
- "domain-runtime-primitives",
- "domain-service",
- "fc-consensus",
- "fc-db",
- "fc-mapping-sync",
- "fc-rpc",
- "fc-rpc-core",
- "fc-storage",
- "fp-rpc",
- "futures",
- "jsonrpsee",
- "pallet-transaction-payment-rpc",
- "sc-client-api",
- "sc-executor",
- "sc-rpc",
- "sc-service",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "serde",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "substrate-frame-rpc-system",
 ]
 
 [[package]]
@@ -11037,9 +11037,9 @@ dependencies = [
  "cross-domain-message-gossip",
  "dirs",
  "domain-client-executor",
+ "domain-eth-service",
  "domain-runtime-primitives",
  "domain-service",
- "eth-service",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-support",

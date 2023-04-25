@@ -19,12 +19,12 @@
 use core_evm_runtime::AccountId as AccountId20;
 use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
 use domain_client_executor::ExecutorStreams;
+use domain_eth_service::provider::EthProvider;
+use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::AccountId as AccountId32;
 use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
-use eth_service::provider::EthProvider;
-use eth_service::DefaultEthConfig;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;

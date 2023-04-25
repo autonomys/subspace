@@ -103,7 +103,6 @@ where
     Client::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + AccountNonceApi<Block, AccountId, Index>
         + BlockBuilder<Block>,
-    CA: ChainApi,
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
     CA: ChainApi<Block = Block> + 'static,
     BE: Backend<Block> + 'static,

@@ -91,8 +91,11 @@ where
         + HeaderBackend<Block>
         + CallApiAt<Block>
         + HeaderMetadata<Block, Error = BlockChainError>
+        + BlockBackend<Block>
+        + AuxStore
+        + Send
+        + Sync
         + 'static,
-    Client: BlockBackend<Block> + AuxStore + Send + Sync + 'static,
     Client::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + EthereumRuntimeRPCApi<Block>
         + AccountNonceApi<Block, AccountId, Index>

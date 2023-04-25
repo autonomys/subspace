@@ -1,5 +1,5 @@
 [package]
-name = "eth-service"
+name = "domain-eth-service"
 version = "0.1.0"
 authors = ["Vedhavyas Singareddi <ved@subspace.network>"]
 edition = "2021"
