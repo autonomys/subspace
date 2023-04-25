@@ -28,6 +28,7 @@ core-evm-runtime = { version = "0.1.0", path = "../../domains/runtime/core-evm" 
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "5.0.0"
 domain-client-executor = { version = "0.1.0", path = "../../domains/client/domain-executor" }
+domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-service" }
 domain-service = { version = "0.1.0", path = "../../domains/service" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }

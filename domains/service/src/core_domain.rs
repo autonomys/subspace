@@ -1,4 +1,5 @@
 use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
+use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_executor::{
@@ -20,6 +21,7 @@ use sc_client_api::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_network_sync::SyncingService;
+use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -47,7 +49,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Index as Nonce;
-use subspace_transaction_pool::FullPool;
+use subspace_transaction_pool::{FullChainApiWrapper, FullPool};
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -139,9 +141,10 @@ pub struct NewFullCore<
 
 /// Constructs a partial core domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, Executor, SDC, Block, SBlock, PBlock>(
+fn new_partial<RuntimeApi, Executor, SDC, Block, SBlock, PBlock, BIMP>(
     config: &ServiceConfiguration,
     system_domain_client: Arc<SDC>,
+    block_import_provider: &BIMP,
 ) -> Result<
     PartialComponents<
         FullClient<Block, RuntimeApi, Executor>,
@@ -182,6 +185,7 @@ where
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, Executor>>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -226,8 +230,9 @@ where
         core_domain_tx_pre_validator,
     );
 
+    let block_import = BlockImportProvider::block_import(block_import_provider, client.clone());
     let import_queue = domain_client_consensus_relay_chain::import_queue(
-        client.clone(),
+        block_import,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
     )?;
@@ -246,8 +251,18 @@ where
     Ok(params)
 }
 
-pub struct CoreDomainParams<SBlock, PBlock, SClient, PClient, SC, IBNS, CIBNS, NSNS, AccountId>
-where
+pub struct CoreDomainParams<
+    SBlock,
+    PBlock,
+    SClient,
+    PClient,
+    SC,
+    IBNS,
+    CIBNS,
+    NSNS,
+    AccountId,
+    Provider,
+> where
     SBlock: BlockT,
     PBlock: BlockT,
 {
@@ -260,6 +275,7 @@ where
     pub select_chain: SC,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
+    pub provider: Provider,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -279,6 +295,7 @@ pub async fn new_full_core<
     RuntimeApi,
     ExecutorDispatch,
     AccountId,
+    Provider,
 >(
     core_domain_params: CoreDomainParams<
         SBlock,
@@ -290,6 +307,7 @@ pub async fn new_full_core<
         CIBNS,
         NSNS,
         AccountId,
+        Provider,
     >,
 ) -> sc_service::error::Result<
     NewFullCore<
@@ -359,6 +377,35 @@ where
         + Sync
         + Send
         + 'static,
+    Provider: RpcProvider<
+            Block,
+            FullClient<Block, RuntimeApi, ExecutorDispatch>,
+            FullPool<
+                Block,
+                FullClient<Block, RuntimeApi, ExecutorDispatch>,
+                CoreDomainTxPreValidator<
+                    Block,
+                    SBlock,
+                    PBlock,
+                    FullClient<Block, RuntimeApi, ExecutorDispatch>,
+                    SClient,
+                >,
+            >,
+            FullChainApiWrapper<
+                Block,
+                FullClient<Block, RuntimeApi, ExecutorDispatch>,
+                CoreDomainTxPreValidator<
+                    Block,
+                    SBlock,
+                    PBlock,
+                    FullClient<Block, RuntimeApi, ExecutorDispatch>,
+                    SClient,
+                >,
+            >,
+            TFullBackend<Block>,
+            AccountId,
+        > + BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
+        + 'static,
 {
     let CoreDomainParams {
         domain_id,
@@ -370,6 +417,7 @@ where
         select_chain,
         executor_streams,
         gossip_message_sink,
+        provider,
     } = core_domain_params;
 
     // TODO: Do we even need block announcement on core domain node?
@@ -381,9 +429,10 @@ where
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
 
-    let params = new_partial::<_, _, _, Block, SBlock, PBlock>(
+    let params = new_partial::<_, _, _, Block, SBlock, PBlock, Provider>(
         &core_domain_config.service_config,
         system_domain_client.clone(),
+        &provider,
     )?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
@@ -393,36 +442,55 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
+    let import_queue = params.import_queue;
+
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(BuildNetworkParams {
             config: &core_domain_config.service_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
-            import_queue: params.import_queue,
+            import_queue,
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
             warp_sync_params: None,
         })?;
 
+    let is_authority = core_domain_config.service_config.role.is_authority();
+    core_domain_config.service_config.rpc_id_provider = provider.rpc_id();
+
     let rpc_builder = {
-        let client = client.clone();
-        let transaction_pool = transaction_pool.clone();
-        let chain_spec = core_domain_config.service_config.chain_spec.cloned_box();
+        let deps = crate::rpc::FullDeps {
+            client: client.clone(),
+            pool: transaction_pool.clone(),
+            graph: transaction_pool.pool().clone(),
+            chain_spec: core_domain_config.service_config.chain_spec.cloned_box(),
+            deny_unsafe: DenyUnsafe::Yes,
+            network: network_service.clone(),
+            sync: sync_service.clone(),
+            is_authority,
+            prometheus_registry: core_domain_config
+                .service_config
+                .prometheus_registry()
+                .cloned(),
+            database_source: core_domain_config.service_config.database.clone(),
+            task_spawner: task_manager.spawn_handle(),
+            backend: backend.clone(),
+        };
 
-        Box::new(move |deny_unsafe, _| {
-            let deps = crate::rpc::FullDeps::new(
-                client.clone(),
-                transaction_pool.clone(),
-                chain_spec.cloned_box(),
-                deny_unsafe,
-            );
-
-            crate::rpc::create_full::<Block, _, _, AccountId>(deps).map_err(Into::into)
+        let spawn_essential = task_manager.spawn_essential_handle();
+        let rpc_deps = provider.deps(deps)?;
+        Box::new(move |_, subscription_task_executor| {
+            let spawn_essential = spawn_essential.clone();
+            provider
+                .rpc_builder(
+                    rpc_deps.clone(),
+                    subscription_task_executor,
+                    spawn_essential,
+                )
+                .map_err(Into::into)
         })
     };
-
-    let is_authority = core_domain_config.service_config.role.is_authority();
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
