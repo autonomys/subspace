@@ -13,9 +13,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::array::TryFromSliceError;
 use core::iter::Step;
-use core::mem;
 use core::num::TryFromIntError;
 use core::ops::{Deref, DerefMut};
+use core::{mem, slice};
 use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
     MulAssign, Sub, SubAssign,
@@ -582,7 +582,10 @@ impl TryFrom<&[u8]> for Piece {
 
     #[inline]
     fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
-        <[u8; Self::SIZE]>::try_from(slice).map(|bytes| Piece(Box::new(PieceArray(bytes))))
+        let slice = <&[u8; Self::SIZE]>::try_from(slice)?;
+        let mut piece = Self::default();
+        piece.copy_from_slice(slice);
+        Ok(piece)
     }
 }
 
@@ -803,7 +806,26 @@ impl FlatPieces {
     /// Allocate `FlatPieces` that will hold `piece_count` pieces filled with zeroes.
     #[inline]
     pub fn new(piece_count: usize) -> Self {
-        Self(vec![PieceArray::default(); piece_count])
+        let mut pieces = Vec::with_capacity(piece_count);
+        {
+            let slice = pieces.spare_capacity_mut();
+            // SAFETY: Same memory layout due to `#[repr(transparent)]` on `PieceArray` and
+            // `MaybeUninit<[T; N]>` is guaranteed to have the same layout as `[MaybeUninit<T>; N]`
+            let slice = unsafe {
+                slice::from_raw_parts_mut(
+                    slice.as_mut_ptr() as *mut [mem::MaybeUninit<u8>; Piece::SIZE],
+                    piece_count,
+                )
+            };
+            for byte in slice.flatten_mut() {
+                byte.write(0);
+            }
+        }
+        // SAFETY: All values are initialized above.
+        unsafe {
+            pieces.set_len(pieces.capacity());
+        }
+        Self(pieces)
     }
 
     /// Extract internal representation.
