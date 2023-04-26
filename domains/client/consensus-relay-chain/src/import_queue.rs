@@ -16,23 +16,16 @@
 
 use futures::lock::Mutex;
 use sc_consensus::import_queue::{BasicQueue, Verifier as VerifierT};
-use sc_consensus::{
-    BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
-};
+use sc_consensus::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_blockchain::Result as ClientResult;
 use sp_consensus::error::Error as ConsensusError;
-use sp_consensus::BlockOrigin;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use substrate_prometheus_endpoint::Registry;
 
-// TODO: remove as it's unused, and may even remove this whole crate.
 /// Domain specific block import.
-///
-/// This is used to set `block_import_params.fork_choice` to `false` as long as the block origin is
-/// not `NetworkInitialSync`. The best block for domain is determined by the primary chain.
-/// Meaning we will update the best block, as it is included by the primary chain.
+/// We use it to wrap Custom Block import the Core domain would need and share it between tasks.
 pub struct DomainBlockImport<I> {
     inner: Mutex<I>,
 }
@@ -65,13 +58,8 @@ where
 
     async fn import_block(
         &mut self,
-        mut block_import_params: BlockImportParams<Block, Self::Transaction>,
+        block_import_params: BlockImportParams<Block, Self::Transaction>,
     ) -> Result<ImportResult, Self::Error> {
-        // Best block is determined by the primary chain, or if we are doing the initial sync
-        // we import all blocks as new best.
-        block_import_params.fork_choice = Some(ForkChoiceStrategy::Custom(
-            block_import_params.origin == BlockOrigin::NetworkInitialSync,
-        ));
         let mut inner = self.inner.lock().await;
         inner.import_block(block_import_params).await
     }
