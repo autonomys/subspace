@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
+use futures::lock::Mutex;
 use sc_consensus::import_queue::{BasicQueue, Verifier as VerifierT};
 use sc_consensus::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
@@ -32,19 +33,21 @@ use substrate_prometheus_endpoint::Registry;
 /// This is used to set `block_import_params.fork_choice` to `false` as long as the block origin is
 /// not `NetworkInitialSync`. The best block for domain is determined by the primary chain.
 /// Meaning we will update the best block, as it is included by the primary chain.
-struct DomainBlockImport<I> {
-    inner: I,
+pub struct DomainBlockImport<I> {
+    inner: Mutex<I>,
 }
 
 impl<I> DomainBlockImport<I> {
     /// Create a new instance.
-    fn new(inner: I) -> Self {
-        Self { inner }
+    pub fn new(inner: I) -> Self {
+        Self {
+            inner: Mutex::new(inner),
+        }
     }
 }
 
 #[async_trait::async_trait]
-impl<Block, I> BlockImport<Block> for DomainBlockImport<I>
+impl<Block, I> BlockImport<Block> for &DomainBlockImport<I>
 where
     Block: BlockT,
     I: BlockImport<Block> + Send,
@@ -56,7 +59,8 @@ where
         &mut self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
-        self.inner.check_block(block).await
+        let mut inner = self.inner.lock().await;
+        inner.check_block(block).await
     }
 
     async fn import_block(
@@ -68,8 +72,8 @@ where
         block_import_params.fork_choice = Some(ForkChoiceStrategy::Custom(
             block_import_params.origin == BlockOrigin::NetworkInitialSync,
         ));
-        let import_result = self.inner.import_block(block_import_params).await?;
-        Ok(import_result)
+        let mut inner = self.inner.lock().await;
+        inner.import_block(block_import_params).await
     }
 }
 
@@ -115,7 +119,7 @@ where
 {
     Ok(BasicQueue::new(
         Verifier::default(),
-        Box::new(DomainBlockImport::<I>::new(block_import)),
+        Box::new(block_import),
         None,
         spawner,
         registry,
