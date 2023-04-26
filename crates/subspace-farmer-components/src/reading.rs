@@ -104,7 +104,12 @@ where
     record_chunks
         .par_iter_mut()
         .zip(sector_contents_map.par_iter_record_chunk_to_plot(piece_offset))
-        .zip(s_bucket_offsets.par_iter().enumerate())
+        .zip(
+            (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
+                .into_par_iter()
+                .map(SBucket::from)
+                .zip(s_bucket_offsets.par_iter()),
+        )
         .try_for_each(
             |((maybe_record_chunk, maybe_chunk_details), (s_bucket, &s_bucket_offset))| {
                 let (chunk_offset, encoded_chunk_used) = match maybe_chunk_details {
@@ -115,7 +120,6 @@ where
                 };
 
                 let chunk_location = chunk_offset + s_bucket_offset as usize;
-                let s_bucket = SBucket::try_from(s_bucket).expect("Enumerated s-buckets; qed");
 
                 let mut record_chunk = sector[SectorContentsMap::encoded_size(pieces_in_sector)..]
                     .array_chunks::<{ Scalar::FULL_BYTES }>()
