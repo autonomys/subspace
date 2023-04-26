@@ -385,21 +385,36 @@ impl SectorContentsMap {
         &self,
         piece_offset: PieceOffset,
     ) -> impl IndexedParallelIterator<Item = Option<(usize, bool)>> + '_ {
+        let piece_offset = usize::from(piece_offset);
         (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
             .into_par_iter()
             .map(SBucket::from)
             // In each s-bucket map all records used
             .map(move |s_bucket| {
-                // Searching for an entry corresponding to `piece_offset` in this s-bucket
-                self.iter_s_bucket_records(s_bucket)
-                    .expect("S-bucket guaranteed to be in range; qed")
-                    .enumerate()
-                    .find_map(
-                        move |(chunk_offset, (current_piece_offset, encoded_chunk_used))| {
-                            (current_piece_offset == piece_offset)
-                                .then_some((chunk_offset, encoded_chunk_used))
-                        },
-                    )
+                let encoded_chunk_used = record_has_s_bucket_chunk(
+                    s_bucket.into(),
+                    &self.encoded_record_chunks_used[piece_offset],
+                    usize::from(self.num_encoded_record_chunks[piece_offset]),
+                )?;
+
+                // How many other record chunks we have in s-bucket before piece offset we care
+                // about
+                let chunk_offset = self
+                    .encoded_record_chunks_used
+                    .iter()
+                    .zip(&self.num_encoded_record_chunks)
+                    .take(piece_offset)
+                    .filter(move |(record_bitfields, num_encoded_record_chunks)| {
+                        record_has_s_bucket_chunk(
+                            s_bucket.into(),
+                            record_bitfields,
+                            usize::from(**num_encoded_record_chunks),
+                        )
+                        .is_some()
+                    })
+                    .count();
+
+                Some((chunk_offset, encoded_chunk_used))
             })
     }
 
@@ -431,29 +446,13 @@ impl SectorContentsMap {
             )
             .filter_map(
                 move |(piece_offset, (record_bitfields, num_encoded_record_chunks))| {
-                    let num_encoded_record_chunks = usize::from(*num_encoded_record_chunks);
-                    if record_bitfields[s_bucket] {
-                        // Bit is explicitly set to `true`, easy case
-                        Some((piece_offset, true))
-                    } else if num_encoded_record_chunks == Record::NUM_CHUNKS {
-                        None
-                    } else {
-                        // Count how many encoded chunks we before current offset
-                        let encoded_before = record_bitfields[..s_bucket].count_ones();
-                        let unencoded_before = s_bucket - encoded_before;
-                        // And how many unencoded we have total and how many before current offset
-                        // (we know that total number of used chunks is always `Record::NUM_CHUNKS`)
-                        let unencoded_total =
-                            Record::NUM_CHUNKS.saturating_sub(num_encoded_record_chunks);
+                    let encoded_chunk_used = record_has_s_bucket_chunk(
+                        s_bucket,
+                        record_bitfields,
+                        usize::from(*num_encoded_record_chunks),
+                    )?;
 
-                        if unencoded_before < unencoded_total {
-                            // Have not seen all unencoded chunks before current offset yet, hence
-                            // current offset qualifies
-                            Some((piece_offset, false))
-                        } else {
-                            None
-                        }
-                    }
+                    Some((piece_offset, encoded_chunk_used))
                 },
             ))
     }
@@ -480,5 +479,36 @@ impl SectorContentsMap {
             .encoded_record_chunks_used
             .iter()
             .map(move |record_bitfields| record_bitfields[s_bucket]))
+    }
+}
+
+/// Checks if record has corresponding s-bucket chunk, returns `Some(true)` if yes and chunk is
+/// encoded, `Some(false)` if yes and chunk is not encoded, `None` if chunk at corresponding
+/// s-bucket is not found.
+fn record_has_s_bucket_chunk(
+    s_bucket: usize,
+    record_bitfields: &SingleRecordBitArray,
+    num_encoded_record_chunks: usize,
+) -> Option<bool> {
+    if record_bitfields[s_bucket] {
+        // Bit is explicitly set to `true`, easy case
+        Some(true)
+    } else if num_encoded_record_chunks == Record::NUM_CHUNKS {
+        None
+    } else {
+        // Count how many encoded chunks we before current offset
+        let encoded_before = record_bitfields[..s_bucket].count_ones();
+        let unencoded_before = s_bucket - encoded_before;
+        // And how many unencoded we have total and how many before current offset
+        // (we know that total number of used chunks is always `Record::NUM_CHUNKS`)
+        let unencoded_total = Record::NUM_CHUNKS.saturating_sub(num_encoded_record_chunks);
+
+        if unencoded_before < unencoded_total {
+            // Have not seen all unencoded chunks before current offset yet, hence
+            // current offset qualifies
+            Some(false)
+        } else {
+            None
+        }
     }
 }
