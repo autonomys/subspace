@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
 use memmap2::Mmap;
-use rand::{thread_rng, Rng};
+use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
@@ -44,7 +44,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::default();
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
-    thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
+    StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let erasure_coding = ErasureCoding::new(

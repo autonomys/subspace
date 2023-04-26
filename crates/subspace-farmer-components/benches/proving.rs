@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
 use memmap2::Mmap;
-use rand::{thread_rng, Rng, RngCore};
+use rand::prelude::*;
 use schnorrkel::Keypair;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -46,7 +46,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
-    thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
+    let mut rng = StdRng::seed_from_u64(42);
+    rng.fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let erasure_coding = ErasureCoding::new(
@@ -140,7 +141,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Searching for solutions");
     let solution_candidates = loop {
         let mut global_challenge = Blake2b256Hash::default();
-        thread_rng().fill_bytes(&mut global_challenge);
+        rng.fill_bytes(&mut global_challenge);
 
         let maybe_solution_candidates = audit_sector(
             &public_key,
