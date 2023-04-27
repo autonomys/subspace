@@ -164,6 +164,7 @@ fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<ExecutionDispatch>,
+            Arc<FullClient<Block, RuntimeApi, ExecutionDispatch>>,
         ),
     >,
     sc_service::Error,
@@ -254,8 +255,9 @@ where
         system_domain_tx_pre_validator,
     );
 
+    let block_import = client.clone();
     let import_queue = domain_client_consensus_relay_chain::import_queue(
-        client.clone(),
+        block_import.clone(),
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
     )?;
@@ -268,7 +270,7 @@ where
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (telemetry, telemetry_worker_handle, executor),
+        other: (telemetry, telemetry_worker_handle, executor, block_import),
     };
 
     Ok(params)
@@ -345,7 +347,7 @@ where
         primary_chain_client.clone(),
     )?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
@@ -447,6 +449,7 @@ where
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
             domain_confirmation_depth,
+            block_import,
         },
     )
     .await?;

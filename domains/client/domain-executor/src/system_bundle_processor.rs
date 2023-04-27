@@ -28,7 +28,8 @@ where
     keystore: KeystorePtr,
     system_domain_block_preprocessor:
         SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_processor:
+        DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, Client>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -86,7 +87,15 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
-        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+        domain_block_processor: DomainBlockProcessor<
+            Block,
+            PBlock,
+            Client,
+            PClient,
+            Backend,
+            E,
+            Client,
+        >,
     ) -> Self {
         let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(
             primary_chain_client.clone(),

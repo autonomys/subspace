@@ -55,6 +55,7 @@ pub(super) async fn start_worker<
     CIBNS,
     NSNS,
     E,
+    BI,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     primary_chain_client: Arc<PClient>,
@@ -80,6 +81,7 @@ pub(super) async fn start_worker<
         PClient,
         Backend,
         E,
+        BI,
     >,
     executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<PBlock>>,
@@ -100,11 +102,12 @@ pub(super) async fn start_worker<
         + BlockBuilder<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b Client: BlockImport<
+    for<'b> &'b BI: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    BI: Sync + Send + 'static,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
