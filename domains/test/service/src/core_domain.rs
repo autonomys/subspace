@@ -7,16 +7,17 @@ use crate::{
 use domain_client_executor::ExecutorStreams;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi};
+use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockchainEvents, StateBackendFor};
+use sc_client_api::{BlockchainEvents, HeaderBackend, StateBackendFor};
 use sc_executor::NativeExecutionDispatch;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor};
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_core::H256;
 use sp_domains::DomainId;
@@ -82,8 +83,6 @@ where
     pub rpc_handlers: RpcHandlers,
     /// System domain executor.
     pub executor: CoreDomainExecutor<RuntimeApi, Executor>,
-    /// The next nonce of the node account
-    pub next_nonce: u32,
     _phantom_data: PhantomData<Runtime>,
 }
 
@@ -170,9 +169,10 @@ where
             select_chain: mock_primary_node.select_chain.clone(),
             executor_streams,
             gossip_message_sink: dummy_gossip_msg_sink,
+            provider: DefaultProvider,
         };
         let core_domain_node =
-            domain_service::new_full_core::<_, _, _, _, _, _, _, _, _, RuntimeApi, Executor, _>(
+            domain_service::new_full_core::<_, _, _, _, _, _, _, _, _, RuntimeApi, Executor, _, _>(
                 core_domain_params,
             )
             .await
@@ -210,7 +210,6 @@ where
             addr,
             rpc_handlers,
             executor,
-            next_nonce: 0,
             _phantom_data: Default::default(),
         }
     }
@@ -222,7 +221,15 @@ where
         self.client.wait_for_blocks(count)
     }
 
-    /// Construct and send an extrinsic to this node, only update the next nonce if success.
+    /// Get the nonce of the node account
+    pub fn account_nonce(&self) -> u32 {
+        self.client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, self.key.into())
+            .expect("Fail to get account nonce")
+    }
+
+    /// Construct an extrinsic with the current nonce of the node account and send it to this node.
     pub async fn construct_and_send_extrinsic(
         &mut self,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
@@ -232,24 +239,17 @@ where
             function,
             self.key,
             false,
-            self.next_nonce,
+            self.account_nonce(),
         );
-        match self.rpc_handlers.send_transaction(extrinsic.into()).await {
-            res @ Ok(_) => {
-                self.next_nonce += 1;
-                res
-            }
-            err => err,
-        }
+        self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
 
-    /// Construct an extrinsic and update the next nonce accordingly.
+    /// Construct an extrinsic.
     pub fn construct_extrinsic(
         &mut self,
+        nonce: u32,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsicFor<Runtime> {
-        let nonce = self.next_nonce;
-        self.next_nonce += 1;
         construct_extrinsic_generic::<Runtime, _>(&self.client, function, self.key, false, nonce)
     }
 

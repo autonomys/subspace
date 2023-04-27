@@ -4,8 +4,9 @@ use crate::{construct_extrinsic_generic, node_config};
 use cross_domain_message_gossip::GossipWorker;
 use domain_client_executor::ExecutorStreams;
 use domain_service::{DomainConfiguration, FullPool};
+use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::StreamExt;
-use sc_client_api::BlockchainEvents;
+use sc_client_api::{BlockchainEvents, HeaderBackend};
 use sc_consensus_slots::SlotProportion;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
@@ -14,6 +15,7 @@ use sc_service::{
     BasePath, Configuration as ServiceConfiguration, Role, RpcHandlers, TFullBackend, TFullClient,
     TaskManager,
 };
+use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_domains::DomainId;
@@ -365,8 +367,6 @@ pub struct SystemDomainNode {
     pub rpc_handlers: RpcHandlers,
     /// System domain executor.
     pub executor: SystemExecutor,
-    /// The next nonce of the node account
-    pub next_nonce: u32,
 }
 
 /// A builder to create a [`SystemDomainNode`].
@@ -516,7 +516,6 @@ impl SystemDomainNodeBuilder {
             addr,
             rpc_handlers,
             executor,
-            next_nonce: 0,
         }
     }
 
@@ -565,7 +564,6 @@ impl SystemDomainNodeBuilder {
             addr,
             rpc_handlers,
             executor,
-            next_nonce: 0,
         }
     }
 }
@@ -578,7 +576,15 @@ impl SystemDomainNode {
         self.client.wait_for_blocks(count)
     }
 
-    /// Construct and send an extrinsic to this node, only update the next nonce if success.
+    /// Get the nonce of the node account
+    pub fn account_nonce(&self) -> u32 {
+        self.client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, self.key.into())
+            .expect("Fail to get account nonce")
+    }
+
+    /// Construct an extrinsic with the current nonce of the node account and send it to this node.
     pub async fn construct_and_send_extrinsic(
         &mut self,
         function: impl Into<system_domain_test_runtime::RuntimeCall>,
@@ -588,24 +594,17 @@ impl SystemDomainNode {
             function,
             self.key,
             false,
-            self.next_nonce,
+            self.account_nonce(),
         );
-        match self.rpc_handlers.send_transaction(extrinsic.into()).await {
-            res @ Ok(_) => {
-                self.next_nonce += 1;
-                res
-            }
-            err => err,
-        }
+        self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
 
-    /// Construct an extrinsic and update the next nonce accordingly.
+    /// Construct an extrinsic.
     pub fn construct_extrinsic(
         &mut self,
+        nonce: u32,
         function: impl Into<system_domain_test_runtime::RuntimeCall>,
     ) -> system_domain_test_runtime::UncheckedExtrinsic {
-        let nonce = self.next_nonce;
-        self.next_nonce += 1;
         crate::construct_extrinsic_generic::<system_domain_test_runtime::Runtime, _>(
             &self.client,
             function,

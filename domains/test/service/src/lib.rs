@@ -48,7 +48,7 @@ pub use sp_keyring::Sr25519Keyring as Keyring;
 pub use system_domain::*;
 pub use system_domain_test_runtime;
 
-/// Create a system domain node `Configuration`.
+/// Create a domain node `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide nodes if you want the
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect

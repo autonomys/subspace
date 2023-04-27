@@ -2670,6 +2670,7 @@ dependencies = [
  "domain-service",
  "frame-support",
  "frame-system",
+ "frame-system-rpc-runtime-api",
  "futures",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc",
