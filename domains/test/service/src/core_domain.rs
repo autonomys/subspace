@@ -50,6 +50,7 @@ pub type CoreDomainExecutor<RuntimeApi, Executor> = domain_service::CoreDomainEx
     subspace_test_client::Client,
     RuntimeApi,
     Executor,
+    Arc<FullClient<Block, RuntimeApi, Executor>>,
 >;
 
 /// A core domain node instance used for testing.

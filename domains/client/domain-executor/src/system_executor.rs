@@ -109,6 +109,7 @@ where
             IBNS,
             CIBNS,
             NSNS,
+            Client,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
@@ -146,15 +147,16 @@ where
             params.code_executor,
         );
 
-        let domain_block_processor = DomainBlockProcessor::new(
-            DomainId::SYSTEM,
-            params.client.clone(),
-            params.primary_chain_client.clone(),
-            params.primary_network_sync_oracle,
-            params.backend.clone(),
-            fraud_proof_generator.clone(),
-            params.domain_confirmation_depth,
-        );
+        let domain_block_processor = DomainBlockProcessor {
+            domain_id: DomainId::SYSTEM,
+            client: params.client.clone(),
+            primary_chain_client: params.primary_chain_client.clone(),
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            backend: params.backend.clone(),
+            fraud_proof_generator: fraud_proof_generator.clone(),
+            domain_confirmation_depth: params.domain_confirmation_depth,
+            block_import: params.block_import,
+        };
 
         let bundle_processor = SystemBundleProcessor::new(
             params.primary_chain_client.clone(),

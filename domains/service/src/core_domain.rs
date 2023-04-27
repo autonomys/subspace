@@ -2,6 +2,7 @@ use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
     CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
     ExecutorStreams,
@@ -53,28 +54,39 @@ use subspace_transaction_pool::{FullChainApiWrapper, FullPool};
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
-pub type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch> =
-    CoreExecutor<
+type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
+
+pub type CoreDomainExecutor<
+    Block,
+    SBlock,
+    PBlock,
+    SClient,
+    PClient,
+    RuntimeApi,
+    ExecutorDispatch,
+    BI,
+> = CoreExecutor<
+    Block,
+    SBlock,
+    PBlock,
+    FullClient<Block, RuntimeApi, ExecutorDispatch>,
+    SClient,
+    PClient,
+    FullPool<
         Block,
-        SBlock,
-        PBlock,
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        SClient,
-        PClient,
-        FullPool<
+        CoreDomainTxPreValidator<
             Block,
+            SBlock,
+            PBlock,
             FullClient<Block, RuntimeApi, ExecutorDispatch>,
-            CoreDomainTxPreValidator<
-                Block,
-                SBlock,
-                PBlock,
-                FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                SClient,
-            >,
+            SClient,
         >,
-        FullBackend<Block>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-    >;
+    >,
+    FullBackend<Block>,
+    NativeElseWasmExecutor<ExecutorDispatch>,
+    DomainBlockImport<BI>,
+>;
 
 /// Core domain full node along with some other components.
 pub struct NewFullCore<
@@ -88,6 +100,7 @@ pub struct NewFullCore<
     RuntimeApi,
     ExecutorDispatch,
     AccountId,
+    BI,
 > where
     SBlock: BlockT,
     PBlock: BlockT,
@@ -132,8 +145,16 @@ pub struct NewFullCore<
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Executor.
-    pub executor:
-        CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch>,
+    pub executor: CoreDomainExecutor<
+        Block,
+        SBlock,
+        PBlock,
+        SClient,
+        PClient,
+        RuntimeApi,
+        ExecutorDispatch,
+        BI,
+    >,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
     _data: PhantomData<AccountId>,
@@ -166,6 +187,7 @@ fn new_partial<RuntimeApi, Executor, SDC, Block, SBlock, PBlock, BIMP>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<Executor>,
+            Arc<DomainBlockImport<BIMP::BI>>,
         ),
     >,
     sc_service::Error,
@@ -229,10 +251,12 @@ where
         client.clone(),
         core_domain_tx_pre_validator,
     );
-
-    let block_import = BlockImportProvider::block_import(block_import_provider, client.clone());
+    let block_import = Arc::new(DomainBlockImport::new(BlockImportProvider::block_import(
+        block_import_provider,
+        client.clone(),
+    )));
     let import_queue = domain_client_consensus_relay_chain::import_queue(
-        block_import,
+        block_import.clone(),
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
     )?;
@@ -245,7 +269,7 @@ where
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (telemetry, telemetry_worker_handle, executor),
+        other: (telemetry, telemetry_worker_handle, executor, block_import),
     };
 
     Ok(params)
@@ -321,6 +345,7 @@ pub async fn new_full_core<
         RuntimeApi,
         ExecutorDispatch,
         AccountId,
+        BlockImportOf<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>, Provider>,
     >,
 >
 where
@@ -435,7 +460,7 @@ where
         &provider,
     )?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
@@ -541,7 +566,19 @@ where
         system_domain_client.clone(),
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
-        EssentialExecutorParams::<Block, _, _, _, _, _, _, _, _, _> {
+        EssentialExecutorParams::<
+            Block,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            DomainBlockImport<Provider::BI>,
+        > {
             primary_chain_client: primary_chain_client.clone(),
             primary_network_sync_oracle,
             client: client.clone(),
@@ -554,6 +591,7 @@ where
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
             domain_confirmation_depth,
+            block_import,
         },
     )
     .await?;

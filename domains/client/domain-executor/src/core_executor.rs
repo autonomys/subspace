@@ -26,18 +26,29 @@ use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
 /// Core domain executor.
-pub struct Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> {
+pub struct Executor<
+    Block,
+    SBlock,
+    PBlock,
+    Client,
+    SClient,
+    PClient,
+    TransactionPool,
+    Backend,
+    E,
+    BI,
+> {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed + Send + Sync>,
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
-    _phantom_data: PhantomData<(SBlock, SClient)>,
+    _phantom_data: PhantomData<(SBlock, SClient, BI)>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E> Clone
-    for Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E, BI> Clone
+    for Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E, BI>
 {
     fn clone(&self) -> Self {
         Self {
@@ -52,8 +63,8 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
-    Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E, BI>
+    Executor<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -71,11 +82,12 @@ where
         + sp_block_builder::BlockBuilder<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b Client: sc_consensus::BlockImport<
+    for<'b> &'b BI: sc_consensus::BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    BI: Sync + Send + 'static,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
@@ -111,6 +123,7 @@ where
             IBNS,
             CIBNS,
             NSNS,
+            BI,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
@@ -148,15 +161,16 @@ where
             params.code_executor,
         );
 
-        let domain_block_processor = DomainBlockProcessor::new(
+        let domain_block_processor = DomainBlockProcessor {
             domain_id,
-            params.client.clone(),
-            params.primary_chain_client.clone(),
-            params.primary_network_sync_oracle,
-            params.backend.clone(),
-            fraud_proof_generator.clone(),
-            params.domain_confirmation_depth,
-        );
+            client: params.client.clone(),
+            primary_chain_client: params.primary_chain_client.clone(),
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            backend: params.backend.clone(),
+            fraud_proof_generator: fraud_proof_generator.clone(),
+            domain_confirmation_depth: params.domain_confirmation_depth,
+            block_import: params.block_import,
+        };
 
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
