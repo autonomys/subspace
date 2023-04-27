@@ -389,6 +389,11 @@ where
             primary_hash,
         )?;
 
+        // Disable the fraud proof except for the system domain.
+        if !self.domain_id.is_system() {
+            return Ok(None);
+        }
+
         // TODO: The applied txs can be fully removed from the transaction pool
 
         self.check_receipts_in_primary_block(primary_hash)?;
@@ -437,7 +442,8 @@ where
                 PBlock::Hash,
             >(&*self.client, primary_block_hash)?
             .ok_or(sp_blockchain::Error::Backend(format!(
-                "receipt for primary block {primary_block_hash} not found"
+                "receipt for primary block #{},{primary_block_hash} not found",
+                execution_receipt.primary_number
             )))?;
 
             if let Some(trace_mismatch_index) =

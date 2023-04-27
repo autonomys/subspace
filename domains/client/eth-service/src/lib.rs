@@ -6,3 +6,4 @@ pub(crate) mod rpc;
 mod service;
 
 pub use rpc::DefaultEthConfig;
+pub use service::EthConfiguration;
