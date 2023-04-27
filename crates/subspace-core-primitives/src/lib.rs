@@ -430,7 +430,7 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub piece_offset: PieceOffset,
     /// Record commitment that can use used to verify that piece was included in blockchain history
     pub record_commitment: Commitment,
-    /// Witness for above record commitment hash
+    /// Witness for above record commitment
     pub record_witness: Witness,
     /// Chunk at above offset
     pub chunk: Scalar,
