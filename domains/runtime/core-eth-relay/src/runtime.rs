@@ -1,12 +1,11 @@
 use crate::feed_processor::{feed_processor, FeedProcessorId, FeedProcessorKind};
 use codec::{Decode, Encode};
-use core::time::Duration;
 use domain_runtime_primitives::{opaque, SLOT_DURATION};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, UnixTime};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -307,15 +306,6 @@ impl pallet_sudo::Config for Runtime {
     type RuntimeCall = RuntimeCall;
 }
 
-/// Dummy time provider that always returns zero.
-pub struct DummyTimeProvider;
-
-impl UnixTime for DummyTimeProvider {
-    fn now() -> Duration {
-        Duration::ZERO
-    }
-}
-
 // Ethereum mainnet configuration
 parameter_types! {
     pub const MaxSyncCommitteeSize: u32 = 512;
@@ -350,8 +340,7 @@ parameter_types! {
 
 impl pallet_ethereum_beacon_client::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    // TODO: Replace this with proper implementation once we can retrieve timestamp in domain runtime
-    type TimeProvider = DummyTimeProvider;
+    type TimeProvider = Timestamp;
     type MaxSyncCommitteeSize = MaxSyncCommitteeSize;
     type MaxProofBranchSize = MaxProofBranchSize;
     type MaxExtraDataSize = MaxExtraDataSize;
