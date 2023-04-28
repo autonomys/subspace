@@ -72,6 +72,7 @@ pub struct Verifier<Block> {
 
 impl<Block> Default for Verifier<Block> {
     /// Create a new instance.
+    #[inline]
     fn default() -> Self {
         Self {
             _marker: PhantomData,

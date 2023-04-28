@@ -409,6 +409,7 @@ mod pallet {
 
     #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
+        #[inline]
         fn default() -> Self {
             Self {
                 domains: Vec::new(),
@@ -450,6 +451,7 @@ mod pallet {
     }
 
     impl<T> From<ReadBundleElectionParamsError> for Error<T> {
+        #[inline]
         fn from(_error: ReadBundleElectionParamsError) -> Self {
             Self::FailedToReadBundleElectionParams
         }
@@ -468,6 +470,7 @@ mod pallet {
     }
 
     impl<T> From<PalletReceiptError> for Error<T> {
+        #[inline]
         fn from(error: PalletReceiptError) -> Self {
             match error {
                 PalletReceiptError::MissingParent => Self::Receipt(ReceiptError::MissingParent),

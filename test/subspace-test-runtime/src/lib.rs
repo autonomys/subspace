@@ -975,6 +975,7 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
+    #[inline]
     fn from(farmer_public_key: FarmerPublicKey) -> Self {
         Self(
             farmer_public_key
@@ -986,6 +987,7 @@ impl From<FarmerPublicKey> for RewardAddress {
 }
 
 impl From<RewardAddress> for AccountId32 {
+    #[inline]
     fn from(reward_address: RewardAddress) -> Self {
         reward_address.0.into()
     }

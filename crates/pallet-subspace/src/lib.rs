@@ -277,6 +277,7 @@ mod pallet {
 
     #[cfg(feature = "std")]
     impl Default for GenesisConfig {
+        #[inline]
         fn default() -> Self {
             Self {
                 enable_rewards: true,
@@ -1214,6 +1215,7 @@ enum CheckVoteError {
 }
 
 impl From<CheckVoteError> for TransactionValidityError {
+    #[inline]
     fn from(error: CheckVoteError) -> Self {
         TransactionValidityError::Invalid(match error {
             CheckVoteError::BlockListed => InvalidTransaction::BadSigner,

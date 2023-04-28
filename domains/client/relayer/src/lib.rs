@@ -59,18 +59,21 @@ pub enum Error {
 }
 
 impl From<sp_blockchain::Error> for Error {
+    #[inline]
     fn from(err: sp_blockchain::Error) -> Self {
         Error::BlockchainError(Box::new(err))
     }
 }
 
 impl From<ArithmeticError> for Error {
+    #[inline]
     fn from(err: ArithmeticError) -> Self {
         Error::ArithmeticError(err)
     }
 }
 
 impl From<sp_api::ApiError> for Error {
+    #[inline]
     fn from(err: sp_api::ApiError) -> Self {
         Error::ApiError(err)
     }

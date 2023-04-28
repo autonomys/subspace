@@ -302,6 +302,7 @@ impl<B: BlockT> codec::EncodeLike for DecodeFails<B> {}
 
 impl<B: BlockT> Default for DecodeFails<B> {
     /// Create a new instance.
+    #[inline]
     fn default() -> DecodeFails<B> {
         DecodeFails {
             _phantom: Default::default(),
@@ -432,6 +433,7 @@ impl GetRuntimeBlockType for Runtime {
 pub struct RuntimeOrigin;
 
 impl From<RawOrigin<<Runtime as frame_system::Config>::AccountId>> for RuntimeOrigin {
+    #[inline]
     fn from(_: RawOrigin<<Runtime as frame_system::Config>::AccountId>) -> Self {
         unimplemented!("Not required in tests!")
     }
@@ -448,6 +450,7 @@ impl CallerTrait<<Runtime as frame_system::Config>::AccountId> for RuntimeOrigin
 }
 
 impl From<RuntimeOrigin> for Result<frame_system::Origin<Runtime>, RuntimeOrigin> {
+    #[inline]
     fn from(_origin: RuntimeOrigin) -> Result<frame_system::Origin<Runtime>, RuntimeOrigin> {
         unimplemented!("Not required in tests!")
     }
@@ -510,12 +513,14 @@ impl frame_support::traits::OriginTrait for RuntimeOrigin {
 pub struct RuntimeEvent;
 
 impl From<frame_system::Event<Runtime>> for RuntimeEvent {
+    #[inline]
     fn from(_evt: frame_system::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
 }
 
 impl From<pallet_subspace::Event<Runtime>> for RuntimeEvent {
+    #[inline]
     fn from(_evt: pallet_subspace::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
@@ -585,6 +590,7 @@ parameter_types! {
 }
 
 impl From<frame_system::Call<Runtime>> for Extrinsic {
+    #[inline]
     fn from(_: frame_system::Call<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }

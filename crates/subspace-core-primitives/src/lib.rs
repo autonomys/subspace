@@ -94,12 +94,14 @@ pub struct Randomness(
 );
 
 impl AsRef<[u8]> for Randomness {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl AsMut<[u8]> for Randomness {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
@@ -142,12 +144,14 @@ pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 pub struct PosSeed([u8; Self::SIZE]);
 
 impl const From<[u8; PosSeed::SIZE]> for PosSeed {
+    #[inline]
     fn from(value: [u8; Self::SIZE]) -> Self {
         Self(value)
     }
 }
 
 impl const From<PosSeed> for [u8; PosSeed::SIZE] {
+    #[inline]
     fn from(value: PosSeed) -> Self {
         value.0
     }
@@ -163,12 +167,14 @@ impl PosSeed {
 pub struct PosQualityBytes([u8; Self::SIZE]);
 
 impl const From<[u8; PosQualityBytes::SIZE]> for PosQualityBytes {
+    #[inline]
     fn from(value: [u8; Self::SIZE]) -> Self {
         Self(value)
     }
 }
 
 impl const From<PosQualityBytes> for [u8; PosQualityBytes::SIZE] {
+    #[inline]
     fn from(value: PosQualityBytes) -> Self {
         value.0
     }
@@ -186,18 +192,21 @@ impl PosQualityBytes {
 pub struct PosProof([u8; Self::SIZE]);
 
 impl const From<[u8; PosProof::SIZE]> for PosProof {
+    #[inline]
     fn from(value: [u8; Self::SIZE]) -> Self {
         Self(value)
     }
 }
 
 impl const From<PosProof> for [u8; PosProof::SIZE] {
+    #[inline]
     fn from(value: PosProof) -> Self {
         value.0
     }
 }
 
 impl Default for PosProof {
+    #[inline]
     fn default() -> Self {
         Self([0; Self::SIZE])
     }
@@ -238,6 +247,7 @@ impl fmt::Display for PublicKey {
 }
 
 impl AsRef<[u8]> for PublicKey {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
@@ -273,6 +283,7 @@ pub struct RewardSignature(
 );
 
 impl AsRef<[u8]> for RewardSignature {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
@@ -293,6 +304,7 @@ pub enum ArchivedBlockProgress {
 impl Default for ArchivedBlockProgress {
     /// We assume a block can always fit into the segment initially, but it can definitely possible
     /// to be transitioned into the partial state after some overflow checkings.
+    #[inline]
     fn default() -> Self {
         Self::Complete
     }
@@ -525,11 +537,13 @@ pub struct U256(private_u256::U256);
 
 impl U256 {
     /// Zero (additive identity) of this type.
+    #[inline]
     pub const fn zero() -> Self {
         Self(private_u256::U256::zero())
     }
 
     /// One (multiplicative identity) of this type.
+    #[inline]
     pub fn one() -> Self {
         Self(private_u256::U256::one())
     }
@@ -617,60 +631,70 @@ impl U256 {
 
 // Necessary for division derive
 impl From<U256> for private_u256::U256 {
+    #[inline]
     fn from(number: U256) -> Self {
         number.0
     }
 }
 
 impl WrappingAdd for U256 {
+    #[inline]
     fn wrapping_add(&self, other: &Self) -> Self {
         Self(self.0.overflowing_add(other.0).0)
     }
 }
 
 impl WrappingSub for U256 {
+    #[inline]
     fn wrapping_sub(&self, other: &Self) -> Self {
         Self(self.0.overflowing_sub(other.0).0)
     }
 }
 
 impl From<u8> for U256 {
+    #[inline]
     fn from(number: u8) -> Self {
         Self(number.into())
     }
 }
 
 impl From<u16> for U256 {
+    #[inline]
     fn from(number: u16) -> Self {
         Self(number.into())
     }
 }
 
 impl From<u32> for U256 {
+    #[inline]
     fn from(number: u32) -> Self {
         Self(number.into())
     }
 }
 
 impl From<u64> for U256 {
+    #[inline]
     fn from(number: u64) -> Self {
         Self(number.into())
     }
 }
 
 impl From<u128> for U256 {
+    #[inline]
     fn from(number: u128) -> Self {
         Self(number.into())
     }
 }
 
 impl From<PieceIndexHash> for U256 {
+    #[inline]
     fn from(hash: PieceIndexHash) -> Self {
         Self(private_u256::U256::from_big_endian(hash.as_ref()))
     }
 }
 
 impl From<U256> for PieceIndexHash {
+    #[inline]
     fn from(number: U256) -> Self {
         Self::from(number.to_be_bytes())
     }
@@ -679,6 +703,7 @@ impl From<U256> for PieceIndexHash {
 impl TryFrom<U256> for u8 {
     type Error = &'static str;
 
+    #[inline]
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         Self::try_from(value.0)
     }
@@ -687,6 +712,7 @@ impl TryFrom<U256> for u8 {
 impl TryFrom<U256> for u16 {
     type Error = &'static str;
 
+    #[inline]
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         Self::try_from(value.0)
     }
@@ -695,6 +721,7 @@ impl TryFrom<U256> for u16 {
 impl TryFrom<U256> for u32 {
     type Error = &'static str;
 
+    #[inline]
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         Self::try_from(value.0)
     }
@@ -703,6 +730,7 @@ impl TryFrom<U256> for u32 {
 impl TryFrom<U256> for u64 {
     type Error = &'static str;
 
+    #[inline]
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         Self::try_from(value.0)
     }
@@ -714,6 +742,7 @@ pub struct SectorSlotChallenge(Blake2b256Hash);
 
 impl SectorSlotChallenge {
     /// Index of s-bucket within sector to be audited
+    #[inline]
     pub fn s_bucket_audit_index(&self) -> SBucket {
         SBucket::from(
             u16::try_from(U256::from_le_bytes(self.0) % U256::from(Record::NUM_S_BUCKETS as u32))
@@ -731,6 +760,7 @@ impl SectorSlotChallenge {
 pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
 
 impl AsRef<[u8]> for SectorId {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }

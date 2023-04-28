@@ -261,6 +261,7 @@ struct PlotMetadataHeader {
 }
 
 impl PlotMetadataHeader {
+    #[inline]
     fn encoded_size() -> usize {
         let default = PlotMetadataHeader {
             version: 0,

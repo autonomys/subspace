@@ -145,6 +145,7 @@ pub enum Error {
 }
 
 impl From<String> for Error {
+    #[inline]
     fn from(s: String) -> Self {
         Self::Other(s)
     }
