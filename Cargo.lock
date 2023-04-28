@@ -2434,7 +2434,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -2654,7 +2654,7 @@ dependencies = [
  "subspace-transaction-pool",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "system-runtime-primitives",
  "tracing",
 ]
@@ -3213,7 +3213,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-storage",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "substrate-prometheus-endpoint",
  "tokio",
 ]
 
@@ -8382,7 +8382,7 @@ dependencies = [
  "sp-core",
  "sp-inherents",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -8493,7 +8493,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-storage",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -8542,7 +8542,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-state-machine",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
@@ -8626,7 +8626,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-solving",
  "subspace-verification",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
  "thiserror",
@@ -8798,7 +8798,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "unsigned-varint",
  "zeroize",
@@ -8847,7 +8847,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-grandpa",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "zeroize",
 ]
@@ -8867,7 +8867,7 @@ dependencies = [
  "sc-network-common",
  "sc-peerset",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "tracing",
 ]
 
@@ -8923,7 +8923,7 @@ dependencies = [
  "sp-consensus-grandpa",
  "sp-core",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
@@ -8974,7 +8974,7 @@ dependencies = [
  "sc-utils",
  "sp-consensus",
  "sp-runtime",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -9027,7 +9027,7 @@ version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
 dependencies = [
  "log",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
 ]
 
 [[package]]
@@ -9088,7 +9088,7 @@ dependencies = [
  "jsonrpsee",
  "log",
  "serde_json",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "tokio",
  "tower",
  "tower-http",
@@ -9178,7 +9178,7 @@ dependencies = [
  "sp-trie",
  "sp-version",
  "static_init",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "tempfile",
  "thiserror",
  "tokio",
@@ -9328,7 +9328,7 @@ dependencies = [
  "sp-runtime",
  "sp-tracing",
  "sp-transaction-pool",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "thiserror",
 ]
 
@@ -11238,7 +11238,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-transaction-pool",
  "substrate-frame-rpc-system",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "tokio",
  "tracing",
@@ -11407,7 +11407,7 @@ dependencies = [
  "sp-domains",
  "sp-runtime",
  "sp-transaction-pool",
- "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "substrate-prometheus-endpoint",
  "tracing",
 ]
 
@@ -11473,18 +11473,6 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-runtime",
-]
-
-[[package]]
-name = "substrate-prometheus-endpoint"
-version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#fff96aca38aa97d0c07a34fe0bba0b3c67513d22"
-dependencies = [
- "hyper",
- "log",
- "prometheus",
- "thiserror",
- "tokio",
 ]
 
 [[package]]
