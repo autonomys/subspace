@@ -40,6 +40,7 @@ use sp_runtime::{generic, MultiSigner};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
+use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::Balance;
 use subspace_service::{DsnConfig, NewFull, SubspaceConfiguration, SubspaceNetworking};
@@ -159,7 +160,7 @@ pub fn node_config(
 ///
 /// The node will be using an in-memory socket, therefore you need to provide boot nodes if you
 /// want it to be connected to other nodes.
-pub async fn run_validator_node(
+pub async fn run_validator_node<PosTable>(
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     boot_nodes: Vec<MultiaddrWithPeerId>,
@@ -167,7 +168,10 @@ pub async fn run_validator_node(
     force_authoring: bool,
     force_synced: bool,
     base_path: BasePath,
-) -> (PrimaryTestNode, NetworkStarter) {
+) -> (PrimaryTestNode, NetworkStarter)
+where
+    PosTable: Table,
+{
     let primary_chain_config = node_config(
         tokio_handle,
         key,
@@ -217,12 +221,13 @@ pub async fn run_validator_node(
             sync_from_dsn: false,
         };
 
-        let partial_components = subspace_service::new_partial::<RuntimeApi, TestExecutorDispatch>(
-            &primary_chain_config,
-        )
-        .expect("Failed to create Subspace primary node");
+        let partial_components =
+            subspace_service::new_partial::<PosTable, RuntimeApi, TestExecutorDispatch>(
+                &primary_chain_config,
+            )
+            .expect("Failed to create Subspace primary node");
 
-        subspace_service::new_full(
+        subspace_service::new_full::<PosTable, _, _, _>(
             primary_chain_config,
             partial_components,
             false,
@@ -233,7 +238,7 @@ pub async fn run_validator_node(
     };
 
     if run_farmer {
-        start_farmer(&primary_chain_node);
+        start_farmer::<PosTable>(&primary_chain_node);
     }
 
     let NewFull {
@@ -370,7 +375,10 @@ mod tests {
     use super::run_validator_node;
     use sc_service::BasePath;
     use sp_keyring::Sr25519Keyring::{Alice, Bob};
+    use subspace_proof_of_space::shim::ShimTable;
     use tempfile::TempDir;
+
+    type PosTable = ShimTable;
 
     // TODO: always enable the test to catch any potential regressions.
     #[substrate_test_utils::test]
@@ -385,7 +393,7 @@ mod tests {
         let tokio_handle = tokio::runtime::Handle::current();
 
         // start alice
-        let (alice, alice_network_starter) = run_validator_node(
+        let (alice, alice_network_starter) = run_validator_node::<PosTable>(
             tokio_handle.clone(),
             Alice,
             vec![],
@@ -398,7 +406,7 @@ mod tests {
 
         alice_network_starter.start_network();
 
-        let (bob, bob_network_starter) = run_validator_node(
+        let (bob, bob_network_starter) = run_validator_node::<PosTable>(
             tokio_handle.clone(),
             Bob,
             vec![alice.addr],

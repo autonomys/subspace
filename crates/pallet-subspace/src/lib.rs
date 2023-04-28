@@ -23,9 +23,9 @@ extern crate alloc;
 mod default_weights;
 pub mod equivocation;
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod mock;
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod tests;
 
 use alloc::string::String;
@@ -56,9 +56,10 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, LegacySectorId, PublicKey, Randomness, RewardSignature, SectorIndex,
-    SegmentHeader, SegmentIndex, SolutionRange,
+    ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
+    SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -121,12 +122,12 @@ struct VoteVerificationData {
 #[derive(
     Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, MaxEncodedLen, TypeInfo,
 )]
-struct ChunkOffset(u32);
+struct AuditChunkOffset(u8);
 
 #[frame_support::pallet]
 mod pallet {
     use super::{
-        ChunkOffset, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
+        AuditChunkOffset, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
         WeightInfo,
     };
     use crate::equivocation::HandleEquivocation;
@@ -139,6 +140,7 @@ mod pallet {
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::prelude::*;
+    use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
         Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
@@ -222,6 +224,10 @@ mod pallet {
         /// This impacts solution range for votes in consensus.
         #[pallet::constant]
         type ExpectedVotesPerBlock: Get<u32>;
+
+        /// How many pieces one sector is supposed to contain (max)
+        #[pallet::constant]
+        type MaxPiecesInSector: Get<u16>;
 
         type ShouldAdjustSolutionRange: Get<bool>;
 
@@ -390,7 +396,7 @@ mod pallet {
     /// Parent block author information.
     #[pallet::storage]
     pub(super) type ParentBlockAuthorInfo<T> =
-        StorageValue<_, (FarmerPublicKey, SectorIndex, ChunkOffset, Slot)>;
+        StorageValue<_, (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot)>;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -403,7 +409,8 @@ mod pallet {
         (
             FarmerPublicKey,
             SectorIndex,
-            ChunkOffset,
+            Scalar,
+            AuditChunkOffset,
             Slot,
             T::AccountId,
         ),
@@ -414,7 +421,7 @@ mod pallet {
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (FarmerPublicKey, SectorIndex, ChunkOffset, Slot),
+            (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot),
             (T::AccountId, FarmerSignature),
         >,
         ValueQuery,
@@ -425,7 +432,7 @@ mod pallet {
     pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (FarmerPublicKey, SectorIndex, ChunkOffset, Slot),
+            (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot),
             (T::AccountId, FarmerSignature),
         >,
     >;
@@ -669,11 +676,10 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Total number of pieces in the blockchain
-    pub fn total_pieces() -> NonZeroU64 {
+    pub fn history_size() -> HistorySize {
         // Chain starts with one segment plotted, even if it is not recorded in the runtime yet
         let number_of_segments = u64::from(SegmentCommitment::<T>::count()).max(1);
-        NonZeroU64::new(number_of_segments * ArchivedHistorySegment::NUM_PIECES as u64)
-            .expect("Neither of multiplied values is zero; qed")
+        HistorySize::from(NonZeroU64::new(number_of_segments).expect("Not zero; qed"))
     }
 
     /// Determine whether a randomness update should take place at this block.
@@ -782,11 +788,12 @@ impl<T: Config> Pallet<T> {
             let key = (
                 farmer_public_key,
                 pre_digest.solution.sector_index,
-                ChunkOffset(pre_digest.solution.chunk_offset),
+                pre_digest.solution.chunk,
+                AuditChunkOffset(pre_digest.solution.audit_chunk_offset),
                 pre_digest.slot,
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
-                let (public_key, _sector_index, _chunk_offset, slot) = key;
+                let (public_key, _sector_index, _chunk, _audit_chunk_offset, slot) = key;
 
                 let offence = SubspaceEquivocationOffence {
                     slot,
@@ -803,19 +810,20 @@ impl<T: Config> Pallet<T> {
                     );
                 }
             } else {
-                let (public_key, sector_index, chunk_offset, slot) = key;
+                let (public_key, sector_index, chunk, audit_chunk_offset, slot) = key;
 
                 CurrentBlockAuthorInfo::<T>::put((
                     public_key,
                     sector_index,
-                    chunk_offset,
+                    chunk,
+                    audit_chunk_offset,
                     slot,
-                    pre_digest.solution.reward_address,
+                    pre_digest.solution.reward_address.clone(),
                 ));
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (FarmerPublicKey, SectorIndex, ChunkOffset, Slot),
+            (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot),
             (T::AccountId, FarmerSignature),
         >::default());
 
@@ -843,13 +851,7 @@ impl<T: Config> Pallet<T> {
         }
 
         // Extract PoR randomness from pre-digest.
-        // Tag signature is validated by the client and is always valid here.
-        let por_randomness: Randomness = derive_randomness(
-            &PublicKey::from(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk.to_bytes(),
-            &pre_digest.solution.chunk_signature,
-        )
-        .expect("Tag signature is verified by the client and is always valid; qed");
+        let por_randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
         // Store PoR randomness for block duration as it might be useful.
         PorRandomness::<T>::put(por_randomness);
 
@@ -887,10 +889,16 @@ impl<T: Config> Pallet<T> {
 
         PorRandomness::<T>::take();
 
-        if let Some((public_key, sector_index, chunk_offset, slot, _reward_address)) =
+        if let Some((public_key, sector_index, scalar, audit_chunk_offset, slot, _reward_address)) =
             CurrentBlockAuthorInfo::<T>::take()
         {
-            ParentBlockAuthorInfo::<T>::put((public_key, sector_index, chunk_offset, slot));
+            ParentBlockAuthorInfo::<T>::put((
+                public_key,
+                sector_index,
+                scalar,
+                audit_chunk_offset,
+                slot,
+            ));
         }
 
         ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
@@ -1345,10 +1353,13 @@ fn check_vote<T: Config>(
         parent_vote_verification_data
     };
 
-    let sector_id = LegacySectorId::new(&(&solution.public_key).into(), solution.sector_index);
+    let sector_id = SectorId::new(
+        PublicKey::from(&solution.public_key).hash(),
+        solution.sector_index,
+    );
 
     let segment_index = sector_id
-        .derive_piece_index(solution.piece_offset, solution.total_pieces)
+        .derive_piece_index(solution.piece_offset, solution.history_size)
         .segment_index();
 
     let segment_commitment =
@@ -1368,7 +1379,10 @@ fn check_vote<T: Config>(
         (&VerifySolutionParams {
             global_randomness: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
-            piece_check_params: Some(PieceCheckParams { segment_commitment }),
+            piece_check_params: Some(PieceCheckParams {
+                max_pieces_in_sector: T::MaxPiecesInSector::get(),
+                segment_commitment,
+            }),
         })
             .into(),
     ) {
@@ -1382,7 +1396,8 @@ fn check_vote<T: Config>(
     let key = (
         solution.public_key.clone(),
         solution.sector_index,
-        ChunkOffset(solution.chunk_offset),
+        solution.chunk,
+        AuditChunkOffset(solution.audit_chunk_offset),
         slot,
     );
     // Check that farmer didn't use solution from this vote yet in:
@@ -1393,8 +1408,8 @@ fn check_vote<T: Config>(
     let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
         || CurrentBlockAuthorInfo::<T>::get()
             .map(
-                |(public_key, sector_index, chunk_offset, slot, _reward_address)| {
-                    (public_key, sector_index, chunk_offset, slot)
+                |(public_key, sector_index, chunk, audit_chunk_offset, slot, _reward_address)| {
+                    (public_key, sector_index, chunk, audit_chunk_offset, slot)
                 },
             )
             .as_ref()
@@ -1432,7 +1447,7 @@ fn check_vote<T: Config>(
             }
         });
 
-        let (public_key, _sector_index, _chunk_offset, _slot) = key;
+        let (public_key, _sector_index, _chunk, _audit_chunk_offset, _slot) = key;
 
         return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
@@ -1529,7 +1544,7 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
         CurrentBlockAuthorInfo::<T>::get().and_then(
-            |(public_key, _sector_index, _chunk_offset, _slot, reward_address)| {
+            |(public_key, _sector_index, _chunk, _audit_chunk_offset, _slot, reward_address)| {
                 // Equivocation might have happened in this block, if so - no reward for block
                 // author
                 if !BlockList::<T>::contains_key(public_key) {

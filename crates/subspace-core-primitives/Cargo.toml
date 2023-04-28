@@ -16,9 +16,6 @@ include = [
 bench = false
 
 [dependencies]
-ark-bls12-381 = "0.3.0"
-ark-ff = "0.3.0"
-ark-poly = "0.3.0"
 blake2 = { version = "0.10.6", default-features = false }
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
 blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
@@ -26,7 +23,6 @@ derive_more = "0.99.17"
 hex = { version  = "0.4.3", default-features = false, features = ["alloc"] }
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
 kzg = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
-num-integer = { version = "0.1.45", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive", "max-encoded-len"] }
 parking_lot = { version = "0.12.1", optional = true }
@@ -49,16 +45,17 @@ rand_core = "0.6.4"
 
 [features]
 default = [
-    "parallel-decoding",
     "embedded-kzg-settings",
     "serde",
     "std",
+    "parallel",
 ]
-# Parallel decoding will use all CPUs available, but will allocate a memory of a size of a sector instead of square root
-# of that
-parallel-decoding = ["dep:rayon"]
 embedded-kzg-settings = []
-rayon = ["dep:rayon"]
+# Enables some APIs and internal parallelism for KZG
+parallel = [
+    "blst_from_scratch/parallel",
+    "dep:rayon",
+]
 serde = [
     "dep:serde",
     # TODO: `serde_arrays` doesn't support `no_std` right now: https://github.com/Kromey/serde_arrays/issues/8
@@ -66,14 +63,10 @@ serde = [
     "hex/serde",
 ]
 std = [
-    "ark-bls12-381/std",
-    "ark-ff/std",
-    "ark-poly/std",
     "blake2/std",
     "blst_from_scratch/std",
     "hex/std",
     "kzg/std",
-    "num-integer/std",
     "num-traits/std",
     "parity-scale-codec/std",
     # In no-std environment we use `spin`

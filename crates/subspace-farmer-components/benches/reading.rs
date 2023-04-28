@@ -11,13 +11,12 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SegmentIndex,
-    SolutionRange,
+    HistorySize, PieceOffset, PublicKey, Record, RecordedHistorySegment, SectorId, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::reading::read_piece;
 use subspace_farmer_components::sector::{sector_size, SectorContentsMap, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
@@ -66,8 +65,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         max_pieces_in_sector: pieces_in_sector,
         sector_expiration: SegmentIndex::ONE,
     };
-    let global_challenge = Blake2b256Hash::default();
-    let solution_range = SolutionRange::MAX;
 
     let sector_size = sector_size(pieces_in_sector);
 
@@ -135,17 +132,18 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         fs::write(persisted_sector, &plotted_sector_bytes).unwrap()
     }
 
-    let mut group = c.benchmark_group("auditing");
+    let piece_offset = PieceOffset::ZERO;
+
+    let mut group = c.benchmark_group("reading");
     group.throughput(Throughput::Elements(1));
-    group.bench_function("memory", |b| {
+    group.bench_function("piece/memory", |b| {
         b.iter(|| {
-            audit_sector(
-                black_box(&public_key),
-                black_box(sector_index),
-                black_box(&global_challenge),
-                black_box(solution_range),
-                black_box(&mut io::Cursor::new(&plotted_sector_bytes)),
+            read_piece::<PosTable>(
+                black_box(piece_offset),
+                black_box(&plotted_sector.sector_id),
                 black_box(&plotted_sector.sector_metadata),
+                black_box(&plotted_sector_bytes),
+                black_box(&erasure_coding),
             )
             .unwrap();
         })
@@ -182,22 +180,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         }
 
         group.throughput(Throughput::Elements(sectors_count));
-        group.bench_function("disk", move |b| {
+        group.bench_function("piece/disk", move |b| {
             b.iter_custom(|iters| {
                 let start = Instant::now();
                 for _i in 0..iters {
-                    for (sector_index, sector) in plot_mmap
-                        .chunks_exact(sector_size)
-                        .enumerate()
-                        .map(|(sector_index, sector)| (sector_index as u64, sector))
-                    {
-                        audit_sector(
-                            black_box(&public_key),
-                            black_box(sector_index),
-                            black_box(&global_challenge),
-                            black_box(solution_range),
-                            black_box(&mut io::Cursor::new(sector)),
+                    for sector in plot_mmap.chunks_exact(sector_size) {
+                        read_piece::<PosTable>(
+                            black_box(piece_offset),
+                            black_box(&plotted_sector.sector_id),
                             black_box(&plotted_sector.sector_metadata),
+                            black_box(sector),
+                            black_box(&erasure_coding),
                         )
                         .unwrap();
                     }

@@ -20,9 +20,13 @@
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(
     array_chunks,
+    const_convert,
     const_num_from_num,
+    const_option,
     const_trait_impl,
+    const_try,
     new_uninit,
+    portable_simd,
     slice_flatten,
     step_trait
 )]
@@ -30,7 +34,6 @@
 pub mod crypto;
 pub mod objects;
 mod pieces;
-pub mod sector_codec;
 mod segments;
 #[cfg(feature = "serde")]
 mod serde;
@@ -40,21 +43,21 @@ mod tests;
 extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
-use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar, ScalarLegacy};
+use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use core::convert::AsRef;
 use core::fmt;
-use core::num::NonZeroU64;
+use core::simd::Simd;
 use derive_more::{Add, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, RawRecord, Record, RecordCommitment,
-    RecordWitness,
+    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, PieceOffset, RawRecord, Record,
+    RecordCommitment, RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
-pub use segments::{ArchivedHistorySegment, RecordedHistorySegment, SegmentIndex};
+pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
 use uint::static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
@@ -63,18 +66,6 @@ const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 /// Size of BLAKE2b-256 hash output (in bytes).
 pub const BLAKE2B_256_HASH_SIZE: usize = 32;
 
-/// Size of one plotted sector.
-///
-/// If we imagine sector as a grid containing pieces as columns, number of scalar in column must be
-/// equal to number of columns, but we need to account for the fact that [`Scalar::SAFE_BYTES`] will
-/// be expanded to [`Scalar::FULL_BYTES`] (padded with zero byte) before encoding to ensure encoding
-/// and decoding operate on the same amount of data.
-pub const PLOT_SECTOR_SIZE: u64 =
-    (Piece::SIZE as u64 / Scalar::SAFE_BYTES as u64).pow(2) * Scalar::FULL_BYTES as u64;
-/// How many pieces we have in a sector
-pub const PIECES_IN_SECTOR: u64 =
-    PLOT_SECTOR_SIZE / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES) as u64;
-
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
@@ -82,7 +73,45 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
 
 /// Type of randomness.
-pub type Randomness = [u8; RANDOMNESS_LENGTH];
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    From,
+    Into,
+    Deref,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Randomness(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RANDOMNESS_LENGTH],
+);
+
+impl AsRef<[u8]> for Randomness {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for Randomness {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl Randomness {
+    /// Derive global slot challenge from global randomness.
+    // TODO: Separate type for global challenge
+    pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake2b256Hash {
+        crypto::blake2b_256_hash_list(&[&self.0, &slot.to_le_bytes()])
+    }
+}
 
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
@@ -105,13 +134,8 @@ pub type SegmentCommitment = Commitment;
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
 
-/// Randomness context
-pub const RANDOMNESS_CONTEXT: &[u8] = b"subspace_randomness";
-
 /// Length of signature in bytes
 pub const REWARD_SIGNATURE_LENGTH: usize = 64;
-const VRF_OUTPUT_LENGTH: usize = 32;
-const VRF_PROOF_LENGTH: usize = 64;
 
 /// Proof of space seed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
@@ -252,17 +276,6 @@ impl AsRef<[u8]> for RewardSignature {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
-}
-
-/// VRF signature output and proof as produced by `schnorrkel` crate.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ChunkSignature {
-    /// VRF output bytes.
-    pub output: [u8; VRF_OUTPUT_LENGTH],
-    /// VRF proof bytes.
-    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))]
-    pub proof: [u8; VRF_PROOF_LENGTH],
 }
 
 /// Progress of an archived block.
@@ -411,20 +424,22 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub reward_address: RewardAddress,
     /// Index of the sector where solution was found
     pub sector_index: SectorIndex,
-    /// Number of pieces in archived history at time of sector creation
-    pub total_pieces: NonZeroU64,
+    /// Size of the blockchain history at time of sector creation
+    pub history_size: HistorySize,
     /// Pieces offset within sector
-    pub piece_offset: PieceIndex,
-    /// Piece commitment that can use used to verify that piece was included in blockchain history
-    pub record_commitment_hash: Scalar,
-    /// Witness for above piece commitment
-    pub piece_witness: Witness,
-    /// Chunk offset within a piece
-    pub chunk_offset: u32,
+    pub piece_offset: PieceOffset,
+    /// Record commitment that can use used to verify that piece was included in blockchain history
+    pub record_commitment: Commitment,
+    /// Witness for above record commitment
+    pub record_witness: Witness,
     /// Chunk at above offset
-    pub chunk: ScalarLegacy,
-    /// VRF signature of expanded version of the above chunk
-    pub chunk_signature: ChunkSignature,
+    pub chunk: Scalar,
+    /// Witness for above chunk
+    pub chunk_witness: Witness,
+    /// Audit chunk offset within above chunk
+    pub audit_chunk_offset: u8,
+    /// Proof of space for piece offset
+    pub proof_of_space: PosProof,
 }
 
 impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
@@ -441,25 +456,27 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             public_key,
             reward_address,
             sector_index,
-            total_pieces,
+            history_size,
             piece_offset,
-            record_commitment_hash,
-            piece_witness,
-            chunk_offset,
+            record_commitment,
+            record_witness,
             chunk,
-            chunk_signature,
+            chunk_witness,
+            audit_chunk_offset,
+            proof_of_space,
         } = self;
         Solution {
             public_key,
             reward_address: Into::<T>::into(reward_address).into(),
             sector_index,
-            total_pieces,
+            history_size,
             piece_offset,
-            record_commitment_hash,
-            piece_witness,
-            chunk_offset,
+            record_commitment,
+            record_witness,
             chunk,
-            chunk_signature,
+            chunk_witness,
+            audit_chunk_offset,
+            proof_of_space,
         }
     }
 }
@@ -471,16 +488,14 @@ impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
             public_key,
             reward_address,
             sector_index: 0,
-            total_pieces: NonZeroU64::new(1).expect("1 is not 0; qed"),
-            piece_offset: PieceIndex::default(),
-            record_commitment_hash: Scalar::default(),
-            piece_witness: Witness::default(),
-            chunk_offset: 0,
-            chunk: ScalarLegacy::default(),
-            chunk_signature: ChunkSignature {
-                output: [0; 32],
-                proof: [0; 64],
-            },
+            history_size: HistorySize::from(SegmentIndex::ZERO),
+            piece_offset: PieceOffset::default(),
+            record_commitment: Commitment::default(),
+            record_witness: Witness::default(),
+            chunk: Scalar::default(),
+            chunk_witness: Witness::default(),
+            audit_chunk_offset: 0,
+            proof_of_space: PosProof::default(),
         }
     }
 }
@@ -693,51 +708,85 @@ impl TryFrom<U256> for u64 {
     }
 }
 
-// TODO: Remove
+/// Challenge used for a particular sector for particular slot
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
+pub struct SectorSlotChallenge(Blake2b256Hash);
+
+impl SectorSlotChallenge {
+    /// Index of s-bucket within sector to be audited
+    pub fn s_bucket_audit_index(&self) -> SBucket {
+        SBucket::from(
+            u16::try_from(U256::from_le_bytes(self.0) % U256::from(Record::NUM_S_BUCKETS as u32))
+                .expect(
+                    "Remainder of division by Record::NUM_S_BUCKETS is statically guaranteed \
+                    to fit into SBucket; qed",
+                ),
+        )
+    }
+}
+
 /// Data structure representing sector ID in farmer's plot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct LegacySectorId(
-    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash,
-);
+pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
 
-impl AsRef<[u8]> for LegacySectorId {
+impl AsRef<[u8]> for SectorId {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl LegacySectorId {
+impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key: &PublicKey, sector_index: SectorIndex) -> Self {
-        Self(blake2b_256_hash_with_key(
-            &sector_index.to_le_bytes(),
-            public_key.as_ref(),
-        ))
+    pub fn new(mut public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
+        public_key_hash
+            .iter_mut()
+            .zip(&sector_index.to_le_bytes())
+            .for_each(|(a, b)| {
+                *a ^= *b;
+            });
+        Self(public_key_hash)
     }
 
-    /// Derive piece index that should be stored in sector at `piece_offset` when number of pieces
-    /// of blockchain_history is `total_pieces`
+    /// Derive piece index that should be stored in sector at `piece_offset` for specified size of
+    /// blockchain history
     pub fn derive_piece_index(
         &self,
-        piece_offset: PieceIndex,
-        total_pieces: NonZeroU64,
+        piece_offset: PieceOffset,
+        history_size: HistorySize,
     ) -> PieceIndex {
         let piece_index =
-            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0))
-                % U256::from(total_pieces.get());
+            U256::from_le_bytes(blake2b_256_hash_with_key(&self.0, &piece_offset.to_bytes()))
+                % U256::from(history_size.in_pieces().get());
 
         PieceIndex::from(u64::try_from(piece_index).expect(
             "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
         ))
     }
 
-    /// Derive local challenge for this sector from provided global challenge
-    pub fn derive_local_challenge(&self, global_challenge: &Blake2b256Hash) -> SolutionRange {
-        let hash = blake2b_256_hash_with_key(global_challenge, &self.0);
+    /// Derive sector slot challenge for this sector from provided global challenge
+    pub fn derive_sector_slot_challenge(
+        &self,
+        global_challenge: &Blake2b256Hash,
+    ) -> SectorSlotChallenge {
+        let sector_slot_challenge = Simd::from(self.0) ^ Simd::from(*global_challenge);
+        SectorSlotChallenge(sector_slot_challenge.to_array())
+    }
 
-        SolutionRange::from_be_bytes([
-            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
-        ])
+    /// Derive evaluation seed
+    pub fn evaluation_seed(&self, piece_offset: PieceOffset, history_size: HistorySize) -> PosSeed {
+        let mut evaluation_seed = self.0;
+
+        for (output, input) in evaluation_seed.iter_mut().zip(piece_offset.to_bytes()) {
+            *output ^= input;
+        }
+        for (output, input) in evaluation_seed
+            .iter_mut()
+            .zip(history_size.get().to_le_bytes())
+        {
+            *output ^= input;
+        }
+
+        PosSeed::from(evaluation_seed)
     }
 }

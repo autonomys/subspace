@@ -30,7 +30,6 @@ include!(concat!(
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
-use core::num::NonZeroU64;
 use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
@@ -74,7 +73,7 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
-    Piece, PublicKey, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -86,6 +85,9 @@ sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
     }
 }
+
+// Smaller value for testing purposes
+const MAX_PIECES_IN_SECTOR: u16 = 32;
 
 // To learn more about runtime versioning and what each of the following value means:
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
@@ -249,6 +251,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -960,17 +963,12 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
         let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(
-            &Into::<PublicKey>::into(&pre_digest.solution.public_key),
-            &pre_digest.solution.chunk.to_bytes(),
-            &pre_digest.solution.chunk_signature,
-        )
-        .expect("Tag signature is verified by the client and must always be valid; qed");
+        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
         let mut data = Vec::with_capacity(seed.len() + randomness.len());
         data.extend_from_slice(seed);
-        data.extend_from_slice(&randomness);
+        data.extend_from_slice(randomness.as_ref());
 
-        BlakeTwo256::hash_of(&data).into()
+        Randomness::from(BlakeTwo256::hash_of(&data).to_fixed_bytes())
     }
 }
 
@@ -1070,8 +1068,12 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn total_pieces() -> NonZeroU64 {
-            <pallet_subspace::Pallet<Runtime>>::total_pieces()
+        fn history_size() -> HistorySize {
+            <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
         }
 
         fn slot_duration() -> Duration {

@@ -5,7 +5,9 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::trace;
 
-const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(10000).expect("Manually set value > 0."); // TODO: adjust after piece size change
+// TODO: Re-think this number
+const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(2000)
+    .expect("Archived history segment contains at very least one piece; qed");
 
 #[derive(Clone)]
 pub struct PieceMemoryCache {

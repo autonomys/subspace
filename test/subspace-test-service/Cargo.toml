@@ -52,9 +52,9 @@ sp-runtime = { git = "https://github.com/subspace/substrate", rev = "fdb68194ab6
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-core-primitives" }
 subspace-fraud-proof = { path = "../../crates/subspace-fraud-proof" }
 subspace-networking = { path = "../../crates/subspace-networking" }
+subspace-proof-of-space = { path = "../../crates/subspace-proof-of-space", features = ["shim"] }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }
-subspace-solving = { version = "0.1.0", default-features = false, path = "../../crates/subspace-solving" }
 subspace-test-client = { path = "../subspace-test-client" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
 subspace-transaction-pool = { path = "../../crates/subspace-transaction-pool" }

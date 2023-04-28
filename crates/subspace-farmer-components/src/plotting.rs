@@ -1,6 +1,7 @@
 use crate::piece_caching::PieceMemoryCache;
+use crate::sector::{RawSector, RecordMetadata, SectorContentsMap, SectorMetadata};
 use crate::segment_reconstruction::recover_missing_piece;
-use crate::{FarmerProtocolInfo, SectorMetadata};
+use crate::FarmerProtocolInfo;
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
@@ -8,17 +9,21 @@ use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
 use parking_lot::Mutex;
+use rayon::prelude::*;
 use std::error::Error;
 use std::io;
+use std::io::{BufWriter, Write};
+use std::simd::Simd;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
-use subspace_core_primitives::crypto::{Scalar, ScalarLegacy};
-use subspace_core_primitives::sector_codec::{SectorCodec, SectorCodecError};
+use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, LegacySectorId, Piece, PieceIndex, PieceIndexHash, PublicKey,
-    SectorIndex, PLOT_SECTOR_SIZE,
+    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId,
+    SectorIndex,
 };
+use subspace_erasure_coding::ErasureCoding;
+use subspace_proof_of_space::{Quality, Table};
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -89,7 +94,7 @@ impl PieceGetter for ArchivedHistorySegment {
 #[derive(Debug, Clone)]
 pub struct PlottedSector {
     /// Sector ID
-    pub sector_id: LegacySectorId,
+    pub sector_id: SectorId,
     /// Sector index
     pub sector_index: SectorIndex,
     /// Sector metadata
@@ -101,6 +106,9 @@ pub struct PlottedSector {
 /// Plotting status
 #[derive(Debug, Error)]
 pub enum PlottingError {
+    /// Invalid erasure coding instance
+    #[error("Invalid erasure coding instance")]
+    InvalidErasureCodingInstance,
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
     PieceNotFound {
@@ -121,62 +129,64 @@ pub enum PlottingError {
         /// Lower-level error
         error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
-    /// Failed to encode sector
-    #[error("Failed to encode sector: {0}")]
-    FailedToEncodeSector(#[from] SectorCodecError),
-    /// Failed to commit
-    #[error("Failed to commit: {0}")]
-    FailedToCommit(String),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 }
 
-/// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly (seek to
-/// desired offset before calling this function if necessary)
+/// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly at the
+/// beginning of the sector (seek to desired offset before calling this function and seek back
+/// afterwards if necessary).
 ///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
 #[allow(clippy::too_many_arguments)]
-pub async fn plot_sector<PG, S, SM>(
+pub async fn plot_sector<PG, S, SM, PosTable>(
     public_key: &PublicKey,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     farmer_protocol_info: &FarmerProtocolInfo,
     kzg: &Kzg,
-    sector_codec: &SectorCodec,
-    mut sector_output: S,
-    mut sector_metadata_output: SM,
+    erasure_coding: &ErasureCoding,
+    pieces_in_sector: u16,
+    sector_output: &mut S,
+    sector_metadata_output: &mut SM,
     piece_memory_cache: PieceMemoryCache,
 ) -> Result<PlottedSector, PlottingError>
 where
     PG: PieceGetter,
-    S: io::Write,
-    SM: io::Write,
+    S: Write,
+    SM: Write,
+    PosTable: Table,
 {
-    let sector_id = LegacySectorId::new(public_key, sector_index);
-    let current_segment_index =
-        PieceIndex::from(farmer_protocol_info.total_pieces.get()).segment_index();
+    if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
+        return Err(PlottingError::InvalidErasureCodingInstance);
+    }
+
+    let sector_id = SectorId::new(public_key.hash(), sector_index);
+    let current_segment_index = farmer_protocol_info.history_size.segment_index();
     let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
-    let piece_indexes: Vec<PieceIndex> = (PieceIndex::ZERO..)
-        .take(PLOT_SECTOR_SIZE as usize / (Piece::SIZE / Scalar::SAFE_BYTES * Scalar::FULL_BYTES))
+    let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
+        .take(pieces_in_sector.into())
         .map(|piece_offset| {
-            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.total_pieces)
+            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.history_size)
         })
         .collect();
 
-    let in_memory_sector_scalars = Mutex::new(Vec::with_capacity(
-        PLOT_SECTOR_SIZE as usize / Scalar::FULL_BYTES,
-    ));
+    // TODO: Downloading and encoding below can happen in parallel, but a bit tricky to implement
+    //  due to sync/async pairing
+
+    let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
 
     retry(default_backoff(), || async {
-        let mut in_memory_sector_scalars = in_memory_sector_scalars.lock();
-        in_memory_sector_scalars.clear();
+        let mut raw_sector = raw_sector.lock();
+        raw_sector.records.clear();
+        raw_sector.metadata.clear();
 
-        if let Err(error) = download_pieces_in_batches_non_blocking(
-            &mut in_memory_sector_scalars,
+        if let Err(error) = download_sector(
+            &mut raw_sector,
             sector_index,
             piece_getter,
             piece_getter_retry_policy,
@@ -195,56 +205,142 @@ where
     })
     .await?;
 
-    let mut in_memory_sector_scalars = in_memory_sector_scalars.into_inner();
+    let mut raw_sector = raw_sector.into_inner();
 
-    sector_codec
-        .encode(&mut in_memory_sector_scalars)
-        .map_err(PlottingError::FailedToEncodeSector)?;
+    let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
 
-    let mut in_memory_sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
-
-    in_memory_sector
-        .chunks_exact_mut(Scalar::FULL_BYTES)
-        .zip(in_memory_sector_scalars)
-        .for_each(|(output, input)| {
-            input.write_to_bytes(
-                <&mut [u8; Scalar::FULL_BYTES]>::try_from(output)
-                    .expect("Chunked into scalar full bytes above; qed"),
+    (PieceOffset::ZERO..)
+        .zip(raw_sector.records.iter_mut())
+        .zip(sector_contents_map.iter_record_bitfields_mut())
+        // TODO: Doesn't work without a bridge: https://github.com/ferrilab/bitvec/issues/143
+        .par_bridge()
+        .for_each(|((piece_offset, record), mut encoded_chunks_used)| {
+            // Derive PoSpace table
+            let pos_table = PosTable::generate(
+                &sector_id.evaluation_seed(piece_offset, farmer_protocol_info.history_size),
             );
-        });
 
-    sector_output
-        .write_all(&in_memory_sector)
-        .map_err(PlottingError::Io)?;
-
-    let commitments = in_memory_sector
-        .chunks_exact(Piece::SIZE)
-        .map(|piece| {
-            // TODO: This is a workaround to the fact that `kzg.poly()` expects `data` to be a slice
-            //  32-byte chunks that have up to 254 bits of data in them and in sector encoding we're
-            //  dealing with 31-byte chunks instead. This workaround will not be necessary once we
-            //  change `kzg.poly()` API to use 31-byte chunks as well.
-            let expanded_piece = piece
-                .chunks_exact(Scalar::SAFE_BYTES)
-                .map(|bytes| {
-                    Scalar::from(
-                        <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
-                            .expect("Chunked into correctly sized bytes; qed"),
+            let source_record_chunks = record
+                .iter()
+                .map(|scalar_bytes| {
+                    Scalar::try_from(scalar_bytes).expect(
+                        "Piece getter must returns valid pieces of history that contain \
+                                proper scalar bytes; qed",
                     )
                 })
                 .collect::<Vec<_>>();
-            let polynomial = kzg
-                .poly(&expanded_piece)
-                .map_err(PlottingError::FailedToCommit)?;
-            kzg.commit(&polynomial)
-                .map_err(PlottingError::FailedToCommit)
-        })
-        .collect::<Result<Vec<Commitment>, PlottingError>>()?;
+            // Erasure code source record chunks
+            let parity_record_chunks = erasure_coding.extend(&source_record_chunks).expect(
+                "Instance was verified to be able to work with this many values earlier; qed",
+            );
 
+            // For every erasure coded chunk check if there is quality present, if so then encode
+            // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
+            let num_successfully_encoded_chunks = (SBucket::ZERO..=SBucket::MAX)
+                .zip(
+                    source_record_chunks
+                        .iter()
+                        .zip(&parity_record_chunks)
+                        .flat_map(|(a, b)| [a, b]),
+                )
+                .zip(encoded_chunks_used.iter_mut())
+                .filter_map(|((s_bucket, record_chunk), mut encoded_chunk_used)| {
+                    let quality = pos_table.find_quality(s_bucket.into())?;
+
+                    *encoded_chunk_used = true;
+
+                    // NOTE: Quality is already hashed in the `subspace-chiapos` library
+                    Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(*quality.to_bytes()))
+                })
+                // Make sure above filter function (and corresponding `encoded_chunk_used` update)
+                // happen at most as many times as there is number of chunks in the record,
+                // otherwise `n+1` iterations could happen and update extra `encoded_chunk_used`
+                // unnecessarily causing issues down the line
+                .take(record.iter().count())
+                .zip(record.iter_mut())
+                // Write encoded chunk back so we can reuse original allocation
+                .map(|(input_chunk, output_chunk)| {
+                    *output_chunk = input_chunk.to_array();
+                })
+                .count();
+
+            // In some cases there is not enough PoSpace qualities available, in which case we add
+            // remaining number of unencoded erasure coded record chunks to the end
+            source_record_chunks
+                .iter()
+                .zip(&parity_record_chunks)
+                .flat_map(|(a, b)| [a, b])
+                .zip(encoded_chunks_used.iter())
+                // Skip chunks that were used previously
+                .filter_map(|(record_chunk, encoded_chunk_used)| {
+                    if *encoded_chunk_used {
+                        None
+                    } else {
+                        Some(record_chunk)
+                    }
+                })
+                // First `num_successfully_encoded_chunks` chunks are encoded
+                .zip(record.iter_mut().skip(num_successfully_encoded_chunks))
+                // Write necessary number of unencoded chunks at the end
+                .for_each(|(input_chunk, output_chunk)| {
+                    *output_chunk = input_chunk.to_bytes();
+                });
+        });
+
+    {
+        let mut sector_output = BufWriter::new(sector_output);
+
+        // Write sector contents map so we can decode it later
+        sector_output.write_all(sector_contents_map.as_ref())?;
+
+        let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
+        let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
+        let mut next_unencoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
+        // Write record chunks, one s-bucket at a time
+        for s_bucket in SBucket::ZERO..=SBucket::MAX {
+            for (piece_offset, encoded_chunk_used) in sector_contents_map
+                .iter_s_bucket_records(s_bucket)
+                .expect("S-bucket guaranteed to be in range; qed")
+            {
+                let num_encoded_record_chunks =
+                    usize::from(num_encoded_record_chunks[usize::from(piece_offset)]);
+                let next_encoded_record_chunks_offset =
+                    &mut next_encoded_record_chunks_offset[usize::from(piece_offset)];
+                let next_unencoded_record_chunks_offset =
+                    &mut next_unencoded_record_chunks_offset[usize::from(piece_offset)];
+
+                // We know that s-buckets in `raw_sector.records` are stored in order (encoded
+                // first, then unencoded), hence we don't need to calculate the position, we can
+                // just store a few cursors and know the position that way
+                let chunk_position;
+                if encoded_chunk_used {
+                    chunk_position = *next_encoded_record_chunks_offset;
+                    *next_encoded_record_chunks_offset += 1;
+                } else {
+                    chunk_position =
+                        num_encoded_record_chunks + *next_unencoded_record_chunks_offset;
+                    *next_unencoded_record_chunks_offset += 1;
+                }
+                sector_output
+                    .write_all(&raw_sector.records[usize::from(piece_offset)][chunk_position])?;
+            }
+        }
+
+        for record_metadata in raw_sector.metadata {
+            sector_output.write_all(record_metadata.commitment.as_ref())?;
+            sector_output.write_all(record_metadata.witness.as_ref())?;
+        }
+
+        sector_output.flush()?;
+    }
+
+    // TODO: Write commitments and witnesses
     let sector_metadata = SectorMetadata {
-        total_pieces: farmer_protocol_info.total_pieces,
+        sector_index,
+        pieces_in_sector,
+        s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
+        history_size: farmer_protocol_info.history_size,
         expires_at,
-        commitments,
     };
 
     sector_metadata_output.write_all(&sector_metadata.encode())?;
@@ -257,8 +353,8 @@ where
     })
 }
 
-async fn download_pieces_in_batches_non_blocking<PG: PieceGetter>(
-    in_memory_sector_scalars: &mut Vec<ScalarLegacy>,
+async fn download_sector<PG: PieceGetter>(
+    raw_sector: &mut RawSector,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
@@ -301,14 +397,18 @@ async fn download_pieces_in_batches_non_blocking<PG: PieceGetter>(
             .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
             .ok_or(PlottingError::PieceNotFound { piece_index })?;
 
-        in_memory_sector_scalars.extend(piece.chunks_exact(Scalar::SAFE_BYTES).map(|bytes| {
-            ScalarLegacy::from(
-                <&[u8; Scalar::SAFE_BYTES]>::try_from(bytes)
-                    .expect("Chunked into scalar safe bytes above; qed"),
-            )
-        }));
+        let (record, commitment, witness) = piece.split();
+        // Fancy way to insert value in order to avoid going through stack (if naive de-referencing
+        // is used) and potentially causing stack overflow as the result
+        raw_sector
+            .records
+            .extend_from_slice(std::slice::from_ref(record));
+        raw_sector.metadata.push(RecordMetadata {
+            commitment: *commitment,
+            witness: *witness,
+        });
 
-        piece_memory_cache.add_piece(PieceIndexHash::from_index(piece_index), piece);
+        piece_memory_cache.add_piece(piece_index.hash(), piece);
     }
 
     info!(%sector_index, "Plotting was successful.");

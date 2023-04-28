@@ -17,44 +17,62 @@
 //! Verification primitives for Subspace.
 #![forbid(unsafe_code)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
+#![feature(array_chunks, portable_simd)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode, MaxEncodedLen};
+use core::mem;
+use core::simd::Simd;
 use schnorrkel::context::SigningContext;
-use schnorrkel::vrf::VRFOutput;
-use schnorrkel::{SignatureError, SignatureResult};
+use schnorrkel::SignatureError;
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake2b_256_hash, ScalarLegacy};
+use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, blake2b_256_hash_list};
 use subspace_core_primitives::{
-    BlockNumber, ChunkSignature, LegacySectorId, PieceIndex, PublicKey, Randomness,
-    RewardSignature, SegmentCommitment, SlotNumber, Solution, SolutionRange, PIECES_IN_SECTOR,
-    RANDOMNESS_CONTEXT,
+    Blake2b256Hash, BlockNumber, BlockWeight, PublicKey, Randomness, Record, RewardSignature,
+    SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution, SolutionRange,
 };
-use subspace_solving::{
-    create_chunk_signature_transcript, derive_global_challenge, verify_chunk_signature,
-};
+use subspace_proof_of_space::Table;
 
 /// Errors encountered by the Subspace consensus primitives.
 #[derive(Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum Error {
     /// Piece verification failed
-    #[cfg_attr(feature = "thiserror", error("Invalid piece"))]
+    #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
+    InvalidPieceOffset {
+        /// Index of the piece that failed verification
+        piece_offset: u16,
+        /// How many pieces one sector is supposed to contain (max)
+        max_pieces_in_sector: u16,
+    },
+    /// Piece verification failed
+    #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
     InvalidPiece,
-
-    /// Solution is outside the challenge range
-    #[cfg_attr(feature = "thiserror", error("Solution is outside the solution range"))]
-    OutsideSolutionRange,
-
-    /// Invalid solution signature
-    #[cfg_attr(feature = "thiserror", error("Invalid solution signature"))]
-    InvalidSolutionSignature(SignatureError),
-
-    /// Missing KZG instance
-    #[cfg_attr(feature = "thiserror", error("Missing KZG instance"))]
-    MissingKzgInstance,
+    /// Solution is outside of challenge range
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "Solution distance {solution_distance} is outside of solution range \
+            {half_solution_range} (half of actual solution range)"
+        )
+    )]
+    OutsideSolutionRange {
+        /// Half of solution range
+        half_solution_range: SolutionRange,
+        /// Solution distance
+        solution_distance: SolutionRange,
+    },
+    /// Invalid proof of space
+    #[cfg_attr(feature = "thiserror", error("Invalid proof of space"))]
+    InvalidProofOfSpace,
+    /// Invalid audit chunk offset
+    #[cfg_attr(feature = "thiserror", error("Invalid audit chunk offset"))]
+    InvalidAuditChunkOffset,
+    /// Invalid chunk witness
+    #[cfg_attr(feature = "thiserror", error("Invalid chunk witness"))]
+    InvalidChunkWitness,
 }
 
 /// Check the reward signature validity.
@@ -69,52 +87,47 @@ pub fn check_reward_signature(
     public_key.verify(reward_signing_context.bytes(hash), &signature)
 }
 
-/// Check piece validity.
-///
-/// If `segment_commitment` is `None`, piece validity check will be skipped.
-pub fn check_piece<'a, FarmerPublicKey, RewardAddress>(
-    kzg: &Kzg,
-    segment_commitment: &SegmentCommitment,
-    position: u32,
-    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
-) -> Result<(), Error>
-where
-    &'a FarmerPublicKey: Into<PublicKey>,
-{
-    if !archiver::is_record_commitment_hash_valid(
-        kzg,
-        &solution.record_commitment_hash,
-        segment_commitment,
-        &solution.piece_witness,
-        position,
-    ) {
-        return Err(Error::InvalidPiece);
-    }
-
-    Ok(())
-}
-
-/// Derive audit chunk from scalar bytes contained within plotted piece
-pub fn derive_audit_chunk(chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES]) -> SolutionRange {
-    let hash = blake2b_256_hash(chunk_bytes);
-    SolutionRange::from_le_bytes([
-        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
-    ])
-}
-
-/// Returns true if `solution.tag` is within the solution range.
-pub fn is_within_solution_range(
-    local_challenge: SolutionRange,
+/// Calculates solution distance for given parameters, is used as a primitive to check whether
+/// solution distance is within solution range (see [`is_within_solution_range()`]).
+pub fn calculate_solution_distance(
+    global_challenge: &Blake2b256Hash,
     audit_chunk: SolutionRange,
+    sector_slot_challenge: &SectorSlotChallenge,
+) -> SolutionRange {
+    let global_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
+        *global_challenge
+            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .next()
+            .expect("Solution range is smaller in size than global challenge; qed"),
+    );
+    let sector_slot_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
+        *sector_slot_challenge
+            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .next()
+            .expect("Solution range is smaller in size than sector slot challenge; qed"),
+    );
+    subspace_core_primitives::bidirectional_distance(
+        &global_challenge_as_solution_range,
+        &(audit_chunk ^ sector_slot_challenge_as_solution_range),
+    )
+}
+
+/// Returns true if solution distance is within the solution range for provided parameters.
+pub fn is_within_solution_range(
+    global_challenge: &Blake2b256Hash,
+    audit_chunk: SolutionRange,
+    sector_slot_challenge: &SectorSlotChallenge,
     solution_range: SolutionRange,
 ) -> bool {
-    subspace_core_primitives::bidirectional_distance(&local_challenge, &audit_chunk)
+    calculate_solution_distance(global_challenge, audit_chunk, sector_slot_challenge)
         <= solution_range / 2
 }
 
 /// Parameters for checking piece validity
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct PieceCheckParams {
+    /// How many pieces one sector is supposed to contain (max)
+    pub max_pieces_in_sector: u16,
     /// Segment commitment of segment to which piece belongs
     pub segment_commitment: SegmentCommitment,
 }
@@ -132,16 +145,65 @@ pub struct VerifySolutionParams {
     pub piece_check_params: Option<PieceCheckParams>,
 }
 
-/// Solution verification.
-///
-/// KZG needs to be provided if [`VerifySolutionParams::piece_check_params`] is not `None`.
-pub fn verify_solution<'a, FarmerPublicKey, RewardAddress>(
+/// Calculate weight derived from provided solution, used during block production
+pub fn calculate_block_weight<'a, PosTable, FarmerPublicKey, RewardAddress>(
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
-    slot: u64,
-    params: &'a VerifySolutionParams,
-    kzg: Option<&'a Kzg>,
-) -> Result<(), Error>
+    slot: SlotNumber,
+    global_randomness: &Randomness,
+) -> Result<BlockWeight, Error>
 where
+    PosTable: Table,
+    PublicKey: From<&'a FarmerPublicKey>,
+{
+    let sector_id = SectorId::new(
+        PublicKey::from(&solution.public_key).hash(),
+        solution.sector_index,
+    );
+
+    let global_challenge = global_randomness.derive_global_challenge(slot);
+    let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
+    let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
+
+    // Check that proof of space is valid
+    let quality = match PosTable::is_proof_valid(
+        &sector_id.evaluation_seed(solution.piece_offset, solution.history_size),
+        s_bucket_audit_index.into(),
+        &solution.proof_of_space,
+    ) {
+        Some(quality) => quality,
+        None => {
+            return Err(Error::InvalidProofOfSpace);
+        }
+    };
+
+    let masked_chunk = (Simd::from(solution.chunk.to_bytes()) ^ Simd::from(*quality)).to_array();
+    // Extract audit chunk from masked chunk
+    let audit_chunk = match masked_chunk
+        .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+        .nth(usize::from(solution.audit_chunk_offset))
+    {
+        Some(audit_chunk) => SolutionRange::from_le_bytes(*audit_chunk),
+        None => {
+            return Err(Error::InvalidAuditChunkOffset);
+        }
+    };
+
+    Ok(BlockWeight::from(
+        SolutionRange::MAX
+            - calculate_solution_distance(&global_challenge, audit_chunk, &sector_slot_challenge),
+    ))
+}
+
+/// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
+/// success.
+pub fn verify_solution<'a, PosTable, FarmerPublicKey, RewardAddress>(
+    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
+    slot: SlotNumber,
+    params: &'a VerifySolutionParams,
+    kzg: &'a Kzg,
+) -> Result<SolutionRange, Error>
+where
+    PosTable: Table,
     PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
@@ -150,68 +212,103 @@ where
         piece_check_params,
     } = params;
 
-    let public_key = PublicKey::from(&solution.public_key);
+    let sector_id = SectorId::new(
+        PublicKey::from(&solution.public_key).hash(),
+        solution.sector_index,
+    );
 
-    let sector_id = LegacySectorId::new(&public_key, solution.sector_index);
+    let global_challenge = global_randomness.derive_global_challenge(slot);
+    let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
+    let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
 
-    let local_challenge =
-        sector_id.derive_local_challenge(&derive_global_challenge(global_randomness, slot));
-
-    let chunk_bytes = solution.chunk.to_bytes();
-
-    if !is_within_solution_range(
-        local_challenge,
-        derive_audit_chunk(&chunk_bytes),
-        *solution_range,
+    // Check that proof of space is valid
+    let quality = match PosTable::is_proof_valid(
+        &sector_id.evaluation_seed(solution.piece_offset, solution.history_size),
+        s_bucket_audit_index.into(),
+        &solution.proof_of_space,
     ) {
-        return Err(Error::OutsideSolutionRange);
+        Some(quality) => quality,
+        None => {
+            return Err(Error::InvalidProofOfSpace);
+        }
+    };
+
+    let masked_chunk = (Simd::from(solution.chunk.to_bytes()) ^ Simd::from(*quality)).to_array();
+    // Extract audit chunk from masked chunk
+    let audit_chunk = match masked_chunk
+        .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+        .nth(usize::from(solution.audit_chunk_offset))
+    {
+        Some(audit_chunk) => SolutionRange::from_le_bytes(*audit_chunk),
+        None => {
+            return Err(Error::InvalidAuditChunkOffset);
+        }
+    };
+
+    let solution_distance =
+        calculate_solution_distance(&global_challenge, audit_chunk, &sector_slot_challenge);
+
+    // Check that solution is within solution range
+    if solution_distance > solution_range / 2 {
+        return Err(Error::OutsideSolutionRange {
+            half_solution_range: solution_range / 2,
+            solution_distance,
+        });
     }
 
-    if let Err(error) = verify_chunk_signature(
-        &chunk_bytes,
-        &solution.chunk_signature,
-        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())
-            .expect("Always correct length; qed"),
+    // Check that chunk belongs to the record
+    if !kzg.verify(
+        &solution.record_commitment,
+        Record::NUM_S_BUCKETS,
+        s_bucket_audit_index.into(),
+        &solution.chunk,
+        &solution.chunk_witness,
     ) {
-        return Err(Error::InvalidSolutionSignature(error));
+        return Err(Error::InvalidChunkWitness);
     }
 
     // TODO: Check if sector already expired once we have such notion
 
-    if let Some(PieceCheckParams { segment_commitment }) = piece_check_params {
-        let audit_piece_offset = PieceIndex::from(local_challenge % PIECES_IN_SECTOR);
+    if let Some(PieceCheckParams {
+        max_pieces_in_sector,
+        segment_commitment,
+    }) = piece_check_params
+    {
+        if u16::from(solution.piece_offset) >= *max_pieces_in_sector {
+            return Err(Error::InvalidPieceOffset {
+                piece_offset: u16::from(solution.piece_offset),
+                max_pieces_in_sector: *max_pieces_in_sector,
+            });
+        }
+
         let position = sector_id
-            .derive_piece_index(audit_piece_offset, solution.total_pieces)
+            .derive_piece_index(solution.piece_offset, solution.history_size)
             .position();
 
-        // TODO: Check that chunk belongs to the encoded piece
-        let kzg = match kzg {
-            Some(kzg) => kzg,
-            None => {
-                return Err(Error::MissingKzgInstance);
-            }
-        };
-        check_piece(kzg, segment_commitment, position, solution)?;
+        // Check that piece is part of the blockchain history
+        if !archiver::is_record_commitment_hash_valid(
+            kzg,
+            &blake2b_256_254_hash_to_scalar(&solution.record_commitment.to_bytes()),
+            segment_commitment,
+            &solution.record_witness,
+            position,
+        ) {
+            return Err(Error::InvalidPiece);
+        }
     }
 
-    Ok(())
+    Ok(solution_distance)
 }
 
-/// Derive on-chain randomness from chunk signature.
-///
-/// NOTE: If you are not the signer then you must verify the local challenge before calling this
-/// function.
-pub fn derive_randomness(
-    public_key: &PublicKey,
-    chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
-    chunk_signature: &ChunkSignature,
-) -> SignatureResult<Randomness> {
-    let in_out = VRFOutput(chunk_signature.output).attach_input_hash(
-        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
-        create_chunk_signature_transcript(chunk_bytes),
-    )?;
-
-    Ok(in_out.make_bytes(RANDOMNESS_CONTEXT))
+/// Derive on-chain randomness from solution.
+pub fn derive_randomness<PublicKey, RewardAddress>(
+    solution: &Solution<PublicKey, RewardAddress>,
+    slot: SlotNumber,
+) -> Randomness {
+    Randomness::from(blake2b_256_hash_list(&[
+        &solution.chunk.to_bytes(),
+        &slot.to_le_bytes(),
+    ]))
 }
 
 /// Derives next solution range based on the total era slots and slot probability

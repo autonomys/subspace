@@ -39,7 +39,6 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
 use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
 use subspace_service::FullSelectChain;
-use subspace_solving::create_chunk_signature;
 use subspace_test_client::{Backend, Client, FraudProofVerifier, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
 use subspace_transaction_pool::bundle_validator::BundleValidator;
@@ -184,14 +183,10 @@ impl MockPrimaryNode {
             sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
         );
 
-        let mock_solution = {
-            let mut gs = Solution::genesis_solution(
-                FarmerPublicKey::unchecked_from(key.public().0),
-                key.to_account_id(),
-            );
-            gs.chunk_signature = create_chunk_signature(&key.pair().into(), &gs.chunk.to_bytes());
-            gs
-        };
+        let mock_solution = Solution::genesis_solution(
+            FarmerPublicKey::unchecked_from(key.public().0),
+            key.to_account_id(),
+        );
 
         MockPrimaryNode {
             task_manager,

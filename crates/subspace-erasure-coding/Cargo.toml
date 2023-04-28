@@ -28,12 +28,13 @@ criterion = "0.4.0"
 rand = "0.8.5"
 
 [features]
-default = ["std"]
+default = ["std", "parallel"]
 std = [
     "blst_from_scratch/std",
     "kzg/std",
     "subspace-core-primitives/std",
 ]
+parallel = ["blst_from_scratch/parallel"]
 
 [[bench]]
 name = "commitments"

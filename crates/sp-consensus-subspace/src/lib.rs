@@ -31,7 +31,6 @@ use crate::digests::{CompatibleDigestItem, PreDigest};
 use alloc::borrow::Cow;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::num::NonZeroU64;
 use core::time::Duration;
 use scale_info::TypeInfo;
 use schnorrkel::context::SigningContext;
@@ -46,9 +45,17 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RewardSignature, SegmentCommitment, SegmentHeader,
-    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
+    REWARD_SIGNATURE_LENGTH,
 };
+#[cfg(feature = "std")]
+use subspace_proof_of_space::chia::ChiaTable;
+#[cfg(feature = "std")]
+use subspace_proof_of_space::shim::ShimTable;
+#[cfg(feature = "std")]
+use subspace_proof_of_space::PosTableType;
+use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
 
@@ -148,6 +155,12 @@ where
     pub fn solution(&self) -> &Solution<FarmerPublicKey, RewardAddress> {
         let Self::V0 { solution, .. } = self;
         solution
+    }
+
+    /// Slot at which vote was created.
+    pub fn slot(&self) -> &Slot {
+        let Self::V0 { slot, .. } = self;
+        slot
     }
 
     /// Hash of the vote, used for signing and verifying signature.
@@ -349,13 +362,14 @@ impl<RewardAddress> From<&Solution<FarmerPublicKey, RewardAddress>> for WrappedS
             public_key: solution.public_key.clone(),
             reward_address: (),
             sector_index: solution.sector_index,
-            total_pieces: solution.total_pieces,
+            history_size: solution.history_size,
             piece_offset: solution.piece_offset,
-            record_commitment_hash: solution.record_commitment_hash,
-            piece_witness: solution.piece_witness,
-            chunk_offset: solution.chunk_offset,
+            record_commitment: solution.record_commitment,
+            record_witness: solution.record_witness,
             chunk: solution.chunk,
-            chunk_signature: solution.chunk_signature,
+            chunk_witness: solution.chunk_witness,
+            audit_chunk_offset: solution.audit_chunk_offset,
+            proof_of_space: solution.proof_of_space,
         })
     }
 }
@@ -392,25 +406,63 @@ impl KzgExtension {
     }
 }
 
+#[cfg(feature = "std")]
+sp_externalities::decl_extension! {
+    /// A Poof of space extension.
+    pub struct PosExtension(PosTableType);
+}
+
+#[cfg(feature = "std")]
+impl PosExtension {
+    /// Create new instance.
+    pub fn new<PosTable>() -> Self
+    where
+        PosTable: Table,
+    {
+        Self(PosTable::TABLE_TYPE)
+    }
+}
+
 /// Consensus-related runtime interface
 #[runtime_interface]
 pub trait Consensus {
-    /// Verify whether solution is valid.
+    /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
+    /// success.
     fn verify_solution(
         &mut self,
         solution: WrappedSolution,
         slot: u64,
         params: WrappedVerifySolutionParams<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<SolutionRange, String> {
         use sp_externalities::ExternalitiesExt;
+        use subspace_proof_of_space::PosTableType;
+
+        let pos_table_type = self
+            .extension::<PosExtension>()
+            .expect("No `PosExtension` associated for the current context!")
+            .0;
 
         let kzg = &self
             .extension::<KzgExtension>()
             .expect("No `KzgExtension` associated for the current context!")
             .0;
 
-        subspace_verification::verify_solution(&solution.0, slot, &params.0, Some(kzg))
-            .map_err(|error| error.to_string())
+        match pos_table_type {
+            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _, _>(
+                &solution.0,
+                slot,
+                &params.0,
+                kzg,
+            )
+            .map_err(|error| error.to_string()),
+            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _, _>(
+                &solution.0,
+                slot,
+                &params.0,
+                kzg,
+            )
+            .map_err(|error| error.to_string()),
+        }
     }
 }
 
@@ -449,8 +501,11 @@ sp_api::decl_runtime_apis! {
         /// Check if `farmer_public_key` is in block list (due to equivocation)
         fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
 
-        /// Total number of pieces in a blockchain
-        fn total_pieces() -> NonZeroU64;
+        /// Size of the blockchain history
+        fn history_size() -> HistorySize;
+
+        /// How many pieces one sector is supposed to contain (max)
+        fn max_pieces_in_sector() -> u16;
 
         /// Get the segment commitment of records for specified segment index
         fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
@@ -539,14 +594,13 @@ pub struct VerifiedHeaderInfo<RewardAddress> {
 ///
 /// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
 /// it from the header twice.
-///
-/// KZG needs to be provided if [`VerifySolutionParams::piece_check_params`] is not `None`.
-pub fn check_header<Header, RewardAddress>(
+pub fn check_header<PosTable, Header, RewardAddress>(
     params: VerificationParams<Header>,
     pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
-    kzg: Option<&Kzg>,
+    kzg: &Kzg,
 ) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
 where
+    PosTable: Table,
     Header: HeaderT,
     RewardAddress: Decode,
 {
@@ -594,7 +648,7 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution(
+    verify_solution::<PosTable, _, _>(
         &pre_digest.solution,
         slot.into(),
         verify_solution_params,

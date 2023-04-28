@@ -27,7 +27,7 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::num::NonZeroUsize;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
@@ -258,7 +258,7 @@ impl Archiver {
 
         let erasure_coding = ErasureCoding::new(
             NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
-                .expect("Recorded history segment contains at very least one record; qed"),
+                .expect("Archived history segment contains at very least one piece; qed"),
         )
         .map_err(ArchiverInstantiationError::FailedToInitializeErasureCoding)?;
 
@@ -722,9 +722,9 @@ impl Archiver {
         let existing_commitments = self.incremental_record_commitments.len();
         // Add commitments for pieces that were not created incrementally
         {
-            #[cfg(not(feature = "rayon"))]
+            #[cfg(not(feature = "parallel"))]
             let source_pieces = pieces.source();
-            #[cfg(feature = "rayon")]
+            #[cfg(feature = "parallel")]
             let source_pieces = pieces.par_source();
 
             let iter = source_pieces
@@ -754,11 +754,11 @@ impl Archiver {
                         .expect("KZG instance must be configured to support this many scalars; qed")
                 });
 
-            #[cfg(not(feature = "rayon"))]
+            #[cfg(not(feature = "parallel"))]
             iter.collect_into(&mut *self.incremental_record_commitments);
             // TODO: `collect_into_vec()`, unfortunately, truncates input, which is not what we want
             //  can be unified when https://github.com/rayon-rs/rayon/issues/1039 is resolved
-            #[cfg(feature = "rayon")]
+            #[cfg(feature = "parallel")]
             self.incremental_record_commitments.par_extend(iter);
         }
         // Collect hashes to commitments from all records
@@ -891,10 +891,10 @@ pub fn is_piece_valid(
     )
 }
 
-/// Validate witness for piece commitment hash produced by archiver
+/// Validate witness for record commitment hash produced by archiver
 pub fn is_record_commitment_hash_valid(
     kzg: &Kzg,
-    commitment_hash: &Scalar,
+    record_commitment_hash: &Scalar,
     commitment: &SegmentCommitment,
     witness: &Witness,
     position: u32,
@@ -903,7 +903,7 @@ pub fn is_record_commitment_hash_valid(
         commitment,
         ArchivedHistorySegment::NUM_PIECES,
         position,
-        commitment_hash,
+        record_commitment_hash,
         witness,
     )
 }

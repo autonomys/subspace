@@ -26,6 +26,7 @@ use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_networking::libp2p::identity;
+use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_service::{DsnConfig, SubspaceNetworking};
 use subspace_test_service::mock::MockPrimaryNode;
@@ -85,7 +86,7 @@ impl sc_executor::NativeExecutionDispatch for SystemDomainExecutorDispatch {
 /// the production.
 /// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
 #[sc_tracing::logging::prefix_logs_with(system_domain_config.network.node_name.as_str())]
-async fn run_executor(
+async fn run_executor<PosTable>(
     system_domain_config: ServiceConfiguration,
     primary_chain_config: ServiceConfiguration,
 ) -> sc_service::error::Result<(
@@ -97,7 +98,10 @@ async fn run_executor(
     Arc<SyncingService<Block>>,
     RpcHandlers,
     SystemExecutor,
-)> {
+)>
+where
+    PosTable: Table,
+{
     let primary_chain_full_node = {
         let span = tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -132,6 +136,7 @@ async fn run_executor(
         };
 
         let partial_components = subspace_service::new_partial::<
+            PosTable,
             subspace_test_runtime::RuntimeApi,
             subspace_test_client::TestExecutorDispatch,
         >(&primary_chain_config)
@@ -139,7 +144,7 @@ async fn run_executor(
             sc_service::Error::Other(format!("Failed to build a full subspace node: {e:?}"))
         })?;
 
-        subspace_service::new_full(
+        subspace_service::new_full::<PosTable, _, _, _>(
             primary_chain_config,
             partial_components,
             false,
@@ -458,12 +463,15 @@ impl SystemDomainNodeBuilder {
 
     /// Build the [`SystemDomainNode`].
     /// TODO: remove once all the existing tests integrated with `MockPrimaryNode`
-    pub async fn build(
+    pub async fn build<PosTable>(
         self,
         role: Role,
         primary_force_authoring: bool,
         primary_force_synced: bool,
-    ) -> SystemDomainNode {
+    ) -> SystemDomainNode
+    where
+        PosTable: Table,
+    {
         let system_domain_config = node_config(
             DomainId::SYSTEM,
             self.tokio_handle.clone(),
@@ -498,7 +506,7 @@ impl SystemDomainNodeBuilder {
             sync_service,
             rpc_handlers,
             executor,
-        ) = run_executor(system_domain_config, primary_chain_config)
+        ) = run_executor::<PosTable>(system_domain_config, primary_chain_config)
             .await
             .expect("could not start system domain node");
 

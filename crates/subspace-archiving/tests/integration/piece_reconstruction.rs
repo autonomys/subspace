@@ -1,5 +1,5 @@
 use rand::Rng;
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_archiving::archiver::Archiver;
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
@@ -85,9 +85,9 @@ fn piece_reconstruction_works() {
 
     let reconstructor = PiecesReconstructor::new(kzg).unwrap();
 
-    #[cfg(not(feature = "rayon"))]
+    #[cfg(not(feature = "parallel"))]
     let iter = missing_pieces.iter();
-    #[cfg(feature = "rayon")]
+    #[cfg(feature = "parallel")]
     let iter = missing_pieces.par_iter();
     let reconstructed_pieces = iter
         .map(|(missing_piece_position, _missing_piece)| {

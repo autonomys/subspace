@@ -36,13 +36,11 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockWeight, LegacySectorId, PublicKey, Randomness, RewardSignature,
+    ArchivedHistorySegment, BlockWeight, PublicKey, Randomness, RewardSignature, SectorId,
     SegmentCommitment, SegmentIndex, SolutionRange,
 };
-use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
-use subspace_verification::{
-    check_reward_signature, derive_audit_chunk, PieceCheckParams, VerifySolutionParams,
-};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_verification::{check_reward_signature, PieceCheckParams, VerifySolutionParams};
 
 #[cfg(test)]
 mod tests;
@@ -215,6 +213,9 @@ pub trait Storage<Header: HeaderT> {
 
     /// Returns the stored segment count.
     fn number_of_segments(&self) -> u64;
+
+    /// How many pieces one sector is supposed to contain (max)
+    fn max_pieces_in_sector(&self) -> u16;
 }
 
 /// Error type that holds the current finalized number and the header number we are trying to import.
@@ -340,15 +341,15 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Self::verify_block_signature(&mut header, &header_digests.pre_digest.solution.public_key)?;
 
         // verify solution
-        let sector_id = LegacySectorId::new(
-            &(&header_digests.pre_digest.solution.public_key).into(),
+        let sector_id = SectorId::new(
+            PublicKey::from(&header_digests.pre_digest.solution.public_key).hash(),
             header_digests.pre_digest.solution.sector_index,
         );
 
         let segment_index = sector_id
             .derive_piece_index(
                 header_digests.pre_digest.solution.piece_offset,
-                header_digests.pre_digest.solution.total_pieces,
+                header_digests.pre_digest.solution.history_size,
             )
             .segment_index();
 
@@ -357,20 +358,23 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             parent_header.header.hash(),
         )?;
 
-        verify_solution(
+        let solution_distance = verify_solution(
             (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
             (&VerifySolutionParams {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
-                piece_check_params: Some(PieceCheckParams { segment_commitment }),
+                piece_check_params: Some(PieceCheckParams {
+                    max_pieces_in_sector: self.store.max_pieces_in_sector(),
+                    segment_commitment,
+                }),
             })
                 .into(),
         )
         .map_err(ImportError::InvalidSolution)?;
 
-        let block_weight = Self::calculate_block_weight(&sector_id, &header_digests);
-        let total_weight = parent_header.total_weight + block_weight;
+        let total_weight =
+            parent_header.total_weight + BlockWeight::from(SolutionRange::MAX - solution_distance);
 
         // last best header should ideally be parent header. if not check for forks and pick the best chain
         let last_best_header = self.store.best_header();
@@ -528,26 +532,6 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         // push the seal back into the header
         header.digest_mut().push(seal);
         Ok(())
-    }
-
-    /// Calculates block weight from randomness and predigest.
-    fn calculate_block_weight(
-        sector_id: &LegacySectorId,
-        header_digests: &SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
-    ) -> BlockWeight {
-        let global_challenge = derive_global_challenge(
-            &header_digests.global_randomness,
-            header_digests.pre_digest.slot.into(),
-        );
-
-        let local_challenge = sector_id.derive_local_challenge(&global_challenge);
-
-        let audit_chunk = derive_audit_chunk(&header_digests.pre_digest.solution.chunk.to_bytes());
-
-        BlockWeight::from(
-            SolutionRange::MAX
-                - subspace_core_primitives::bidirectional_distance(&local_challenge, &audit_chunk),
-        )
     }
 
     /// Returns the ancestor of the header at number.

@@ -712,13 +712,16 @@ pub struct FullPeerConfig {
 }
 
 #[async_trait::async_trait]
-pub trait TestNetFactory: Default + Sized + Send
+pub trait TestNetFactory: Sized + Send
 where
 	<Self::BlockImport as BlockImport<Block>>::Transaction: Send,
 {
 	type Verifier: 'static + Verifier<Block>;
 	type BlockImport: BlockImport<Block, Error = ConsensusError> + Clone + Send + Sync + 'static;
 	type PeerData: Default + Send;
+
+	/// Create new test network with this many peers.
+	fn new(n: usize) -> Self;
 
 	/// This one needs to be implemented!
 	fn make_verifier(&self, client: PeersClient, peer_data: &Self::PeerData) -> Self::Verifier;
@@ -741,18 +744,6 @@ where
 		Option<BoxJustificationImport<Block>>,
 		Self::PeerData,
 	);
-
-	/// Create new test network with this many peers.
-	fn new(n: usize) -> Self {
-		trace!(target: "test_network", "Creating test network");
-		let mut net = Self::default();
-
-		for i in 0..n {
-			trace!(target: "test_network", "Adding peer {}", i);
-			net.add_full_peer();
-		}
-		net
-	}
 
 	fn add_full_peer(&mut self) {
 		self.add_full_peer_with_config(Default::default())
@@ -1122,6 +1113,17 @@ impl TestNetFactory for TestNet {
 	type PeerData = ();
 	type BlockImport = PeersClient;
 
+	fn new(n: usize) -> Self {
+		trace!(target: "test_network", "Creating test network");
+		let mut net = Self::default();
+
+		for i in 0..n {
+			trace!(target: "test_network", "Adding peer {}", i);
+			net.add_full_peer();
+		}
+		net
+	}
+
 	fn make_verifier(&self, _client: PeersClient, _peer_data: &()) -> Self::Verifier {
 		PassThroughVerifier::new(false)
 	}
@@ -1183,6 +1185,17 @@ impl TestNetFactory for JustificationTestNet {
 	type Verifier = PassThroughVerifier;
 	type PeerData = ();
 	type BlockImport = PeersClient;
+
+	fn new(n: usize) -> Self {
+		trace!(target: "test_network", "Creating test network");
+		let mut net = Self::default();
+
+		for i in 0..n {
+			trace!(target: "test_network", "Adding peer {}", i);
+			net.add_full_peer();
+		}
+		net
+	}
 
 	fn make_verifier(&self, client: PeersClient, peer_data: &()) -> Self::Verifier {
 		self.0.make_verifier(client, peer_data)

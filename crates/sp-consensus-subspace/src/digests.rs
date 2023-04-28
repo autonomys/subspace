@@ -27,7 +27,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    PublicKey, Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -591,18 +591,15 @@ pub fn derive_next_global_randomness<Header: HeaderT>(
     number: NumberOf<Header>,
     global_randomness_interval: NumberOf<Header>,
     pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-) -> Result<Option<Randomness>, Error> {
+) -> Option<Randomness> {
     if number % global_randomness_interval != Zero::zero() {
-        return Ok(None);
+        return None;
     }
 
-    derive_randomness(
-        &PublicKey::from(&pre_digest.solution.public_key),
-        &pre_digest.solution.chunk.to_bytes(),
-        &pre_digest.solution.chunk_signature,
-    )
-    .map(Some)
-    .map_err(|_err| Error::NextDigestDerivationError(ErrorDigestType::GlobalRandomness))
+    Some(derive_randomness(
+        &pre_digest.solution,
+        pre_digest.slot.into(),
+    ))
 }
 
 /// Params used to derive the next solution range.
@@ -711,7 +708,7 @@ pub fn verify_next_digests<Header: HeaderT>(
         number,
         global_randomness_interval,
         &header_digests.pre_digest,
-    )?;
+    );
     if expected_next_randomness != header_digests.next_global_randomness {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextGlobalRandomness,

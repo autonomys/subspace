@@ -1,14 +1,14 @@
 use crate::single_disk_plot::piece_reader::PieceReader;
 use std::collections::HashMap;
 use std::future::Future;
-use subspace_core_primitives::{Piece, PieceIndexHash, SectorIndex};
+use subspace_core_primitives::{Piece, PieceIndexHash, PieceOffset, SectorIndex};
 use tracing::{trace, warn};
 
 #[derive(Debug, Copy, Clone)]
 pub struct PieceDetails {
     pub plot_offset: usize,
     pub sector_index: SectorIndex,
-    pub piece_offset: u64,
+    pub piece_offset: PieceOffset,
 }
 
 /// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers.
