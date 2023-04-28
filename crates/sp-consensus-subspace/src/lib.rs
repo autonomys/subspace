@@ -43,8 +43,6 @@ use sp_runtime::{ConsensusEngineId, DigestItem};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
-#[cfg(feature = "std")]
-use std::any::TypeId;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
@@ -55,6 +53,8 @@ use subspace_core_primitives::{
 use subspace_proof_of_space::chia::ChiaTable;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::shim::ShimTable;
+#[cfg(feature = "std")]
+use subspace_proof_of_space::PosTableType;
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
@@ -409,7 +409,7 @@ impl KzgExtension {
 #[cfg(feature = "std")]
 sp_externalities::decl_extension! {
     /// A Poof of space extension.
-    pub struct PosExtension(TypeId);
+    pub struct PosExtension(PosTableType);
 }
 
 #[cfg(feature = "std")]
@@ -419,7 +419,7 @@ impl PosExtension {
     where
         PosTable: Table,
     {
-        Self(TypeId::of::<PosTable>())
+        Self(PosTable::TABLE_TYPE)
     }
 }
 
@@ -435,6 +435,7 @@ pub trait Consensus {
         params: WrappedVerifySolutionParams<'_>,
     ) -> Result<SolutionRange, String> {
         use sp_externalities::ExternalitiesExt;
+        use subspace_proof_of_space::PosTableType;
 
         let pos_table_type = self
             .extension::<PosExtension>()
@@ -446,27 +447,21 @@ pub trait Consensus {
             .expect("No `KzgExtension` associated for the current context!")
             .0;
 
-        if pos_table_type == TypeId::of::<ChiaTable>() {
-            subspace_verification::verify_solution::<ChiaTable, _, _>(
+        match pos_table_type {
+            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _, _>(
                 &solution.0,
                 slot,
                 &params.0,
                 kzg,
             )
-            .map_err(|error| error.to_string())
-        } else if pos_table_type == TypeId::of::<ShimTable>() {
-            subspace_verification::verify_solution::<ShimTable, _, _>(
+            .map_err(|error| error.to_string()),
+            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _, _>(
                 &solution.0,
                 slot,
                 &params.0,
                 kzg,
             )
-            .map_err(|error| error.to_string())
-        } else {
-            panic!(
-                "PosTable type is unknown, only `ChiaTable` and `ShimTable` are supported \
-                at the moment`"
-            )
+            .map_err(|error| error.to_string()),
         }
     }
 }
