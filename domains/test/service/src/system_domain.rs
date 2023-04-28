@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
-use subspace_test_service::mock::MockPrimaryNode;
+use subspace_test_service::MockPrimaryNode;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
 };

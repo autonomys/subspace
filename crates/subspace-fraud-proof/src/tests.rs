@@ -21,7 +21,7 @@ use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
-use subspace_test_service::mock::MockPrimaryNode;
+use subspace_test_service::MockPrimaryNode;
 use tempfile::TempDir;
 
 struct TestVerifierClient {

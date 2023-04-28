@@ -20,7 +20,7 @@ use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
-use subspace_test_service::mock::MockPrimaryNode;
+use subspace_test_service::MockPrimaryNode;
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
