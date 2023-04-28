@@ -72,9 +72,13 @@ impl ErasureCoding {
 
     /// Recovery of source shards from given shards (at least 1/2 should be `Some`).
     ///
-    /// The same as [`ErasureCoding::recover()`], but returns only source shards.
-    pub fn recover_source(&self, shards: &[Option<Scalar>]) -> Result<Vec<Scalar>, String> {
-        Ok(self.recover(shards)?.into_iter().step_by(2).collect())
+    /// The same as [`ErasureCoding::recover()`], but returns only source shards in form of an
+    /// iterator.
+    pub fn recover_source(
+        &self,
+        shards: &[Option<Scalar>],
+    ) -> Result<impl ExactSizeIterator<Item = Scalar>, String> {
+        Ok(self.recover(shards)?.into_iter().step_by(2))
     }
 
     /// Extend commitments using erasure coding.

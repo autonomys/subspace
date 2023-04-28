@@ -104,7 +104,12 @@ where
     record_chunks
         .par_iter_mut()
         .zip(sector_contents_map.par_iter_record_chunk_to_plot(piece_offset))
-        .zip(s_bucket_offsets.par_iter().enumerate())
+        .zip(
+            (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
+                .into_par_iter()
+                .map(SBucket::from)
+                .zip(s_bucket_offsets.par_iter()),
+        )
         .try_for_each(
             |((maybe_record_chunk, maybe_chunk_details), (s_bucket, &s_bucket_offset))| {
                 let (chunk_offset, encoded_chunk_used) = match maybe_chunk_details {
@@ -115,7 +120,6 @@ where
                 };
 
                 let chunk_location = chunk_offset + s_bucket_offset as usize;
-                let s_bucket = SBucket::try_from(s_bucket).expect("Enumerated s-buckets; qed");
 
                 let mut record_chunk = sector[SectorContentsMap::encoded_size(pieces_in_sector)..]
                     .array_chunks::<{ Scalar::FULL_BYTES }>()
@@ -189,12 +193,12 @@ pub fn recover_extended_record_chunks(
     Ok(record_chunks)
 }
 
-/// Given sector record chunks recover source record chunks
+/// Given sector record chunks recover source record chunks in form of an iterator.
 pub fn recover_source_record_chunks(
     sector_record_chunks: &[Option<Scalar>; Record::NUM_S_BUCKETS],
     piece_offset: PieceOffset,
     erasure_coding: &ErasureCoding,
-) -> Result<Box<[Scalar; Record::NUM_CHUNKS]>, ReadingError> {
+) -> Result<impl ExactSizeIterator<Item = Scalar>, ReadingError> {
     // Restore source record scalars
     let record_chunks = erasure_coding
         .recover_source(sector_record_chunks)
@@ -210,12 +214,6 @@ pub fn recover_source_record_chunks(
             actual: record_chunks.len(),
         });
     }
-
-    let mut record_chunks = ManuallyDrop::new(record_chunks);
-
-    // SAFETY: Original memory is not dropped, size of the data checked above
-    let record_chunks =
-        unsafe { Box::from_raw(record_chunks.as_mut_ptr() as *mut [Scalar; Record::NUM_CHUNKS]) };
 
     Ok(record_chunks)
 }
@@ -302,7 +300,7 @@ where
     piece
         .record_mut()
         .iter_mut()
-        .zip(record_chunks.iter())
+        .zip(record_chunks)
         .for_each(|(output, input)| {
             *output = input.to_bytes();
         });
