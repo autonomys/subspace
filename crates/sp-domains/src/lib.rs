@@ -35,6 +35,7 @@ use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
+use subspace_runtime_primitives::Moment;
 
 /// Key type for Executor.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
@@ -457,5 +458,8 @@ sp_api::decl_runtime_apis! {
 
         // Returns the state root of the system domain at specific number and hash.
         fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
+
+        // Returns the current timestamp at given height
+        fn timestamp() -> Moment;
     }
 }
