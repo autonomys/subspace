@@ -1,9 +1,9 @@
 use crate::runtime_api::{
-    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor,
-    SignerExtractor, StateRootExtractor,
+    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor,
+    SetCodeConstructor, SignerExtractor, StateRootExtractor,
 };
 use crate::utils::extract_xdm_proof_state_roots_with_client;
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi, Moment};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
@@ -64,6 +64,22 @@ where
     ) -> Result<Vec<Vec<u8>>, ApiError> {
         let api = self.client.runtime_api();
         api.construct_submit_core_bundle_extrinsics(at, signed_opaque_bundles)
+    }
+}
+
+impl<Block, Client> InherentExtrinsicConstructor<Block> for RuntimeApiFull<Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: InherentExtrinsicApi<Block>,
+{
+    fn construct_timestamp_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        moment: Moment,
+    ) -> Result<Option<Block::Extrinsic>, ApiError> {
+        let api = self.client.runtime_api();
+        api.construct_inherent_timestamp_extrinsic(at, moment)
     }
 }
 
