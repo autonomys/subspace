@@ -1,9 +1,10 @@
 use crate::crypto::kzg::{embedded_kzg_settings, Kzg};
 use crate::crypto::Scalar;
 use blst_from_scratch::consts::{G1_GENERATOR, G2_GENERATOR};
-use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_from_g2_rust};
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
 use blst_from_scratch::types::fr::FsFr;
+use blst_from_scratch::types::g1::FsG1;
+use blst_from_scratch::types::g2::FsG2;
 use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use kzg::{FFTSettings, Fr, G1Mul, G2Mul};
 use rand::Rng;
@@ -66,10 +67,10 @@ fn test_public_parameters_generate() -> FsKZGSettings {
 fn kzg_settings_to_bytes(kzg_settings: &FsKZGSettings) -> Vec<u8> {
     let mut bytes =
         Vec::with_capacity(kzg_settings.secret_g1.len() * 48 + kzg_settings.secret_g2.len() * 96);
-    for g1 in kzg_settings.secret_g1.iter().map(bytes_from_g1_rust) {
+    for g1 in kzg_settings.secret_g1.iter().map(FsG1::to_bytes) {
         bytes.extend_from_slice(&g1);
     }
-    for g2 in kzg_settings.secret_g2.iter().map(bytes_from_g2_rust) {
+    for g2 in kzg_settings.secret_g2.iter().map(FsG2::to_bytes) {
         bytes.extend_from_slice(&g2);
     }
 

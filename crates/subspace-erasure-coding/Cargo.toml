@@ -16,14 +16,14 @@ bench = false
 
 [dependencies]
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
+blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "fad8d358548301424f20f7fc7aaa02e75041d03b", default-features = false }
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-kzg = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30", default-features = false }
+kzg = { git = "https://github.com/subspace/rust-kzg", rev = "fad8d358548301424f20f7fc7aaa02e75041d03b", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "49e7b60ea51d918f04779dd83191ae0e01afcb30" }
+blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "fad8d358548301424f20f7fc7aaa02e75041d03b" }
 criterion = "0.4.0"
 rand = "0.8.5"
 
