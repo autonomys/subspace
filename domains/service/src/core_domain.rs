@@ -9,7 +9,7 @@ use domain_client_executor::{
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
-use domain_runtime_primitives::{Balance, DomainCoreApi};
+use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
 use frame_benchmarking::frame_support::codec::FullCodec;
 use frame_benchmarking::frame_support::dispatch::TypeInfo;
 use futures::channel::mpsc;
@@ -390,6 +390,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + MessengerApi<Block, NumberFor<Block>>
+        + InherentExtrinsicApi<Block>
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     AccountId: DeserializeOwned

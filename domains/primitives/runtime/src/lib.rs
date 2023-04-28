@@ -47,6 +47,9 @@ pub type Address = MultiAddress<AccountId, ()>;
 /// Type used for expressing timestamp.
 pub type Moment = u64;
 
+/// Slot duration that is same as primary runtime.
+pub const SLOT_DURATION: u64 = 1000;
+
 /// Extracts the signer from an unchecked extrinsic.
 ///
 /// Used by executor to extract the optional signer when shuffling the extrinsics.

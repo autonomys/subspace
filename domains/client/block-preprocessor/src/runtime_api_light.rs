@@ -7,7 +7,6 @@ use codec::{Codec, Encode};
 use domain_runtime_primitives::{
     runtime_decl_for_inherent_extrinsic_api, DomainCoreApi, InherentExtrinsicApi, Moment,
 };
-use sc_executor::RuntimeVersionOf;
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -245,7 +244,7 @@ where
 impl<Executor, Block> InherentExtrinsicConstructor<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
+    Executor: CodeExecutor,
 {
     fn construct_timestamp_inherent_extrinsic(
         &self,
