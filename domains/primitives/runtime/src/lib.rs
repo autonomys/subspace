@@ -44,6 +44,9 @@ pub type BlockNumber = u32;
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
 
+/// Type used for expressing timestamp.
+pub type Moment = u64;
+
 /// Extracts the signer from an unchecked extrinsic.
 ///
 /// Used by executor to extract the optional signer when shuffling the extrinsics.
@@ -106,5 +109,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
+    }
+
+    /// Api that construct inherent extrinsics.
+    pub trait InherentExtrinsicApi {
+        /// Api to construct inherent timestamp extrinsic from given time
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<Block::Extrinsic>;
     }
 }
