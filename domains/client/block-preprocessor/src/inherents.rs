@@ -14,15 +14,12 @@
 
 use crate::runtime_api::InherentExtrinsicConstructor;
 use sp_api::ProvideRuntimeApi;
-use sp_core::traits::ReadRuntimeVersion;
 use sp_domains::ExecutorApi;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// Returns required inherent extrinsics for the domain block based on the primary block.
 /// Note: primary block hash must be used to construct domain block.
-// TODO: connect once runtimes have implemented the necessary api.
-#[allow(dead_code)]
 pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, PBlock, PClient>(
     primary_client: &Arc<PClient>,
     domain_runtime_api: &DomainRuntimeApi,
@@ -33,7 +30,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + ReadRuntimeVersion,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     DomainRuntimeApi: InherentExtrinsicConstructor<Block>,
 {
     let primary_api = primary_client.runtime_api();

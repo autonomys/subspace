@@ -1,12 +1,13 @@
 //! Utilities used for testing with the system domain.
 #![warn(missing_docs)]
+
 use crate::system_domain::SClient;
 use crate::{
     construct_extrinsic_generic, node_config, Backend, SystemDomainNode, UncheckedExtrinsicFor,
 };
 use domain_client_executor::ExecutorStreams;
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi};
+use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
@@ -107,6 +108,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
+        + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
     Executor: NativeExecutionDispatch + Send + Sync + 'static,

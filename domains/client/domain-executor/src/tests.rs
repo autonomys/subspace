@@ -1,5 +1,6 @@
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_test_primitives::TimestampApi;
 use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use futures::StreamExt;
@@ -269,6 +270,63 @@ async fn test_executor_full_node_catching_up() {
     assert_eq!(
         alice_block_hash, bob_block_hash,
         "Executor authority node and full node must have the same state"
+    );
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_executor_inherent_timestamp_is_set() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    // Run Bob who runs the authority node for core domain
+    let bob = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
+    .await;
+
+    futures::join!(
+        alice.wait_for_blocks(1),
+        bob.wait_for_blocks(1),
+        ferdie.produce_blocks(1),
+    )
+    .2
+    .unwrap();
+
+    let primary_api = ferdie.client.runtime_api();
+    let primary_timestamp = primary_api
+        .timestamp(ferdie.client.info().best_hash)
+        .unwrap();
+
+    let core_api = bob.client.runtime_api();
+    let core_timestamp = core_api.timestamp(bob.client.info().best_hash).unwrap();
+
+    assert_eq!(
+        primary_timestamp, core_timestamp,
+        "Timestamp should be preset on Core domain and should match Primary runtime timestamp"
     );
 }
 

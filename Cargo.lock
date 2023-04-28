@@ -1481,6 +1481,7 @@ dependencies = [
  "pallet-feeds",
  "pallet-messenger",
  "pallet-sudo",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -1534,6 +1535,7 @@ dependencies = [
  "pallet-evm-precompile-simple",
  "pallet-messenger",
  "pallet-sudo",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -1620,6 +1622,7 @@ version = "0.1.0"
 dependencies = [
  "domain-pallet-executive",
  "domain-runtime-primitives",
+ "domain-test-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -1632,6 +1635,7 @@ dependencies = [
  "pallet-executor-registry",
  "pallet-messenger",
  "pallet-sudo",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -2448,6 +2452,7 @@ dependencies = [
  "domain-client-consensus-relay-chain",
  "domain-client-executor-gossip",
  "domain-runtime-primitives",
+ "domain-test-primitives",
  "domain-test-service",
  "futures",
  "futures-timer",
@@ -2657,6 +2662,14 @@ dependencies = [
  "substrate-prometheus-endpoint 0.10.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
  "system-runtime-primitives",
  "tracing",
+]
+
+[[package]]
+name = "domain-test-primitives"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "sp-api",
 ]
 
 [[package]]

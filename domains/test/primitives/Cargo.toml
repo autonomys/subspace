@@ -1,0 +1,23 @@
+[package]
+name = "domain-test-primitives"
+version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
+
+[features]
+default = ["std"]
+std = [
+    "domain-runtime-primitives/std",
+    "sp-api/std",
+]
