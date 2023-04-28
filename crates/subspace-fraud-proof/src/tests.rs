@@ -5,7 +5,7 @@ use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
-use domain_test_service::runtime::Header;
+use domain_test_service::system_domain_test_runtime::{Address, Header};
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
@@ -90,7 +90,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     );
 
     // Run Alice (a system domain authority node)
-    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -116,35 +116,27 @@ async fn execution_proof_creation_and_verification_should_work() {
     .2
     .unwrap();
 
-    let transfer_to_charlie = domain_test_service::construct_extrinsic(
-        &alice.client,
+    let alice_nonce = alice.account_nonce();
+    let transfer_to_charlie = alice.construct_extrinsic(
+        alice_nonce,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 8,
         },
-        Alice,
-        false,
-        0,
     );
-    let transfer_to_dave = domain_test_service::construct_extrinsic(
-        &alice.client,
+    let transfer_to_dave = alice.construct_extrinsic(
+        alice_nonce + 1,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Dave.public().into()),
+            dest: Address::Id(Dave.public().into()),
             value: 8,
         },
-        Alice,
-        false,
-        1,
     );
-    let transfer_to_charlie_again = domain_test_service::construct_extrinsic(
-        &alice.client,
+    let transfer_to_charlie_again = alice.construct_extrinsic(
+        alice_nonce + 2,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 88,
         },
-        Alice,
-        false,
-        2,
     );
 
     let test_txs = vec![
@@ -416,7 +408,7 @@ async fn invalid_execution_proof_should_not_work() {
     );
 
     // Run Alice (a system domain authority node)
-    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -442,26 +434,20 @@ async fn invalid_execution_proof_should_not_work() {
     .2
     .unwrap();
 
-    let transfer_to_charlie = domain_test_service::construct_extrinsic(
-        &alice.client,
+    let alice_nonce = alice.account_nonce();
+    let transfer_to_charlie = alice.construct_extrinsic(
+        alice_nonce,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 8,
         },
-        Alice,
-        false,
-        0,
     );
-
-    let transfer_to_charlie_again = domain_test_service::construct_extrinsic(
-        &alice.client,
+    let transfer_to_charlie_again = alice.construct_extrinsic(
+        alice_nonce + 1,
         pallet_balances::Call::transfer {
-            dest: domain_test_service::runtime::Address::Id(Charlie.public().into()),
+            dest: Address::Id(Charlie.public().into()),
             value: 8,
         },
-        Alice,
-        false,
-        1,
     );
 
     let test_txs = vec![

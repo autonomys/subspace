@@ -1615,6 +1615,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-payments-domain-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "domain-pallet-executive",
+ "domain-runtime-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-domain-registry",
+ "pallet-executor-registry",
+ "pallet-messenger",
+ "pallet-sudo",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-transporter",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-messenger",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "subspace-wasm-tools",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "core2"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2619,62 +2660,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-test-runtime"
-version = "0.1.0"
-dependencies = [
- "core-payments-domain-runtime",
- "domain-pallet-executive",
- "domain-runtime-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
- "pallet-messenger",
- "pallet-receipts",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-io",
- "sp-messenger",
- "sp-offchain",
- "sp-receipts",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-runtime-primitives",
- "subspace-wasm-tools",
- "substrate-wasm-builder",
- "system-runtime-primitives",
-]
-
-[[package]]
 name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "core-payments-domain-test-runtime",
  "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
+ "domain-runtime-primitives",
  "domain-service",
- "domain-test-runtime",
  "frame-support",
  "frame-system",
+ "frame-system-rpc-runtime-api",
  "futures",
  "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc",
  "rand 0.8.5",
  "sc-client-api",
  "sc-consensus",
@@ -2687,21 +2688,30 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-utils",
+ "sp-api",
+ "sp-application-crypto",
  "sp-arithmetic",
+ "sp-block-builder",
  "sp-blockchain",
  "sp-core",
  "sp-domains",
  "sp-inherents",
  "sp-keyring",
+ "sp-messenger",
+ "sp-offchain",
  "sp-runtime",
+ "sp-session",
  "sp-timestamp",
+ "sp-transaction-pool",
  "subspace-networking",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
  "subspace-test-service",
+ "substrate-frame-rpc-system",
  "substrate-test-client",
+ "system-domain-test-runtime",
  "tokio",
  "tracing",
 ]
@@ -11275,7 +11285,6 @@ name = "subspace-test-runtime"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
- "domain-test-runtime",
  "frame-executive",
  "frame-support",
  "frame-system",
@@ -11318,6 +11327,7 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
+ "system-domain-test-runtime",
 ]
 
 [[package]]
@@ -11721,6 +11731,49 @@ dependencies = [
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-messenger",
+ "sp-offchain",
+ "sp-receipts",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "subspace-wasm-tools",
+ "substrate-wasm-builder",
+ "system-runtime-primitives",
+]
+
+[[package]]
+name = "system-domain-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "core-payments-domain-runtime",
+ "domain-pallet-executive",
+ "domain-runtime-primitives",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-domain-registry",
+ "pallet-executor-registry",
+ "pallet-messenger",
+ "pallet-receipts",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "scale-info",
  "sp-api",

@@ -7,7 +7,7 @@ members = [
     "domains/primitives/*",
     "domains/runtime/*",
     "domains/service",
-    "domains/test/runtime",
+    "domains/test/runtime/*",
     "domains/test/service",
     "substrate/*",
     "test/subspace-test-client",

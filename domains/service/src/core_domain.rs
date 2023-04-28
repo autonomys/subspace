@@ -56,29 +56,37 @@ use system_runtime_primitives::SystemDomainApi;
 
 type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
 
-type CoreDomainExecutor<Block, SBlock, PBlock, SClient, PClient, RuntimeApi, ExecutorDispatch, BI> =
-    CoreExecutor<
+pub type CoreDomainExecutor<
+    Block,
+    SBlock,
+    PBlock,
+    SClient,
+    PClient,
+    RuntimeApi,
+    ExecutorDispatch,
+    BI,
+> = CoreExecutor<
+    Block,
+    SBlock,
+    PBlock,
+    FullClient<Block, RuntimeApi, ExecutorDispatch>,
+    SClient,
+    PClient,
+    FullPool<
         Block,
-        SBlock,
-        PBlock,
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        SClient,
-        PClient,
-        FullPool<
+        CoreDomainTxPreValidator<
             Block,
+            SBlock,
+            PBlock,
             FullClient<Block, RuntimeApi, ExecutorDispatch>,
-            CoreDomainTxPreValidator<
-                Block,
-                SBlock,
-                PBlock,
-                FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                SClient,
-            >,
+            SClient,
         >,
-        FullBackend<Block>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        DomainBlockImport<BI>,
-    >;
+    >,
+    FullBackend<Block>,
+    NativeElseWasmExecutor<ExecutorDispatch>,
+    DomainBlockImport<BI>,
+>;
 
 /// Core domain full node along with some other components.
 pub struct NewFullCore<
