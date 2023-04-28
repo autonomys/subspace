@@ -6,7 +6,7 @@ pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
 use fp_evm::weight_per_gas;
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor, UnixTime};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
 };
@@ -40,7 +40,6 @@ use sp_runtime::{
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_std::time::Duration;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -409,14 +408,6 @@ parameter_types! {
     pub WeightPerGas: Weight = Weight::from_parts(weight_per_gas(BLOCK_GAS_LIMIT, NORMAL_DISPATCH_RATIO, WEIGHT_MILLISECS_PER_BLOCK), 0);
 }
 
-pub struct ZeroTimeProvider;
-
-impl UnixTime for ZeroTimeProvider {
-    fn now() -> Duration {
-        Duration::ZERO
-    }
-}
-
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -435,10 +426,7 @@ impl pallet_evm::Config for Runtime {
     type OnChargeTransaction = ();
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
-    // TODO: Right now, block time is always zero.
-    //       We should take from the primary inherents and push it here
-    //       Else any contract using block time will give invalid behavior
-    type UnixTime = ZeroTimeProvider;
+    type UnixTime = Timestamp;
 }
 
 parameter_types! {
