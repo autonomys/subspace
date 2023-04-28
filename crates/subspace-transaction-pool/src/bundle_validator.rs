@@ -292,6 +292,7 @@ pub enum BundleError {
 }
 
 impl From<sp_blockchain::Error> for BundleError {
+    #[inline]
     fn from(err: sp_blockchain::Error) -> Self {
         BundleError::BlockChain(err)
     }

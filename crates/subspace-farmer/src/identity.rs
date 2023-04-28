@@ -5,9 +5,7 @@ use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::fs;
 use std::ops::Deref;
 use std::path::Path;
-use subspace_core_primitives::crypto::ScalarLegacy;
-use subspace_core_primitives::ChunkSignature;
-use subspace_solving::{create_chunk_signature, REWARD_SIGNING_CONTEXT};
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 use substrate_bip39::mini_secret_from_entropy;
 use tracing::debug;
 use zeroize::Zeroizing;
@@ -40,6 +38,7 @@ pub struct Identity {
 impl Deref for Identity {
     type Target = Keypair;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.keypair
     }
@@ -129,13 +128,6 @@ impl Identity {
     /// Returns entropy used to generate keypair.
     pub fn entropy(&self) -> &[u8] {
         &self.entropy
-    }
-
-    pub fn create_chunk_signature(
-        &self,
-        chunk_bytes: &[u8; ScalarLegacy::FULL_BYTES],
-    ) -> ChunkSignature {
-        create_chunk_signature(&self.keypair, chunk_bytes)
     }
 
     /// Sign reward hash.

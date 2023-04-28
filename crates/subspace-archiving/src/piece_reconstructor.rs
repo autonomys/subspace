@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
@@ -58,7 +58,7 @@ impl PiecesReconstructor {
 
         let erasure_coding = ErasureCoding::new(
             NonZeroUsize::new(ArchivedHistorySegment::NUM_PIECES.ilog2() as usize)
-                .expect("Recorded history segment contains at very least one record; qed"),
+                .expect("Archived history segment contains at very least one piece; qed"),
         )
         .map_err(ReconstructorInstantiationError::FailedToInitializeErasureCoding)?;
 
@@ -146,9 +146,9 @@ impl PiecesReconstructor {
         }
 
         let source_record_commitments = {
-            #[cfg(not(feature = "rayon"))]
+            #[cfg(not(feature = "parallel"))]
             let iter = reconstructed_pieces.iter_mut().zip(input_pieces).step_by(2);
-            #[cfg(feature = "rayon")]
+            #[cfg(feature = "parallel")]
             let iter = reconstructed_pieces
                 .par_iter_mut()
                 .zip_eq(input_pieces)
@@ -225,9 +225,9 @@ impl PiecesReconstructor {
     ) -> Result<ArchivedHistorySegment, ReconstructorError> {
         let (mut pieces, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
-        #[cfg(not(feature = "rayon"))]
+        #[cfg(not(feature = "parallel"))]
         let iter = pieces.iter_mut().enumerate();
-        #[cfg(feature = "rayon")]
+        #[cfg(feature = "parallel")]
         let iter = pieces.par_iter_mut().enumerate();
 
         iter.for_each(|(position, piece)| {

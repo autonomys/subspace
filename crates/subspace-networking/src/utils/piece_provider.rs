@@ -39,6 +39,7 @@ pub enum RetryPolicy {
 }
 
 impl Default for RetryPolicy {
+    #[inline]
     fn default() -> Self {
         Self::Limited(0)
     }

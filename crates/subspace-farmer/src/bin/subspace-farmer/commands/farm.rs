@@ -15,8 +15,11 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PieceIndexHash, PLOT_SECTOR_SIZE};
-use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotOptions};
+use subspace_core_primitives::{PieceIndexHash, PieceOffset, Record};
+use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::single_disk_plot::{
+    SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
+};
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
@@ -28,19 +31,23 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::online_status_informer;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
+use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
-pub(crate) async fn farm_multi_disk(
+pub(crate) async fn farm_multi_disk<PosTable>(
     base_path: PathBuf,
     disk_farms: Vec<DiskFarm>,
     farming_args: FarmingArgs,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), anyhow::Error>
+where
+    PosTable: Table,
+{
     if disk_farms.is_empty() {
         return Err(anyhow!("There must be at least one disk farm provided"));
     }
@@ -53,6 +60,7 @@ pub(crate) async fn farm_multi_disk(
         node_rpc_url,
         reward_address,
         plot_size: _,
+        max_pieces_in_sector,
         disk_concurrency,
         disable_farming,
         mut dsn,
@@ -70,6 +78,11 @@ pub(crate) async fn farm_multi_disk(
 
     let piece_memory_cache = PieceMemoryCache::default();
 
+    let farmer_app_info = node_client
+        .farmer_app_info()
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -81,13 +94,8 @@ pub(crate) async fn farm_multi_disk(
         let identity = Identity::open_or_create(&directory).unwrap();
         let keypair = derive_libp2p_keypair(identity.secret_key());
 
-        let farmer_app_info = node_client
-            .farmer_app_info()
-            .await
-            .map_err(|error| anyhow::anyhow!(error))?;
-
         if dsn.bootstrap_nodes.is_empty() {
-            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes;
+            dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
         }
 
         configure_dsn(
@@ -110,6 +118,10 @@ pub(crate) async fn farm_multi_disk(
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+    )
+    .map_err(|error| anyhow::anyhow!(error))?;
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
     let segment_commitments_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
@@ -129,32 +141,40 @@ pub(crate) async fn farm_multi_disk(
     ));
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
+    let max_pieces_in_sector = match max_pieces_in_sector {
+        Some(max_pieces_in_sector) => {
+            if max_pieces_in_sector > farmer_app_info.protocol_info.max_pieces_in_sector {
+                warn!(
+                    protocol_value = farmer_app_info.protocol_info.max_pieces_in_sector,
+                    desired_value = max_pieces_in_sector,
+                    "Can't set max pieces in sector higher than protocol value, using protocol \
+                    value"
+                );
+
+                farmer_app_info.protocol_info.max_pieces_in_sector
+            } else {
+                max_pieces_in_sector
+            }
+        }
+        None => farmer_app_info.protocol_info.max_pieces_in_sector,
+    };
 
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
-        let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
-        let allocated_plotting_space_with_overhead =
-            get_required_plot_space_with_overhead(disk_farm.allocated_plotting_space);
-
-        if allocated_plotting_space_with_overhead < minimum_plot_size {
-            return Err(anyhow::anyhow!(
-                "Plot size is too low ({} bytes). Minimum is {}",
-                allocated_plotting_space_with_overhead,
-                minimum_plot_size
-            ));
-        }
-
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-        let single_disk_plot_fut = SingleDiskPlot::new(
+        let single_disk_plot_fut = SingleDiskPlot::new::<_, _, PosTable>(
             SingleDiskPlotOptions {
                 directory: disk_farm.directory.clone(),
+                farmer_app_info: farmer_app_info.clone(),
                 allocated_space: disk_farm.allocated_plotting_space,
+                max_pieces_in_sector,
                 node_client,
                 reward_address,
                 kzg: kzg.clone(),
+                erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
                 concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
                 piece_memory_cache: piece_memory_cache.clone(),
@@ -162,7 +182,26 @@ pub(crate) async fn farm_multi_disk(
             disk_farm_index,
         );
 
-        let single_disk_plot = single_disk_plot_fut.await?;
+        let single_disk_plot = match single_disk_plot_fut.await {
+            Ok(single_disk_plot) => single_disk_plot,
+            Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                min_size,
+                allocated_space,
+            }) => {
+                let minimum_plot_size = get_required_plot_space_with_overhead(min_size as u64);
+                let allocated_plotting_space_with_overhead =
+                    get_required_plot_space_with_overhead(allocated_space);
+
+                return Err(anyhow::anyhow!(
+                    "Plot size is too low ({} bytes). Minimum is {}",
+                    allocated_plotting_space_with_overhead,
+                    minimum_plot_size
+                ));
+            }
+            Err(error) => {
+                return Err(error.into());
+            }
+        };
 
         if !farming_args.no_info {
             print_disk_farm_info(disk_farm.directory, disk_farm_index);
@@ -202,14 +241,14 @@ pub(crate) async fn farm_multi_disk(
                     }
                 })
                 .flat_map(move |plotted_sector| {
-                    plotted_sector.piece_indexes.into_iter().enumerate().map(
+                    (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes).map(
                         move |(piece_offset, piece_index)| {
                             (
                                 PieceIndexHash::from_index(piece_index),
                                 PieceDetails {
                                     plot_offset,
                                     sector_index: plotted_sector.sector_index,
-                                    piece_offset: piece_offset as u64,
+                                    piece_offset,
                                 },
                             )
                         },
@@ -239,85 +278,88 @@ pub(crate) async fn farm_multi_disk(
             // Collect newly plotted pieces
             // TODO: Once we have replotting, this will have to be updated
             single_disk_plot
-                .on_sector_plotted(Arc::new(move |(sector_offset, plotted_sector, plotting_permit)| {
-                    let plotting_permit = Arc::clone(plotting_permit);
-                    let node = node.clone();
-                    let sector_offset = *sector_offset;
-                    let sector_index = plotted_sector.sector_index;
+                .on_sector_plotted(Arc::new(
+                    move |(sector_offset, plotted_sector, plotting_permit)| {
+                        let plotting_permit = Arc::clone(plotting_permit);
+                        let node = node.clone();
+                        let sector_offset = *sector_offset;
+                        let sector_index = plotted_sector.sector_index;
 
-                    let mut dropped_receiver = dropped_sender.subscribe();
+                        let mut dropped_receiver = dropped_sender.subscribe();
 
-                    let new_pieces = {
-                        let mut readers_and_pieces = readers_and_pieces.lock();
-                        let readers_and_pieces = readers_and_pieces
-                            .as_mut()
-                            .expect("Initial value was populated above; qed");
+                        let new_pieces = {
+                            let mut readers_and_pieces = readers_and_pieces.lock();
+                            let readers_and_pieces = readers_and_pieces
+                                .as_mut()
+                                .expect("Initial value was populated above; qed");
 
-                        let new_pieces = plotted_sector
-                            .piece_indexes
-                            .iter()
-                            .filter(|&&piece_index| {
-                                // Skip pieces that are already plotted and thus were announced
-                                // before
-                                !readers_and_pieces
-                                    .contains_piece(&PieceIndexHash::from_index(piece_index))
-                            })
-                            .copied()
-                            .collect::<Vec<_>>();
-
-                        readers_and_pieces.add_pieces(
-                            plotted_sector
+                            let new_pieces = plotted_sector
                                 .piece_indexes
                                 .iter()
+                                .filter(|&&piece_index| {
+                                    // Skip pieces that are already plotted and thus were announced
+                                    // before
+                                    !readers_and_pieces.contains_piece(&piece_index.hash())
+                                })
                                 .copied()
-                                .enumerate()
-                                .map(|(piece_offset, piece_index)| {
-                                    (
-                                        PieceIndexHash::from_index(piece_index),
-                                        PieceDetails {
-                                            plot_offset,
-                                            sector_index,
-                                            piece_offset: piece_offset as u64,
-                                        },
-                                    )
-                                }),
-                        );
+                                .collect::<Vec<_>>();
 
-                        new_pieces
-                    };
+                            readers_and_pieces.add_pieces(
+                                (PieceOffset::ZERO..)
+                                    .zip(plotted_sector.piece_indexes.iter().copied())
+                                    .map(|(piece_offset, piece_index)| {
+                                        (
+                                            piece_index.hash(),
+                                            PieceDetails {
+                                                plot_offset,
+                                                sector_index,
+                                                piece_offset,
+                                            },
+                                        )
+                                    }),
+                            );
 
-                    if new_pieces.is_empty() {
-                        // None of the pieces are new, nothing left to do here
-                        return;
-                    }
+                            new_pieces
+                        };
 
-                    // TODO: Skip those that were already announced (because they cached)
-                    let publish_fut = async move {
-                        let mut pieces_publishing_futures = new_pieces
-                            .into_iter()
-                            .map(|piece_index| {
-                                announce_single_piece_index_with_backoff(piece_index, &node)
-                            })
-                            .collect::<FuturesUnordered<_>>();
-
-                        while pieces_publishing_futures.next().await.is_some() {
-                            // Nothing is needed here, just driving all futures to completion
+                        if new_pieces.is_empty() {
+                            // None of the pieces are new, nothing left to do here
+                            return;
                         }
 
-                        info!(%sector_offset, ?sector_index, "Sector publishing was successful.");
+                        // TODO: Skip those that were already announced (because they cached)
+                        let publish_fut = async move {
+                            let mut pieces_publishing_futures = new_pieces
+                                .into_iter()
+                                .map(|piece_index| {
+                                    announce_single_piece_index_with_backoff(piece_index, &node)
+                                })
+                                .collect::<FuturesUnordered<_>>();
 
-                        // Release only after publishing is finished
-                        drop(plotting_permit);
-                    };
+                            while pieces_publishing_futures.next().await.is_some() {
+                                // Nothing is needed here, just driving all futures to completion
+                            }
 
-                    tokio::spawn(async move {
-                        let result =
-                            select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
-                        if matches!(result, Either::Right(_)) {
-                            debug!("Piece publishing was cancelled due to shutdown.");
-                        }
-                    });
-                }))
+                            info!(
+                                %sector_offset,
+                                ?sector_index,
+                                "Sector publishing was successful."
+                            );
+
+                            // Release only after publishing is finished
+                            drop(plotting_permit);
+                        };
+
+                        tokio::spawn(async move {
+                            let result =
+                                select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv()))
+                                    .await;
+                            if matches!(result, Either::Right(_)) {
+                                debug!("Piece publishing was cancelled due to shutdown.");
+                            }
+                        });
+                    },
+                ))
                 .detach();
 
             single_disk_plot.run()

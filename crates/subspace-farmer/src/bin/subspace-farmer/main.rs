@@ -4,7 +4,7 @@ mod commands;
 mod ss58;
 mod utils;
 
-use crate::utils::{get_required_plot_space_with_overhead, get_usable_plot_space};
+use crate::utils::get_usable_plot_space;
 use anyhow::Result;
 use bytesize::ByteSize;
 use clap::{Parser, ValueEnum, ValueHint};
@@ -13,14 +13,17 @@ use std::fs;
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::path::PathBuf;
 use std::str::FromStr;
-use subspace_core_primitives::{PublicKey, PLOT_SECTOR_SIZE};
+use subspace_core_primitives::PublicKey;
 use subspace_farmer::single_disk_plot::SingleDiskPlot;
 use subspace_networking::libp2p::Multiaddr;
+use subspace_proof_of_space::chia::ChiaTable;
 use tempfile::TempDir;
 use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
+
+type PosTable = ChiaTable;
 
 #[cfg(all(
     target_arch = "x86_64",
@@ -43,6 +46,9 @@ struct FarmingArgs {
     /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
     #[arg(long, default_value_t)]
     plot_size: ByteSize,
+    /// Maximum number of pieces in sector (can override protocol value to something lower).
+    #[arg(long)]
+    max_pieces_in_sector: Option<u16>,
     /// Number of major concurrent operations to allow for disk
     #[arg(long, default_value = "2")]
     disk_concurrency: NonZeroU16,
@@ -106,6 +112,7 @@ enum WriteToDisk {
 }
 
 impl Default for WriteToDisk {
+    #[inline]
     fn default() -> Self {
         Self::Everything
     }
@@ -279,20 +286,11 @@ async fn main() -> Result<()> {
                     });
                 }
 
-                let plot_size = farming_args.plot_size.as_u64();
-                let minimum_plot_size = get_required_plot_space_with_overhead(PLOT_SECTOR_SIZE);
-
-                if plot_size < minimum_plot_size {
-                    return Err(anyhow::anyhow!(
-                        "Plot size is too low ({} bytes). Minimum is {}",
-                        plot_size,
-                        minimum_plot_size
-                    ));
-                }
-
                 vec![DiskFarm {
                     directory: base_path.clone(),
-                    allocated_plotting_space: get_usable_plot_space(plot_size),
+                    allocated_plotting_space: get_usable_plot_space(
+                        farming_args.plot_size.as_u64(),
+                    ),
                 }]
             } else {
                 for farm in &command.farm {
@@ -304,7 +302,7 @@ async fn main() -> Result<()> {
                 command.farm
             };
 
-            commands::farm_multi_disk(base_path, disk_farms, farming_args).await?;
+            commands::farm_multi_disk::<PosTable>(base_path, disk_farms, farming_args).await?;
         }
         Subcommand::Info => {
             let disk_farms = if command.farm.is_empty() {

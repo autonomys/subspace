@@ -102,6 +102,7 @@ struct ParityDbProviderCollection {
 }
 
 impl From<ParityDbProviderCollection> for Vec<u8> {
+    #[inline]
     fn from(value: ParityDbProviderCollection) -> Self {
         value.encode()
     }
@@ -110,6 +111,7 @@ impl From<ParityDbProviderCollection> for Vec<u8> {
 impl TryFrom<Vec<u8>> for ParityDbProviderCollection {
     type Error = parity_scale_codec::Error;
 
+    #[inline]
     fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
         ParityDbProviderCollection::decode(&mut data.as_slice()).map(Into::into)
     }
@@ -146,6 +148,7 @@ struct ParityDbProviderRecord {
 }
 
 impl From<ParityDbProviderRecord> for Vec<u8> {
+    #[inline]
     fn from(rec: ParityDbProviderRecord) -> Self {
         rec.encode()
     }
@@ -154,12 +157,14 @@ impl From<ParityDbProviderRecord> for Vec<u8> {
 impl TryFrom<Vec<u8>> for ParityDbProviderRecord {
     type Error = parity_scale_codec::Error;
 
+    #[inline]
     fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
         ParityDbProviderRecord::decode(&mut data.as_slice()).map(Into::into)
     }
 }
 
 impl From<ProviderRecord> for ParityDbProviderRecord {
+    #[inline]
     fn from(rec: ProviderRecord) -> Self {
         Self {
             key: rec.key.to_vec(),
@@ -173,6 +178,7 @@ impl From<ProviderRecord> for ParityDbProviderRecord {
 impl From<ParityDbProviderRecord> for ProviderRecord {
     // We don't expect an error here because ParityDbRecord contains valid bytes
     // representations.
+    #[inline]
     fn from(rec: ParityDbProviderRecord) -> Self {
         Self {
             key: rec.key.into(),

@@ -13,9 +13,9 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_from_scratch::eip_4844::{bytes_from_g1_rust, bytes_to_g1_rust, bytes_to_g2_rust};
 use blst_from_scratch::types::fft_settings::FsFFTSettings;
 use blst_from_scratch::types::g1::FsG1;
+use blst_from_scratch::types::g2::FsG2;
 use blst_from_scratch::types::kzg_settings::FsKZGSettings;
 use blst_from_scratch::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
@@ -48,7 +48,7 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
     let secret_g1 = secret_g1_bytes
         .chunks_exact(48)
         .map(|bytes| {
-            bytes_to_g1_rust(
+            FsG1::from_bytes(
                 bytes
                     .try_into()
                     .expect("Chunked into correct number of bytes above; qed"),
@@ -58,7 +58,7 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
     let secret_g2 = secret_g2_bytes
         .chunks_exact(96)
         .map(|bytes| {
-            bytes_to_g2_rust(
+            FsG2::from_bytes(
                 bytes
                     .try_into()
                     .expect("Chunked into correct number of bytes above; qed"),
@@ -121,17 +121,20 @@ impl Commitment {
     const SIZE: usize = 48;
 
     /// Convert commitment to raw bytes
+    #[inline]
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        bytes_from_g1_rust(&self.0)
+        self.0.to_bytes()
     }
 
     /// Try to deserialize commitment from raw bytes
+    #[inline]
     pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
-        Ok(Commitment(bytes_to_g1_rust(bytes)?))
+        Ok(Commitment(FsG1::from_bytes(bytes)?))
     }
 
     /// Convenient conversion from slice of commitment to underlying representation for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_to_repr(value: &[Self]) -> &[FsG1] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -140,6 +143,7 @@ impl Commitment {
 
     /// Convenient conversion from slice of underlying representation to commitment for efficiency
     /// purposes.
+    #[inline]
     pub fn slice_from_repr(value: &[FsG1]) -> &[Self] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -148,6 +152,7 @@ impl Commitment {
 
     /// Convenient conversion from slice of optional commitment to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_option_to_repr(value: &[Option<Self>]) -> &[Option<FsG1>] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -156,6 +161,7 @@ impl Commitment {
 
     /// Convenient conversion from slice of optional underlying representation to commitment for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_option_from_repr(value: &[Option<FsG1>]) -> &[Option<Self>] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -164,6 +170,7 @@ impl Commitment {
 
     /// Convenient conversion from mutable slice of commitment to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_mut_to_repr(value: &mut [Self]) -> &mut [FsG1] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -172,6 +179,7 @@ impl Commitment {
 
     /// Convenient conversion from mutable slice of underlying representation to commitment for
     /// efficiency purposes.
+    #[inline]
     pub fn slice_mut_from_repr(value: &mut [FsG1]) -> &mut [Self] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -180,6 +188,7 @@ impl Commitment {
 
     /// Convenient conversion from optional mutable slice of commitment to underlying representation
     /// for efficiency purposes.
+    #[inline]
     pub fn slice_option_mut_to_repr(value: &mut [Option<Self>]) -> &mut [Option<FsG1>] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -188,6 +197,7 @@ impl Commitment {
 
     /// Convenient conversion from optional mutable slice of underlying representation to commitment
     /// for efficiency purposes.
+    #[inline]
     pub fn slice_option_mut_from_repr(value: &mut [Option<FsG1>]) -> &mut [Option<Self>] {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         // layout
@@ -196,6 +206,7 @@ impl Commitment {
 
     /// Convenient conversion from vector of commitment to underlying representation for efficiency
     /// purposes.
+    #[inline]
     pub fn vec_to_repr(value: Vec<Self>) -> Vec<FsG1> {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         //  layout, original vector is not dropped
@@ -211,6 +222,7 @@ impl Commitment {
 
     /// Convenient conversion from vector of underlying representation to commitment for efficiency
     /// purposes.
+    #[inline]
     pub fn vec_from_repr(value: Vec<FsG1>) -> Vec<Self> {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         //  layout, original vector is not dropped
@@ -226,6 +238,7 @@ impl Commitment {
 
     /// Convenient conversion from vector of optional commitment to underlying representation for
     /// efficiency purposes.
+    #[inline]
     pub fn vec_option_to_repr(value: Vec<Option<Self>>) -> Vec<Option<FsG1>> {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         //  layout, original vector is not dropped
@@ -241,6 +254,7 @@ impl Commitment {
 
     /// Convenient conversion from vector of optional underlying representation to commitment for
     /// efficiency purposes.
+    #[inline]
     pub fn vec_option_from_repr(value: Vec<Option<FsG1>>) -> Vec<Option<Self>> {
         // SAFETY: `Commitment` is `#[repr(transparent)]` and guaranteed to have the same memory
         //  layout, original vector is not dropped
@@ -262,12 +276,14 @@ impl Hash for Commitment {
 }
 
 impl From<Commitment> for [u8; Commitment::SIZE] {
+    #[inline]
     fn from(commitment: Commitment) -> Self {
         commitment.to_bytes()
     }
 }
 
 impl From<&Commitment> for [u8; Commitment::SIZE] {
+    #[inline]
     fn from(commitment: &Commitment) -> Self {
         commitment.to_bytes()
     }
@@ -276,6 +292,7 @@ impl From<&Commitment> for [u8; Commitment::SIZE] {
 impl TryFrom<&[u8; Self::SIZE]> for Commitment {
     type Error = String;
 
+    #[inline]
     fn try_from(bytes: &[u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
@@ -284,12 +301,14 @@ impl TryFrom<&[u8; Self::SIZE]> for Commitment {
 impl TryFrom<[u8; Self::SIZE]> for Commitment {
     type Error = String;
 
+    #[inline]
     fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
 }
 
 impl Encode for Commitment {
+    #[inline]
     fn size_hint(&self) -> usize {
         Self::SIZE
     }
@@ -298,6 +317,7 @@ impl Encode for Commitment {
         f(&self.to_bytes())
     }
 
+    #[inline]
     fn encoded_size(&self) -> usize {
         Self::SIZE
     }
@@ -306,6 +326,7 @@ impl Encode for Commitment {
 impl EncodeLike for Commitment {}
 
 impl MaxEncodedLen for Commitment {
+    #[inline]
     fn max_encoded_len() -> usize {
         Self::SIZE
     }
@@ -319,6 +340,7 @@ impl Decode for Commitment {
         })
     }
 
+    #[inline]
     fn encoded_fixed_size() -> Option<usize> {
         Some(Self::SIZE)
     }
@@ -353,22 +375,24 @@ impl Witness {
 
     /// Convert witness to raw bytes
     pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        bytes_from_g1_rust(&self.0)
+        self.0.to_bytes()
     }
 
     /// Try to deserialize witness from raw bytes
     pub fn try_from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self, String> {
-        Ok(Witness(bytes_to_g1_rust(bytes)?))
+        Ok(Witness(FsG1::from_bytes(bytes)?))
     }
 }
 
 impl From<Witness> for [u8; Witness::SIZE] {
+    #[inline]
     fn from(witness: Witness) -> Self {
         witness.to_bytes()
     }
 }
 
 impl From<&Witness> for [u8; Witness::SIZE] {
+    #[inline]
     fn from(witness: &Witness) -> Self {
         witness.to_bytes()
     }
@@ -377,6 +401,7 @@ impl From<&Witness> for [u8; Witness::SIZE] {
 impl TryFrom<&[u8; Self::SIZE]> for Witness {
     type Error = String;
 
+    #[inline]
     fn try_from(bytes: &[u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from_bytes(bytes)
     }
@@ -385,6 +410,7 @@ impl TryFrom<&[u8; Self::SIZE]> for Witness {
 impl TryFrom<[u8; Self::SIZE]> for Witness {
     type Error = String;
 
+    #[inline]
     fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
     }
@@ -399,6 +425,7 @@ impl Encode for Witness {
         f(&self.to_bytes())
     }
 
+    #[inline]
     fn encoded_size(&self) -> usize {
         Self::SIZE
     }
@@ -407,6 +434,7 @@ impl Encode for Witness {
 impl EncodeLike for Witness {}
 
 impl MaxEncodedLen for Witness {
+    #[inline]
     fn max_encoded_len() -> usize {
         Self::SIZE
     }
@@ -420,6 +448,7 @@ impl Decode for Witness {
         })
     }
 
+    #[inline]
     fn encoded_fixed_size() -> Option<usize> {
         Some(Self::SIZE)
     }

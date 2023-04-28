@@ -4,7 +4,7 @@ use crate::identity::Identity;
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_plot::farming::audit_sector;
+use crate::single_disk_plot::auditing::audit_sector;
 use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
@@ -17,7 +17,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::OpenOptions;
@@ -31,16 +31,15 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{
-    LegacySectorId, PieceIndex, PublicKey, SectorIndex, Solution, PIECES_IN_SECTOR,
-    PLOT_SECTOR_SIZE,
-};
+use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex, Solution};
+use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
-use subspace_farmer_components::{farming, plotting, SectorMetadata};
-use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::{auditing, plotting, proving};
+use subspace_proof_of_space::Table;
+use subspace_rpc_primitives::{FarmerAppInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, OwnedSemaphorePermit};
@@ -61,7 +60,7 @@ const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 ///
 /// Only useful for initial network bootstrapping where due to initial plot size there might be too
 /// many solutions.
-const SOLUTIONS_LIMIT: usize = 10;
+const SOLUTIONS_LIMIT: usize = 1;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -130,6 +129,8 @@ pub enum SingleDiskPlotInfo {
         /// sector indexes or else they'll essentially plot the same data and will not result in
         /// increased probability of winning the reward.
         first_sector_index: SectorIndex,
+        /// How many pieces does one sector contain.
+        pieces_in_sector: u16,
         /// How much space in bytes is allocated for this plot
         allocated_space: u64,
     },
@@ -143,6 +144,7 @@ impl SingleDiskPlotInfo {
         genesis_hash: [u8; 32],
         public_key: PublicKey,
         first_sector_index: SectorIndex,
+        pieces_in_sector: u16,
         allocated_space: u64,
     ) -> Self {
         Self::V0 {
@@ -150,6 +152,7 @@ impl SingleDiskPlotInfo {
             genesis_hash,
             public_key,
             first_sector_index,
+            pieces_in_sector,
             allocated_space,
         }
     }
@@ -211,6 +214,14 @@ impl SingleDiskPlotInfo {
         *first_sector_index
     }
 
+    /// How many pieces does one sector contain.
+    pub fn pieces_in_sector(&self) -> u16 {
+        let Self::V0 {
+            pieces_in_sector, ..
+        } = self;
+        *pieces_in_sector
+    }
+
     /// How much space in bytes is allocated for this plot
     pub fn allocated_space(&self) -> u64 {
         let Self::V0 {
@@ -250,6 +261,7 @@ struct PlotMetadataHeader {
 }
 
 impl PlotMetadataHeader {
+    #[inline]
     fn encoded_size() -> usize {
         let default = PlotMetadataHeader {
             version: 0,
@@ -264,8 +276,12 @@ impl PlotMetadataHeader {
 pub struct SingleDiskPlotOptions<NC, PG> {
     /// Path to directory where plot are stored.
     pub directory: PathBuf,
+    /// Information necessary for farmer application
+    pub farmer_app_info: FarmerAppInfo,
     /// How much space in bytes can plot use for plot
     pub allocated_space: u64,
+    /// How many pieces one sector is supposed to contain (max)
+    pub max_pieces_in_sector: u16,
     /// RPC client connected to Subspace node
     pub node_client: NC,
     /// Address where farming rewards should go
@@ -274,6 +290,8 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub piece_getter: PG,
     /// Kzg instance to use.
     pub kzg: Kzg,
+    /// Erasure coding instance to use.
+    pub erasure_coding: ErasureCoding,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
     /// Additional memory cache for pieces from archival storage
@@ -327,22 +345,40 @@ pub enum SingleDiskPlotError {
         /// Current public key
         wrong_public_key: PublicKey,
     },
+    /// Invalid number pieces in sector
+    #[error(
+        "Invalid number pieces in sector: max supported {max_supported}, plot initialized with \
+        {initialized_with}"
+    )]
+    InvalidPiecesInSector {
+        /// Plot ID
+        id: SingleDiskPlotId,
+        /// Max supported pieces in sector
+        max_supported: u16,
+        /// Number of pieces in sector plot is initialized with
+        initialized_with: u16,
+    },
     /// Failed to decode metadata header
     #[error("Failed to decode metadata header: {0}")]
     FailedToDecodeMetadataHeader(parity_scale_codec::Error),
+    /// Failed to decode sector metadata
+    #[error("Failed to decode sector metadata: {0}")]
+    FailedToDecodeSectorMetadata(parity_scale_codec::Error),
     /// Unexpected metadata version
     #[error("Unexpected metadata version {0}")]
     UnexpectedMetadataVersion(u8),
-    /// Node RPC error
-    #[error("Node RPC error: {0}")]
-    NodeRpcError(Box<dyn std::error::Error + Send + Sync + 'static>),
     /// Allocated space is not enough for one sector
     #[error(
         "Allocated space is not enough for one sector. \
         The lowest acceptable value for allocated space is: {min_size}, \
         you provided: {allocated_space}."
     )]
-    InsufficientAllocatedSpace { min_size: u64, allocated_space: u64 },
+    InsufficientAllocatedSpace {
+        /// Minimal allocated space
+        min_size: usize,
+        /// Current allocated space
+        allocated_space: u64,
+    },
 }
 
 /// Errors that happen during plotting
@@ -374,12 +410,6 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Failed to create memory mapping for plot
-    #[error("Failed to create memory mapping for plot: {error}")]
-    FailedToMapPlot {
-        /// Lower-level error
-        error: io::Error,
-    },
     /// Failed to create memory mapping for metadata
     #[error("Failed to create memory mapping for metadata: {error}")]
     FailedToMapMetadata {
@@ -392,9 +422,12 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Low-level farming error
-    #[error("Low-level farming error: {0}")]
-    LowLevel(#[from] farming::FarmingError),
+    /// Low-level auditing error
+    #[error("Low-level auditing error: {0}")]
+    LowLevelAuditing(#[from] auditing::AuditingError),
+    /// Low-level proving error
+    #[error("Low-level proving error: {0}")]
+    LowLevelProving(#[from] proving::ProvingError),
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -429,9 +462,9 @@ struct Handlers {
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskPlot {
     single_disk_plot_info: SingleDiskPlotInfo,
-    /// All sector metadata file region is mapped, not just plotted sectors!
-    sector_metadata_mmap: Mmap,
-    metadata_header: Arc<Mutex<PlotMetadataHeader>>,
+    /// Metadata of all sectors plotted so far
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    pieces_in_sector: u16,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
@@ -458,40 +491,35 @@ impl Drop for SingleDiskPlot {
 impl SingleDiskPlot {
     const PLOT_FILE: &'static str = "plot.bin";
     const METADATA_FILE: &'static str = "metadata.bin";
+    const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk plot instance
     ///
     /// NOTE: Thought this function is async, it will do some blocking I/O.
-    pub async fn new<NC, PG>(
+    pub async fn new<NC, PG, PosTable>(
         options: SingleDiskPlotOptions<NC, PG>,
         disk_farm_index: usize,
     ) -> Result<Self, SingleDiskPlotError>
     where
         NC: NodeClient,
         PG: PieceGetter + Send + 'static,
+        PosTable: Table,
     {
         let handle = Handle::current();
 
         let SingleDiskPlotOptions {
             directory,
+            farmer_app_info,
             allocated_space,
+            max_pieces_in_sector,
             node_client,
             reward_address,
             piece_getter,
             kzg,
+            erasure_coding,
             concurrent_plotting_semaphore,
             piece_memory_cache,
         } = options;
-
-        // TODO: Account for plot overhead
-        let target_sector_count = allocated_space / PLOT_SECTOR_SIZE;
-        if target_sector_count == 0 {
-            return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
-                min_size: PLOT_SECTOR_SIZE,
-                allocated_space,
-            });
-        }
-
         fs::create_dir_all(&directory)?;
 
         // TODO: Parametrize concurrency, much higher default due to SSD focus
@@ -502,11 +530,6 @@ impl SingleDiskPlot {
         // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
-
-        let farmer_app_info = node_client
-            .farmer_app_info()
-            .await
-            .map_err(SingleDiskPlotError::NodeRpcError)?;
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
             Some(single_disk_plot_info) => {
@@ -534,9 +557,39 @@ impl SingleDiskPlot {
                     });
                 }
 
+                let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
+
+                if max_pieces_in_sector < pieces_in_sector {
+                    return Err(SingleDiskPlotError::InvalidPiecesInSector {
+                        id: *single_disk_plot_info.id(),
+                        max_supported: max_pieces_in_sector,
+                        initialized_with: pieces_in_sector,
+                    });
+                }
+
+                if max_pieces_in_sector > pieces_in_sector {
+                    info!(
+                        pieces_in_sector,
+                        max_pieces_in_sector,
+                        "Plot initialized with smaller number of pieces in sector, plot needs to \
+                        be re-created for increase"
+                    );
+                }
+
                 single_disk_plot_info
             }
             None => {
+                let sector_size = sector_size(max_pieces_in_sector);
+
+                // TODO: Account for plot overhead
+                let target_sector_count = (allocated_space / sector_size as u64) as usize;
+                if target_sector_count == 0 {
+                    return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+                        min_size: sector_size,
+                        allocated_space,
+                    });
+                }
+
                 // TODO: Global generator that makes sure to avoid returning the same sector index
                 //  for multiple disks
                 let first_sector_index = SystemTime::UNIX_EPOCH
@@ -550,6 +603,7 @@ impl SingleDiskPlot {
                     farmer_app_info.genesis_hash,
                     public_key,
                     first_sector_index,
+                    max_pieces_in_sector,
                     allocated_space,
                 );
 
@@ -559,6 +613,10 @@ impl SingleDiskPlot {
             }
         };
 
+        let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
+        let sector_size = sector_size(max_pieces_in_sector);
+        let target_sector_count =
+            (single_disk_plot_info.allocated_space() / sector_size as u64) as usize;
         let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Consider file locking to prevent other apps from modifying it
@@ -568,53 +626,67 @@ impl SingleDiskPlot {
             .create(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        let (metadata_header, mut metadata_header_mmap) = if metadata_file.seek(SeekFrom::End(0))?
-            == 0
-        {
-            let metadata_header = PlotMetadataHeader {
-                version: 0,
-                sector_count: 0,
+        let (mut metadata_header, mut metadata_header_mmap) =
+            if metadata_file.seek(SeekFrom::End(0))? == 0 {
+                let metadata_header = PlotMetadataHeader {
+                    version: 0,
+                    sector_count: 0,
+                };
+
+                metadata_file.preallocate(
+                    RESERVED_PLOT_METADATA
+                        + SectorMetadata::encoded_size() as u64 * target_sector_count as u64,
+                )?;
+                metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
+
+                let metadata_header_mmap = unsafe {
+                    MmapOptions::new()
+                        .len(PlotMetadataHeader::encoded_size())
+                        .map_mut(&metadata_file)?
+                };
+
+                (metadata_header, metadata_header_mmap)
+            } else {
+                let metadata_header_mmap = unsafe {
+                    MmapOptions::new()
+                        .len(PlotMetadataHeader::encoded_size())
+                        .map_mut(&metadata_file)?
+                };
+
+                let metadata_header =
+                    PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                        .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
+
+                if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
+                    return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
+                        metadata_header.version,
+                    ));
+                }
+
+                (metadata_header, metadata_header_mmap)
             };
-
-            metadata_file.preallocate(
-                RESERVED_PLOT_METADATA
-                    + SectorMetadata::encoded_size() as u64 * target_sector_count,
-            )?;
-            metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
-
-            let metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
-
-            (metadata_header, metadata_header_mmap)
-        } else {
-            let metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
-
-            let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
-                .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
-
-            if metadata_header.version != 0 {
-                return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
-                    metadata_header.version,
-                ));
-            }
-
-            (metadata_header, metadata_header_mmap)
-        };
-
-        let metadata_header = Arc::new(Mutex::new(metadata_header));
 
         let mut metadata_mmap_mut = unsafe {
             MmapOptions::new()
                 .offset(RESERVED_PLOT_METADATA)
-                .len(SectorMetadata::encoded_size() * target_sector_count as usize)
+                .len(SectorMetadata::encoded_size() * target_sector_count)
                 .map_mut(&metadata_file)?
+        };
+
+        let sectors_metadata = {
+            let mut sectors_metadata = Vec::<SectorMetadata>::with_capacity(target_sector_count);
+
+            for mut sector_metadata_bytes in metadata_mmap_mut
+                .chunks_exact(SectorMetadata::encoded_size())
+                .take(metadata_header.sector_count as usize)
+            {
+                sectors_metadata.push(
+                    SectorMetadata::decode(&mut sector_metadata_bytes)
+                        .map_err(SingleDiskPlotError::FailedToDecodeSectorMetadata)?,
+                );
+            }
+
+            Arc::new(RwLock::new(sectors_metadata))
         };
 
         let plot_file = OpenOptions::new()
@@ -623,9 +695,7 @@ impl SingleDiskPlot {
             .create(true)
             .open(directory.join(Self::PLOT_FILE))?;
 
-        plot_file.preallocate(PLOT_SECTOR_SIZE * target_sector_count)?;
-
-        let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
+        plot_file.preallocate(sector_size as u64 * target_sector_count as u64)?;
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -641,8 +711,6 @@ impl SingleDiskPlot {
         }));
 
         let handlers = Arc::<Handlers>::default();
-        let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize)
-            .expect("Protocol constant must be correct; qed");
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
 
@@ -651,8 +719,12 @@ impl SingleDiskPlot {
         let plotting_join_handle = thread::Builder::new()
             .name(format!("plotting-{disk_farm_index}"))
             .spawn({
+                let mut plot_mmap_mut = unsafe { MmapMut::map_mut(&plot_file)? };
+
                 let handle = handle.clone();
-                let metadata_header = Arc::clone(&metadata_header);
+                let sectors_metadata = Arc::clone(&sectors_metadata);
+                let kzg = kzg.clone();
+                let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
                 let node_client = node_client.clone();
                 let error_sender = Arc::clone(&error_sender);
@@ -669,9 +741,7 @@ impl SingleDiskPlot {
                             return Ok(());
                         }
 
-                        let chunked_sectors = plot_mmap_mut
-                            .as_mut()
-                            .chunks_exact_mut(PLOT_SECTOR_SIZE as usize);
+                        let chunked_sectors = plot_mmap_mut.as_mut().chunks_exact_mut(sector_size);
                         let chunked_metadata = metadata_mmap_mut
                             .as_mut()
                             .chunks_exact_mut(SectorMetadata::encoded_size());
@@ -680,7 +750,7 @@ impl SingleDiskPlot {
                             .enumerate()
                             .skip(
                                 // Some sectors may already be plotted, skip them
-                                metadata_header.lock().sector_count as usize,
+                                metadata_header.sector_count as usize,
                             )
                             .map(|(sector_offset, (sector, metadata))| {
                                 (
@@ -692,7 +762,7 @@ impl SingleDiskPlot {
                             });
 
                         // TODO: Concurrency
-                        for (sector_offset, sector_index, sector, sector_metadata) in
+                        for (sector_offset, sector_index, mut sector, mut sector_metadata) in
                             plot_initial_sector
                         {
                             trace!(%sector_offset, %sector_index, "Preparing to plot sector");
@@ -717,33 +787,27 @@ impl SingleDiskPlot {
                                 .await
                                 .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
 
-                            let plot_sector_fut = plot_sector(
+                            let plot_sector_fut = plot_sector::<_, _, _, PosTable>(
                                 &public_key,
                                 sector_index,
                                 &piece_getter,
                                 PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
                                 &farmer_app_info.protocol_info,
                                 &kzg,
-                                &sector_codec,
-                                sector,
-                                sector_metadata,
+                                &erasure_coding,
+                                pieces_in_sector,
+                                &mut sector,
+                                &mut sector_metadata,
                                 piece_memory_cache.clone(),
                             );
-                            let plotted_sector = match plot_sector_fut.await {
-                                Ok(plotted_sector) => {
-                                    debug!(%sector_offset, %sector_index, "Sector plotted");
+                            let plotted_sector = plot_sector_fut.await?;
 
-                                    plotted_sector
-                                }
-                                Err(error) => Err(PlottingError::LowLevel(error))?,
-                            };
-
-                            {
-                                let mut metadata_header = metadata_header.lock();
-                                metadata_header.sector_count += 1;
-                                metadata_header_mmap
-                                    .copy_from_slice(metadata_header.encode().as_slice());
-                            }
+                            metadata_header.sector_count += 1;
+                            metadata_header_mmap
+                                .copy_from_slice(metadata_header.encode().as_slice());
+                            sectors_metadata
+                                .write()
+                                .push(plotted_sector.sector_metadata.clone());
 
                             handlers.sector_plotted.call_simple(&(
                                 sector_offset,
@@ -752,7 +816,7 @@ impl SingleDiskPlot {
                             ));
                         }
 
-                        Ok(())
+                        Ok::<_, PlottingError>(())
                     };
 
                     let initial_plotting_result = handle.block_on(select(
@@ -762,29 +826,13 @@ impl SingleDiskPlot {
 
                     if let Either::Left((Err(error), _)) = initial_plotting_result {
                         if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error) {
+                            if let Err(error) = error_sender.send(error.into()) {
                                 error!(%error, "Plotting failed to send error to background task");
                             }
                         }
                     }
                 }
             })?;
-
-        let global_plot_mmap = unsafe {
-            MmapOptions::new()
-                .len((PLOT_SECTOR_SIZE * target_sector_count) as usize)
-                .map(&plot_file)?
-        };
-        #[cfg(unix)]
-        {
-            global_plot_mmap.advise(memmap2::Advice::Random)?;
-        }
-        let global_sector_metadata_mmap = unsafe {
-            MmapOptions::new()
-                .offset(RESERVED_PLOT_METADATA)
-                .len(SectorMetadata::encoded_size() * target_sector_count as usize)
-                .map(&metadata_file)?
-        };
 
         let (mut slot_info_forwarder_sender, mut slot_info_forwarder_receiver) =
             mpsc::channel::<SlotInfo>(0);
@@ -819,12 +867,18 @@ impl SingleDiskPlot {
         let farming_join_handle = thread::Builder::new()
             .name(format!("farming-{disk_farm_index}"))
             .spawn({
+                let plot_mmap = unsafe { Mmap::map(&plot_file)? };
+                #[cfg(unix)]
+                {
+                    plot_mmap.advise(memmap2::Advice::Random)?;
+                }
+
                 let handle = handle.clone();
+                let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
-                let metadata_header = Arc::clone(&metadata_header);
+                let sectors_metadata = Arc::clone(&sectors_metadata);
                 let mut start_receiver = start_sender.subscribe();
                 let mut stop_receiver = stop_sender.subscribe();
-                let identity = identity.clone();
                 let node_client = node_client.clone();
                 let span = span.clone();
 
@@ -840,41 +894,16 @@ impl SingleDiskPlot {
 
                         while let Some(slot_info) = slot_info_forwarder_receiver.next().await {
                             let slot = slot_info.slot_number;
-                            let sector_count = metadata_header.lock().sector_count;
+                            let sectors_metadata = sectors_metadata.read();
+                            let sector_count = sectors_metadata.len();
 
                             debug!(%slot, %sector_count, "Reading sectors");
 
-                            let plot_mmap = unsafe {
-                                MmapOptions::new()
-                                    .len((PLOT_SECTOR_SIZE * sector_count) as usize)
-                                    .map(&plot_file)
-                                    .map_err(|error| FarmingError::FailedToMapPlot { error })?
-                            };
-                            #[cfg(unix)]
-                            {
-                                plot_mmap
-                                    .advise(memmap2::Advice::Random)
-                                    .map_err(FarmingError::Io)?;
-                            }
-                            let metadata_mmap = unsafe {
-                                MmapOptions::new()
-                                    .offset(RESERVED_PLOT_METADATA)
-                                    .len(SectorMetadata::encoded_size() * sector_count as usize)
-                                    .map(&metadata_file)
-                                    .map_err(|error| FarmingError::FailedToMapMetadata { error })?
-                            };
-                            #[cfg(unix)]
-                            {
-                                metadata_mmap
-                                    .advise(memmap2::Advice::Random)
-                                    .map_err(FarmingError::Io)?;
-                            }
-
                             let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-                            for (sector_index, sector, sector_metadata) in plot_mmap
-                                .chunks_exact(PLOT_SECTOR_SIZE as usize)
-                                .zip(metadata_mmap.chunks_exact(SectorMetadata::encoded_size()))
+                            for (sector_index, sector_metadata, sector) in sectors_metadata
+                                .iter()
+                                .zip(plot_mmap.chunks_exact(sector_size))
                                 .enumerate()
                                 .map(|(sector_index, (sector, metadata))| {
                                     (sector_index as u64 + first_sector_index, sector, metadata)
@@ -882,28 +911,36 @@ impl SingleDiskPlot {
                             {
                                 trace!(%slot, %sector_index, "Auditing sector");
 
-                                let maybe_eligible_sector = audit_sector(
+                                let maybe_solution_candidates = audit_sector(
                                     &public_key,
                                     sector_index,
                                     &slot_info.global_challenge,
                                     slot_info.voting_solution_range,
-                                    io::Cursor::new(sector),
-                                )
-                                .map_err(FarmingError::LowLevel)?;
-                                let Some(eligible_sector) = maybe_eligible_sector else {
+                                    &mut io::Cursor::new(sector),
+                                    sector_metadata,
+                                )?;
+                                let Some(solution_candidates) = maybe_solution_candidates else {
                                     continue;
                                 };
 
-                                for solution in eligible_sector
-                                    .try_into_solutions(
-                                        &identity,
-                                        reward_address,
-                                        &sector_codec,
-                                        sector,
-                                        sector_metadata,
-                                    )
-                                    .map_err(FarmingError::LowLevel)?
+                                for maybe_solution in solution_candidates
+                                    .into_iter::<_, _, PosTable>(
+                                        &reward_address,
+                                        &kzg,
+                                        &erasure_coding,
+                                        &mut io::Cursor::new(sector),
+                                    )?
                                 {
+                                    let solution = match maybe_solution {
+                                        Ok(solution) => solution,
+                                        Err(error) => {
+                                            error!(%slot, %sector_index, %error, "Failed to prove");
+                                            // Do not error completely on disk corruption or other
+                                            // reasons why proving might fail
+                                            continue;
+                                        }
+                                    };
+
                                     debug!(%slot, %sector_index, "Solution found");
                                     trace!(?solution, "Solution found");
 
@@ -939,7 +976,7 @@ impl SingleDiskPlot {
                                 })?;
                         }
 
-                        Ok(())
+                        Ok::<_, FarmingError>(())
                     };
 
                     let farming_result = handle.block_on(select(
@@ -949,7 +986,7 @@ impl SingleDiskPlot {
 
                     if let Either::Left((Err(error), _)) = farming_result {
                         if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error) {
+                            if let Err(error) = error_sender.send(error.into()) {
                                 error!(%error, "Farming failed to send error to background task");
                             }
                         }
@@ -962,7 +999,13 @@ impl SingleDiskPlot {
         let reading_join_handle = thread::Builder::new()
             .name(format!("reading-{disk_farm_index}"))
             .spawn({
-                let metadata_header = Arc::clone(&metadata_header);
+                let global_plot_mmap = unsafe { Mmap::map(&plot_file)? };
+                #[cfg(unix)]
+                {
+                    global_plot_mmap.advise(memmap2::Advice::Random)?;
+                }
+
+                let sectors_metadata = Arc::clone(&sectors_metadata);
                 let mut stop_receiver = stop_sender.subscribe();
                 let span = span.clone();
 
@@ -982,13 +1025,38 @@ impl SingleDiskPlot {
                                 continue;
                             }
 
-                            let maybe_piece = read_piece(
-                                sector_index,
+                            let (sector_metadata, sector_count) = {
+                                let sectors_metadata = sectors_metadata.read();
+
+                                let sector_offset = (sector_index - first_sector_index) as usize;
+                                let sector_count = sectors_metadata.len();
+
+                                let sector_metadata = match sectors_metadata.get(sector_offset) {
+                                    Some(sector_metadata) => sector_metadata.clone(),
+                                    None => {
+                                        error!(
+                                            %sector_index,
+                                            %first_sector_index,
+                                            %sector_count,
+                                            "Tried to read piece from sector that is not yet \
+                                            plotted"
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                (sector_metadata, sector_count)
+                            };
+
+                            let maybe_piece = read_piece::<PosTable>(
+                                &public_key,
                                 piece_offset,
-                                metadata_header.lock().sector_count,
+                                pieces_in_sector,
+                                sector_count,
                                 first_sector_index,
-                                &sector_codec,
+                                &sector_metadata,
                                 &global_plot_mmap,
+                                &erasure_coding,
                             );
 
                             // Doesn't matter if receiver still cares about it
@@ -1012,8 +1080,8 @@ impl SingleDiskPlot {
 
         let farm = Self {
             single_disk_plot_info,
-            sector_metadata_mmap: global_sector_metadata_mmap,
-            metadata_header,
+            sectors_metadata,
+            pieces_in_sector,
             span,
             tasks,
             handlers,
@@ -1052,34 +1120,29 @@ impl SingleDiskPlot {
     }
 
     /// Number of sectors successfully plotted so far
-    pub fn plotted_sectors_count(&self) -> u64 {
-        self.metadata_header.lock().sector_count
+    pub fn plotted_sectors_count(&self) -> usize {
+        self.sectors_metadata.read().len()
     }
 
-    /// Read information about sectors plotted thus far
+    /// Read information about sectors plotted so far
     pub fn plotted_sectors(
         &self,
     ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
         let public_key = self.single_disk_plot_info.public_key();
         let first_sector_index = self.single_disk_plot_info.first_sector_index();
-        let sector_count = self.metadata_header.lock().sector_count;
 
         (first_sector_index..)
-            .zip(
-                self.sector_metadata_mmap
-                    .chunks_exact(SectorMetadata::encoded_size()),
-            )
-            .take(sector_count as usize)
-            .map(move |(sector_index, mut sector_metadata)| {
-                let sector_metadata = SectorMetadata::decode(&mut sector_metadata)?;
-                let sector_id = LegacySectorId::new(public_key, sector_index);
+            .zip(self.sectors_metadata.read().clone())
+            .map(move |(sector_index, sector_metadata)| {
+                let sector_id = SectorId::new(public_key.hash(), sector_index);
 
-                let piece_indexes = (PieceIndex::ZERO..)
-                    .take(PIECES_IN_SECTOR as usize)
+                let mut piece_indexes = Vec::with_capacity(self.pieces_in_sector.into());
+                (PieceOffset::ZERO..)
+                    .take(self.pieces_in_sector.into())
                     .map(|piece_offset| {
-                        sector_id.derive_piece_index(piece_offset, sector_metadata.total_pieces)
+                        sector_id.derive_piece_index(piece_offset, sector_metadata.history_size)
                     })
-                    .collect();
+                    .collect_into(&mut piece_indexes);
 
                 Ok(PlottedSector {
                     sector_id,

@@ -3,6 +3,7 @@
     drain_filter,
     hash_drain_filter,
     io_error_other,
+    iter_collect_into,
     let_chains,
     trait_alias,
     try_blocks,

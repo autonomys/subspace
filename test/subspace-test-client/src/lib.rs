@@ -29,22 +29,26 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::io::Cursor;
-use std::num::NonZeroU64;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{PublicKey, SegmentIndex, Solution, PLOT_SECTOR_SIZE};
-use subspace_farmer_components::farming::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::{FarmerProtocolInfo, SectorMetadata};
+use subspace_core_primitives::{HistorySize, PublicKey, Record, SegmentIndex, Solution};
+use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_transaction_pool::bundle_validator::BundleValidator;
 use zeroize::Zeroizing;
+
+// Smaller value for testing purposes
+const MAX_PIECES_IN_SECTOR: u16 = 32;
 
 /// Subspace native executor instance.
 pub struct TestExecutorDispatch;
@@ -76,13 +80,17 @@ type TxPreValidator =
     PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
 /// Run a farmer.
-pub fn start_farmer(new_full: &NewFull<Client, TxPreValidator>) {
+pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)
+where
+    PosTable: Table,
+{
     let client = new_full.client.clone();
     let new_slot_notification_stream = new_full.new_slot_notification_stream.clone();
     let reward_signing_notification_stream = new_full.reward_signing_notification_stream.clone();
 
     let keypair = schnorrkel::Keypair::generate();
-    let subspace_farming = start_farming(keypair.clone(), client, new_slot_notification_stream);
+    let subspace_farming =
+        start_farming::<PosTable, _>(keypair.clone(), client, new_slot_notification_stream);
     new_full
         .task_manager
         .spawn_essential_handle()
@@ -119,11 +127,12 @@ pub fn start_farmer(new_full: &NewFull<Client, TxPreValidator>) {
         });
 }
 
-async fn start_farming<Client>(
+async fn start_farming<PosTable, Client>(
     keypair: schnorrkel::Keypair,
     client: Arc<Client>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
 ) where
+    PosTable: Table,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
@@ -134,21 +143,30 @@ async fn start_farming<Client>(
 {
     let (plotting_result_sender, plotting_result_receiver) = futures::channel::oneshot::channel();
 
-    let sector_codec = SectorCodec::new(PLOT_SECTOR_SIZE as usize).unwrap();
+    let kzg = Kzg::new(embedded_kzg_settings());
+    let erasure_coding = ErasureCoding::new(
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+    )
+    .unwrap();
 
     std::thread::spawn({
         let keypair = keypair.clone();
+        let erasure_coding = erasure_coding.clone();
 
         move || {
-            let (sector, sector_metadata) =
-                block_on(plot_one_segment(client.as_ref(), &keypair, &sector_codec));
+            let (sector, sector_metadata) = block_on(plot_one_segment::<PosTable, _>(
+                client.as_ref(),
+                &keypair,
+                MAX_PIECES_IN_SECTOR,
+                &erasure_coding,
+            ));
             plotting_result_sender
                 .send((sector, sector_metadata))
                 .unwrap();
         }
     });
 
-    let (sector, sector_metadata) = plotting_result_receiver.await.unwrap();
+    let (sector, plotted_sector) = plotting_result_receiver.await.unwrap();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
@@ -160,27 +178,28 @@ async fn start_farming<Client>(
     }) = new_slot_notification_stream.next().await
     {
         if u64::from(new_slot_info.slot) % 2 == 0 {
-            let eligible_sector = audit_sector(
+            let solution_candidates = audit_sector(
                 &public_key,
                 sector_index,
                 &new_slot_info.global_challenge,
                 new_slot_info.solution_range,
-                Cursor::new(&sector),
+                &mut Cursor::new(&sector),
+                &plotted_sector.sector_metadata,
             )
             .unwrap()
             .expect("With max solution range there must be a sector eligible; qed");
-            let solution = eligible_sector
-                .try_into_solutions(
-                    &keypair,
-                    public_key,
-                    &sector_codec,
-                    sector.as_slice(),
-                    sector_metadata.as_slice(),
+
+            let solution = solution_candidates
+                .into_iter::<_, _, PosTable>(
+                    &public_key,
+                    &kzg,
+                    &erasure_coding,
+                    &mut Cursor::new(&sector),
                 )
                 .unwrap()
-                .into_iter()
                 .next()
-                .expect("With max solution range there must be a solution; qed");
+                .expect("With max solution range there must be a solution; qed")
+                .unwrap();
             // Lazy conversion to a different type of public key and reward address
             let solution = Solution::<FarmerPublicKey, FarmerPublicKey>::decode(
                 &mut solution.encode().as_slice(),
@@ -191,15 +210,17 @@ async fn start_farming<Client>(
     }
 }
 
-async fn plot_one_segment<Client>(
+async fn plot_one_segment<PosTable, Client>(
     client: &Client,
     keypair: &schnorrkel::Keypair,
-    sector_codec: &SectorCodec,
-) -> (Vec<u8>, Vec<u8>)
+    pieces_in_sector: u16,
+    erasure_coding: &ErasureCoding,
+) -> (Vec<u8>, PlottedSector)
 where
+    PosTable: Table,
     Client: BlockBackend<Block> + HeaderBackend<Block>,
 {
-    let kzg = Kzg::new(kzg::embedded_kzg_settings());
+    let kzg = Kzg::new(embedded_kzg_settings());
     let mut archiver = subspace_archiving::archiver::Archiver::new(kzg.clone())
         .expect("Incorrect parameters for archiver");
 
@@ -209,31 +230,32 @@ where
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");
-    let total_pieces = NonZeroU64::new(archived_segment.pieces.len() as u64).unwrap();
-    let mut sector = vec![0u8; PLOT_SECTOR_SIZE as usize];
+    let history_size = HistorySize::from(SegmentIndex::ZERO);
+    let mut sector = vec![0u8; sector_size(pieces_in_sector)];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
-        total_pieces,
-        // TODO: This constant should come from the chain itself
+        history_size,
+        max_pieces_in_sector: pieces_in_sector,
         sector_expiration: SegmentIndex::from(100),
     };
 
-    plot_sector(
+    let plotted_sector = plot_sector::<_, _, _, PosTable>(
         &public_key,
         sector_index,
         &archived_segment.pieces,
         PieceGetterRetryPolicy::default(),
         &farmer_protocol_info,
         &kzg,
-        sector_codec,
-        Cursor::new(sector.as_mut_slice()),
-        Cursor::new(sector_metadata.as_mut_slice()),
+        erasure_coding,
+        pieces_in_sector,
+        &mut Cursor::new(sector.as_mut_slice()),
+        &mut Cursor::new(sector_metadata.as_mut_slice()),
         Default::default(),
     )
     .await
     .expect("Plotting one sector in memory must not fail");
 
-    (sector, sector_metadata)
+    (sector, plotted_sector)
 }

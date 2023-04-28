@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use subspace_core_primitives::PosSeed;
+#[cfg(feature = "chia")]
 use subspace_proof_of_space::chia::ChiaTable;
 #[cfg(feature = "shim")]
 use subspace_proof_of_space::shim::ShimTable;
@@ -10,6 +11,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
         198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
     ]);
+    #[cfg(not(any(feature = "chia", feature = "shim")))]
+    {
+        panic!(r#"Enable "chia" and/or "shim" feature to run benches"#);
+    }
+    #[cfg(feature = "chia")]
     {
         // This challenge index with above seed is known to not have a solution
         let challenge_index_without_solution = 0;

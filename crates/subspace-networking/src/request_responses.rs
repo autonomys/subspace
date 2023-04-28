@@ -232,6 +232,7 @@ struct ProtocolRequestId {
 }
 
 impl From<(Cow<'static, str>, RequestId)> for ProtocolRequestId {
+    #[inline]
     fn from((protocol, request_id): (Cow<'static, str>, RequestId)) -> Self {
         Self {
             protocol,

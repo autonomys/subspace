@@ -18,6 +18,7 @@ bench = false
 [dependencies]
 async-trait = "0.1.68"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
+bitvec = "1.0.1"
 fs2 = "0.4.3"
 futures = "0.3.28"
 libc = "0.2.139"
@@ -25,12 +26,14 @@ lru = "0.10.0"
 parity-scale-codec = "3.4.0"
 parking_lot = "0.12.1"
 rand = "0.8.5"
+rayon = "1.6.1"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.159", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.38"
 tokio = { version = "1.27.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }
@@ -40,11 +43,15 @@ tracing = "0.1.37"
 criterion = "0.4.0"
 futures = "0.3.28"
 memmap2 = "0.5.10"
-rayon = "1.6.1"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
 
 [[bench]]
 name = "plotting"
+harness = false
+
+[[bench]]
+name = "reading"
 harness = false
 
 [[bench]]

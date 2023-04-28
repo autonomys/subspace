@@ -205,7 +205,8 @@ where
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
             let protocol_info = FarmerProtocolInfo {
-                total_pieces: runtime_api.total_pieces(best_hash)?,
+                history_size: runtime_api.history_size(best_hash)?,
+                max_pieces_in_sector: runtime_api.max_pieces_in_sector(best_hash)?,
                 // TODO: Fetch this from the runtime
                 sector_expiration: SegmentIndex::from(100),
             };
@@ -284,13 +285,14 @@ where
                                     public_key,
                                     reward_address,
                                     sector_index: solution.sector_index,
-                                    total_pieces: solution.total_pieces,
+                                    history_size: solution.history_size,
                                     piece_offset: solution.piece_offset,
-                                    record_commitment_hash: solution.record_commitment_hash,
-                                    piece_witness: solution.piece_witness,
-                                    chunk_offset: solution.chunk_offset,
+                                    record_commitment: solution.record_commitment,
+                                    record_witness: solution.record_witness,
                                     chunk: solution.chunk,
-                                    chunk_signature: solution.chunk_signature,
+                                    chunk_witness: solution.chunk_witness,
+                                    audit_chunk_offset: solution.audit_chunk_offset,
+                                    proof_of_space: solution.proof_of_space,
                                 };
 
                                 let _ = solution_sender.unbounded_send(solution);

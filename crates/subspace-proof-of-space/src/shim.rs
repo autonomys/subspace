@@ -1,6 +1,6 @@
 //! Shim proof of space implementation
 
-use crate::{Quality, Table};
+use crate::{PosTableType, Quality, Table};
 use core::iter;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, PosProof, PosQualityBytes, PosSeed, U256};
@@ -45,6 +45,8 @@ pub struct ShimTable {
 }
 
 impl Table for ShimTable {
+    const TABLE_TYPE: PosTableType = PosTableType::Shim;
+
     type Quality<'a> = ShimQuality<'a>;
 
     fn generate(seed: &PosSeed) -> ShimTable {
@@ -60,7 +62,7 @@ impl Table for ShimTable {
         challenge_index: u32,
         proof: &PosProof,
     ) -> Option<PosQualityBytes> {
-        let quality = find_quality(&seed, challenge_index)?;
+        let quality = find_quality(seed, challenge_index)?;
 
         proof[..seed.len()]
             .iter()

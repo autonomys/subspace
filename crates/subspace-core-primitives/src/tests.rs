@@ -1,25 +1,11 @@
 use crate::crypto::Scalar;
-use crate::{Piece, PLOT_SECTOR_SIZE, U256};
-use num_integer::Roots;
+use crate::U256;
 use rand::thread_rng;
 use rand_core::RngCore;
 
 #[test]
 fn piece_distance_middle() {
     assert_eq!(U256::MIDDLE, U256::MAX / 2);
-}
-
-#[test]
-fn piece_size_multiple_of_scalar() {
-    assert_eq!(Piece::SIZE % Scalar::SAFE_BYTES, 0);
-}
-
-#[test]
-fn sector_side_size_in_scalars_power_of_two() {
-    let sector_size_in_scalars = PLOT_SECTOR_SIZE / Scalar::FULL_BYTES as u64;
-    let sector_side_size_in_scalars = sector_size_in_scalars.sqrt();
-
-    assert!(sector_side_size_in_scalars.is_power_of_two());
 }
 
 #[test]
