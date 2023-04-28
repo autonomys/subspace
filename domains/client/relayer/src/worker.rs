@@ -213,12 +213,21 @@ where
                     "Domain({domain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
                 );
             } else if let Err(err) = message_processor(relayer_id.clone(), &domain_client, hash) {
-                tracing::error!(
-                target: LOG_TARGET,
-                ?err,
-                "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
-            );
-                break;
+                match err {
+                    Error::CoreDomainNonConfirmedOnSystemDomain => {
+                        tracing::info!(
+                            target: LOG_TARGET,
+                            "Waiting for Core Domain[{domain_id:?}] block({number:?}, {hash:?}) to be confirmed on System domain."
+                        )
+                    }
+                    _ => {
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            ?err,
+                            "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
+                        );
+                    }
+                }
             }
 
             // TODO: at the moment the aux storage grows as the chain grows

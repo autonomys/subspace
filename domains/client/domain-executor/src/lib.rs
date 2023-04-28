@@ -171,6 +171,7 @@ pub struct EssentialExecutorParams<
     IBNS,
     CIBNS,
     NSNS,
+    BI,
 > where
     Block: BlockT,
     PBlock: BlockT,
@@ -190,6 +191,7 @@ pub struct EssentialExecutorParams<
     pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
+    pub block_import: Arc<BI>,
 }
 
 /// Returns the active leaves the overseer should start with.

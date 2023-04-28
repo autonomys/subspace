@@ -19,8 +19,11 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-// Make `domain-test-runtime` WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/test_domain_wasm_bundle.rs"));
+// Make `system-domain-test-runtime` WASM runtime available.
+include!(concat!(
+    env!("OUT_DIR"),
+    "/test_system_domain_wasm_bundle.rs"
+));
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]

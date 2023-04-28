@@ -32,9 +32,9 @@ use std::error::Error;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, Solution};
-use subspace_fraud_proof::invalid_state_transition_proof::{
-    InvalidStateTransitionProofVerifier, PrePostStateRootVerifier, SystemDomainExtrinsicsBuilder,
-};
+use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
+use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
+use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
 use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
@@ -114,7 +114,7 @@ impl MockPrimaryNode {
                 client.clone(),
                 executor.clone(),
                 task_manager.spawn_handle(),
-                PrePostStateRootVerifier::new(client.clone()),
+                VerifierClient::new(client.clone()),
                 SystemDomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor.clone())),
             ),
         ));

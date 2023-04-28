@@ -13,6 +13,13 @@ fn main() {
         "core_eth_relay_wasm_bundle.rs",
     );
 
+    subspace_wasm_tools::create_runtime_bundle_inclusion_file(
+        "core-evm-runtime",
+        "CORE_EVM_WASM_BUNDLE",
+        Some(&sp_domains::DomainId::CORE_EVM.link_section_name()),
+        "core_evm_wasm_bundle.rs",
+    );
+
     #[cfg(feature = "std")]
     {
         substrate_wasm_builder::WasmBuilder::new()

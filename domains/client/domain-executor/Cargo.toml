@@ -9,6 +9,7 @@ codec = { package = "parity-scale-codec", version = "3.4.0", features = [ "deriv
 crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }
+domain-client-consensus-relay-chain = { version = "0.1.0", path = "../consensus-relay-chain" }
 domain-client-executor-gossip = { version = "0.1.0", path = "../executor-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
 futures = "0.3.28"

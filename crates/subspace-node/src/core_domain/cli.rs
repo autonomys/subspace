@@ -70,6 +70,10 @@ pub struct CoreDomainCli {
     /// The base path that should be used by the core domain.
     #[clap(skip)]
     pub base_path: Option<PathBuf>,
+
+    /// Additional args for core domain.
+    #[clap(raw = true)]
+    additional_args: Vec<String>,
 }
 
 pub struct AccountId32ToAccountId20Converter;
@@ -88,16 +92,13 @@ impl CoreDomainCli {
     ///
     /// If no explicit base path for the core domain, the default value will be
     /// `base_path/core-domain-{domain_id}`.
-    pub fn new(
-        base_path: Option<PathBuf>,
-        core_payments_domain_args: impl Iterator<Item = String>,
-    ) -> Self {
+    pub fn new(base_path: Option<PathBuf>, core_domain_args: impl Iterator<Item = String>) -> Self {
         let mut cli = Self {
             base_path,
             ..Self::parse_from(
                 [Self::executable_name()]
                     .into_iter()
-                    .chain(core_payments_domain_args),
+                    .chain(core_domain_args),
             )
         };
 
@@ -110,6 +111,12 @@ impl CoreDomainCli {
             .expect("Initialization must succeed as the cell has never been set; qed");
 
         cli
+    }
+
+    pub fn additional_args(&self) -> impl Iterator<Item = String> {
+        [Self::executable_name()]
+            .into_iter()
+            .chain(self.additional_args.clone())
     }
 
     /// Creates domain configuration from Core domain cli.

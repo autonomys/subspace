@@ -19,8 +19,12 @@
 use core_evm_runtime::AccountId as AccountId20;
 use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
 use domain_client_executor::ExecutorStreams;
+use domain_eth_service::provider::EthProvider;
+use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::AccountId as AccountId32;
+use domain_service::providers::DefaultProvider;
+use domain_service::{FullBackend, FullClient};
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -28,7 +32,7 @@ use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
-use sc_service::PartialComponents;
+use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sc_utils::mpsc::tracing_unbounded;
@@ -694,6 +698,7 @@ fn main() -> Result<(), Error> {
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
                                     gossip_message_sink: gossip_msg_sink,
+                                    provider: DefaultProvider,
                                 };
 
                                 let core_domain_node =
@@ -710,6 +715,7 @@ fn main() -> Result<(), Error> {
                                         core_payments_domain_runtime::RuntimeApi,
                                         CorePaymentsDomainExecutorDispatch,
                                         AccountId32,
+                                        _,
                                     >(core_domain_params)
                                         .await?;
 
@@ -746,6 +752,7 @@ fn main() -> Result<(), Error> {
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
                                     gossip_message_sink: gossip_msg_sink,
+                                    provider: DefaultProvider,
                                 };
 
                                 let core_domain_node =
@@ -762,6 +769,7 @@ fn main() -> Result<(), Error> {
                                         core_eth_relay_runtime::RuntimeApi,
                                         CoreEthRelayDomainExecutorDispatch,
                                         AccountId32,
+                                        _,
                                     >(core_domain_params)
                                         .await?;
 
@@ -786,20 +794,37 @@ fn main() -> Result<(), Error> {
                                         ))
                                     })?;
 
+                                let evm_base_path = core_domain_config
+                                    .service_config
+                                    .base_path
+                                    .as_ref()
+                                    .map(|base_path| {
+                                        BasePath::new(
+                                            base_path.config_dir(core_domain_config.service_config.chain_spec.id()),
+                                        )
+                                    });
+                                let eth_provider = EthProvider::<
+                                    core_evm_runtime::TransactionConverter,
+                                    DefaultEthConfig<
+                                        FullClient<
+                                            DomainBlock,
+                                            core_evm_runtime::RuntimeApi,
+                                            CoreEVMDomainExecutorDispatch,
+                                        >,
+                                        FullBackend<DomainBlock>,
+                                    >,
+                                >::new(evm_base_path, core_domain_cli.additional_args());
                                 let core_domain_params = domain_service::CoreDomainParams {
                                     domain_id: core_domain_cli.domain_id,
                                     core_domain_config,
                                     system_domain_client: system_domain_node.client.clone(),
-                                    system_domain_sync_service: system_domain_node
-                                        .sync_service
-                                        .clone(),
+                                    system_domain_sync_service: system_domain_node.sync_service.clone(),
                                     primary_chain_client: primary_chain_node.client.clone(),
-                                    primary_network_sync_oracle: primary_chain_node
-                                        .sync_service
-                                        .clone(),
+                                    primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
                                     gossip_message_sink: gossip_msg_sink,
+                                    provider: eth_provider,
                                 };
 
                                 let core_domain_node =
@@ -816,6 +841,7 @@ fn main() -> Result<(), Error> {
                                         core_evm_runtime::RuntimeApi,
                                         CoreEVMDomainExecutorDispatch,
                                         AccountId20,
+                                        _,
                                     >(core_domain_params)
                                         .await?;
 

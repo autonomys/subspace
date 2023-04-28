@@ -17,8 +17,17 @@ use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
-where
+pub(crate) struct CoreBundleProcessor<
+    Block,
+    SBlock,
+    PBlock,
+    Client,
+    SClient,
+    PClient,
+    Backend,
+    E,
+    BI,
+> where
     Block: BlockT,
 {
     domain_id: DomainId,
@@ -36,11 +45,11 @@ where
         SClient,
         RuntimeApiFull<Client>,
     >,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E> Clone
-    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI> Clone
+    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
 {
@@ -59,8 +68,8 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
-    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI>
+    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -77,7 +86,7 @@ where
         + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b Client: BlockImport<
+    for<'b> &'b BI: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
@@ -103,7 +112,15 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
-        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E>,
+        domain_block_processor: DomainBlockProcessor<
+            Block,
+            PBlock,
+            Client,
+            PClient,
+            Backend,
+            E,
+            BI,
+        >,
     ) -> Self {
         let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
             system_domain_client.clone(),

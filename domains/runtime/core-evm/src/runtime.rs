@@ -334,12 +334,12 @@ parameter_types! {
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
-    pub const CorePaymentsDomainId: DomainId = DomainId::CORE_PAYMENTS;
+    pub const CoreDomainId: DomainId = DomainId::CORE_EVM;
 }
 
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = CorePaymentsDomainId;
+    type SelfDomainId = CoreDomainId;
 
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
@@ -372,7 +372,7 @@ parameter_types! {
 
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = CorePaymentsDomainId;
+    type SelfDomainId = CoreDomainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
@@ -446,6 +446,7 @@ parameter_types! {
     pub BoundDivision: U256 = U256::from(1024);
 }
 
+// TODO: This pallet needs inherents to pass target_gas price for each block.
 impl pallet_dynamic_fee::Config for Runtime {
     type MinGasPriceBoundDivisor = BoundDivision;
 }
@@ -489,14 +490,14 @@ construct_runtime!(
         System: frame_system = 0,
         ExecutivePallet: domain_pallet_executive = 1,
 
+        // monetary stuff
+        Balances: pallet_balances = 2,
+        TransactionPayment: pallet_transaction_payment = 3,
+
         // messenger stuff
         // Note: Indexes should match the indexes of the System domain runtime
         Messenger: pallet_messenger = 6,
         Transporter: pallet_transporter = 7,
-
-        // monetary stuff
-        Balances: pallet_balances = 25,
-        TransactionPayment: pallet_transaction_payment = 26,
 
         // evm stuff
         Ethereum: pallet_ethereum = 50,
@@ -510,7 +511,7 @@ construct_runtime!(
     }
 );
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TransactionConverter;
 
 impl fp_rpc::ConvertTransaction<UncheckedExtrinsic> for TransactionConverter {
@@ -690,7 +691,7 @@ impl_runtime_apis! {
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
         fn domain_id() -> DomainId {
-            CorePaymentsDomainId::get()
+            CoreDomainId::get()
         }
 
         fn relay_confirmation_depth() -> BlockNumber {

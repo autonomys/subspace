@@ -16,6 +16,7 @@ use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
@@ -39,9 +40,8 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use subspace_fraud_proof::invalid_state_transition_proof::{
-    CoreDomainExtrinsicsBuilder, PrePostStateRootVerifier,
-};
+use subspace_fraud_proof::domain_extrinsics_builder::CoreDomainExtrinsicsBuilder;
+use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -132,7 +132,7 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
         NativeElseWasmExecutor<Executor>,
         SpawnTaskHandle,
         Hash,
-        PrePostStateRootVerifier<FullClient<Block, RuntimeApi, Executor>, Block>,
+        VerifierClient<FullClient<Block, RuntimeApi, Executor>, Block>,
         CoreDomainExtrinsicsBuilder<
             PBlock,
             Block,
@@ -164,6 +164,7 @@ fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<ExecutionDispatch>,
+            Arc<FullClient<Block, RuntimeApi, ExecutionDispatch>>,
         ),
     >,
     sc_service::Error,
@@ -230,7 +231,7 @@ where
             primary_chain_client.clone(),
             executor.clone(),
             task_manager.spawn_handle(),
-            PrePostStateRootVerifier::new(client.clone()),
+            VerifierClient::new(client.clone()),
             CoreDomainExtrinsicsBuilder::new(
                 primary_chain_client.clone(),
                 client.clone(),
@@ -254,8 +255,9 @@ where
         system_domain_tx_pre_validator,
     );
 
+    let block_import = client.clone();
     let import_queue = domain_client_consensus_relay_chain::import_queue(
-        client.clone(),
+        block_import.clone(),
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
     )?;
@@ -268,7 +270,7 @@ where
         task_manager,
         transaction_pool,
         select_chain: (),
-        other: (telemetry, telemetry_worker_handle, executor),
+        other: (telemetry, telemetry_worker_handle, executor, block_import),
     };
 
     Ok(params)
@@ -345,7 +347,7 @@ where
         primary_chain_client.clone(),
     )?;
 
-    let (mut telemetry, _telemetry_worker_handle, code_executor) = params.other;
+    let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 
     let client = params.client.clone();
     let backend = params.backend.clone();
@@ -364,24 +366,28 @@ where
             warp_sync_params: None,
         })?;
 
-    let rpc_builder = {
-        let client = client.clone();
-        let transaction_pool = transaction_pool.clone();
-        let chain_spec = system_domain_config.service_config.chain_spec.cloned_box();
-
-        Box::new(move |deny_unsafe, _| {
-            let deps = crate::rpc::FullDeps::new(
-                client.clone(),
-                transaction_pool.clone(),
-                chain_spec.cloned_box(),
-                deny_unsafe,
-            );
-
-            crate::rpc::create_full::<Block, _, _, AccountId>(deps).map_err(Into::into)
-        })
-    };
-
     let is_authority = system_domain_config.service_config.role.is_authority();
+    let rpc_builder = {
+        let deps = crate::rpc::FullDeps {
+            client: client.clone(),
+            pool: transaction_pool.clone(),
+            graph: transaction_pool.pool().clone(),
+            chain_spec: system_domain_config.service_config.chain_spec.cloned_box(),
+            deny_unsafe: DenyUnsafe::Yes,
+            network: network_service.clone(),
+            sync: sync_service.clone(),
+            is_authority,
+            prometheus_registry: system_domain_config
+                .service_config
+                .prometheus_registry()
+                .cloned(),
+            database_source: system_domain_config.service_config.database.clone(),
+            task_spawner: task_manager.spawn_handle(),
+            backend: backend.clone(),
+        };
+
+        Box::new(move |_, _| crate::rpc::create_full(deps.clone()).map_err(Into::into))
+    };
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         rpc_builder,
@@ -403,11 +409,29 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream", 100);
 
-    let domain_confirmation_depth = primary_chain_client
+    let primary_chain_best_hash = primary_chain_client.info().best_hash;
+    let receipts_api_version = primary_chain_client
         .runtime_api()
-        .receipts_pruning_depth(primary_chain_client.info().best_hash)
-        .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
-        .into();
+        .api_version::<dyn ReceiptsApi<Block, Hash>>(primary_chain_best_hash)
+        .ok()
+        .flatten()
+        .ok_or_else(|| {
+            sp_blockchain::Error::RuntimeApiError(sp_api::ApiError::Application(
+                format!("Could not find `ReceiptsApi` api version at {primary_chain_best_hash}.",)
+                    .into(),
+            ))
+        })?;
+
+    let domain_confirmation_depth = if receipts_api_version >= 2 {
+        primary_chain_client
+            .runtime_api()
+            .receipts_pruning_depth(primary_chain_best_hash)
+            .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
+            .into()
+    } else {
+        // TODO: Remove the api version check once gemini-3d is retired.
+        256u32
+    };
 
     let executor = SystemExecutor::new(
         Box::new(task_manager.spawn_essential_handle()),
@@ -425,6 +449,7 @@ where
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
             domain_confirmation_depth,
+            block_import,
         },
     )
     .await?;
