@@ -1,12 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
 use memmap2::Mmap;
-use rand::{thread_rng, Rng};
+use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::time::Instant;
-use std::{env, fs, io};
+use std::{env, fs};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -44,7 +44,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::default();
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
-    thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
+    StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let erasure_coding = ErasureCoding::new(
@@ -105,9 +105,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     } else {
         println!("Plotting one sector...");
 
-        let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
+        let mut plotted_sector_bytes = vec![0; sector_size];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
+        let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
             sector_index,
             &archived_history_segment,
@@ -117,7 +118,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &erasure_coding,
             pieces_in_sector,
             &mut plotted_sector_bytes,
-            &mut io::sink(),
+            &mut plotted_sector_metadata_bytes,
             Default::default(),
         ))
         .unwrap();
@@ -144,10 +145,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 black_box(sector_index),
                 black_box(&global_challenge),
                 black_box(solution_range),
-                black_box(&mut io::Cursor::new(&plotted_sector_bytes)),
+                black_box(&plotted_sector_bytes),
                 black_box(&plotted_sector.sector_metadata),
-            )
-            .unwrap();
+            );
         })
     });
 
@@ -196,10 +196,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                             black_box(sector_index),
                             black_box(&global_challenge),
                             black_box(solution_range),
-                            black_box(&mut io::Cursor::new(sector)),
+                            black_box(sector),
                             black_box(&plotted_sector.sector_metadata),
-                        )
-                        .unwrap();
+                        );
                     }
                 }
                 start.elapsed()

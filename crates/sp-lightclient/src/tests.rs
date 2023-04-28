@@ -19,8 +19,8 @@ use sp_runtime::app_crypto::UncheckedFrom;
 use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
+use std::iter;
 use std::num::NonZeroUsize;
-use std::{io, iter};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -31,7 +31,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::sector_size;
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -144,9 +144,10 @@ fn valid_header(
     let sector_size = sector_size(pieces_in_sector);
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
-        let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
+        let mut plotted_sector_bytes = vec![0; sector_size];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
+        let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
             sector_index,
             &farmer_parameters.archived_segment.pieces,
@@ -156,7 +157,7 @@ fn valid_header(
             &farmer_parameters.erasure_coding,
             pieces_in_sector,
             &mut plotted_sector_bytes,
-            &mut io::sink(),
+            &mut plotted_sector_metadata_bytes,
             Default::default(),
         ))
         .unwrap();
@@ -168,10 +169,9 @@ fn valid_header(
             sector_index,
             &global_challenge,
             SolutionRange::MAX,
-            &mut io::Cursor::new(&plotted_sector_bytes),
+            &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
-        )
-        .unwrap();
+        );
 
         let Some(solution_candidates) = maybe_solution_candidates else {
             // Sector didn't have any solutions
@@ -179,11 +179,10 @@ fn valid_header(
         };
 
         let solution = solution_candidates
-            .into_iter::<_, _, PosTable>(
+            .into_iter::<_, PosTable>(
                 &public_key,
                 &farmer_parameters.kzg,
                 &farmer_parameters.erasure_coding,
-                &mut io::Cursor::new(&plotted_sector_bytes),
             )
             .unwrap()
             .next()
