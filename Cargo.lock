@@ -914,7 +914,7 @@ dependencies = [
 [[package]]
 name = "blst_from_scratch"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=fad8d358548301424f20f7fc7aaa02e75041d03b#fad8d358548301424f20f7fc7aaa02e75041d03b"
+source = "git+https://github.com/subspace/rust-kzg?rev=b71e7ace37420db889488cbd64d53eea38176111#b71e7ace37420db889488cbd64d53eea38176111"
 dependencies = [
  "blst",
  "kzg",
@@ -923,6 +923,7 @@ dependencies = [
  "once_cell",
  "rand 0.8.5",
  "rayon",
+ "smallvec",
 ]
 
 [[package]]
@@ -4702,7 +4703,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=fad8d358548301424f20f7fc7aaa02e75041d03b#fad8d358548301424f20f7fc7aaa02e75041d03b"
+source = "git+https://github.com/subspace/rust-kzg?rev=b71e7ace37420db889488cbd64d53eea38176111#b71e7ace37420db889488cbd64d53eea38176111"
 dependencies = [
  "blst",
  "sha2 0.10.6",
