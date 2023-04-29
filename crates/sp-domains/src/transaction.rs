@@ -16,12 +16,14 @@ pub enum InvalidTransactionCode {
 }
 
 impl From<InvalidTransactionCode> for InvalidTransaction {
+    #[inline]
     fn from(invalid_code: InvalidTransactionCode) -> Self {
         InvalidTransaction::Custom(invalid_code as u8)
     }
 }
 
 impl From<InvalidTransactionCode> for TransactionValidity {
+    #[inline]
     fn from(invalid_code: InvalidTransactionCode) -> Self {
         InvalidTransaction::Custom(invalid_code as u8).into()
     }

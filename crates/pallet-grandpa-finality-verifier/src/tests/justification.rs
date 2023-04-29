@@ -35,6 +35,7 @@ pub(crate) struct JustificationGeneratorParams<H> {
 }
 
 impl<H: HeaderT> Default for JustificationGeneratorParams<H> {
+    #[inline]
     fn default() -> Self {
         Self {
             header: test_header(One::one()),

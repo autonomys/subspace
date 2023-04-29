@@ -2,8 +2,10 @@ use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 use alloc::boxed::Box;
 use core::iter::Step;
 use core::mem;
+use core::num::NonZeroU64;
 use derive_more::{
-    Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, Mul, MulAssign, Sub, SubAssign,
+    Add, AddAssign, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul, MulAssign, Sub,
+    SubAssign,
 };
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -40,28 +42,78 @@ use serde::{Deserialize, Serialize};
 pub struct SegmentIndex(u64);
 
 impl Step for SegmentIndex {
+    #[inline]
     fn steps_between(start: &Self, end: &Self) -> Option<usize> {
         u64::steps_between(&start.0, &end.0)
     }
 
+    #[inline]
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
         u64::forward_checked(start.0, count).map(Self)
     }
 
+    #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u64::backward_checked(start.0, count).map(Self)
     }
 }
 
 impl const From<u64> for SegmentIndex {
+    #[inline]
     fn from(original: u64) -> Self {
         Self(original)
     }
 }
 
 impl const From<SegmentIndex> for u64 {
+    #[inline]
     fn from(original: SegmentIndex) -> Self {
         original.0
+    }
+}
+
+/// Size of blockchain history in segments.
+#[derive(
+    Debug,
+    Display,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    From,
+    Into,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(transparent)]
+pub struct HistorySize(NonZeroU64);
+
+impl From<SegmentIndex> for HistorySize {
+    #[inline]
+    fn from(value: SegmentIndex) -> Self {
+        Self(NonZeroU64::new(value.0 + 1).expect("Not zero; qed"))
+    }
+}
+
+impl HistorySize {
+    /// Size of blockchain history in pieces.
+    pub const fn in_pieces(&self) -> NonZeroU64 {
+        self.0.saturating_mul(
+            NonZeroU64::new(ArchivedHistorySegment::NUM_PIECES as u64).expect("Not zero; qed"),
+        )
+    }
+
+    /// Segment index that corresponds to this history size.
+    pub const fn segment_index(&self) -> SegmentIndex {
+        SegmentIndex::from(self.0.get() - 1)
     }
 }
 
@@ -97,12 +149,14 @@ impl SegmentIndex {
 pub struct RecordedHistorySegment([RawRecord; Self::NUM_RAW_RECORDS]);
 
 impl Default for RecordedHistorySegment {
+    #[inline]
     fn default() -> Self {
         Self([RawRecord::default(); Self::NUM_RAW_RECORDS])
     }
 }
 
 impl AsRef<[u8]> for RecordedHistorySegment {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let raw_records: &[[u8; RawRecord::SIZE]] = unsafe { mem::transmute(self.0.as_slice()) };
@@ -111,6 +165,7 @@ impl AsRef<[u8]> for RecordedHistorySegment {
 }
 
 impl AsMut<[u8]> for RecordedHistorySegment {
+    #[inline]
     fn as_mut(&mut self) -> &mut [u8] {
         // SAFETY: Same memory layout due to `#[repr(transparent)]`
         let raw_records: &mut [[u8; RawRecord::SIZE]] =
@@ -132,6 +187,7 @@ impl RecordedHistorySegment {
     pub const SIZE: usize = RawRecord::SIZE * Self::NUM_RAW_RECORDS;
 
     /// Create boxed value without hitting stack overflow
+    #[inline]
     pub fn new_boxed() -> Box<Self> {
         // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
         // SAFETY: Data structure filled with zeroes is a valid invariant
@@ -146,12 +202,14 @@ impl RecordedHistorySegment {
 pub struct ArchivedHistorySegment(FlatPieces);
 
 impl Default for ArchivedHistorySegment {
+    #[inline]
     fn default() -> Self {
         Self(FlatPieces::new(Self::NUM_PIECES))
     }
 }
 
 impl MaxEncodedLen for ArchivedHistorySegment {
+    #[inline]
     fn max_encoded_len() -> usize {
         Self::SIZE
     }

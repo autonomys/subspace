@@ -1,14 +1,16 @@
 use futures::channel::{mpsc, oneshot};
 use futures::SinkExt;
-use subspace_core_primitives::crypto::ScalarLegacy;
-use subspace_core_primitives::sector_codec::SectorCodec;
-use subspace_core_primitives::{Piece, SectorIndex, PLOT_SECTOR_SIZE};
-use tracing::warn;
+use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
+use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::reading;
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_proof_of_space::Table;
+use tracing::{error, warn};
 
 #[derive(Debug)]
 pub(super) struct ReadPieceRequest {
     pub(super) sector_index: SectorIndex,
-    pub(super) piece_offset: u64,
+    pub(super) piece_offset: PieceOffset,
     pub(super) response_sender: oneshot::Sender<Option<Piece>>,
 }
 
@@ -34,7 +36,7 @@ impl PieceReader {
     pub async fn read_piece(
         &mut self,
         sector_index: SectorIndex,
-        piece_offset: u64,
+        piece_offset: PieceOffset,
     ) -> Option<Piece> {
         let (response_sender, response_receiver) = oneshot::channel();
         self.read_piece_sender
@@ -49,14 +51,21 @@ impl PieceReader {
     }
 }
 
-pub(super) fn read_piece(
-    sector_index: SectorIndex,
-    piece_offset: u64,
-    sector_count: u64,
+#[allow(clippy::too_many_arguments)]
+pub(super) fn read_piece<PosTable>(
+    public_key: &PublicKey,
+    piece_offset: PieceOffset,
+    pieces_in_sector: u16,
+    sector_count: usize,
     first_sector_index: SectorIndex,
-    sector_codec: &SectorCodec,
+    sector_metadata: &SectorMetadata,
     global_plot: &[u8],
-) -> Option<Piece> {
+    erasure_coding: &ErasureCoding,
+) -> Option<Piece>
+where
+    PosTable: Table,
+{
+    let sector_index = sector_metadata.sector_index;
     if sector_index < first_sector_index {
         warn!(
             %sector_index,
@@ -67,7 +76,7 @@ pub(super) fn read_piece(
         );
         return None;
     }
-    let sector_offset = sector_index - first_sector_index;
+    let sector_offset = (sector_index - first_sector_index) as usize;
     // Sector must be plotted
     if sector_offset >= sector_count {
         warn!(
@@ -80,7 +89,7 @@ pub(super) fn read_piece(
         return None;
     }
     // Piece must be within sector
-    if piece_offset >= PLOT_SECTOR_SIZE / Piece::SIZE as u64 {
+    if u16::from(piece_offset) >= pieces_in_sector {
         warn!(
             %sector_index,
             %piece_offset,
@@ -91,37 +100,30 @@ pub(super) fn read_piece(
         return None;
     }
 
-    let piece = {
-        let sector_bytes = &global_plot[(sector_offset * PLOT_SECTOR_SIZE) as usize..]
-            [..PLOT_SECTOR_SIZE as usize];
+    let sector_id = SectorId::new(public_key.hash(), sector_index);
+    let sector_size = sector_size(pieces_in_sector);
+    // TODO: Would be nicer to have list of plots here and just index it
+    let sector = &global_plot[sector_size * sector_offset..][..sector_size];
 
-        let mut sector_bytes_scalars = sector_bytes
-            .chunks_exact(ScalarLegacy::FULL_BYTES)
-            .map(|bytes| {
-                ScalarLegacy::from(
-                    <&[u8; ScalarLegacy::FULL_BYTES]>::try_from(bytes)
-                        .expect("Chunked into scalar full bytes above; qed"),
-                )
-            })
-            .collect::<Vec<_>>();
-        sector_codec.decode(&mut sector_bytes_scalars).ok()?;
-
-        let scalars_in_piece = Piece::SIZE / ScalarLegacy::SAFE_BYTES;
-        let piece_scalars =
-            &sector_bytes_scalars[piece_offset as usize * scalars_in_piece..][..scalars_in_piece];
-
-        let mut piece = Piece::default();
-        piece
-            .chunks_exact_mut(ScalarLegacy::SAFE_BYTES)
-            .zip(piece_scalars)
-            .for_each(|(output, input)| {
-                // After decoding we get piece scalar bytes padded with zero byte, so we can read
-                // the whole thing first and then copy just first `Scalar::SAFE_BYTES` we actually
-                // care about
-                output.copy_from_slice(&input.to_bytes()[..ScalarLegacy::SAFE_BYTES]);
-            });
-
-        piece
+    let piece = match reading::read_piece::<PosTable>(
+        piece_offset,
+        &sector_id,
+        sector_metadata,
+        sector,
+        erasure_coding,
+    ) {
+        Ok(piece) => piece,
+        Err(error) => {
+            error!(
+                %sector_index,
+                %piece_offset,
+                %sector_count,
+                %first_sector_index,
+                %error,
+                "Failed to read piece from sector"
+            );
+            return None;
+        }
     };
 
     Some(piece)

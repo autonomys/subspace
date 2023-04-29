@@ -25,6 +25,7 @@ sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace", 
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
+subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding", default-features = false }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
 
@@ -35,6 +36,7 @@ rand = { version = "0.8.5", features = ["min_const_gen"] }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving"}
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 
 [features]
 default = ["std"]
@@ -48,6 +50,5 @@ std = [
     "sp-runtime/std",
     "sp-std/std",
     "subspace-core-primitives/std",
-    "subspace-solving/std",
     "subspace-verification/std"
 ]

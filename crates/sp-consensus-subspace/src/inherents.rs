@@ -115,6 +115,7 @@ impl InherentDataProvider {
 impl sp_std::ops::Deref for InherentDataProvider {
     type Target = Slot;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data.slot
     }

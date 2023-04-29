@@ -85,6 +85,7 @@ mod pallet {
     }
 
     impl<T> From<BundleError> for Error<T> {
+        #[inline]
         fn from(e: BundleError) -> Self {
             Self::Bundle(e)
         }
@@ -107,6 +108,7 @@ mod pallet {
     }
 
     impl<T> From<ReceiptError> for Error<T> {
+        #[inline]
         fn from(error: ReceiptError) -> Self {
             match error {
                 ReceiptError::MissingParent => {

@@ -23,32 +23,43 @@ use crate::{
 };
 use frame_support::pallet_prelude::Weight;
 use frame_support::parameter_types;
-use frame_support::traits::{ConstU128, ConstU32, ConstU64, GenesisBuild, OnInitialize};
+use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, GenesisBuild, OnInitialize};
+use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-use sp_consensus_subspace::{FarmerSignature, KzgExtension, SignedVote, Vote};
+use sp_consensus_subspace::{FarmerSignature, KzgExtension, PosExtension, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::H256;
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
-use std::num::NonZeroU64;
+use std::iter;
 use std::sync::Once;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, kzg, ScalarLegacy};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, Piece, PieceArray, PieceIndex,
-    Randomness, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
-    SolutionRange,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, HistorySize, LastArchivedBlock,
+    Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange,
 };
-use subspace_solving::{create_chunk_signature, derive_global_challenge, REWARD_SIGNING_CONTEXT};
+use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_proof_of_space::shim::ShimTable;
+use subspace_solving::REWARD_SIGNING_CONTEXT;
+
+type PosTable = ShimTable;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+
+const MAX_PIECES_IN_SECTOR: u16 = 1;
 
 frame_support::construct_runtime!(
     pub struct Test
@@ -163,13 +174,14 @@ impl Config for Test {
     type ExpectedBlockTime = ConstU64<1>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
+    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
-    type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
 }
 
 pub fn go_to_block(
@@ -197,13 +209,14 @@ pub fn go_to_block(
             public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             reward_address,
             sector_index: 0,
-            total_pieces: NonZeroU64::new(1).unwrap(),
-            piece_offset: PieceIndex::default(),
-            record_commitment_hash: Default::default(),
-            piece_witness: Default::default(),
-            chunk_offset: 0,
+            history_size: HistorySize::from(SegmentIndex::ZERO),
+            piece_offset: PieceOffset::default(),
+            record_commitment: Default::default(),
+            record_witness: Default::default(),
             chunk,
-            chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
+            chunk_witness: Default::default(),
+            audit_chunk_offset: 0,
+            proof_of_space: Default::default(),
         },
     );
 
@@ -253,6 +266,7 @@ pub fn new_test_ext() -> TestExternalities {
     let mut ext = TestExternalities::from(storage);
 
     ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
+    ext.register_extension(PosExtension::new::<PosTable>());
 
     ext
 }
@@ -266,12 +280,12 @@ pub fn generate_equivocation_proof(
     let current_slot = CurrentSlot::<Test>::get();
 
     let chunk = {
-        let mut chunk_bytes = [0; ScalarLegacy::SAFE_BYTES];
+        let mut chunk_bytes = [0; Scalar::SAFE_BYTES];
         chunk_bytes.as_mut().iter_mut().for_each(|byte| {
             *byte = (current_block % 8) as u8;
         });
 
-        ScalarLegacy::from(&chunk_bytes)
+        Scalar::from(&chunk_bytes)
     };
 
     let public_key = FarmerPublicKey::unchecked_from(keypair.public.to_bytes());
@@ -284,13 +298,14 @@ pub fn generate_equivocation_proof(
                 public_key: public_key.clone(),
                 reward_address,
                 sector_index: 0,
-                total_pieces: NonZeroU64::new(1).unwrap(),
+                history_size: HistorySize::from(SegmentIndex::ZERO),
                 piece_offset,
-                record_commitment_hash: Default::default(),
-                piece_witness: Default::default(),
-                chunk_offset: 0,
+                record_commitment: Default::default(),
+                record_witness: Default::default(),
                 chunk,
-                chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
+                chunk_witness: Default::default(),
+                audit_chunk_offset: 0,
+                proof_of_space: Default::default(),
             },
         );
         System::reset_events();
@@ -317,8 +332,8 @@ pub fn generate_equivocation_proof(
     };
 
     // generate two headers at the current block
-    let mut h1 = make_header(PieceIndex::ZERO, 0);
-    let mut h2 = make_header(PieceIndex::ONE, 1);
+    let mut h1 = make_header(PieceOffset::ZERO, 0);
+    let mut h2 = make_header(PieceOffset::ONE, 1);
 
     seal_header(&mut h1);
     seal_header(&mut h2);
@@ -346,8 +361,7 @@ pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
     }
 }
 
-pub fn create_archived_segment() -> NewArchivedSegment {
-    let kzg = Kzg::new(kzg::embedded_kzg_settings());
+pub fn create_archived_segment(kzg: Kzg) -> NewArchivedSegment {
     let mut archiver = Archiver::new(kzg).unwrap();
 
     let mut block = vec![0u8; RecordedHistorySegment::SIZE];
@@ -365,40 +379,91 @@ pub fn create_signed_vote(
     height: u64,
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
-    global_randomnesses: &Randomness,
-    piece: &PieceArray,
+    global_randomness: &Randomness,
+    archived_history_segment: &ArchivedHistorySegment,
     reward_address: <Test as frame_system::Config>::AccountId,
+    kzg: &Kzg,
+    erasure_coding: &ErasureCoding,
+    solution_range: SolutionRange,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
+    let public_key = PublicKey::from(keypair.public.to_bytes());
 
-    // TODO: global challenge will be necessary in the future when we actually verify the chunk
-    let _global_challenge = derive_global_challenge(global_randomnesses, slot.into());
-
-    let chunk = Default::default();
-
-    let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
-        height,
-        parent_hash,
-        slot,
-        solution: Solution {
-            public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
-            reward_address,
-            sector_index: 0,
-            total_pieces: NonZeroU64::new(1).unwrap(),
-            piece_offset: PieceIndex::default(),
-            record_commitment_hash: blake2b_256_254_hash_to_scalar(piece.commitment().as_ref()),
-            piece_witness: Witness::try_from_bytes(piece.witness()).unwrap(),
-            chunk_offset: 0,
-            chunk,
-            chunk_signature: create_chunk_signature(keypair, &chunk.to_bytes()),
-        },
+    let farmer_protocol_info = FarmerProtocolInfo {
+        history_size: HistorySize::from(SegmentIndex::ZERO),
+        max_pieces_in_sector: MAX_PIECES_IN_SECTOR,
+        sector_expiration: SegmentIndex::ONE,
     };
+    let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
+    let sector_size = sector_size(pieces_in_sector);
 
-    let signature = FarmerSignature::unchecked_from(
-        keypair
-            .sign(reward_signing_context.bytes(vote.hash().as_ref()))
-            .to_bytes(),
-    );
+    for sector_index in iter::from_fn(|| Some(rand::random())) {
+        let mut plotted_sector_bytes = vec![0; sector_size];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
-    SignedVote { vote, signature }
+        let plotted_sector = block_on(plot_sector::<_, PosTable>(
+            &public_key,
+            sector_index,
+            archived_history_segment,
+            PieceGetterRetryPolicy::default(),
+            &farmer_protocol_info,
+            kzg,
+            erasure_coding,
+            pieces_in_sector,
+            &mut plotted_sector_bytes,
+            &mut plotted_sector_metadata_bytes,
+            Default::default(),
+        ))
+        .unwrap();
+
+        let maybe_solution_candidates = audit_sector(
+            &public_key,
+            sector_index,
+            &global_randomness.derive_global_challenge(slot.into()),
+            solution_range,
+            &plotted_sector_bytes,
+            &plotted_sector.sector_metadata,
+        );
+
+        let Some(solution_candidates) = maybe_solution_candidates else {
+            // Sector didn't have any solutions
+            continue;
+        };
+
+        let solution = solution_candidates
+            .into_iter::<_, PosTable>(&reward_address, kzg, erasure_coding)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+
+        let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
+            height,
+            parent_hash,
+            slot,
+            solution: Solution {
+                public_key: FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
+                reward_address: solution.reward_address,
+                sector_index: solution.sector_index,
+                history_size: solution.history_size,
+                piece_offset: solution.piece_offset,
+                record_commitment: solution.record_commitment,
+                record_witness: solution.record_witness,
+                chunk: solution.chunk,
+                chunk_witness: solution.chunk_witness,
+                audit_chunk_offset: solution.audit_chunk_offset,
+                proof_of_space: solution.proof_of_space,
+            },
+        };
+
+        let signature = FarmerSignature::unchecked_from(
+            keypair
+                .sign(reward_signing_context.bytes(vote.hash().as_ref()))
+                .to_bytes(),
+        );
+
+        return SignedVote { vote, signature };
+    }
+
+    unreachable!("Will find solution before exhausting u64")
 }

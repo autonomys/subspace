@@ -29,8 +29,12 @@ harness = false
 [features]
 default = ["std"]
 std = [
-    "subspace-chiapos",
     "subspace-core-primitives/std",
+]
+# Enable Chia proof of space support, only works in `std` environment for now
+chia = [
+    "std",
+    "subspace-chiapos",
 ]
 # Enables shim proof of space that works much faster than original and can be used for testing purposes to reduce memory
 # and CPU usage

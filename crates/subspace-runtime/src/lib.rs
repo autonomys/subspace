@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_option)]
+#![feature(const_num_from_num, const_option, const_trait_impl)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -42,7 +42,7 @@ pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
-use core::num::NonZeroU64;
+use core::mem;
 use core::time::Duration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
@@ -69,9 +69,11 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
+    SolutionRange,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -83,6 +85,9 @@ sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
     }
 }
+
+/// How many pieces one sector is supposed to contain (max)
+const MAX_PIECES_IN_SECTOR: u16 = 32;
 
 // To learn more about runtime versioning and what each of the following value means:
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning
@@ -127,11 +132,11 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 1000;
+const SLOT_DURATION: u64 = 3000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
-const SLOT_PROBABILITY: (u64, u64) = (1, 6);
+const SLOT_PROBABILITY: (u64, u64) = (3, 6);
 
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
@@ -143,8 +148,16 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
 // We assume initial plot size starts with the a single sector, where we effectively audit each
 // chunk of every piece.
-const INITIAL_SOLUTION_RANGE: SolutionRange =
-    SolutionRange::MAX / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0;
+const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
+    // Account for number of pieces plotted initially (assuming 1 sector)
+    / SolutionRange::from(MAX_PIECES_IN_SECTOR)
+    // Account for slot probability
+    / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
+    // Account for probability of hitting occupied s-bucket in sector (for one piece)
+    / Record::NUM_S_BUCKETS as u64 * Record::NUM_CHUNKS as u64
+    // Account for how many audit chunks each chunk has
+    / mem::size_of::<SolutionRange>() as u64)
+    .saturating_mul(Scalar::FULL_BYTES as u64);
 
 /// Number of votes expected per block.
 ///
@@ -251,6 +264,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -312,12 +326,19 @@ pub struct TotalSpacePledged;
 impl Get<u128> for TotalSpacePledged {
     fn get() -> u128 {
         // Operations reordered to avoid data loss, but essentially are:
-        // u64::MAX * SlotProbability / (solution_range / PIECE_SIZE)
+        // SolutionRange::MAX * SlotProbability
+        //     / solution_range * Piece::SIZE
+        //     / Record::NUM_S_BUCKETS * Record::NUM_CHUNKS
+        //     / SolutionRange::SIZE * Scalar::FULL_BYTES
         u128::from(u64::MAX)
             .saturating_mul(Piece::SIZE as u128)
             .saturating_mul(u128::from(SlotProbability::get().0))
+            / Record::NUM_S_BUCKETS as u128
+            * Record::NUM_CHUNKS as u128
             / u128::from(Subspace::solution_ranges().current)
             / u128::from(SlotProbability::get().1)
+            * Scalar::FULL_BYTES as u128
+            / mem::size_of::<SolutionRange>() as u128
     }
 }
 
@@ -529,6 +550,7 @@ fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
+    #[inline]
     fn from(farmer_public_key: FarmerPublicKey) -> Self {
         Self(
             farmer_public_key
@@ -540,6 +562,7 @@ impl From<FarmerPublicKey> for RewardAddress {
 }
 
 impl From<RewardAddress> for AccountId32 {
+    #[inline]
     fn from(reward_address: RewardAddress) -> Self {
         reward_address.0.into()
     }
@@ -632,8 +655,12 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn total_pieces() -> NonZeroU64 {
-            <pallet_subspace::Pallet<Runtime>>::total_pieces()
+        fn history_size() -> HistorySize {
+            <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
         }
 
         fn slot_duration() -> Duration {

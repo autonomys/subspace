@@ -12,7 +12,7 @@ use tracing::{debug, error, info, trace, warn};
 const PARALLELISM_LEVEL: usize = 20;
 
 #[derive(Debug, Error)]
-pub enum SegmentReconstructionError {
+pub(crate) enum SegmentReconstructionError {
     /// Not enough pieces to reconstruct a segment
     #[error("Not enough pieces to reconstruct a segment")]
     NotEnoughPiecesAcquired,
@@ -22,7 +22,7 @@ pub enum SegmentReconstructionError {
     PieceRetrievalFailed(#[from] ReconstructorError),
 }
 
-pub async fn recover_missing_piece<PG: PieceGetter>(
+pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     piece_getter: &PG,
     kzg: Kzg,
     missing_piece_index: PieceIndex,

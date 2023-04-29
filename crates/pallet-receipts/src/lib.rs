@@ -200,6 +200,7 @@ pub enum Error {
 }
 
 impl From<FraudProofError> for Error {
+    #[inline]
     fn from(e: FraudProofError) -> Self {
         Self::FraudProof(e)
     }

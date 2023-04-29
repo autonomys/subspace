@@ -13,6 +13,7 @@ pub enum MultihashCode {
 }
 
 impl From<MultihashCode> for u64 {
+    #[inline]
     fn from(code: MultihashCode) -> Self {
         code as u64
     }
@@ -21,6 +22,7 @@ impl From<MultihashCode> for u64 {
 impl TryFrom<u64> for MultihashCode {
     type Error = Box<dyn Error>;
 
+    #[inline]
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         match value {
             x if x == MultihashCode::PieceIndexHash as u64 => Ok(MultihashCode::PieceIndexHash),

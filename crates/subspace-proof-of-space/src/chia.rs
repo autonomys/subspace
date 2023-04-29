@@ -1,6 +1,6 @@
 //! Chia proof of space implementation
 
-use crate::{Quality, Table};
+use crate::{PosTableType, Quality, Table};
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
 
 /// Abstraction that represents quality of the solution in the table.
@@ -31,6 +31,8 @@ pub struct ChiaTable {
 }
 
 impl Table for ChiaTable {
+    const TABLE_TYPE: PosTableType = PosTableType::Chia;
+
     type Quality<'a> = ChiaQuality<'a>;
 
     fn generate(seed: &PosSeed) -> ChiaTable {

@@ -4,7 +4,7 @@ use crate::archiver::Segment;
 use alloc::vec::Vec;
 use core::ops::{Deref, DerefMut};
 use parity_scale_codec::{Encode, Output};
-#[cfg(feature = "rayon")]
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -24,12 +24,14 @@ pub(super) struct IncrementalRecordCommitmentsState {
 impl Deref for IncrementalRecordCommitmentsState {
     type Target = Vec<Commitment>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.state
     }
 }
 
 impl DerefMut for IncrementalRecordCommitmentsState {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.state
     }
@@ -76,9 +78,9 @@ struct IncrementalRecordCommitmentsProcessor<'a> {
 
 impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
     fn drop(&mut self) {
-        #[cfg(not(feature = "rayon"))]
+        #[cfg(not(feature = "parallel"))]
         let raw_records_bytes = self.buffer.chunks_exact(RawRecord::SIZE);
-        #[cfg(feature = "rayon")]
+        #[cfg(feature = "parallel")]
         let raw_records_bytes = self.buffer.par_chunks_exact(RawRecord::SIZE);
 
         let iter = raw_records_bytes
@@ -105,11 +107,11 @@ impl<'a> Drop for IncrementalRecordCommitmentsProcessor<'a> {
                     .expect("KZG instance must be configured to support this many scalars; qed")
             });
 
-        #[cfg(not(feature = "rayon"))]
+        #[cfg(not(feature = "parallel"))]
         iter.collect_into(&mut self.incremental_record_commitments.state);
         // TODO: `collect_into_vec()`, unfortunately, truncates input, which is not what we want
         //  can be unified when https://github.com/rayon-rs/rayon/issues/1039 is resolved
-        #[cfg(feature = "rayon")]
+        #[cfg(feature = "parallel")]
         self.incremental_record_commitments.par_extend(iter);
     }
 }

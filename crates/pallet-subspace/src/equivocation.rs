@@ -98,6 +98,7 @@ pub struct EquivocationHandler<R, L> {
 }
 
 impl<R, L> Default for EquivocationHandler<R, L> {
+    #[inline]
     fn default() -> Self {
         Self {
             _phantom: Default::default(),

@@ -30,6 +30,7 @@ pub struct Witness {
 pub struct Blake2b256Algorithm(Blake2b<U32>);
 
 impl Default for Blake2b256Algorithm {
+    #[inline]
     fn default() -> Self {
         Self(Blake2b::new())
     }

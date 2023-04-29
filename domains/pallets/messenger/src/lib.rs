@@ -315,6 +315,7 @@ mod pallet {
 
     #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
+        #[inline]
         fn default() -> Self {
             Self {
                 relayers: Default::default(),

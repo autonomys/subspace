@@ -25,10 +25,9 @@ pub mod system;
 
 use cfg_if::cfg_if;
 use codec::{Decode, Encode, Error, Input, MaxEncodedLen};
-use core::num::NonZeroU64;
 use frame_support::dispatch::RawOrigin;
 use frame_support::parameter_types;
-use frame_support::traits::{CallerTrait, ConstU32, ConstU64, CrateVersion};
+use frame_support::traits::{CallerTrait, ConstU16, ConstU32, ConstU64, CrateVersion};
 use frame_support::weights::{RuntimeDbWeight, Weight};
 use frame_system::limits::{BlockLength, BlockWeights};
 use scale_info::TypeInfo;
@@ -54,7 +53,7 @@ use sp_trie::{PrefixedMemoryDB, StorageProof, Trie, TrieMut};
 #[cfg(any(feature = "std", test))]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_core_primitives::{SegmentCommitment, SegmentIndex};
+use subspace_core_primitives::{HistorySize, SegmentCommitment, SegmentIndex};
 
 // Include the WASM binary
 #[cfg(feature = "std")]
@@ -82,6 +81,9 @@ pub fn wasm_binary_logging_disabled_unwrap() -> &'static [u8] {
 		 disabled.",
     )
 }
+
+// Smaller value for testing purposes
+const MAX_PIECES_IN_SECTOR: u16 = 32;
 
 /// Test runtime version.
 #[sp_version::runtime_version]
@@ -300,6 +302,7 @@ impl<B: BlockT> codec::EncodeLike for DecodeFails<B> {}
 
 impl<B: BlockT> Default for DecodeFails<B> {
     /// Create a new instance.
+    #[inline]
     fn default() -> DecodeFails<B> {
         DecodeFails {
             _phantom: Default::default(),
@@ -430,6 +433,7 @@ impl GetRuntimeBlockType for Runtime {
 pub struct RuntimeOrigin;
 
 impl From<RawOrigin<<Runtime as frame_system::Config>::AccountId>> for RuntimeOrigin {
+    #[inline]
     fn from(_: RawOrigin<<Runtime as frame_system::Config>::AccountId>) -> Self {
         unimplemented!("Not required in tests!")
     }
@@ -446,6 +450,7 @@ impl CallerTrait<<Runtime as frame_system::Config>::AccountId> for RuntimeOrigin
 }
 
 impl From<RuntimeOrigin> for Result<frame_system::Origin<Runtime>, RuntimeOrigin> {
+    #[inline]
     fn from(_origin: RuntimeOrigin) -> Result<frame_system::Origin<Runtime>, RuntimeOrigin> {
         unimplemented!("Not required in tests!")
     }
@@ -508,12 +513,14 @@ impl frame_support::traits::OriginTrait for RuntimeOrigin {
 pub struct RuntimeEvent;
 
 impl From<frame_system::Event<Runtime>> for RuntimeEvent {
+    #[inline]
     fn from(_evt: frame_system::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
 }
 
 impl From<pallet_subspace::Event<Runtime>> for RuntimeEvent {
+    #[inline]
     fn from(_evt: pallet_subspace::Event<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
@@ -583,6 +590,7 @@ parameter_types! {
 }
 
 impl From<frame_system::Call<Runtime>> for Extrinsic {
+    #[inline]
     fn from(_: frame_system::Call<Runtime>) -> Self {
         unimplemented!("Not required in tests!")
     }
@@ -640,6 +648,7 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConstU64<10>;
     type ExpectedVotesPerBlock = ConstU32<9>;
+    type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
     type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
@@ -859,8 +868,12 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn total_pieces() -> NonZeroU64 {
-                    <pallet_subspace::Pallet<Runtime>>::total_pieces()
+                fn history_size() -> HistorySize {
+                    <pallet_subspace::Pallet<Runtime>>::history_size()
+                }
+
+                fn max_pieces_in_sector() -> u16 {
+                    MAX_PIECES_IN_SECTOR
                 }
 
                 fn slot_duration() -> core::time::Duration {
@@ -1115,8 +1128,12 @@ cfg_if! {
             }
 
             impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-                fn total_pieces() -> NonZeroU64 {
-                    <pallet_subspace::Pallet<Runtime>>::total_pieces()
+                fn history_size() -> HistorySize {
+                    <pallet_subspace::Pallet<Runtime>>::history_size()
+                }
+
+                fn max_pieces_in_sector() -> u16 {
+                    MAX_PIECES_IN_SECTOR
                 }
 
                 fn slot_duration() -> core::time::Duration {

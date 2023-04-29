@@ -76,16 +76,17 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockWeight, LegacySectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange,
+    Blake2b256Hash, PublicKey, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
+    SolutionRange,
 };
-use subspace_solving::{derive_global_challenge, REWARD_SIGNING_CONTEXT};
+use subspace_proof_of_space::Table;
+use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
-    derive_audit_chunk, Error as VerificationPrimitiveError, VerifySolutionParams,
+    calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
+    VerifySolutionParams,
 };
 
 /// Information about new slot that just arrived
@@ -178,15 +179,41 @@ pub enum Error<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
-    /// Bad solution signature
-    #[error("Bad solution signature on slot {0:?}: {1:?}")]
-    BadSolutionSignature(Slot, schnorrkel::SignatureError),
     /// Solution is outside of solution range
-    #[error("Solution is outside of solution range for slot {0}")]
-    OutsideOfSolutionRange(Slot),
-    /// Invalid encoding of a piece
-    #[error("Invalid encoding for slot {0}")]
-    InvalidEncoding(Slot),
+    #[error(
+        "Solution distance {solution_distance} is outside of solution range \
+        {half_solution_range} (half of actual solution range) for slot {slot}"
+    )]
+    OutsideOfSolutionRange {
+        /// Time slot
+        slot: Slot,
+        /// Half of solution range
+        half_solution_range: SolutionRange,
+        /// Solution distance
+        solution_distance: SolutionRange,
+    },
+    /// Invalid proof of space
+    #[error("Invalid proof of space")]
+    InvalidProofOfSpace,
+    /// Invalid audit chunk offset
+    #[error("Invalid audit chunk offset")]
+    InvalidAuditChunkOffset,
+    /// Invalid chunk witness
+    #[error("Invalid chunk witness")]
+    InvalidChunkWitness,
+    /// Piece verification failed
+    #[error("Piece verification failed")]
+    InvalidPieceOffset {
+        /// Time slot
+        slot: Slot,
+        /// Index of the piece that failed verification
+        piece_offset: u16,
+        /// How many pieces one sector is supposed to contain (max)
+        max_pieces_in_sector: u16,
+    },
+    /// Piece verification failed
+    #[error("Piece verification failed for slot {0}")]
+    InvalidPiece(Slot),
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
@@ -238,6 +265,7 @@ impl<Header> From<VerificationError<Header>> for Error<Header>
 where
     Header: HeaderT,
 {
+    #[inline]
     fn from(error: VerificationError<Header>) -> Self {
         match error {
             VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
@@ -247,16 +275,28 @@ where
                 Error::BadRewardSignature(block_hash)
             }
             VerificationError::VerificationError(slot, error) => match error {
-                VerificationPrimitiveError::InvalidPiece => Error::InvalidEncoding(slot),
-                VerificationPrimitiveError::OutsideSolutionRange => {
-                    Error::OutsideOfSolutionRange(slot)
+                VerificationPrimitiveError::InvalidPieceOffset {
+                    piece_offset,
+                    max_pieces_in_sector,
+                } => Error::InvalidPieceOffset {
+                    slot,
+                    piece_offset,
+                    max_pieces_in_sector,
+                },
+                VerificationPrimitiveError::InvalidPiece => Error::InvalidPiece(slot),
+                VerificationPrimitiveError::OutsideSolutionRange {
+                    half_solution_range,
+                    solution_distance,
+                } => Error::OutsideOfSolutionRange {
+                    slot,
+                    half_solution_range,
+                    solution_distance,
+                },
+                VerificationPrimitiveError::InvalidProofOfSpace => Error::InvalidProofOfSpace,
+                VerificationPrimitiveError::InvalidAuditChunkOffset => {
+                    Error::InvalidAuditChunkOffset
                 }
-                VerificationPrimitiveError::InvalidSolutionSignature(err) => {
-                    Error::BadSolutionSignature(slot, err)
-                }
-                VerificationPrimitiveError::MissingKzgInstance => {
-                    unreachable!("Implementation bug");
-                }
+                VerificationPrimitiveError::InvalidChunkWitness => Error::InvalidChunkWitness,
             },
         }
     }
@@ -266,6 +306,7 @@ impl<Header> From<Error<Header>> for String
 where
     Header: HeaderT,
 {
+    #[inline]
     fn from(error: Error<Header>) -> String {
         error.to_string()
     }
@@ -345,7 +386,7 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS> {
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, L, Error>(
+pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -363,6 +404,7 @@ pub fn start_subspace<Block, Client, SC, E, I, SO, CIDP, BS, L, Error>(
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
         + ProvideUncles<Block>
@@ -400,6 +442,7 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        _pos_table: PhantomData::<PosTable>::default(),
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
@@ -519,17 +562,20 @@ impl<Block: BlockT> SubspaceLink<Block> {
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<Block: BlockT, Client, SelectChain, SN> {
+pub struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
     client: Arc<Client>,
+    kzg: Kzg,
     select_chain: SelectChain,
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
     reward_signing_context: SigningContext,
     is_authoring_blocks: bool,
-    block: PhantomData<Block>,
+    _pos_table: PhantomData<PosTable>,
+    _block: PhantomData<Block>,
 }
 
-impl<Block, Client, SelectChain, SN> SubspaceVerifier<Block, Client, SelectChain, SN>
+impl<PosTable, Block, Client, SelectChain, SN>
+    SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
 where
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
@@ -595,9 +641,10 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, SelectChain, SN> Verifier<Block>
-    for SubspaceVerifier<Block, Client, SelectChain, SN>
+impl<PosTable, Block, Client, SelectChain, SN> Verifier<Block>
+    for SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
@@ -669,7 +716,7 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            check_header::<_, FarmerPublicKey>(
+            check_header::<PosTable, _, FarmerPublicKey>(
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
@@ -681,7 +728,7 @@ where
                     reward_signing_context: &self.reward_signing_context,
                 },
                 Some(pre_digest),
-                None,
+                &self.kzg,
             )
             .map_err(Error::<Block::Header>::from)?
         };
@@ -746,16 +793,18 @@ where
 /// it is missing.
 ///
 /// The epoch change tree should be pruned as blocks are finalized.
-pub struct SubspaceBlockImport<Block: BlockT, Client, I, CIDP> {
+pub struct SubspaceBlockImport<PosTable, Block: BlockT, Client, I, CIDP> {
     inner: I,
     client: Arc<Client>,
     block_importing_notification_sender:
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
+    _pos_table: PhantomData<PosTable>,
 }
 
-impl<Block, I, Client, CIDP> Clone for SubspaceBlockImport<Block, Client, I, CIDP>
+impl<PosTable, Block, I, Client, CIDP> Clone
+    for SubspaceBlockImport<PosTable, Block, Client, I, CIDP>
 where
     Block: BlockT,
     I: Clone,
@@ -768,12 +817,14 @@ where
             block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+            _pos_table: PhantomData::default(),
         }
     }
 }
 
-impl<Block, Client, I, CIDP> SubspaceBlockImport<Block, Client, I, CIDP>
+impl<PosTable, Block, Client, I, CIDP> SubspaceBlockImport<PosTable, Block, Client, I, CIDP>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
@@ -794,6 +845,7 @@ where
             block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
+            _pos_table: PhantomData::default(),
         }
     }
 
@@ -895,8 +947,8 @@ where
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        let sector_id = LegacySectorId::new(
-            &(&pre_digest.solution.public_key).into(),
+        let sector_id = SectorId::new(
+            PublicKey::from(&pre_digest.solution.public_key).hash(),
             pre_digest.solution.sector_index,
         );
 
@@ -904,9 +956,8 @@ where
 
         let piece_index = sector_id.derive_piece_index(
             pre_digest.solution.piece_offset,
-            pre_digest.solution.total_pieces,
+            pre_digest.solution.history_size,
         );
-        let position = piece_index.position();
         let segment_index = piece_index.segment_index();
 
         // This is not a very nice hack due to the fact that at the time first block is produced
@@ -937,12 +988,26 @@ where
             maybe_segment_commitment.ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
 
         // Piece is not checked during initial block verification because it requires access to
-        // segment header, check it now.
-        subspace_verification::check_piece(
-            &self.subspace_link.kzg,
-            &segment_commitment,
-            position,
+        // segment header and runtime, check it now.
+        subspace_verification::verify_solution::<PosTable, _, _>(
             &pre_digest.solution,
+            // Slot was already checked during initial block verification
+            pre_digest.slot.into(),
+            &VerifySolutionParams {
+                global_randomness: subspace_digest_items.global_randomness,
+                solution_range: subspace_digest_items.solution_range,
+                piece_check_params: Some(PieceCheckParams {
+                    // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
+                    //  should (though we don't support fast sync yet, so doesn't matter in
+                    //  practice)
+                    max_pieces_in_sector: self
+                        .client
+                        .runtime_api()
+                        .max_pieces_in_sector(parent_hash)?,
+                    segment_commitment,
+                }),
+            },
+            &self.subspace_link.kzg,
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
@@ -995,9 +1060,10 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner, CIDP> BlockImport<Block>
-    for SubspaceBlockImport<Block, Client, Inner, CIDP>
+impl<PosTable, Block, Client, Inner, CIDP> BlockImport<Block>
+    for SubspaceBlockImport<PosTable, Block, Client, Inner, CIDP>
 where
+    PosTable: Table,
     Block: BlockT,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
         + Send
@@ -1070,29 +1136,12 @@ where
                 })?
         };
 
-        let added_weight = {
-            let global_challenge = derive_global_challenge(
-                &subspace_digest_items.global_randomness,
-                pre_digest.slot.into(),
-            );
-
-            let sector_id = LegacySectorId::new(
-                &(&pre_digest.solution.public_key).into(),
-                pre_digest.solution.sector_index,
-            );
-
-            let local_challenge = sector_id.derive_local_challenge(&global_challenge);
-
-            let audit_chunk = derive_audit_chunk(&pre_digest.solution.chunk.to_bytes());
-
-            BlockWeight::from(
-                SolutionRange::MAX
-                    - subspace_core_primitives::bidirectional_distance(
-                        &local_challenge,
-                        &audit_chunk,
-                    ),
-            )
-        };
+        let added_weight = calculate_block_weight::<PosTable, _, _>(
+            &pre_digest.solution,
+            pre_digest.slot.into(),
+            &subspace_digest_items.global_randomness,
+        )
+        .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
         let total_weight = parent_weight + added_weight;
 
         let info = self.client.info();
@@ -1213,16 +1262,18 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
-pub fn block_import<Client, Block, I, CIDP>(
+pub fn block_import<PosTable, Client, Block, I, CIDP>(
     slot_duration: SlotDuration,
     wrapped_block_import: I,
     client: Arc<Client>,
+    kzg: Kzg,
     create_inherent_data_providers: CIDP,
 ) -> ClientResult<(
-    SubspaceBlockImport<Block, Client, I, CIDP>,
+    SubspaceBlockImport<PosTable, Block, Client, I, CIDP>,
     SubspaceLink<Block>,
 )>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
@@ -1240,9 +1291,6 @@ where
     let confirmation_depth_k = get_chain_constants(client.as_ref())
         .expect("Must always be able to get chain constants")
         .confirmation_depth_k();
-
-    // TODO: Probably should have public parameters in chain constants instead
-    let kzg = Kzg::new(kzg::embedded_kzg_settings());
 
     let link = SubspaceLink {
         slot_duration,
@@ -1284,10 +1332,11 @@ where
 /// of it, otherwise crucial import logic will be omitted.
 // TODO: Create a struct for these parameters
 #[allow(clippy::too_many_arguments)]
-pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
+pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
     block_import: Inner,
     justification_import: Option<BoxJustificationImport<Block>>,
     client: Arc<Client>,
+    kzg: Kzg,
     select_chain: SelectChain,
     slot_now: SN,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
@@ -1296,6 +1345,7 @@ pub fn import_queue<Block: BlockT, Client, SelectChain, Inner, SN>(
     is_authoring_blocks: bool,
 ) -> ClientResult<DefaultImportQueue<Block, Client>>
 where
+    PosTable: Table,
     Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
         + Send
         + Sync
@@ -1306,13 +1356,15 @@ where
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
     let verifier = SubspaceVerifier {
+        client,
+        kzg,
         select_chain,
         slot_now,
         telemetry,
-        client,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         is_authoring_blocks,
-        block: PhantomData::default(),
+        _pos_table: PhantomData::<PosTable>::default(),
+        _block: PhantomData::default(),
     };
 
     Ok(BasicQueue::new(

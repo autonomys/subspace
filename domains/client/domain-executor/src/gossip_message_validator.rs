@@ -44,6 +44,7 @@ pub enum GossipMessageError {
 }
 
 impl From<sp_blockchain::Error> for GossipMessageError {
+    #[inline]
     fn from(error: sp_blockchain::Error) -> Self {
         Self::Client(Box::new(error))
     }
