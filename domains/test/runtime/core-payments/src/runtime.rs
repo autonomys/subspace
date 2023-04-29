@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{opaque, Moment};
+use domain_runtime_primitives::opaque;
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -27,7 +27,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;

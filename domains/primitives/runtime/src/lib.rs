@@ -21,6 +21,7 @@ use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
+use subspace_runtime_primitives::Moment;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -43,9 +44,6 @@ pub type BlockNumber = u32;
 
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
-
-/// Type used for expressing timestamp.
-pub type Moment = u64;
 
 /// Slot duration that is same as primary runtime.
 pub const SLOT_DURATION: u64 = 1000;

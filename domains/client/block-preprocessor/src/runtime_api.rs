@@ -37,7 +37,7 @@ pub trait InherentExtrinsicConstructor<Block: BlockT> {
     fn construct_timestamp_inherent_extrinsic(
         &self,
         at: Block::Hash,
-        moment: domain_runtime_primitives::Moment,
+        moment: subspace_runtime_primitives::Moment,
     ) -> Result<Option<Block::Extrinsic>, ApiError>;
 }
 
