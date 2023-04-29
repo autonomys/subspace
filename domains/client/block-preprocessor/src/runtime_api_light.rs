@@ -5,7 +5,7 @@ use crate::runtime_api::{
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
 use domain_runtime_primitives::{
-    runtime_decl_for_inherent_extrinsic_api, DomainCoreApi, InherentExtrinsicApi, Moment,
+    runtime_decl_for_inherent_extrinsic_api, DomainCoreApi, InherentExtrinsicApi,
 };
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
@@ -17,6 +17,7 @@ use sp_runtime::traits::NumberFor;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
 use std::sync::Arc;
+use subspace_runtime_primitives::Moment;
 use system_runtime_primitives::SystemDomainApi;
 
 /// This is a stateless wrapper around the runtime api.

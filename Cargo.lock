@@ -2420,6 +2420,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "system-runtime-primitives",
  "tracing",
@@ -2601,6 +2602,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -2668,8 +2670,8 @@ dependencies = [
 name = "domain-test-primitives"
 version = "0.1.0"
 dependencies = [
- "domain-runtime-primitives",
  "sp-api",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]

@@ -12,12 +12,12 @@ include = [
 ]
 
 [dependencies]
-domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63", default-features = false }
+subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
 
 [features]
 default = ["std"]
 std = [
-    "domain-runtime-primitives/std",
     "sp-api/std",
+    "subspace-runtime-primitives/std",
 ]

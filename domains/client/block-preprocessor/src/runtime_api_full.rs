@@ -3,12 +3,13 @@ use crate::runtime_api::{
     SetCodeConstructor, SignerExtractor, StateRootExtractor,
 };
 use crate::utils::extract_xdm_proof_state_roots_with_client;
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi, Moment};
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sp_api::{ApiError, ApiExt, BlockT, ProvideRuntimeApi};
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use std::sync::Arc;
+use subspace_runtime_primitives::Moment;
 use system_runtime_primitives::SystemDomainApi;
 
 /// A runtime api with full backend.
