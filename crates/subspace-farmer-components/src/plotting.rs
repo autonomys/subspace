@@ -1,5 +1,8 @@
 use crate::piece_caching::PieceMemoryCache;
-use crate::sector::{RawSector, RecordMetadata, SectorContentsMap, SectorMetadata};
+use crate::sector::{
+    sector_record_chunks_size, sector_size, RawSector, RecordMetadata, SectorContentsMap,
+    SectorMetadata,
+};
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::FarmerProtocolInfo;
 use async_trait::async_trait;
@@ -11,16 +14,14 @@ use parity_scale_codec::Encode;
 use parking_lot::Mutex;
 use rayon::prelude::*;
 use std::error::Error;
-use std::io;
-use std::io::{BufWriter, Write};
 use std::simd::Simd;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId,
-    SectorIndex,
+    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, RecordCommitment,
+    RecordWitness, SBucket, SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table};
@@ -110,6 +111,22 @@ pub enum PlottingError {
     /// Invalid erasure coding instance
     #[error("Invalid erasure coding instance")]
     InvalidErasureCodingInstance,
+    /// Bad sector output size
+    #[error("Bad sector output size: provided {provided}, expected {expected}")]
+    BadSectorOutputSize {
+        /// Actual size
+        provided: usize,
+        /// Expected size
+        expected: usize,
+    },
+    /// Bad sector metadata output size
+    #[error("Bad sector metadata output size: provided {provided}, expected {expected}")]
+    BadSectorMetadataOutputSize {
+        /// Actual size
+        provided: usize,
+        /// Expected size
+        expected: usize,
+    },
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
     PieceNotFound {
@@ -130,9 +147,6 @@ pub enum PlottingError {
         /// Lower-level error
         error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
 }
 
 /// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly at the
@@ -142,7 +156,7 @@ pub enum PlottingError {
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
 #[allow(clippy::too_many_arguments)]
-pub async fn plot_sector<PG, S, SM, PosTable>(
+pub async fn plot_sector<PG, PosTable>(
     public_key: &PublicKey,
     sector_index: u64,
     piece_getter: &PG,
@@ -151,18 +165,30 @@ pub async fn plot_sector<PG, S, SM, PosTable>(
     kzg: &Kzg,
     erasure_coding: &ErasureCoding,
     pieces_in_sector: u16,
-    sector_output: &mut S,
-    sector_metadata_output: &mut SM,
+    sector_output: &mut [u8],
+    sector_metadata_output: &mut [u8],
     piece_memory_cache: PieceMemoryCache,
 ) -> Result<PlottedSector, PlottingError>
 where
     PG: PieceGetter,
-    S: Write,
-    SM: Write,
     PosTable: Table,
 {
     if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
         return Err(PlottingError::InvalidErasureCodingInstance);
+    }
+
+    if sector_output.len() < sector_size(pieces_in_sector) {
+        return Err(PlottingError::BadSectorOutputSize {
+            provided: sector_output.len(),
+            expected: sector_size(pieces_in_sector),
+        });
+    }
+
+    if sector_metadata_output.len() < SectorMetadata::encoded_size() {
+        return Err(PlottingError::BadSectorMetadataOutputSize {
+            provided: sector_metadata_output.len(),
+            expected: SectorMetadata::encoded_size(),
+        });
     }
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
@@ -289,50 +315,54 @@ where
         });
 
     {
-        let mut sector_output = BufWriter::new(sector_output);
-
+        let (sector_contents_map_region, remainder) =
+            sector_output.split_at_mut(SectorContentsMap::encoded_size(pieces_in_sector));
         // Write sector contents map so we can decode it later
-        sector_output.write_all(sector_contents_map.as_ref())?;
+        sector_contents_map_region.copy_from_slice(sector_contents_map.as_ref());
+        // Slice remaining memory into belonging to s-buckets and metadata
+        let (s_buckets_region, metadata_region) =
+            remainder.split_at_mut(sector_record_chunks_size(pieces_in_sector));
 
         let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
         let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
         let mut next_unencoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
         // Write record chunks, one s-bucket at a time
-        for s_bucket in SBucket::ZERO..=SBucket::MAX {
-            for (piece_offset, encoded_chunk_used) in sector_contents_map
-                .iter_s_bucket_records(s_bucket)
-                .expect("S-bucket guaranteed to be in range; qed")
-            {
-                let num_encoded_record_chunks =
-                    usize::from(num_encoded_record_chunks[usize::from(piece_offset)]);
-                let next_encoded_record_chunks_offset =
-                    &mut next_encoded_record_chunks_offset[usize::from(piece_offset)];
-                let next_unencoded_record_chunks_offset =
-                    &mut next_unencoded_record_chunks_offset[usize::from(piece_offset)];
+        for ((piece_offset, encoded_chunk_used), output) in (SBucket::ZERO..=SBucket::MAX)
+            .flat_map(|s_bucket| {
+                sector_contents_map
+                    .iter_s_bucket_records(s_bucket)
+                    .expect("S-bucket guaranteed to be in range; qed")
+            })
+            .zip(s_buckets_region.array_chunks_mut::<{ Scalar::FULL_BYTES }>())
+        {
+            let num_encoded_record_chunks =
+                usize::from(num_encoded_record_chunks[usize::from(piece_offset)]);
+            let next_encoded_record_chunks_offset =
+                &mut next_encoded_record_chunks_offset[usize::from(piece_offset)];
+            let next_unencoded_record_chunks_offset =
+                &mut next_unencoded_record_chunks_offset[usize::from(piece_offset)];
 
-                // We know that s-buckets in `raw_sector.records` are stored in order (encoded
-                // first, then unencoded), hence we don't need to calculate the position, we can
-                // just store a few cursors and know the position that way
-                let chunk_position;
-                if encoded_chunk_used {
-                    chunk_position = *next_encoded_record_chunks_offset;
-                    *next_encoded_record_chunks_offset += 1;
-                } else {
-                    chunk_position =
-                        num_encoded_record_chunks + *next_unencoded_record_chunks_offset;
-                    *next_unencoded_record_chunks_offset += 1;
-                }
-                sector_output
-                    .write_all(&raw_sector.records[usize::from(piece_offset)][chunk_position])?;
+            // We know that s-buckets in `raw_sector.records` are stored in order (encoded first,
+            // then unencoded), hence we don't need to calculate the position, we can just store a
+            // few cursors and know the position that way
+            let chunk_position;
+            if encoded_chunk_used {
+                chunk_position = *next_encoded_record_chunks_offset;
+                *next_encoded_record_chunks_offset += 1;
+            } else {
+                chunk_position = num_encoded_record_chunks + *next_unencoded_record_chunks_offset;
+                *next_unencoded_record_chunks_offset += 1;
             }
+            output.copy_from_slice(&raw_sector.records[usize::from(piece_offset)][chunk_position]);
         }
 
-        for record_metadata in raw_sector.metadata {
-            sector_output.write_all(record_metadata.commitment.as_ref())?;
-            sector_output.write_all(record_metadata.witness.as_ref())?;
+        for (record_metadata, output) in raw_sector.metadata.into_iter().zip(
+            metadata_region.array_chunks_mut::<{ RecordCommitment::SIZE + RecordWitness::SIZE }>(),
+        ) {
+            let (commitment, witness) = output.split_at_mut(RecordCommitment::SIZE);
+            commitment.copy_from_slice(record_metadata.commitment.as_ref());
+            witness.copy_from_slice(record_metadata.witness.as_ref());
         }
-
-        sector_output.flush()?;
     }
 
     // TODO: Write commitments and witnesses
@@ -344,7 +374,7 @@ where
         expires_at,
     };
 
-    sector_metadata_output.write_all(&sector_metadata.encode())?;
+    sector_metadata_output.copy_from_slice(&sector_metadata.encode());
 
     Ok(PlottedSector {
         sector_id,

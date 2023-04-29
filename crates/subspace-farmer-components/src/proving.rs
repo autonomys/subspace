@@ -2,11 +2,8 @@ use crate::auditing::ChunkCandidate;
 use crate::reading::{
     read_record_metadata, read_sector_record_chunks, recover_extended_record_chunks, ReadingError,
 };
-use crate::sector::{
-    sector_size, SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadata,
-};
+use crate::sector::{SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadata};
 use std::collections::VecDeque;
-use std::io;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
@@ -59,9 +56,6 @@ pub enum ProvingError {
     /// Record reading error
     #[error("Record reading error: {0}")]
     RecordReadingError(#[from] ReadingError),
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +75,7 @@ pub struct SolutionCandidates<'a> {
     sector_index: SectorIndex,
     sector_id: SectorId,
     s_bucket: SBucket,
+    sector: &'a [u8],
     sector_metadata: &'a SectorMetadata,
     chunk_candidates: VecDeque<ChunkCandidate>,
 }
@@ -91,6 +86,7 @@ impl<'a> SolutionCandidates<'a> {
         sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
+        sector: &'a [u8],
         sector_metadata: &'a SectorMetadata,
         chunk_candidates: VecDeque<ChunkCandidate>,
     ) -> Self {
@@ -99,6 +95,7 @@ impl<'a> SolutionCandidates<'a> {
             sector_index,
             sector_id,
             s_bucket,
+            sector,
             sector_metadata,
             chunk_candidates,
         }
@@ -117,19 +114,16 @@ impl<'a> SolutionCandidates<'a> {
         self.chunk_candidates.is_empty()
     }
 
-    pub fn into_iter<S, RewardAddress, PosTable>(
+    pub fn into_iter<RewardAddress, PosTable>(
         self,
         reward_address: &'a RewardAddress,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
-        // The reason we have sector here is such that `SolutionCandidates` can be cloned
-        sector: &'a mut S,
     ) -> Result<
         impl ExactSizeIterator<Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>> + 'a,
         ProvingError,
     >
     where
-        S: io::Read + io::Seek,
         RewardAddress: Copy,
         PosTable: Table,
     {
@@ -139,7 +133,7 @@ impl<'a> SolutionCandidates<'a> {
             self.sector_index,
             self.sector_id,
             self.s_bucket,
-            sector,
+            self.sector,
             self.sector_metadata,
             kzg,
             erasure_coding,
@@ -168,7 +162,7 @@ struct SolutionCandidatesIterator<'a, RewardAddress, PosTable> {
     kzg: &'a Kzg,
     erasure_coding: &'a ErasureCoding,
     sector_contents_map: SectorContentsMap,
-    sector: Vec<u8>,
+    sector: &'a [u8],
     winning_chunks: VecDeque<WinningChunk>,
     count: usize,
     chunk_cache: Option<ChunkCache>,
@@ -224,7 +218,7 @@ where
                     &self.s_bucket_offsets,
                     &self.sector_contents_map,
                     &pos_table,
-                    &self.sector,
+                    self.sector,
                 )?;
 
                 let chunk = sector_record_chunks
@@ -273,7 +267,7 @@ where
                 let (record_commitment, record_witness) = read_record_metadata(
                     piece_offset,
                     self.sector_metadata.pieces_in_sector,
-                    &self.sector,
+                    self.sector,
                 )?;
 
                 let record_commitment =
@@ -380,34 +374,25 @@ where
     PosTable: Table,
 {
     #[allow(clippy::too_many_arguments)]
-    fn new<S>(
+    fn new(
         public_key: &'a PublicKey,
         reward_address: &'a RewardAddress,
         sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: &'a mut S,
+        sector: &'a [u8],
         sector_metadata: &'a SectorMetadata,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         chunk_candidates: VecDeque<ChunkCandidate>,
-    ) -> Result<Self, ProvingError>
-    where
-        S: io::Read + io::Seek,
-    {
+    ) -> Result<Self, ProvingError> {
         if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
             return Err(ProvingError::InvalidErasureCodingInstance);
         }
 
-        // TODO: Might be more efficient to not read the whole sector upfront, but needs to be
-        //  tested
-        let mut sector_bytes = vec![0u8; sector_size(sector_metadata.pieces_in_sector)];
-        // TODO: This read is quite slow, takes over 300ms with in-memory data source
-        sector.read_exact(&mut sector_bytes)?;
-
         let sector_contents_map = {
             SectorContentsMap::from_bytes(
-                &sector_bytes[..SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector)],
+                &sector[..SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector)],
                 sector_metadata.pieces_in_sector,
             )?
         };
@@ -456,7 +441,7 @@ where
             kzg,
             erasure_coding,
             sector_contents_map,
-            sector: sector_bytes,
+            sector,
             winning_chunks,
             count,
             chunk_cache: None,

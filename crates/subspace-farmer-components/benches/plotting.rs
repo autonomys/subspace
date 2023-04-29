@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
-use rand::{thread_rng, Rng};
+use rand::prelude::*;
+use std::env;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::{env, io};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -11,7 +11,7 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::sector_size;
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 
@@ -28,7 +28,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let public_key = PublicKey::default();
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
-    thread_rng().fill(AsMut::<[u8]>::as_mut(input.as_mut()));
+    StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
     let kzg = Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
     let erasure_coding = ErasureCoding::new(
@@ -51,11 +51,15 @@ fn criterion_benchmark(c: &mut Criterion) {
         sector_expiration: SegmentIndex::ONE,
     };
 
+    let sector_size = sector_size(pieces_in_sector);
+    let mut sector_bytes = vec![0; sector_size];
+    let mut sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
+
     let mut group = c.benchmark_group("plotting");
-    group.throughput(Throughput::Bytes(sector_size(pieces_in_sector) as u64));
-    group.bench_function("no-writes", |b| {
+    group.throughput(Throughput::Bytes(sector_size as u64));
+    group.bench_function("in-memory", |b| {
         b.iter(|| {
-            block_on(plot_sector::<_, _, _, PosTable>(
+            block_on(plot_sector::<_, PosTable>(
                 black_box(&public_key),
                 black_box(sector_index),
                 black_box(&archived_history_segment),
@@ -64,8 +68,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&kzg),
                 black_box(&erasure_coding),
                 black_box(pieces_in_sector),
-                black_box(&mut io::sink()),
-                black_box(&mut io::sink()),
+                black_box(&mut sector_bytes),
+                black_box(&mut sector_metadata_bytes),
                 Default::default(),
             ))
             .unwrap();

@@ -1,20 +1,10 @@
 use crate::proving::SolutionCandidates;
 use crate::sector::{SectorContentsMap, SectorMetadata};
 use std::collections::VecDeque;
-use std::io::SeekFrom;
-use std::{io, mem};
+use std::mem;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SolutionRange};
 use subspace_verification::is_within_solution_range;
-use thiserror::Error;
-
-/// Errors that happen during auditing
-#[derive(Debug, Error)]
-pub enum AuditingError {
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkCandidate {
@@ -27,17 +17,14 @@ pub(crate) struct ChunkCandidate {
 /// Audit a single sector and generate a stream of solutions, where `sector` must be positioned
 /// correctly at the beginning of the sector (seek to desired offset before calling this function
 /// and seek back afterwards if necessary).
-pub fn audit_sector<'a, S>(
+pub fn audit_sector<'a>(
     public_key: &'a PublicKey,
     sector_index: u64,
     global_challenge: &Blake2b256Hash,
     solution_range: SolutionRange,
-    sector: &mut S,
+    sector: &'a [u8],
     sector_metadata: &'a SectorMetadata,
-) -> Result<Option<SolutionCandidates<'a>>, AuditingError>
-where
-    S: io::Read + io::Seek,
-{
+) -> Option<SolutionCandidates<'a>> {
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
@@ -56,13 +43,9 @@ where
     let sector_contents_map_size =
         SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector);
 
-    // Seek to the beginning of `s_bucket_audit_index`
-    sector.seek(SeekFrom::Current(
-        sector_contents_map_size as i64 + s_bucket_audit_offset as i64,
-    ))?;
     // Read s-bucket
-    let mut s_bucket = vec![0u8; s_bucket_audit_size];
-    sector.read_exact(s_bucket.as_mut())?;
+    let s_bucket =
+        &sector[sector_contents_map_size + s_bucket_audit_offset..][..s_bucket_audit_size];
 
     // Map all winning chunks
     let winning_chunks = s_bucket
@@ -98,15 +81,16 @@ where
 
     // Check if there are any solutions possible
     if winning_chunks.is_empty() {
-        return Ok(None);
+        return None;
     }
 
-    Ok(Some(SolutionCandidates::new(
+    Some(SolutionCandidates::new(
         public_key,
         sector_index,
         sector_id,
         s_bucket_audit_index,
+        sector,
         sector_metadata,
         winning_chunks,
-    )))
+    ))
 }

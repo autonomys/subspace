@@ -36,8 +36,8 @@ use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
+use std::iter;
 use std::sync::Once;
-use std::{io, iter};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -49,7 +49,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::sector_size;
+use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -398,9 +398,10 @@ pub fn create_signed_vote(
     let sector_size = sector_size(pieces_in_sector);
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
-        let mut plotted_sector_bytes = Vec::with_capacity(sector_size);
+        let mut plotted_sector_bytes = vec![0; sector_size];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
-        let plotted_sector = block_on(plot_sector::<_, _, _, PosTable>(
+        let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
             sector_index,
             archived_history_segment,
@@ -410,7 +411,7 @@ pub fn create_signed_vote(
             erasure_coding,
             pieces_in_sector,
             &mut plotted_sector_bytes,
-            &mut io::sink(),
+            &mut plotted_sector_metadata_bytes,
             Default::default(),
         ))
         .unwrap();
@@ -420,10 +421,9 @@ pub fn create_signed_vote(
             sector_index,
             &global_randomness.derive_global_challenge(slot.into()),
             solution_range,
-            &mut io::Cursor::new(&plotted_sector_bytes),
+            &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
-        )
-        .unwrap();
+        );
 
         let Some(solution_candidates) = maybe_solution_candidates else {
             // Sector didn't have any solutions
@@ -431,12 +431,7 @@ pub fn create_signed_vote(
         };
 
         let solution = solution_candidates
-            .into_iter::<_, _, PosTable>(
-                &reward_address,
-                kzg,
-                erasure_coding,
-                &mut io::Cursor::new(&plotted_sector_bytes),
-            )
+            .into_iter::<_, PosTable>(&reward_address, kzg, erasure_coding)
             .unwrap()
             .next()
             .unwrap()
