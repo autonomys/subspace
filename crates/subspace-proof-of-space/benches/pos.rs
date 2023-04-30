@@ -1,20 +1,20 @@
 #![feature(const_trait_impl)]
 
-#[cfg(any(feature = "chia-legacy", feature = "shim"))]
+#[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 use criterion::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-#[cfg(any(feature = "chia-legacy", feature = "shim"))]
+#[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 use subspace_core_primitives::PosSeed;
-#[cfg(any(feature = "chia-legacy", feature = "shim"))]
+#[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 use subspace_proof_of_space::{Quality, Table};
 
-#[cfg(any(feature = "chia-legacy", feature = "shim"))]
+#[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 const SEED: PosSeed = PosSeed::from([
     35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92, 198,
     204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
 ]);
 
-#[cfg(any(feature = "chia-legacy", feature = "shim"))]
+#[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 fn pos_bench<PosTable>(
     c: &mut Criterion,
     name: &'static str,
@@ -70,7 +70,7 @@ fn pos_bench<PosTable>(
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    #[cfg(not(any(feature = "chia-legacy", feature = "shim")))]
+    #[cfg(not(any(feature = "chia-legacy", feature = "chia", feature = "shim")))]
     {
         let _ = c;
         panic!(r#"Enable "chia" and/or "shim" feature to run benches"#);
@@ -81,6 +81,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let challenge_index_without_solution = 0;
         // This challenge index with above seed is known to have a solution
         let challenge_index_with_solution = 1;
+
+        pos_bench::<subspace_proof_of_space::chia_legacy::ChiaTable>(
+            c,
+            "chia-legacy",
+            challenge_index_without_solution,
+            challenge_index_with_solution,
+        )
+    }
+    #[cfg(feature = "chia")]
+    {
+        // This challenge index with above seed is known to not have a solution
+        let challenge_index_without_solution = 1232460437;
+        // This challenge index with above seed is known to have a solution
+        let challenge_index_with_solution = 124537303;
 
         pos_bench::<subspace_proof_of_space::chia::ChiaTable>(
             c,
