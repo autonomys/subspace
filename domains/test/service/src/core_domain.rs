@@ -160,8 +160,9 @@ where
             new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
             _phantom: Default::default(),
         };
-        let (dummy_gossip_msg_sink, _) =
-            sc_utils::mpsc::tracing_unbounded("cross_domain_gossip_messages", 100);
+        let gossip_msg_sink = mock_primary_node
+            .xdm_gossip_worker_builder()
+            .gossip_msg_sink();
         let core_domain_params = domain_service::CoreDomainParams {
             domain_id,
             core_domain_config,
@@ -171,7 +172,7 @@ where
             primary_network_sync_oracle: mock_primary_node.sync_service.clone(),
             select_chain: mock_primary_node.select_chain.clone(),
             executor_streams,
-            gossip_message_sink: dummy_gossip_msg_sink,
+            gossip_message_sink: gossip_msg_sink,
             provider: DefaultProvider,
         };
         let core_domain_node =
@@ -191,8 +192,13 @@ where
             network_starter,
             rpc_handlers,
             executor,
+            tx_pool_sink,
             ..
         } = core_domain_node;
+
+        mock_primary_node
+            .xdm_gossip_worker_builder()
+            .push_domain_tx_pool_sink(domain_id, tx_pool_sink);
 
         let addr = MultiaddrWithPeerId {
             multiaddr,

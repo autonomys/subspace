@@ -19,6 +19,7 @@
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use codec::{Decode, Encode};
+use cross_domain_message_gossip::GossipWorkerBuilder;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use jsonrpsee::RpcModule;
@@ -216,6 +217,7 @@ pub struct MockPrimaryNode {
         Client,
         Block,
     >,
+    xdm_gossip_worker_builder: Option<GossipWorkerBuilder>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
     log_prefix: &'static str,
@@ -365,6 +367,7 @@ impl MockPrimaryNode {
             next_slot: 1,
             new_slot_notification_subscribers: Vec::new(),
             block_import,
+            xdm_gossip_worker_builder: Some(GossipWorkerBuilder::new()),
             mock_solution,
             log_prefix,
         }
@@ -376,6 +379,30 @@ impl MockPrimaryNode {
             .take()
             .expect("mock primary node network have not started yet")
             .start_network();
+    }
+
+    /// Get the cross domain gossip message worker builder
+    pub fn xdm_gossip_worker_builder(&mut self) -> &mut GossipWorkerBuilder {
+        self.xdm_gossip_worker_builder
+            .as_mut()
+            .expect("gossip message worker have not started yet")
+    }
+
+    /// Start the cross domain gossip message worker.
+    pub fn start_cross_domain_gossip_message_worker(&mut self) {
+        let xdm_gossip_worker_builder = self
+            .xdm_gossip_worker_builder
+            .take()
+            .expect("gossip message worker have not started yet");
+        let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
+            .build::<Block, _, _>(self.network_service.clone(), self.sync_service.clone());
+        self.task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "cross-domain-gossip-message-worker",
+                None,
+                Box::pin(cross_domain_message_gossip_worker.run()),
+            );
     }
 
     /// Return the next slot number

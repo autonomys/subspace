@@ -2560,7 +2560,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "core-payments-domain-test-runtime",
- "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-runtime-primitives",
@@ -11205,6 +11204,7 @@ name = "subspace-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cross-domain-message-gossip",
  "futures",
  "futures-timer",
  "jsonrpsee",

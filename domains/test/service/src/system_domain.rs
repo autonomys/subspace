@@ -1,7 +1,6 @@
 //! Utilities used for testing with the system domain.
 #![warn(missing_docs)]
 use crate::{construct_extrinsic_generic, node_config};
-use cross_domain_message_gossip::GossipWorker;
 use domain_client_executor::ExecutorStreams;
 use domain_service::{DomainConfiguration, FullPool};
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -14,12 +13,10 @@ use sc_service::{
     TaskManager,
 };
 use sp_api::ProvideRuntimeApi;
-use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::OpaqueExtrinsic;
-use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
@@ -89,8 +86,6 @@ async fn run_executor_with_mock_primary_node(
     RpcHandlers,
     SystemExecutor,
 )> {
-    let (gossip_msg_sink, gossip_msg_stream) =
-        sc_utils::mpsc::tracing_unbounded("cross_domain_gossip_messages", 100);
     let system_domain_config = DomainConfiguration {
         service_config: system_domain_config,
         maybe_relayer_id: None,
@@ -107,6 +102,9 @@ async fn run_executor_with_mock_primary_node(
         new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
         _phantom: Default::default(),
     };
+    let gossip_msg_sink = mock_primary_node
+        .xdm_gossip_worker_builder()
+        .gossip_msg_sink();
     let system_domain_node = domain_service::new_full_system::<
         _,
         _,
@@ -139,21 +137,9 @@ async fn run_executor_with_mock_primary_node(
         tx_pool_sink,
     } = system_domain_node;
 
-    let mut domain_tx_pool_sinks = BTreeMap::new();
-    domain_tx_pool_sinks.insert(DomainId::SYSTEM, tx_pool_sink);
-    let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
-        network_service.clone(),
-        sync_service.clone(),
-        domain_tx_pool_sinks,
-    );
-
-    task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking(
-            "cross-domain-gossip-message-worker",
-            None,
-            Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
-        );
+    mock_primary_node
+        .xdm_gossip_worker_builder()
+        .push_domain_tx_pool_sink(DomainId::SYSTEM, tx_pool_sink);
 
     network_starter.start_network();
 
