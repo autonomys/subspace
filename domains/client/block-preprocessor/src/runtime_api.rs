@@ -31,6 +31,16 @@ pub trait CoreBundleConstructor<PBlock: BlockT, Block: BlockT> {
     ) -> Result<Vec<Vec<u8>>, ApiError>;
 }
 
+/// Trait to construct inherent extrinsics
+pub trait InherentExtrinsicConstructor<Block: BlockT> {
+    /// Returns Inherent timestamp extrinsic if the Runtime implements the API.
+    fn construct_timestamp_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        moment: subspace_runtime_primitives::Moment,
+    ) -> Result<Option<Block::Extrinsic>, ApiError>;
+}
+
 /// Trait to wrap the new domain runtime as an extrinsic of
 /// `domain_pallet_executive::Call::sudo_unchecked_weight_unsigned`.
 pub trait SetCodeConstructor<Block: BlockT> {

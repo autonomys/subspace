@@ -1,12 +1,11 @@
 use crate::feed_processor::{feed_processor, FeedProcessorId, FeedProcessorKind};
 use codec::{Decode, Encode};
-use core::time::Duration;
-use domain_runtime_primitives::opaque;
+use domain_runtime_primitives::{opaque, SLOT_DURATION};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, Everything, UnixTime};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -32,7 +31,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -199,6 +198,14 @@ impl frame_system::Config for Runtime {
     type MaxConsumers = ConstU32<16>;
 }
 
+impl pallet_timestamp::Config for Runtime {
+    /// A timestamp: milliseconds since the unix epoch.
+    type Moment = Moment;
+    type OnTimestampSet = ();
+    type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
+    type WeightInfo = ();
+}
+
 parameter_types! {
     pub const ExistentialDeposit: Balance = EXISTENTIAL_DEPOSIT;
     pub const MaxLocks: u32 = 50;
@@ -299,15 +306,6 @@ impl pallet_sudo::Config for Runtime {
     type RuntimeCall = RuntimeCall;
 }
 
-/// Dummy time provider that always returns zero.
-pub struct DummyTimeProvider;
-
-impl UnixTime for DummyTimeProvider {
-    fn now() -> Duration {
-        Duration::ZERO
-    }
-}
-
 // Ethereum mainnet configuration
 parameter_types! {
     pub const MaxSyncCommitteeSize: u32 = 512;
@@ -342,8 +340,7 @@ parameter_types! {
 
 impl pallet_ethereum_beacon_client::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    // TODO: Replace this with proper implementation once we can retrieve timestamp in domain runtime
-    type TimeProvider = DummyTimeProvider;
+    type TimeProvider = Timestamp;
     type MaxSyncCommitteeSize = MaxSyncCommitteeSize;
     type MaxProofBranchSize = MaxProofBranchSize;
     type MaxExtraDataSize = MaxExtraDataSize;
@@ -390,16 +387,17 @@ construct_runtime!(
     {
         // System support stuff.
         System: frame_system = 0,
-        ExecutivePallet: domain_pallet_executive = 1,
+        Timestamp: pallet_timestamp = 1,
+        ExecutivePallet: domain_pallet_executive = 2,
 
         // Monetary stuff.
-        Balances: pallet_balances = 2,
-        TransactionPayment: pallet_transaction_payment = 3,
+        Balances: pallet_balances = 20,
+        TransactionPayment: pallet_transaction_payment = 21,
 
         // messenger stuff
         // Note: Indexes should match the indexes of the System domain runtime
-        Messenger: pallet_messenger = 6,
-        Transporter: pallet_transporter = 7,
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
 
         // Having beacon client at 90 to have plenty of room for system domain runtime pallets
         // (w.r.t future upgrade of system domain runtime) as well as some room for adding light client
@@ -549,6 +547,16 @@ impl_runtime_apis! {
                     weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
+        }
+    }
+
+    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
+             Some(
+                UncheckedExtrinsic::new_unsigned(
+                    pallet_timestamp::Call::set{ now: moment }.into()
+                )
+             )
         }
     }
 

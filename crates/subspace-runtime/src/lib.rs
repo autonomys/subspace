@@ -831,6 +831,10 @@ impl_runtime_apis! {
         ) -> Option<domain_runtime_primitives::Hash>{
             Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
+
+        fn timestamp() -> Moment{
+            Timestamp::now()
+        }
     }
 
     impl sp_session::SessionKeys<Block> for Runtime {

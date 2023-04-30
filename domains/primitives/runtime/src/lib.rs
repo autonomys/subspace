@@ -21,6 +21,7 @@ use sp_runtime::generic::UncheckedExtrinsic;
 use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
+use subspace_runtime_primitives::Moment;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -43,6 +44,9 @@ pub type BlockNumber = u32;
 
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
+
+/// Slot duration that is same as primary runtime.
+pub const SLOT_DURATION: u64 = 1000;
 
 /// Extracts the signer from an unchecked extrinsic.
 ///
@@ -106,5 +110,11 @@ sp_api::decl_runtime_apis! {
 
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
+    }
+
+    /// Api that construct inherent extrinsics.
+    pub trait InherentExtrinsicApi {
+        /// Api to construct inherent timestamp extrinsic from given time
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<Block::Extrinsic>;
     }
 }

@@ -5,7 +5,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::CoreDomainParentChain;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
@@ -81,6 +81,7 @@ where
     Client::Api: DomainCoreApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + MessengerApi<Block, NumberFor<Block>>
+        + InherentExtrinsicApi<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b BI: sc_consensus::BlockImport<
         Block,

@@ -1,11 +1,12 @@
 use crate::precompiles::FrontierPrecompiles;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
+use domain_runtime_primitives::SLOT_DURATION;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
 use fp_evm::weight_per_gas;
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, Everything, FindAuthor, UnixTime};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
 };
@@ -39,11 +40,10 @@ use sp_runtime::{
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-use sp_std::time::Duration;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -278,6 +278,14 @@ impl frame_system::Config for Runtime {
     type MaxConsumers = ConstU32<16>;
 }
 
+impl pallet_timestamp::Config for Runtime {
+    /// A timestamp: milliseconds since the unix epoch.
+    type Moment = Moment;
+    type OnTimestampSet = ();
+    type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
+    type WeightInfo = ();
+}
+
 parameter_types! {
     pub const ExistentialDeposit: Balance = EXISTENTIAL_DEPOSIT;
     pub const MaxLocks: u32 = 50;
@@ -400,14 +408,6 @@ parameter_types! {
     pub WeightPerGas: Weight = Weight::from_parts(weight_per_gas(BLOCK_GAS_LIMIT, NORMAL_DISPATCH_RATIO, WEIGHT_MILLISECS_PER_BLOCK), 0);
 }
 
-pub struct ZeroTimeProvider;
-
-impl UnixTime for ZeroTimeProvider {
-    fn now() -> Duration {
-        Duration::ZERO
-    }
-}
-
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -426,10 +426,7 @@ impl pallet_evm::Config for Runtime {
     type OnChargeTransaction = ();
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
-    // TODO: Right now, block time is always zero.
-    //       We should take from the primary inherents and push it here
-    //       Else any contract using block time will give invalid behavior
-    type UnixTime = ZeroTimeProvider;
+    type UnixTime = Timestamp;
 }
 
 parameter_types! {
@@ -488,23 +485,24 @@ construct_runtime!(
     {
         // System support stuff.
         System: frame_system = 0,
-        ExecutivePallet: domain_pallet_executive = 1,
+        Timestamp: pallet_timestamp = 1,
+        ExecutivePallet: domain_pallet_executive = 2,
 
         // monetary stuff
-        Balances: pallet_balances = 2,
-        TransactionPayment: pallet_transaction_payment = 3,
+        Balances: pallet_balances = 20,
+        TransactionPayment: pallet_transaction_payment = 21,
 
         // messenger stuff
         // Note: Indexes should match the indexes of the System domain runtime
-        Messenger: pallet_messenger = 6,
-        Transporter: pallet_transporter = 7,
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
 
         // evm stuff
-        Ethereum: pallet_ethereum = 50,
-        EVM: pallet_evm = 51,
-        EVMChainId: pallet_evm_chain_id = 52,
-        DynamicFee: pallet_dynamic_fee = 53,
-        BaseFee: pallet_base_fee = 54,
+        Ethereum: pallet_ethereum = 80,
+        EVM: pallet_evm = 81,
+        EVMChainId: pallet_evm_chain_id = 82,
+        DynamicFee: pallet_dynamic_fee = 83,
+        BaseFee: pallet_base_fee = 84,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -674,6 +672,16 @@ impl_runtime_apis! {
                     weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
+        }
+    }
+
+    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
+             Some(
+                UncheckedExtrinsic::new_unsigned(
+                    pallet_timestamp::Call::set{ now: moment }.into()
+                )
+             )
         }
     }
 

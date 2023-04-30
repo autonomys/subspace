@@ -1,10 +1,10 @@
 use crate::runtime_api::{
-    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor,
-    SignerExtractor, StateRootExtractor,
+    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor,
+    SetCodeConstructor, SignerExtractor, StateRootExtractor,
 };
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -15,6 +15,7 @@ use sp_runtime::traits::NumberFor;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
 use std::sync::Arc;
+use subspace_runtime_primitives::Moment;
 use system_runtime_primitives::SystemDomainApi;
 
 /// This is a stateless wrapper around the runtime api.
@@ -176,6 +177,22 @@ where
     }
 }
 
+impl<Executor, Block> InherentExtrinsicApi<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
+{
+    fn __runtime_api_internal_call_api_at(
+        &self,
+        _at: <Block as BlockT>::Hash,
+        _context: ExecutionContext,
+        params: Vec<u8>,
+        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
+    ) -> Result<Vec<u8>, ApiError> {
+        self.dispatch_call(fn_name, params)
+    }
+}
+
 impl<PBlock, Executor, Block> CoreBundleConstructor<PBlock, Block> for RuntimeApiLight<Executor>
 where
     PBlock: BlockT,
@@ -220,5 +237,21 @@ where
         runtime_code: Vec<u8>,
     ) -> Result<Vec<u8>, ApiError> {
         <Self as DomainCoreApi<Block>>::construct_set_code_extrinsic(self, at, runtime_code)
+    }
+}
+
+impl<Executor, Block> InherentExtrinsicConstructor<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
+{
+    fn construct_timestamp_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        moment: Moment,
+    ) -> Result<Option<Block::Extrinsic>, ApiError> {
+        <Self as InherentExtrinsicApi<Block>>::construct_inherent_timestamp_extrinsic(
+            self, at, moment,
+        )
     }
 }

@@ -13,15 +13,19 @@
 //! 5. Push back the potential new domain runtime extrisnic.
 
 #![warn(rust_2018_idioms)]
+#![deny(unused_crate_dependencies)]
 
+mod inherents;
 pub mod runtime_api;
 pub mod runtime_api_full;
 pub mod runtime_api_light;
 mod utils;
 pub mod xdm_verifier;
 
+use crate::inherents::construct_inherent_extrinsics;
 use crate::runtime_api::{
-    CoreBundleConstructor, SetCodeConstructor, SignerExtractor, StateRootExtractor,
+    CoreBundleConstructor, InherentExtrinsicConstructor, SetCodeConstructor, SignerExtractor,
+    StateRootExtractor,
 };
 use crate::xdm_verifier::{
     verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
@@ -397,7 +401,10 @@ where
     SBlock: BlockT,
     SBlock::Hash: From<Block::Hash>,
     NumberFor<SBlock>: From<NumberFor<Block>>,
-    RuntimeApi: SignerExtractor<Block> + SetCodeConstructor<Block> + StateRootExtractor<Block>,
+    RuntimeApi: SignerExtractor<Block>
+        + SetCodeConstructor<Block>
+        + StateRootExtractor<Block>
+        + InherentExtrinsicConstructor<Block>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
@@ -451,13 +458,26 @@ where
 
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
 
-        let mut extrinsics = deduplicate_and_shuffle_extrinsics(
+        let extrinsics = deduplicate_and_shuffle_extrinsics(
             domain_hash,
             &self.runtime_api,
             extrinsics,
             shuffling_seed,
         )
         .map(|extrinsics| self.filter_invalid_xdm_extrinsics(domain_hash, extrinsics))?;
+
+        // fetch inherent extrinsics
+        let inherent_extrinsics = construct_inherent_extrinsics(
+            &self.primary_chain_client,
+            &self.runtime_api,
+            primary_hash,
+            domain_hash,
+        )?;
+
+        let mut extrinsics: Vec<Block::Extrinsic> = inherent_extrinsics
+            .into_iter()
+            .chain(extrinsics.into_iter())
+            .collect();
 
         if let Some(new_runtime) = maybe_new_runtime {
             let encoded_set_code = self
