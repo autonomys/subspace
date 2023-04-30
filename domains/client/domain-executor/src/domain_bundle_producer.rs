@@ -13,7 +13,7 @@ use sp_domains::{
     Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
 };
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -174,16 +174,47 @@ where
         let best_hash = self.system_domain_client.info().best_hash;
         let best_number = self.system_domain_client.info().best_number;
 
-        let head_receipt_number = self
-            .parent_chain
-            .head_receipt_number(self.parent_chain.best_hash())?
-            .into();
-        let domain_best_number = self.client.info().best_number;
-        if !domain_best_number.is_zero() && domain_best_number <= head_receipt_number {
+        let best_receipt_is_written = crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(
+            &*self.client,
+            self.client.info().best_hash,
+        )?
+        .is_some();
+
+        // TODO: remove once the receipt generation can be done before the domain block is
+        // committed to the database, in other words, only when the receipt of block N+1 has
+        // been generated can the `client.info().best_number` be updated from N to N+1.
+        //
+        // This requires:
+        // 1. Reimplement `runtime_api.intermediate_roots()` on the client side.
+        // 2. Add a hook before the upstream `client.commit_operation(op)`.
+        let domain_best_number = if best_receipt_is_written {
+            self.client.info().best_number
+        } else {
+            self.client.info().best_number.saturating_sub(One::one())
+        };
+
+        let should_skip_slot = if domain_best_number.is_zero() {
+            let primary_block_number = primary_info.1;
+
+            // Executor hasn't able to finish the processing of domain block #1.
+            !primary_block_number.is_zero()
+        } else {
+            let head_receipt_number = self
+                .parent_chain
+                .head_receipt_number(self.parent_chain.best_hash())?
+                .into();
+
+            // Executor is lagging behind the receipt chain on its parent chain as another executor
+            // already processed a block higher than the local best and submitted the receipt to
+            // the parent chain, we ought to catch up with the primary block processing before
+            // producing new bundle.
+            domain_best_number <= head_receipt_number
+        };
+
+        if should_skip_slot {
             tracing::warn!(
-                head_receipt_number = ?head_receipt_number,
-                domain_best_number = ?domain_best_number,
-                "Skip slot {slot} because executor is lagging behind the receipt chain on its parent chain"
+                ?domain_best_number,
+                "Skipping bundle production on slot {slot}"
             );
             return Ok(None);
         }
