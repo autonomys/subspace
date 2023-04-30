@@ -154,7 +154,7 @@ where
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
 
-        let load_receipt = |primary_block_hash| {
+        let load_receipt = |primary_block_hash, block_number| {
             crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
@@ -163,7 +163,7 @@ where
             >(&*self.client, primary_block_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
-                    "Receipt of primary block #{primary_block_hash} not found"
+                    "Receipt of primary block #{block_number},{primary_block_hash} not found"
                 ))
             })
         };
@@ -180,7 +180,7 @@ where
                             "Primary block hash for #{to_send:?} not found"
                         ))
                     })?;
-            receipts.push(load_receipt(primary_block_hash)?);
+            receipts.push(load_receipt(primary_block_hash, to_send)?);
             to_send += 1;
 
             if to_send > max_allowed {

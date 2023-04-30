@@ -183,7 +183,7 @@ where
             tracing::warn!(
                 head_receipt_number = ?head_receipt_number,
                 domain_best_number = ?domain_best_number,
-                "Skip slot {slot} due to executor is lagging behind the receipt chain on its parent chain"
+                "Skip slot {slot} because executor is lagging behind the receipt chain on its parent chain"
             );
             return Ok(None);
         }
