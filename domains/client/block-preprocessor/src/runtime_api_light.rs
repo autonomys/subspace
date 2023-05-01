@@ -2,7 +2,6 @@ use crate::runtime_api::{
     CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor,
     SetCodeConstructor, SignerExtractor, StateRootExtractor,
 };
-use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_executor_common::runtime_blob::RuntimeBlob;
@@ -147,12 +146,10 @@ where
         block_hash: Block::Hash,
         ext: &Block::Extrinsic,
     ) -> Result<ExtractedStateRoots<Block>, ApiError> {
-        let runtime_version = self.runtime_version()?;
-        let maybe_state_roots = extract_xdm_proof_state_roots_with_runtime::<_, Block>(
-            runtime_version,
+        let maybe_state_roots = <Self as MessengerApi<Block, _>>::extract_xdm_proof_state_roots(
             self,
             block_hash,
-            ext,
+            ext.encode(),
         )?;
         maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
