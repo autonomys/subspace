@@ -5,6 +5,7 @@ use domain_runtime_primitives::SLOT_DURATION;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
 use fp_evm::weight_per_gas;
+use fp_self_contained::CheckedSignature;
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
 use frame_support::weights::constants::{
@@ -643,10 +644,8 @@ impl_runtime_apis! {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
-            use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            // TODO: we should return the actual eth transaction signer.
-            extrinsics.into_iter().map(|xt| (xt.0.signer(&lookup).map(|signer| signer.encode()), xt)).collect()
+            extract_signers(extrinsics, &lookup)
         }
 
         fn intermediate_roots() -> Vec<[u8; 32]> {
@@ -955,4 +954,29 @@ fn extract_xdm_proof_state_roots(
     } else {
         None
     }
+}
+
+pub fn extract_signers<Lookup>(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    lookup: &Lookup,
+) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)>
+where
+    Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
+{
+    use sp_runtime::traits::Checkable;
+
+    let mut signer_extrinsics = sp_std::vec![];
+    for extrinsic in extrinsics {
+        if let Ok(checked) = extrinsic.clone().check(lookup) {
+            let maybe_signer = match checked.signed {
+                CheckedSignature::SelfContained(account_id) => Some(account_id.encode()),
+                CheckedSignature::Signed(account_id, _) => Some(account_id.encode()),
+                CheckedSignature::Unsigned => None,
+            };
+
+            signer_extrinsics.push((maybe_signer, extrinsic))
+        }
+    }
+
+    signer_extrinsics
 }
