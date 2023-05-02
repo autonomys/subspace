@@ -271,8 +271,8 @@ impl domain_pallet_executive::Config for Runtime {
 }
 
 parameter_types! {
-    pub const MinExecutorStake: Balance = 10 * SSC;
-    pub const MaxExecutorStake: Balance = 10_000 * SSC;
+    pub const MinExecutorStake: Balance = SSC;
+    pub const MaxExecutorStake: Balance = 1_000_000 * SSC;
     pub const MinExecutors: u32 = 1;
     pub const MaxExecutors: u32 = 10;
     pub const EpochDuration: BlockNumber = 3;
@@ -297,7 +297,7 @@ impl pallet_executor_registry::Config for Runtime {
 parameter_types! {
     pub const MinDomainDeposit: Balance = 10 * SSC;
     pub const MaxDomainDeposit: Balance = 1000 * SSC;
-    pub const MinDomainOperatorStake: Balance = 10 * SSC;
+    pub const MinDomainOperatorStake: Balance = SSC;
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const ReceiptsPruningDepth: BlockNumber = 256;
 }
