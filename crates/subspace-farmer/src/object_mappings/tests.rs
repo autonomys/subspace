@@ -1,4 +1,5 @@
 use crate::object_mappings::ObjectMappings;
+use bytesize::ByteSize;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::Encode;
 use rand::random;
@@ -64,8 +65,12 @@ fn basic() {
     // Test basic retrievability
     {
         let base_directory = TempDir::new().unwrap();
-        let object_mappings =
-            ObjectMappings::open_or_create(base_directory.path(), public_key, u64::MAX).unwrap();
+        let object_mappings = ObjectMappings::open_or_create(
+            base_directory.path(),
+            public_key,
+            ByteSize::b(u64::MAX),
+        )
+        .unwrap();
         object_mappings.store(&global_mappings).unwrap();
 
         for (hash, global_mapping) in &global_mappings {
@@ -83,7 +88,7 @@ fn basic() {
             base_directory.path(),
             public_key,
             // Store up to 4 elements, prune down to 3
-            global_mappings[0].encoded_size() as u64 * 5 - 1,
+            ByteSize::b(global_mappings[0].encoded_size() as u64 * 5 - 1),
         )
         .unwrap();
         object_mappings.store(&global_mappings).unwrap();
@@ -151,7 +156,7 @@ fn basic() {
             base_directory.path(),
             public_key,
             // Store up to 4 elements, prune down to 3
-            global_mappings[0].encoded_size() as u64 * 5 - 1,
+            ByteSize::b(global_mappings[0].encoded_size() as u64 * 5 - 1),
         )
         .unwrap();
 

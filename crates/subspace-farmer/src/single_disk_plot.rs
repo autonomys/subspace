@@ -54,7 +54,7 @@ const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zer
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
-const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
+const RESERVED_PLOT_METADATA: ByteSize = ByteSize::mib(1);
 
 /// Self-imposed limit for number of solutions that farmer will not go over per challenge.
 ///
@@ -617,7 +617,8 @@ impl SingleDiskPlot {
         let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
         let sector_metadata_size = SectorMetadata::encoded_size();
-        let target_sector_count = single_disk_plot_info.allocated_space().as_u64() / sector_size.as_u64();
+        let target_sector_count =
+            single_disk_plot_info.allocated_space().as_u64() / sector_size.as_u64();
         let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Consider file locking to prevent other apps from modifying it
@@ -627,55 +628,56 @@ impl SingleDiskPlot {
             .create(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        let (mut metadata_header, mut metadata_header_mmap) = if metadata_file
-            .seek(SeekFrom::End(0))?
-            == 0
-        {
-            let metadata_header = PlotMetadataHeader {
-                version: 0,
-                sector_count: 0,
+        let (mut metadata_header, mut metadata_header_mmap) =
+            if metadata_file.seek(SeekFrom::End(0))? == 0 {
+                let metadata_header = PlotMetadataHeader {
+                    version: 0,
+                    sector_count: 0,
+                };
+
+                metadata_file.preallocate(
+                    RESERVED_PLOT_METADATA.as_u64()
+                        + sector_metadata_size.as_u64() * target_sector_count,
+                )?;
+                metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
+
+                let metadata_header_mmap = unsafe {
+                    MmapOptions::new()
+                        .len(PlotMetadataHeader::encoded_size())
+                        .map_mut(&metadata_file)?
+                };
+
+                (metadata_header, metadata_header_mmap)
+            } else {
+                let metadata_header_mmap = unsafe {
+                    MmapOptions::new()
+                        .len(PlotMetadataHeader::encoded_size())
+                        .map_mut(&metadata_file)?
+                };
+
+                let metadata_header =
+                    PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                        .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
+
+                if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
+                    return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
+                        metadata_header.version,
+                    ));
+                }
+
+                (metadata_header, metadata_header_mmap)
             };
-
-            metadata_file.preallocate(
-                RESERVED_PLOT_METADATA + sector_metadata_size.as_u64() * target_sector_count,
-            )?;
-            metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
-
-            let metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
-
-            (metadata_header, metadata_header_mmap)
-        } else {
-            let metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
-
-            let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
-                .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
-
-            if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
-                return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
-                    metadata_header.version,
-                ));
-            }
-
-            (metadata_header, metadata_header_mmap)
-        };
 
         let sectors_metadata = {
             let metadata_mmap = unsafe {
                 MmapOptions::new()
-                    .offset(RESERVED_PLOT_METADATA)
+                    .offset(RESERVED_PLOT_METADATA.as_u64())
                     .len((sector_metadata_size.as_u64() * target_sector_count) as usize)
                     .map(&metadata_file)?
             };
 
-            let mut sectors_metadata = Vec::<SectorMetadata>::with_capacity(target_sector_count as usize);
+            let mut sectors_metadata =
+                Vec::<SectorMetadata>::with_capacity(target_sector_count as usize);
 
             for mut sector_metadata_bytes in metadata_mmap
                 .chunks_exact(sector_metadata_size.as_u64() as usize)
@@ -761,8 +763,9 @@ impl SingleDiskPlot {
                             let mut sector_metadata = unsafe {
                                 MmapOptions::new()
                                     .offset(
-                                        RESERVED_PLOT_METADATA
-                                            + (sector_offset as u64 * sector_metadata_size.as_u64()),
+                                        RESERVED_PLOT_METADATA.as_u64()
+                                            + (sector_offset as u64
+                                                * sector_metadata_size.as_u64()),
                                     )
                                     .len(sector_metadata_size.as_u64() as usize)
                                     .map_mut(&metadata_file)?

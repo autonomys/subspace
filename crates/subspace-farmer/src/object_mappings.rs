@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use bytesize::ByteSize;
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_db::{Db, Options};
 use parity_scale_codec::{Decode, Encode};
@@ -35,17 +36,17 @@ struct PruningState {
     public_key_as_number: U256,
     furthest_keys: BTreeMap<U256, FurthestKey>,
     /// Combined size of everything in `furthest_keys`
-    total_size: u64,
+    total_size: ByteSize,
     /// Amount of data we want to remove
-    remove_size: u64,
+    remove_size: ByteSize,
 }
 
 impl PruningState {
-    fn new(public_key_as_number: U256, remove_size: u64) -> Self {
+    fn new(public_key_as_number: U256, remove_size: ByteSize) -> Self {
         Self {
             public_key_as_number,
             furthest_keys: BTreeMap::new(),
-            total_size: 0,
+            total_size: ByteSize::b(0),
             remove_size,
         }
     }
@@ -73,7 +74,8 @@ impl PruningState {
                 if &distance_from_public_key > closest_distance {
                     // Remove existing key and loop to try inserting again
                     self.furthest_keys.pop_first();
-                    self.total_size -= u64::from(closest_furthest_size);
+                    self.total_size =
+                        ByteSize::b(self.total_size.as_u64() - u64::from(closest_furthest_size));
                 } else {
                     break;
                 }
@@ -101,11 +103,11 @@ pub enum ObjectMappingError {
 struct Inner {
     db: Db,
     public_key_as_number: U256,
-    size: Mutex<u64>,
+    size: Mutex<ByteSize>,
     /// Max distance from public key beyond which to not store anything
     max_distance: Mutex<Option<U256>>,
-    prune_fill_size: u64,
-    reset_fill_size: u64,
+    prune_fill_size: ByteSize,
+    reset_fill_size: ByteSize,
 }
 
 /// `ObjectMappings` is a mapping from arbitrary object hash to its location in archived history.
@@ -128,7 +130,7 @@ impl ObjectMappings {
     pub fn open_or_create(
         path: &Path,
         public_key: PublicKey,
-        max_size: u64,
+        max_size: ByteSize,
     ) -> Result<Self, ObjectMappingError> {
         let mut options = Options::with_columns(path, 2);
         {
@@ -168,10 +170,14 @@ impl ObjectMappings {
             inner: Arc::new(Inner {
                 db,
                 public_key_as_number: U256::from_be_bytes(public_key.into()),
-                size: Mutex::new(size),
+                size: Mutex::new(ByteSize::b(size)),
                 max_distance: Mutex::new(max_distance),
-                prune_fill_size: max_size.saturating_mul(PRUNE_FILL_RATIO.0) / PRUNE_FILL_RATIO.1,
-                reset_fill_size: max_size.saturating_mul(RESET_FILL_RATIO.0) / RESET_FILL_RATIO.1,
+                prune_fill_size: ByteSize::b(
+                    max_size.as_u64().saturating_mul(PRUNE_FILL_RATIO.0) / PRUNE_FILL_RATIO.1,
+                ),
+                reset_fill_size: ByteSize::b(
+                    max_size.as_u64().saturating_mul(RESET_FILL_RATIO.0) / RESET_FILL_RATIO.1,
+                ),
             }),
         })
     }
@@ -238,7 +244,7 @@ impl ObjectMappings {
                 Some((
                     Columns::Metadata as u8,
                     Self::SIZE_KEY,
-                    Some(new_size.to_le_bytes().to_vec()),
+                    Some(new_size.as_u64().to_le_bytes().to_vec()),
                 ))
             })
             .take(1),
@@ -248,13 +254,16 @@ impl ObjectMappings {
         *size = new_size;
 
         if new_size >= self.inner.prune_fill_size {
-            self.prune(new_size - self.inner.reset_fill_size, &mut size)?;
+            self.prune(
+                ByteSize::b(new_size.as_u64() - self.inner.reset_fill_size.as_u64()),
+                &mut size,
+            )?;
         }
 
         Ok(())
     }
 
-    fn prune(&self, remove_size: u64, size: &mut u64) -> Result<(), parity_db::Error> {
+    fn prune(&self, remove_size: ByteSize, size: &mut ByteSize) -> Result<(), parity_db::Error> {
         let mut pruning_state = PruningState::new(self.inner.public_key_as_number, remove_size);
         let mut iter = self.inner.db.iter(Columns::Mappings as u8)?;
         while let Some((key, value)) = iter.next()? {
@@ -285,12 +294,12 @@ impl ObjectMappings {
 
         let tx = tx
             .chain(iter::once_with(|| {
-                new_size -= *bytes_to_delete.borrow();
+                new_size = ByteSize::b(new_size.as_u64() - *bytes_to_delete.borrow());
 
                 (
                     Columns::Metadata as u8,
                     Self::SIZE_KEY,
-                    Some(new_size.to_le_bytes().to_vec()),
+                    Some(new_size.as_u64().to_le_bytes().to_vec()),
                 )
             }))
             .chain(iter::once((
