@@ -52,11 +52,11 @@ fn criterion_benchmark(c: &mut Criterion) {
     };
 
     let sector_size = sector_size(pieces_in_sector);
-    let mut sector_bytes = vec![0; sector_size];
-    let mut sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
+    let mut sector_bytes = vec![0; sector_size.as_u64() as _];
+    let mut sector_metadata_bytes = vec![0; SectorMetadata::encoded_size().as_u64() as _];
 
     let mut group = c.benchmark_group("plotting");
-    group.throughput(Throughput::Bytes(sector_size as u64));
+    group.throughput(Throughput::Bytes(sector_size.as_u64()));
     group.bench_function("in-memory", |b| {
         b.iter(|| {
             block_on(plot_sector::<_, PosTable>(

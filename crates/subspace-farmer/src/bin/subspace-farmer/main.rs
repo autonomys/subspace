@@ -133,7 +133,7 @@ struct DiskFarm {
     /// Path to directory where data is stored.
     directory: PathBuf,
     /// How much space in bytes can farm use for plots (metadata space is not included)
-    allocated_plotting_space: u64,
+    allocated_plotting_space: ByteSize,
 }
 
 impl FromStr for DiskFarm {
@@ -167,12 +167,9 @@ impl FromStr for DiskFarm {
                 }
                 "size" => {
                     allocated_plotting_space.replace(
-                        value
-                            .parse::<ByteSize>()
-                            .map_err(|error| {
-                                format!("Failed to parse `size` \"{value}\": {error}")
-                            })?
-                            .as_u64(),
+                        value.parse::<ByteSize>().map_err(|error| {
+                            format!("Failed to parse `size` \"{value}\": {error}")
+                        })?,
                     );
                 }
                 key => {
@@ -260,7 +257,7 @@ async fn main() -> Result<()> {
 
                 vec![DiskFarm {
                     directory: base_path,
-                    allocated_plotting_space: get_usable_plot_space(0),
+                    allocated_plotting_space: get_usable_plot_space(ByteSize::b(0)),
                 }]
             } else {
                 for farm in &command.farm {
@@ -288,9 +285,7 @@ async fn main() -> Result<()> {
 
                 vec![DiskFarm {
                     directory: base_path.clone(),
-                    allocated_plotting_space: get_usable_plot_space(
-                        farming_args.plot_size.as_u64(),
-                    ),
+                    allocated_plotting_space: get_usable_plot_space(farming_args.plot_size),
                 }]
             } else {
                 for farm in &command.farm {
@@ -308,7 +303,7 @@ async fn main() -> Result<()> {
             let disk_farms = if command.farm.is_empty() {
                 vec![DiskFarm {
                     directory: base_path,
-                    allocated_plotting_space: get_usable_plot_space(0),
+                    allocated_plotting_space: get_usable_plot_space(ByteSize::b(0)),
                 }]
             } else {
                 command.farm

@@ -2,6 +2,7 @@
     array_chunks,
     const_num_from_num,
     const_option,
+    const_convert,
     const_trait_impl,
     int_roundings,
     iter_collect_into,

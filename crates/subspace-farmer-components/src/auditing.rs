@@ -41,7 +41,8 @@ pub fn audit_sector<'a>(
             .sum::<usize>();
 
     let sector_contents_map_size =
-        SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector);
+        usize::try_from(SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector).as_u64())
+            .expect("Always fits in usize");
 
     // Read s-bucket
     let s_bucket =

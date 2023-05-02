@@ -145,8 +145,9 @@ impl SingleDiskPlotInfo {
         public_key: PublicKey,
         first_sector_index: SectorIndex,
         pieces_in_sector: u16,
-        allocated_space: u64,
+        allocated_space: ByteSize,
     ) -> Self {
+        let allocated_space = allocated_space.as_u64();
         Self::V0 {
             id,
             genesis_hash,
@@ -223,11 +224,11 @@ impl SingleDiskPlotInfo {
     }
 
     /// How much space in bytes is allocated for this plot
-    pub fn allocated_space(&self) -> u64 {
+    pub fn allocated_space(&self) -> ByteSize {
         let Self::V0 {
             allocated_space, ..
         } = self;
-        *allocated_space
+        ByteSize::b(*allocated_space)
     }
 }
 
@@ -279,7 +280,7 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     /// Information necessary for farmer application
     pub farmer_app_info: FarmerAppInfo,
     /// How much space in bytes can plot use for plot
-    pub allocated_space: u64,
+    pub allocated_space: ByteSize,
     /// How many pieces one sector is supposed to contain (max)
     pub max_pieces_in_sector: u16,
     /// RPC client connected to Subspace node
@@ -375,9 +376,9 @@ pub enum SingleDiskPlotError {
     )]
     InsufficientAllocatedSpace {
         /// Minimal allocated space
-        min_size: usize,
+        min_size: ByteSize,
         /// Current allocated space
-        allocated_space: u64,
+        allocated_space: ByteSize,
     },
 }
 
@@ -536,8 +537,8 @@ impl SingleDiskPlot {
                 if allocated_space != single_disk_plot_info.allocated_space() {
                     return Err(SingleDiskPlotError::CantResize {
                         id: *single_disk_plot_info.id(),
-                        old_space: ByteSize::b(single_disk_plot_info.allocated_space()),
-                        new_space: ByteSize::b(allocated_space),
+                        old_space: single_disk_plot_info.allocated_space(),
+                        new_space: allocated_space,
                     });
                 }
 
@@ -582,7 +583,7 @@ impl SingleDiskPlot {
                 let sector_size = sector_size(max_pieces_in_sector);
 
                 // TODO: Account for plot overhead
-                let target_sector_count = (allocated_space / sector_size as u64) as usize;
+                let target_sector_count = allocated_space.as_u64() / sector_size.as_u64();
                 if target_sector_count == 0 {
                     return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
                         min_size: sector_size,
@@ -616,8 +617,7 @@ impl SingleDiskPlot {
         let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
         let sector_metadata_size = SectorMetadata::encoded_size();
-        let target_sector_count =
-            (single_disk_plot_info.allocated_space() / sector_size as u64) as usize;
+        let target_sector_count = single_disk_plot_info.allocated_space().as_u64() / sector_size.as_u64();
         let first_sector_index = single_disk_plot_info.first_sector_index();
 
         // TODO: Consider file locking to prevent other apps from modifying it
@@ -637,7 +637,7 @@ impl SingleDiskPlot {
             };
 
             metadata_file.preallocate(
-                RESERVED_PLOT_METADATA + sector_metadata_size as u64 * target_sector_count as u64,
+                RESERVED_PLOT_METADATA + sector_metadata_size.as_u64() * target_sector_count,
             )?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
@@ -671,14 +671,14 @@ impl SingleDiskPlot {
             let metadata_mmap = unsafe {
                 MmapOptions::new()
                     .offset(RESERVED_PLOT_METADATA)
-                    .len(sector_metadata_size * target_sector_count)
+                    .len((sector_metadata_size.as_u64() * target_sector_count) as usize)
                     .map(&metadata_file)?
             };
 
-            let mut sectors_metadata = Vec::<SectorMetadata>::with_capacity(target_sector_count);
+            let mut sectors_metadata = Vec::<SectorMetadata>::with_capacity(target_sector_count as usize);
 
             for mut sector_metadata_bytes in metadata_mmap
-                .chunks_exact(sector_metadata_size)
+                .chunks_exact(sector_metadata_size.as_u64() as usize)
                 .take(metadata_header.sector_count as usize)
             {
                 sectors_metadata.push(
@@ -698,7 +698,7 @@ impl SingleDiskPlot {
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
-        plot_file.preallocate(sector_size as u64 * target_sector_count as u64)?;
+        plot_file.preallocate(sector_size.as_u64() * target_sector_count)?;
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -745,7 +745,7 @@ impl SingleDiskPlot {
 
                         // Some sectors may already be plotted, skip them
                         let sectors_offsets_left_to_plot =
-                            metadata_header.sector_count as usize..target_sector_count;
+                            metadata_header.sector_count as usize..target_sector_count as usize;
 
                         // TODO: Concurrency
                         for sector_offset in sectors_offsets_left_to_plot {
@@ -754,17 +754,17 @@ impl SingleDiskPlot {
 
                             let mut sector = unsafe {
                                 MmapOptions::new()
-                                    .offset((sector_offset * sector_size) as u64)
-                                    .len(sector_size)
+                                    .offset(sector_offset as u64 * sector_size.as_u64())
+                                    .len(sector_size.as_u64() as usize)
                                     .map_mut(&*plot_file)?
                             };
                             let mut sector_metadata = unsafe {
                                 MmapOptions::new()
                                     .offset(
                                         RESERVED_PLOT_METADATA
-                                            + (sector_offset * sector_metadata_size) as u64,
+                                            + (sector_offset as u64 * sector_metadata_size.as_u64()),
                                     )
-                                    .len(sector_metadata_size)
+                                    .len(sector_metadata_size.as_u64() as usize)
                                     .map_mut(&metadata_file)?
                             };
                             let plotting_permit =
@@ -905,7 +905,7 @@ impl SingleDiskPlot {
 
                             for (sector_index, sector_metadata, sector) in sectors_metadata
                                 .iter()
-                                .zip(plot_mmap.chunks_exact(sector_size))
+                                .zip(plot_mmap.chunks_exact(sector_size.as_u64() as usize))
                                 .enumerate()
                                 .map(|(sector_index, (sector, metadata))| {
                                     (sector_index as u64 + first_sector_index, sector, metadata)

@@ -101,7 +101,7 @@ where
     }
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
-    let sector_size = sector_size(pieces_in_sector);
+    let sector_size = sector_size(pieces_in_sector).as_u64() as usize;
     // TODO: Would be nicer to have list of plots here and just index it
     let sector = &global_plot[sector_size * sector_offset..][..sector_size];
 

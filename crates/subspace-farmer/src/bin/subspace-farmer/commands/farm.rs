@@ -188,7 +188,7 @@ where
                 min_size,
                 allocated_space,
             }) => {
-                let minimum_plot_size = get_required_plot_space_with_overhead(min_size as u64);
+                let minimum_plot_size = get_required_plot_space_with_overhead(min_size);
                 let allocated_plotting_space_with_overhead =
                     get_required_plot_space_with_overhead(allocated_space);
 

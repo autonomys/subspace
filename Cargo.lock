@@ -10814,6 +10814,7 @@ dependencies = [
  "async-trait",
  "backoff",
  "bitvec",
+ "bytesize",
  "criterion",
  "fs2",
  "futures",

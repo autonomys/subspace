@@ -2,6 +2,7 @@ use crate::sector::{
     sector_record_chunks_size, sector_size, SectorContentsMap, SectorContentsMapFromBytesError,
     SectorMetadata,
 };
+use bytesize::ByteSize;
 use rayon::prelude::*;
 use std::mem::ManuallyDrop;
 use std::simd::Simd;
@@ -20,9 +21,9 @@ pub enum ReadingError {
     #[error("Wrong sector size: expected {expected}, actual {actual}")]
     WrongSectorSize {
         /// Expected size in bytes
-        expected: usize,
+        expected: ByteSize,
         /// Actual size in bytes
-        actual: usize,
+        actual: ByteSize,
     },
     /// Failed to read chunk.
     ///
@@ -59,9 +60,9 @@ pub enum ReadingError {
     /// Wrong record size after decoding
     #[error("Wrong record size after decoding: expected {expected}, actual {actual}")]
     WrongRecordSizeAfterDecoding {
-        /// Expected size in bytes
+        /// Expected size
         expected: usize,
-        /// Actual size in bytes
+        /// Actual size
         actual: usize,
     },
     /// Failed to decode sector contents map
@@ -92,10 +93,15 @@ pub fn read_sector_record_chunks<PosTable>(
 where
     PosTable: Table,
 {
-    if sector.len() != sector_size(pieces_in_sector) {
+    let given_sector_size = sector
+        .len()
+        .try_into()
+        .map(ByteSize::b)
+        .expect("Always fits in u64");
+    if given_sector_size != sector_size(pieces_in_sector) {
         return Err(ReadingError::WrongSectorSize {
             expected: sector_size(pieces_in_sector),
-            actual: sector.len(),
+            actual: given_sector_size,
         });
     }
 
@@ -121,7 +127,10 @@ where
 
                 let chunk_location = chunk_offset + s_bucket_offset as usize;
 
-                let mut record_chunk = sector[SectorContentsMap::encoded_size(pieces_in_sector)..]
+                let mut record_chunk = sector[usize::try_from(
+                    SectorContentsMap::encoded_size(pieces_in_sector).as_u64(),
+                )
+                .expect("Always fits in usize")..]
                     .array_chunks::<{ Scalar::FULL_BYTES }>()
                     .nth(chunk_location)
                     .copied()
@@ -224,15 +233,24 @@ pub fn read_record_metadata(
     pieces_in_sector: u16,
     sector: &[u8],
 ) -> Result<(RecordCommitment, RecordWitness), ReadingError> {
-    if sector.len() != sector_size(pieces_in_sector) {
+    let given_sector_size = sector
+        .len()
+        .try_into()
+        .map(ByteSize::b)
+        .expect("Always fits in u64");
+    if given_sector_size != sector_size(pieces_in_sector) {
         return Err(ReadingError::WrongSectorSize {
             expected: sector_size(pieces_in_sector),
-            actual: sector.len(),
+            actual: given_sector_size,
         });
     }
 
-    let sector_metadata_start = SectorContentsMap::encoded_size(pieces_in_sector)
-        + sector_record_chunks_size(pieces_in_sector);
+    let sector_metadata_start = usize::try_from(
+        (SectorContentsMap::encoded_size(pieces_in_sector)
+            + sector_record_chunks_size(pieces_in_sector))
+        .as_u64(),
+    )
+    .expect("always fits in usize");
     let commitment_witness_size = RecordCommitment::SIZE + RecordWitness::SIZE;
     let (record_commitment, record_witness) = sector[sector_metadata_start..]
         // Move to the beginning of the commitment and witness we care about
@@ -263,18 +281,23 @@ where
 {
     let pieces_in_sector = sector_metadata.pieces_in_sector;
 
-    if sector.len() != sector_size(pieces_in_sector) {
+    let given_sector_size = sector
+        .len()
+        .try_into()
+        .map(ByteSize::b)
+        .expect("Always fits in u64");
+    if given_sector_size != sector_size(pieces_in_sector) {
         return Err(ReadingError::WrongSectorSize {
             expected: sector_size(pieces_in_sector),
-            actual: sector.len(),
+            actual: given_sector_size,
         });
     }
 
     let sector_contents_map = {
-        SectorContentsMap::from_bytes(
-            &sector[..SectorContentsMap::encoded_size(pieces_in_sector)],
-            pieces_in_sector,
-        )?
+        let sector_contents_map_end =
+            usize::try_from(SectorContentsMap::encoded_size(pieces_in_sector).as_u64())
+                .expect("always fits in usize");
+        SectorContentsMap::from_bytes(&sector[..sector_contents_map_end], pieces_in_sector)?
     };
 
     // Restore source record scalars

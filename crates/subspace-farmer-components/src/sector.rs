@@ -1,4 +1,5 @@
 use bitvec::prelude::*;
+use bytesize::ByteSize;
 use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
 use std::num::NonZeroU64;
@@ -13,15 +14,25 @@ use thiserror::Error;
 /// Size of the part of the plot containing record chunks (s-buckets).
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
-pub const fn sector_record_chunks_size(pieces_in_sector: u16) -> usize {
-    usize::from(pieces_in_sector) * Record::SIZE
+pub const fn sector_record_chunks_size(pieces_in_sector: u16) -> ByteSize {
+    // TODO: unwrap in const is not there yet
+    match (usize::from(pieces_in_sector) * Record::SIZE).try_into() {
+        Ok(ok) => ByteSize::b(ok),
+        _ => unreachable!(),
+    }
 }
 
 /// Size of the part of the plot containing commitments and witnesses for records.
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
-pub const fn sector_commitments_witnesses_size(pieces_in_sector: u16) -> usize {
-    usize::from(pieces_in_sector) * (RecordWitness::SIZE + RecordCommitment::SIZE)
+pub const fn sector_commitments_witnesses_size(pieces_in_sector: u16) -> ByteSize {
+    // TODO: unwrap in const is not there yet
+    match (usize::from(pieces_in_sector) * (RecordWitness::SIZE + RecordCommitment::SIZE))
+        .try_into()
+    {
+        Ok(ok) => ByteSize::b(ok),
+        _ => unreachable!(),
+    }
 }
 
 /// Exact sector plot size (sector contents map, record chunks, record commitments and witnesses).
@@ -31,10 +42,13 @@ pub const fn sector_commitments_witnesses_size(pieces_in_sector: u16) -> usize {
 /// [`sector_record_chunks_size()`] and size of record commitments and witnesses with
 /// [`sector_commitments_witnesses_size()`]. This function just combines those three together for
 /// convenience.
-pub const fn sector_size(pieces_in_sector: u16) -> usize {
-    sector_record_chunks_size(pieces_in_sector)
-        + sector_commitments_witnesses_size(pieces_in_sector)
-        + SectorContentsMap::encoded_size(pieces_in_sector)
+pub const fn sector_size(pieces_in_sector: u16) -> ByteSize {
+    // TODO: no const maths for ByteSize for now
+    ByteSize::b(
+        sector_record_chunks_size(pieces_in_sector).as_u64()
+            + sector_commitments_witnesses_size(pieces_in_sector).as_u64()
+            + SectorContentsMap::encoded_size(pieces_in_sector).as_u64(),
+    )
 }
 
 /// Metadata of the plotted sector
@@ -79,7 +93,7 @@ impl SectorMetadata {
     ///
     /// For sector plot size use [`sector_size()`].
     #[inline]
-    pub fn encoded_size() -> usize {
+    pub fn encoded_size() -> ByteSize {
         let default = SectorMetadata {
             sector_index: 0,
             pieces_in_sector: 0,
@@ -90,7 +104,11 @@ impl SectorMetadata {
             expires_at: SegmentIndex::default(),
         };
 
-        default.encoded_size()
+        default
+            .encoded_size()
+            .try_into()
+            .map(ByteSize::b)
+            .expect("Always fits in u64")
     }
 }
 
@@ -172,9 +190,9 @@ pub enum SectorContentsMapFromBytesError {
     #[error("Invalid bytes length, expected {expected}, actual {actual}")]
     InvalidBytesLength {
         /// Expected length
-        expected: usize,
+        expected: ByteSize,
         /// Actual length
-        actual: usize,
+        actual: ByteSize,
     },
     /// Invalid number of encoded record chunks
     #[error("Invalid number of encoded record chunks: {actual}")]
@@ -251,10 +269,15 @@ impl SectorContentsMap {
         bytes: &[u8],
         pieces_in_sector: u16,
     ) -> Result<Self, SectorContentsMapFromBytesError> {
-        if bytes.len() != Self::encoded_size(pieces_in_sector) {
+        let bytes_size = bytes
+            .len()
+            .try_into()
+            .map(ByteSize::b)
+            .expect("Always fits in u64");
+        if bytes_size != Self::encoded_size(pieces_in_sector) {
             return Err(SectorContentsMapFromBytesError::InvalidBytesLength {
                 expected: Self::encoded_size(pieces_in_sector),
-                actual: bytes.len(),
+                actual: bytes_size,
             });
         }
 
@@ -289,8 +312,12 @@ impl SectorContentsMap {
 
     /// Size of sector contents map when encoded and stored in the plot for specified number of
     /// pieces in sector
-    pub const fn encoded_size(pieces_in_sector: u16) -> usize {
-        SINGLE_RECORD_BIT_ARRAY_SIZE * usize::from(pieces_in_sector)
+    pub const fn encoded_size(pieces_in_sector: u16) -> ByteSize {
+        // TODO: unwrap in const is not there yet
+        match (SINGLE_RECORD_BIT_ARRAY_SIZE * usize::from(pieces_in_sector)).try_into() {
+            Ok(size) => ByteSize::b(size),
+            _ => unreachable!(),
+        }
     }
 
     /// Number of encoded chunks in each record

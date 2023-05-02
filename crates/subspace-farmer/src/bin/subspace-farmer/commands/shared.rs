@@ -11,8 +11,8 @@ pub(crate) fn print_disk_farm_info(directory: PathBuf, disk_farm_index: usize) {
             println!("  First sector index: {}", info.first_sector_index());
             println!(
                 "  Allocated space: {} ({})",
-                bytesize::to_string(info.allocated_space(), true),
-                bytesize::to_string(info.allocated_space(), false)
+                info.allocated_space().to_string_as(true),
+                info.allocated_space().to_string_as(false),
             );
             println!("  Directory: {}", directory.display());
         }

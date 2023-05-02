@@ -81,7 +81,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let plotted_sector_bytes = fs::read(&persisted_sector).unwrap();
         let sector_contents_map = SectorContentsMap::from_bytes(
-            &plotted_sector_bytes[..SectorContentsMap::encoded_size(pieces_in_sector)],
+            &plotted_sector_bytes
+                [..SectorContentsMap::encoded_size(pieces_in_sector).as_u64() as _],
             pieces_in_sector,
         )
         .unwrap();
@@ -105,8 +106,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     } else {
         println!("Plotting one sector...");
 
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
+        let mut plotted_sector_bytes = vec![0; sector_size.as_u64() as _];
+        let mut plotted_sector_metadata_bytes =
+            vec![0; SectorMetadata::encoded_size().as_u64() as _];
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
@@ -126,7 +128,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         (plotted_sector, plotted_sector_bytes)
     };
 
-    assert_eq!(plotted_sector_bytes.len(), sector_size);
+    assert_eq!(plotted_sector_bytes.len(), sector_size.as_u64() as usize);
 
     if persist_sector && !persisted_sector.is_file() {
         println!(
@@ -164,7 +166,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .unwrap();
 
         plot_file
-            .preallocate(sector_size as u64 * sectors_count)
+            .preallocate(sector_size.as_u64() * sectors_count)
             .unwrap();
         plot_file.advise_random_access().unwrap();
 
@@ -187,7 +189,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 let start = Instant::now();
                 for _i in 0..iters {
                     for (sector_index, sector) in plot_mmap
-                        .chunks_exact(sector_size)
+                        .chunks_exact(sector_size.as_u64() as _)
                         .enumerate()
                         .map(|(sector_index, sector)| (sector_index as u64, sector))
                     {

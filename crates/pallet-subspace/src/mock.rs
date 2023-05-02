@@ -398,8 +398,9 @@ pub fn create_signed_vote(
     let sector_size = sector_size(pieces_in_sector);
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
+        let mut plotted_sector_bytes = vec![0; sector_size.as_u64() as usize];
+        let mut plotted_sector_metadata_bytes =
+            vec![0; SectorMetadata::encoded_size().as_u64() as usize];
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,

@@ -391,8 +391,12 @@ where
         }
 
         let sector_contents_map = {
+            let sector_contents_map_len = usize::try_from(
+                SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector).as_u64(),
+            )
+            .expect("Always fits in usize");
             SectorContentsMap::from_bytes(
-                &sector[..SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector)],
+                &sector[..sector_contents_map_len],
                 sector_metadata.pieces_in_sector,
             )?
         };

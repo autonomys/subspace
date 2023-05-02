@@ -8,6 +8,7 @@ use crate::FarmerProtocolInfo;
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
+use bytesize::ByteSize;
 use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
@@ -115,17 +116,17 @@ pub enum PlottingError {
     #[error("Bad sector output size: provided {provided}, expected {expected}")]
     BadSectorOutputSize {
         /// Actual size
-        provided: usize,
+        provided: ByteSize,
         /// Expected size
-        expected: usize,
+        expected: ByteSize,
     },
     /// Bad sector metadata output size
     #[error("Bad sector metadata output size: provided {provided}, expected {expected}")]
     BadSectorMetadataOutputSize {
         /// Actual size
-        provided: usize,
+        provided: ByteSize,
         /// Expected size
-        expected: usize,
+        expected: ByteSize,
     },
     /// Piece not found, can't create sector, this should never happen
     #[error("Piece {piece_index} not found, can't create sector, this should never happen")]
@@ -177,16 +178,26 @@ where
         return Err(PlottingError::InvalidErasureCodingInstance);
     }
 
-    if sector_output.len() < sector_size(pieces_in_sector) {
+    let sector_output_size = sector_output
+        .len()
+        .try_into()
+        .map(ByteSize::b)
+        .expect("Always fits in u64");
+    if sector_output_size < sector_size(pieces_in_sector) {
         return Err(PlottingError::BadSectorOutputSize {
-            provided: sector_output.len(),
+            provided: sector_output_size,
             expected: sector_size(pieces_in_sector),
         });
     }
 
-    if sector_metadata_output.len() < SectorMetadata::encoded_size() {
+    let sector_metadata_output_size = sector_metadata_output
+        .len()
+        .try_into()
+        .map(ByteSize::b)
+        .expect("Always fits in u64");
+    if sector_metadata_output_size < SectorMetadata::encoded_size() {
         return Err(PlottingError::BadSectorMetadataOutputSize {
-            provided: sector_metadata_output.len(),
+            provided: sector_metadata_output_size,
             expected: SectorMetadata::encoded_size(),
         });
     }
@@ -315,13 +326,19 @@ where
         });
 
     {
-        let (sector_contents_map_region, remainder) =
-            sector_output.split_at_mut(SectorContentsMap::encoded_size(pieces_in_sector));
+        let (sector_contents_map_region, remainder) = sector_output.split_at_mut(
+            SectorContentsMap::encoded_size(pieces_in_sector)
+                .as_u64()
+                .try_into()
+                .expect("Always fits in usize"),
+        );
         // Write sector contents map so we can decode it later
         sector_contents_map_region.copy_from_slice(sector_contents_map.as_ref());
         // Slice remaining memory into belonging to s-buckets and metadata
-        let (s_buckets_region, metadata_region) =
-            remainder.split_at_mut(sector_record_chunks_size(pieces_in_sector));
+        let (s_buckets_region, metadata_region) = remainder.split_at_mut(
+            usize::try_from(sector_record_chunks_size(pieces_in_sector).as_u64())
+                .expect("Always fits in usize"),
+        );
 
         let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
         let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];

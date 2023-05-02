@@ -224,8 +224,8 @@ where
         .next()
         .expect("First block is always producing one segment; qed");
     let history_size = HistorySize::from(SegmentIndex::ZERO);
-    let mut sector = vec![0u8; sector_size(pieces_in_sector)];
-    let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
+    let mut sector = vec![0u8; sector_size(pieces_in_sector).as_u64() as usize];
+    let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size().as_u64() as usize];
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
