@@ -19,13 +19,14 @@
 use crate::chain_spec_utils::chain_spec_properties;
 use crate::AccountId32ToAccountId20Converter;
 use core_evm_runtime::{
-    AccountId, BalancesConfig, EVMChainIdConfig, GenesisConfig, MessengerConfig, Signature,
-    SudoConfig, SystemConfig, WASM_BINARY,
+    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
+    Precompiles, SudoConfig, SystemConfig, WASM_BINARY,
 };
+use hex_literal::hex;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
-use sp_core::{ecdsa, sr25519, Pair, Public};
-use sp_runtime::traits::{Convert, IdentifyAccount, Verify};
+use sp_core::{sr25519, Pair, Public};
+use sp_runtime::traits::Convert;
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
 
@@ -36,19 +37,24 @@ pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Pu
         .public()
 }
 
-type AccountPublic = <Signature as Verify>::Signer;
-
-/// Generate an account ID from seed.
-pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
-where
-    AccountPublic: From<<TPublic::Pair as Pair>::Public>,
-{
-    AccountPublic::from(get_from_seed::<TPublic>(seed)).into_account()
-}
-
 pub type ChainSpec = ExecutionChainSpec<GenesisConfig>;
 
+/// Development keys that will be injected automatically on polkadotjs apps
+fn get_dev_accounts() -> Vec<AccountId> {
+    vec![
+        // Alith key
+        AccountId::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
+        // Baltathar key
+        AccountId::from(hex!("3Cd0A705a2DC65e5b1E1205896BaA2be8A07c6e0")),
+        // Charleth key
+        AccountId::from(hex!("798d4Ba9baf0064Ec19eB4F0a1a45785ae9D6DFc")),
+        // Dorothy
+        AccountId::from(hex!("773539d4Ac0e786233D90A233654ccEE26a613D9")),
+    ]
+}
+
 pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
+    let accounts = get_dev_accounts();
     ExecutionChainSpec::from_genesis(
         // Name
         "Development",
@@ -57,20 +63,16 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         ChainType::Development,
         move || {
             testnet_genesis(
-                vec![
-                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
-                    get_account_id_from_seed::<ecdsa::Public>("Bob"),
-                    get_account_id_from_seed::<ecdsa::Public>("Alice//stash"),
-                    get_account_id_from_seed::<ecdsa::Public>("Bob//stash"),
-                ],
-                Some(get_account_id_from_seed::<ecdsa::Public>("Alice")),
+                accounts.clone(),
+                // Alith is Sudo
+                Some(accounts[0]),
                 vec![(
-                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
+                    accounts[0],
                     AccountId32ToAccountId20Converter::convert(
                         get_from_seed::<sr25519::Public>("Alice").into(),
                     ),
                 )],
-                42,
+                1000,
             )
         },
         vec![],
@@ -83,6 +85,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
 }
 
 pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
+    let accounts = get_dev_accounts();
     ExecutionChainSpec::from_genesis(
         // Name
         "Local Testnet",
@@ -91,32 +94,11 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         ChainType::Local,
         move || {
             testnet_genesis(
-                vec![
-                    get_account_id_from_seed::<ecdsa::Public>("Alice"),
-                    get_account_id_from_seed::<ecdsa::Public>("Bob"),
-                    get_account_id_from_seed::<ecdsa::Public>("Charlie"),
-                    get_account_id_from_seed::<ecdsa::Public>("Dave"),
-                    get_account_id_from_seed::<ecdsa::Public>("Eve"),
-                    get_account_id_from_seed::<ecdsa::Public>("Ferdie"),
-                    get_account_id_from_seed::<ecdsa::Public>("Alice//stash"),
-                    get_account_id_from_seed::<ecdsa::Public>("Bob//stash"),
-                    get_account_id_from_seed::<ecdsa::Public>("Charlie//stash"),
-                    get_account_id_from_seed::<ecdsa::Public>("Dave//stash"),
-                    get_account_id_from_seed::<ecdsa::Public>("Eve//stash"),
-                    get_account_id_from_seed::<ecdsa::Public>("Ferdie//stash"),
-                ],
-                Some(get_account_id_from_seed::<ecdsa::Public>("Alice")),
-                vec![
-                    (
-                        get_account_id_from_seed::<ecdsa::Public>("Alice"),
-                        get_account_id_from_seed::<ecdsa::Public>("Alice"),
-                    ),
-                    (
-                        get_account_id_from_seed::<ecdsa::Public>("Bob"),
-                        get_account_id_from_seed::<ecdsa::Public>("Bob"),
-                    ),
-                ],
-                43,
+                accounts.clone(),
+                // Alith is sudo
+                Some(accounts[0]),
+                vec![(accounts[0], accounts[0]), (accounts[1], accounts[1])],
+                1001,
             )
         },
         // Bootnodes
@@ -153,7 +135,7 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
                 ],
                 Some(sudo_account),
                 Default::default(),
-                44,
+                1002,
             )
         },
         // Bootnodes
@@ -194,7 +176,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
                     AccountId::from_str("5b267fd1ba3ace6e3c3234f9576c49c877b5beb9")
                         .expect("Wrong relayer account address"),
                 )],
-                45,
+                1003,
             )
         },
         // Bootnodes
@@ -228,6 +210,12 @@ fn testnet_genesis(
     relayers: Vec<(AccountId, AccountId)>,
     chain_id: u64,
 ) -> GenesisConfig {
+    // This is the simplest bytecode to revert without returning any data.
+    // We will pre-deploy it under all of our precompiles to ensure they can be called from
+    // within contracts.
+    // (PUSH1 0x00 PUSH1 0x00 REVERT)
+    let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
+
     GenesisConfig {
         system: SystemConfig {
             code: WASM_BINARY
@@ -247,7 +235,24 @@ fn testnet_genesis(
         },
         messenger: MessengerConfig { relayers },
         evm_chain_id: EVMChainIdConfig { chain_id },
-        evm: Default::default(),
+        evm: EVMConfig {
+            // We need _some_ code inserted at the precompile address so that
+            // the evm will actually call the address.
+            accounts: Precompiles::used_addresses()
+                .into_iter()
+                .map(|addr| {
+                    (
+                        addr,
+                        fp_evm::GenesisAccount {
+                            nonce: Default::default(),
+                            balance: Default::default(),
+                            storage: Default::default(),
+                            code: revert_bytecode.clone(),
+                        },
+                    )
+                })
+                .collect(),
+        },
         ethereum: Default::default(),
         base_fee: Default::default(),
     }

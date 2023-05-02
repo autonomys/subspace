@@ -6,9 +6,9 @@ use pallet_evm_precompile_modexp::Modexp;
 use pallet_evm_precompile_sha3fips::Sha3FIPS256;
 use pallet_evm_precompile_simple::{ECRecover, ECRecoverPublicKey, Identity, Ripemd160, Sha256};
 
-pub struct FrontierPrecompiles<R>(PhantomData<R>);
+pub struct Precompiles<R>(PhantomData<R>);
 
-impl<R> FrontierPrecompiles<R>
+impl<R> Precompiles<R>
 where
     R: pallet_evm::Config,
 {
@@ -25,13 +25,14 @@ where
     }
 }
 
-impl<R> Default for FrontierPrecompiles<R> {
+impl<R> Default for Precompiles<R> {
+    #[inline]
     fn default() -> Self {
         Self(PhantomData::default())
     }
 }
 
-impl<R> PrecompileSet for FrontierPrecompiles<R>
+impl<R> PrecompileSet for Precompiles<R>
 where
     R: pallet_evm::Config,
 {

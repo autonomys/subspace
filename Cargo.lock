@@ -11040,6 +11040,7 @@ dependencies = [
  "domain-eth-service",
  "domain-runtime-primitives",
  "domain-service",
+ "fp-evm",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-support",

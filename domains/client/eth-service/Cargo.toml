@@ -18,7 +18,7 @@ domain-service = { version = "0.1.0", path = "../../service" }
 fc-consensus = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 fc-db = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 fc-mapping-sync = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-fc-rpc = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
+fc-rpc = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b", features = ['rpc-binary-search-estimate'] }
 fc-rpc-core = { version = "1.1.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 fc-storage = { version = "1.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 fp-rpc = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b", features = ['default'] }

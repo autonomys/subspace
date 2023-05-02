@@ -1,4 +1,3 @@
-use crate::precompiles::FrontierPrecompiles;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::SLOT_DURATION;
@@ -17,7 +16,8 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_ethereum::Call::transact;
 use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
 use pallet_evm::{
-    Account as EVMAccount, EnsureAccountId20, FeeCalculator, IdentityAddressMapping, Runner,
+    Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
+    IdentityAddressMapping, Runner,
 };
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
@@ -29,7 +29,7 @@ use sp_messenger::messages::{
     CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable, IdentifyAccount, IdentityLookup,
     PostDispatchInfoOf, UniqueSaturatedInto, Verify,
 };
 use sp_runtime::transaction_validity::{
@@ -54,7 +54,7 @@ pub type Signature = EthereumSignature;
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// The address format for describing accounts.
-pub type Address = MultiAddress<AccountId, ()>;
+pub type Address = AccountId;
 
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
@@ -64,6 +64,9 @@ pub type SignedBlock = generic::SignedBlock<Block>;
 
 /// BlockId type as expected by this runtime.
 pub type BlockId = generic::BlockId<Block>;
+
+/// Precompiles we use for EVM
+pub type Precompiles = crate::precompiles::Precompiles<Runtime>;
 
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
@@ -235,7 +238,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated dispatch type that is available for extrinsics.
     type RuntimeCall = RuntimeCall;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
-    type Lookup = AccountIdLookup<AccountId, ()>;
+    type Lookup = IdentityLookup<AccountId>;
     /// The index type for storing how many extrinsics an account has signed.
     type Index = Index;
     /// The index type for blocks.
@@ -415,7 +418,7 @@ parameter_types! {
     pub BlockGasLimit: U256 = U256::from(
         NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
     );
-    pub PrecompilesValue: FrontierPrecompiles<Runtime> = FrontierPrecompiles::<_>::default();
+    pub PrecompilesValue: Precompiles = Precompiles::default();
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
@@ -424,12 +427,12 @@ impl pallet_evm::Config for Runtime {
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
     type WeightPerGas = WeightPerGas;
     type BlockHashMapping = pallet_ethereum::EthereumBlockHashMapping<Self>;
-    type CallOrigin = EnsureAccountId20;
-    type WithdrawOrigin = EnsureAccountId20;
+    type CallOrigin = EnsureAddressRoot<AccountId>;
+    type WithdrawOrigin = EnsureAddressNever<AccountId>;
     type AddressMapping = IdentityAddressMapping;
     type Currency = Balances;
     type RuntimeEvent = RuntimeEvent;
-    type PrecompilesType = FrontierPrecompiles<Self>;
+    type PrecompilesType = Precompiles;
     type PrecompilesValue = PrecompilesValue;
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
