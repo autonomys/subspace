@@ -4,12 +4,12 @@ use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::SLOT_DURATION;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
-use fp_evm::weight_per_gas;
 use fp_self_contained::CheckedSignature;
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
+    WEIGHT_REF_TIME_PER_SECOND,
 };
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -272,8 +272,7 @@ impl frame_system::Config for Runtime {
     type BlockWeights = RuntimeBlockWeights;
     /// The maximum length of a block (in bytes).
     type BlockLength = RuntimeBlockLength;
-    /// This is used as an identifier of the chain. 42 is the generic substrate prefix.
-    type SS58Prefix = ConstU16<42>;
+    type SS58Prefix = ConstU16<2254>;
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
@@ -401,12 +400,23 @@ impl FindAuthor<H160> for FindAuthorTruncated {
     }
 }
 
-const BLOCK_GAS_LIMIT: u64 = 75_000_000;
+/// Current approximation of the gas/s consumption considering
+/// EVM execution over compiled WASM (on 4.4Ghz CPU).
+/// Given the 500ms Weight, from which 75% only are used for transactions,
+/// the total EVM execution gas limit is: GAS_PER_SECOND * 0.500 * 0.75 ~= 15_000_000.
+pub const GAS_PER_SECOND: u64 = 40_000_000;
+
+/// Approximate ratio of the amount of Weight per Gas.
+/// u64 works for approximations because Weight is a very small unit compared to gas.
+pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
 
 parameter_types! {
-    pub BlockGasLimit: U256 = U256::from(BLOCK_GAS_LIMIT);
+    /// EVM gas limit
+    pub BlockGasLimit: U256 = U256::from(
+        NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
+    );
     pub PrecompilesValue: FrontierPrecompiles<Runtime> = FrontierPrecompiles::<_>::default();
-    pub WeightPerGas: Weight = Weight::from_parts(weight_per_gas(BLOCK_GAS_LIMIT, NORMAL_DISPATCH_RATIO, WEIGHT_MILLISECS_PER_BLOCK), 0);
+    pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
 impl pallet_evm::Config for Runtime {
@@ -444,14 +454,10 @@ parameter_types! {
     pub BoundDivision: U256 = U256::from(1024);
 }
 
-// TODO: This pallet needs inherents to pass target_gas price for each block.
-impl pallet_dynamic_fee::Config for Runtime {
-    type MinGasPriceBoundDivisor = BoundDivision;
-}
-
 parameter_types! {
     pub DefaultBaseFeePerGas: U256 = U256::from(1_000_000_000);
-    pub DefaultElasticity: Permill = Permill::from_parts(125_000);
+    // mark it to 5% increments on beyond target weight.
+    pub DefaultElasticity: Permill = Permill::from_parts(50_000);
 }
 
 pub struct BaseFeeThreshold;
@@ -502,8 +508,7 @@ construct_runtime!(
         Ethereum: pallet_ethereum = 80,
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
-        DynamicFee: pallet_dynamic_fee = 83,
-        BaseFee: pallet_base_fee = 84,
+        BaseFee: pallet_base_fee = 83,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
