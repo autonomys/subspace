@@ -1,4 +1,5 @@
 use crate::piece_cache::PieceCache;
+use bytesize::ByteSize;
 use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -48,7 +49,7 @@ impl AuxStore for TestAuxStore {
 fn basic() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        ArchivedHistorySegment::SIZE as u64,
+        ByteSize::b(ArchivedHistorySegment::SIZE as u64),
         PeerId::random(),
     );
 
@@ -76,7 +77,11 @@ fn basic() {
 
 #[test]
 fn cache_nothing() {
-    let mut store = PieceCache::new(Arc::new(TestAuxStore::default()), 0, PeerId::random());
+    let mut store = PieceCache::new(
+        Arc::new(TestAuxStore::default()),
+        ByteSize::b(0),
+        PeerId::random(),
+    );
 
     store
         .add_pieces(PieceIndex::default(), &ArchivedHistorySegment::default())
@@ -94,7 +99,7 @@ fn cache_nothing() {
 fn auto_cleanup() {
     let mut store = PieceCache::new(
         Arc::new(TestAuxStore::default()),
-        Piece::SIZE as u64,
+        ByteSize::b(Piece::SIZE as u64),
         PeerId::random(),
     );
 

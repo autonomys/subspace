@@ -28,6 +28,7 @@ use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::PrimaryChainTxPreValidator;
+use bytesize::ByteSize;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -169,7 +170,7 @@ pub enum SubspaceNetworking {
         /// Configuration to use for DSN instantiation
         config: DsnConfig,
         /// Piece cache size in bytes
-        piece_cache_size: u64,
+        piece_cache_size: ByteSize,
     },
 }
 

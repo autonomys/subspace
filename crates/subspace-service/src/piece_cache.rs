@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use bytesize::ByteSize;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
@@ -47,9 +48,9 @@ where
 {
     const KEY_PREFIX: &[u8] = b"piece_cache";
 
-    /// Create new instance with specified size (in bytes)
-    pub fn new(aux_store: Arc<AS>, cache_size: u64, local_peer_id: PeerId) -> Self {
-        let max_pieces_in_cache = PieceIndex::from(cache_size / Piece::SIZE as u64);
+    /// Create new instance with specified size
+    pub fn new(aux_store: Arc<AS>, cache_size: ByteSize, local_peer_id: PeerId) -> Self {
+        let max_pieces_in_cache = PieceIndex::from(cache_size.as_u64() / Piece::SIZE as u64);
         let local_provided_keys = Self::get_local_provided_keys(aux_store.clone())
             .expect("DB loading should succeed.")
             .unwrap_or_default();

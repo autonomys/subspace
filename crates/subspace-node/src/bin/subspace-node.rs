@@ -528,7 +528,7 @@ fn main() -> Result<(), Error> {
                         force_new_slot_notifications: !cli.domain_args.is_empty(),
                         subspace_networking: SubspaceNetworking::Create {
                             config: dsn_config,
-                            piece_cache_size: cli.piece_cache_size.as_u64(),
+                            piece_cache_size: cli.piece_cache_size,
                         },
                         segment_publish_concurrency: cli.segment_publish_concurrency,
                         sync_from_dsn: cli.sync_from_dsn,

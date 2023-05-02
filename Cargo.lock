@@ -11058,6 +11058,7 @@ name = "subspace-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytesize",
  "derive_more",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
