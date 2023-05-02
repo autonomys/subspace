@@ -295,6 +295,7 @@ impl MockPrimaryNode {
                 ),
                 block_announce_validator_builder: None,
                 warp_sync_params: None,
+                block_relay: None,
             })
             .expect("Should be able to build network");
 

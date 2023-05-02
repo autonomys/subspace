@@ -19,7 +19,6 @@ mod inherents;
 pub mod runtime_api;
 pub mod runtime_api_full;
 pub mod runtime_api_light;
-mod utils;
 pub mod xdm_verifier;
 
 use crate::inherents::construct_inherent_extrinsics;

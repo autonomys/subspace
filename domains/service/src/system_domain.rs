@@ -364,6 +364,7 @@ where
             // TODO: we might want to re-enable this some day.
             block_announce_validator_builder: None,
             warp_sync_params: None,
+            block_relay: None,
         })?;
 
     let is_authority = system_domain_config.service_config.role.is_authority();
