@@ -1,6 +1,6 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::request_responses;
-use crate::shared::{Command, CreatedSubscription, HandlerFn, HandlerFn2, Shared};
+use crate::shared::{Command, CreatedSubscription, HandlerFn, Shared};
 use crate::utils::ResizableSemaphorePermit;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -10,7 +10,6 @@ use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::SubscriptionError;
 use libp2p::gossipsub::Sha256Topic;
-use libp2p::kad::handler::InboundStreamEventGuard;
 use libp2p::kad::record::Key;
 use libp2p::kad::{PeerRecord, ProviderRecord};
 use libp2p::{Multiaddr, PeerId};
@@ -190,16 +189,19 @@ impl From<oneshot::Canceled> for GetProvidersError {
 }
 
 #[derive(Debug, Error)]
-pub enum AnnounceError {
+pub enum StopLocalAnnouncingError {
     /// Failed to send command to the node runner
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
     /// Node runner was dropped
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
+    /// Failed to stop local announcing an item.
+    #[error("Failed to stop local announcing an item.")]
+    StopLocalAnnouncing,
 }
 
-impl From<oneshot::Canceled> for AnnounceError {
+impl From<oneshot::Canceled> for StopLocalAnnouncingError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -207,19 +209,19 @@ impl From<oneshot::Canceled> for AnnounceError {
 }
 
 #[derive(Debug, Error)]
-pub enum StopAnnouncingError {
-    /// Failed to send command to the node runner
+pub enum StartLocalAnnouncingError {
+    /// Failed to send command to the node runner.
     #[error("Failed to send command to the node runner: {0}")]
     SendCommand(#[from] SendError),
-    /// Node runner was dropped
+    /// Node runner was dropped.
     #[error("Node runner was dropped")]
     NodeRunnerDropped,
-    /// Failed to stop announcing an item.
-    #[error("Failed to stop announcing an item.")]
-    StopAnnouncing,
+    /// Failed to start local announcing an item.
+    #[error("Failed to start local announcing an item.")]
+    StartLocalAnnouncing,
 }
 
-impl From<oneshot::Canceled> for StopAnnouncingError {
+impl From<oneshot::Canceled> for StartLocalAnnouncingError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -453,46 +455,45 @@ impl Node {
         }
     }
 
-    /// Start announcing item by its key. Initiate 'start_providing' Kademlia operation.
-    pub async fn start_announcing(
+    /// Start local announcing item by its key. Saves key to the local storage.
+    /// It doesn't affect Kademlia operations.
+    pub async fn start_local_announcing(
         &self,
         key: Key,
-    ) -> Result<impl Stream<Item = ()>, AnnounceError> {
-        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
-        let (result_sender, result_receiver) = mpsc::unbounded();
-
-        trace!(?key, "Starting 'start_announcing' request.");
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::StartAnnouncing {
-                key,
-                result_sender,
-                permit,
-            })
-            .await?;
-
-        // TODO: A wrapper that'll immediately cancel query on drop
-        Ok(result_receiver)
-    }
-
-    /// Stop announcing item by its key. Initiate 'stop_providing' Kademlia operation.
-    pub async fn stop_announcing(&self, key: Multihash) -> Result<(), StopAnnouncingError> {
+    ) -> Result<bool, StartLocalAnnouncingError> {
         let (result_sender, result_receiver) = oneshot::channel();
 
-        trace!(?key, "Starting 'stop_announcing' request.");
+        trace!(?key, "Starting 'start_local_announcing' request.");
 
         self.shared
             .command_sender
             .clone()
-            .send(Command::StopAnnouncing { key, result_sender })
+            .send(Command::StartLocalAnnouncing { key, result_sender })
             .await?;
 
         result_receiver
-            .await?
-            .then_some(())
-            .ok_or(StopAnnouncingError::StopAnnouncing)
+            .await
+            .map_err(|_| StartLocalAnnouncingError::StartLocalAnnouncing)
+    }
+
+    /// Stop local announcing item by its key. Removes key from the local storage.
+    pub async fn stop_local_announcing(
+        &self,
+        key: Multihash,
+    ) -> Result<(), StopLocalAnnouncingError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!(?key, "Starting 'stop_local_announcing' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::StopLocalAnnouncing { key, result_sender })
+            .await?;
+
+        result_receiver
+            .await
+            .map_err(|_| StopLocalAnnouncingError::StopLocalAnnouncing)
     }
 
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.
@@ -545,16 +546,27 @@ impl Node {
         self.shared.listeners.lock().clone()
     }
 
+    /// Node's own addresses observed remotely.
+    pub fn external_addresses(&self) -> Vec<Multiaddr> {
+        self.shared.external_addresses.lock().clone()
+    }
+
     /// Callback is called when node starts listening on new address.
     pub fn on_new_listener(&self, callback: HandlerFn<Multiaddr>) -> HandlerId {
         self.shared.handlers.new_listener.add(callback)
     }
 
     /// Callback is called when node starts listening on new address.
-    pub fn on_announcement(
-        &self,
-        callback: HandlerFn2<ProviderRecord, Arc<InboundStreamEventGuard>>,
-    ) -> HandlerId {
+    pub fn on_announcement(&self, callback: HandlerFn<ProviderRecord>) -> HandlerId {
         self.shared.handlers.announcement.add(callback)
+    }
+
+    // TODO: Remove provider announcing from Node.
+    /// Announce provider record.
+    pub fn announce(&self, provider_record: &ProviderRecord) {
+        self.shared
+            .handlers
+            .announcement
+            .call_simple(provider_record);
     }
 }

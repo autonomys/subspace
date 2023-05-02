@@ -2,7 +2,6 @@ use crate::node::Node;
 use crate::utils::multihash::ToMultihash;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
-use futures::StreamExt;
 use std::error::Error;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
@@ -49,39 +48,39 @@ pub async fn announce_single_piece_index_hash(
 ) -> Result<(), backoff::Error<Box<dyn Error + Send + Sync + 'static>>> {
     let key = piece_index_hash.to_multihash();
 
-    let result = node.start_announcing(key.into()).await;
-
-    match result {
+    let local_announcing_result = node.start_local_announcing(key.into()).await;
+    match local_announcing_result {
         Err(error) => {
             debug!(
                 ?error,
                 ?piece_index_hash,
                 ?key,
-                "Piece publishing for a sector returned an error"
+                "Local piece publishing for a sector returned an error"
             );
 
-            Err(backoff::Error::transient("Piece publishing failed".into()))
+            return Err(backoff::Error::transient(
+                "Local piece publishing failed".into(),
+            ));
         }
-        Ok(mut stream) => {
-            if stream.next().await.is_some() {
-                trace!(
-                    ?piece_index_hash,
-                    ?key,
-                    "Piece publishing for a sector succeeded"
-                );
+        Ok(false) => {
+            debug!(
+                ?piece_index_hash,
+                ?key,
+                "Local piece publishing for a sector failed"
+            );
 
-                Ok(())
-            } else {
-                debug!(
-                    ?piece_index_hash,
-                    ?key,
-                    "Piece publishing for a sector failed"
-                );
-
-                Err(backoff::Error::transient(
-                    "Piece publishing was unsuccessful".into(),
-                ))
-            }
+            return Err(backoff::Error::transient(
+                "Local piece publishing was unsuccessful".into(),
+            ));
         }
-    }
+        Ok(true) => {
+            trace!(
+                ?piece_index_hash,
+                ?key,
+                "Local piece publishing for a sector succeeded"
+            );
+        }
+    };
+
+    Ok(())
 }

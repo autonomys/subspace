@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 #[tokio::main]
@@ -62,17 +63,13 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let key = {
-        let piece_index = PieceIndex::ONE;
-        piece_index.hash().to_multihash()
-    };
+    let piece_index = PieceIndex::ONE;
+    let piece_index_hash = piece_index.hash();
+    let key = piece_index_hash.to_multihash();
 
-    node_2
-        .start_announcing(key.into())
+    announce_single_piece_index_hash_with_backoff(piece_index_hash, &node_2)
         .await
-        .unwrap()
-        .next()
-        .await;
+        .unwrap();
     println!("Node 2 announced key: {key:?}");
 
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -84,9 +81,9 @@ async fn main() {
 
     println!("Node 1 get_providers result: {providers_result:?}");
 
-    node_2.stop_announcing(key).await.unwrap();
+    node_2.stop_local_announcing(key).await.unwrap();
 
-    tokio::time::sleep(Duration::from_secs(31)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
     let providers_result = match node_1.get_providers(key).await {
         Ok(stream) => Ok(stream.collect::<Vec<_>>().await),
