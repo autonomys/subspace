@@ -1,4 +1,4 @@
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
@@ -7,7 +7,7 @@ use sc_network_gossip::{
     GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
     ValidatorContext,
 };
-use sc_utils::mpsc::TracingUnboundedSender;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::twox_256;
 use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
@@ -28,11 +28,81 @@ pub struct Message {
     pub encoded_data: Vec<u8>,
 }
 
+/// Gossip worker builder
+pub struct GossipWorkerBuilder {
+    gossip_msg_stream: TracingUnboundedReceiver<Message>,
+    gossip_msg_sink: TracingUnboundedSender<Message>,
+    domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
+}
+
+impl GossipWorkerBuilder {
+    /// Construct a gossip worker builder
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let (gossip_msg_sink, gossip_msg_stream) =
+            tracing_unbounded("cross_domain_gossip_messages", 100);
+        Self {
+            gossip_msg_stream,
+            gossip_msg_sink,
+            domain_tx_pool_sinks: BTreeMap::new(),
+        }
+    }
+
+    /// Collect the domain tx pool sink that will be used by the gossip message worker later.
+    pub fn push_domain_tx_pool_sink(
+        &mut self,
+        domain_id: DomainId,
+        tx_pool_sink: DomainTxPoolSink,
+    ) {
+        self.domain_tx_pool_sinks.insert(domain_id, tx_pool_sink);
+    }
+
+    /// Get the gossip message sink
+    pub fn gossip_msg_sink(&self) -> TracingUnboundedSender<Message> {
+        self.gossip_msg_sink.clone()
+    }
+
+    /// Build gossip worker
+    pub fn build<Block, Network, GossipSync>(
+        self,
+        network: Network,
+        sync: Arc<GossipSync>,
+    ) -> GossipWorker<Block>
+    where
+        Block: BlockT,
+        Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
+        GossipSync: GossipSyncing<Block> + 'static,
+    {
+        let Self {
+            gossip_msg_stream,
+            domain_tx_pool_sinks,
+            ..
+        } = self;
+
+        let gossip_validator = Arc::new(GossipValidator::default());
+        let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
+            network,
+            sync,
+            PROTOCOL_NAME,
+            gossip_validator.clone(),
+            None,
+        )));
+
+        GossipWorker {
+            gossip_engine,
+            gossip_validator,
+            gossip_msg_stream,
+            domain_tx_pool_sinks,
+        }
+    }
+}
+
 /// Gossip worker to gossip incoming and outgoing messages to other peers.
 /// Also, streams the decoded extrinsics to destination domain tx pool if available.
 pub struct GossipWorker<Block: BlockT> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     gossip_validator: Arc<GossipValidator>,
+    gossip_msg_stream: TracingUnboundedReceiver<Message>,
     domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
 }
 
@@ -49,35 +119,8 @@ fn topic<Block: BlockT>() -> Block::Hash {
 }
 
 impl<Block: BlockT> GossipWorker<Block> {
-    pub fn new<Network, GossipSync>(
-        network: Network,
-        sync: Arc<GossipSync>,
-        domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
-    ) -> Self
-    where
-        Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
-        GossipSync: GossipSyncing<Block> + 'static,
-    {
-        let gossip_validator = Arc::new(GossipValidator::default());
-        let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
-            network,
-            sync,
-            PROTOCOL_NAME,
-            gossip_validator.clone(),
-            None,
-        )));
-        GossipWorker {
-            gossip_engine,
-            gossip_validator,
-            domain_tx_pool_sinks,
-        }
-    }
-
     /// Starts the Gossip message worker.
-    pub async fn run<GossipMessageStream>(mut self, mut gossip_msg_stream: GossipMessageStream)
-    where
-        GossipMessageStream: Stream<Item = Message> + Unpin + futures::stream::FusedStream,
-    {
+    pub async fn run(mut self) {
         let mut incoming_cross_domain_messages = Box::pin(
             self.gossip_engine
                 .lock()
@@ -99,7 +142,7 @@ impl<Block: BlockT> GossipWorker<Block> {
                     }
                 },
 
-                cross_domain_message = gossip_msg_stream.next().fuse() => {
+                cross_domain_message = self.gossip_msg_stream.next().fuse() => {
                     if let Some(msg) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
                         self.handle_cross_domain_message(msg);

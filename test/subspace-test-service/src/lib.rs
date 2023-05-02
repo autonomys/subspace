@@ -19,15 +19,19 @@
 #![warn(missing_docs, unused_crate_dependencies)]
 
 use codec::{Decode, Encode};
+use cross_domain_message_gossip::GossipWorkerBuilder;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, SinkExt, StreamExt};
+use jsonrpsee::RpcModule;
+use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
 use sc_client_api::execution_extensions::ExecutionStrategies;
 use sc_client_api::{backend, BlockchainEvents};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::{BlockImport, BoxBlockImport, StateAction};
+use sc_consensus::{BasicQueue, BlockImport, StateAction, Verifier as VerifierT};
+use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::multiaddr;
@@ -36,7 +40,8 @@ use sc_service::config::{
     WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, InPoolTransaction, Role, TaskManager, TransactionPool,
+    BasePath, BlocksPruning, Configuration, InPoolTransaction, NetworkStarter, Role,
+    SpawnTasksParams, TaskManager, TransactionPool,
 };
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::TransactionSource;
@@ -44,10 +49,11 @@ use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnbound
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockOrigin, Error as ConsensusError, NoNetwork, SyncOracle};
+use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
+use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_domains::SignedOpaqueBundle;
 use sp_inherents::{InherentData, InherentDataProvider};
@@ -190,6 +196,14 @@ pub struct MockPrimaryNode {
     pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
+    /// Network service.
+    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Sync service.
+    pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
+    /// RPC handlers.
+    pub rpc_handlers: sc_service::RpcHandlers,
+    /// Network starter
+    pub network_starter: Option<NetworkStarter>,
     /// The next slot number
     next_slot: u64,
     /// The slot notification subscribers
@@ -197,8 +211,13 @@ pub struct MockPrimaryNode {
     new_slot_notification_subscribers:
         Vec<TracingUnboundedSender<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)>>,
     /// Block import pipeline
-    block_import:
-        MockBlockImport<BoxBlockImport<Block, TransactionFor<Client, Block>>, Client, Block>,
+    #[allow(clippy::type_complexity)]
+    block_import: MockBlockImport<
+        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, H256>,
+        Client,
+        Block,
+    >,
+    xdm_gossip_worker_builder: Option<GossipWorkerBuilder>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
     log_prefix: &'static str,
@@ -226,7 +245,7 @@ impl MockPrimaryNode {
             config.runtime_cache_size,
         );
 
-        let (client, backend, _, task_manager) =
+        let (client, backend, keystore_container, mut task_manager) =
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
 
@@ -262,10 +281,39 @@ impl MockPrimaryNode {
         let fraud_proof_block_import =
             sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-        let mut block_import =
-            MockBlockImport::<BoxBlockImport<Block, TransactionFor<Client, Block>>, _, _>::new(
-                Box::new(fraud_proof_block_import),
-            );
+        let mut block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
+
+        let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
+            sc_service::build_network(sc_service::BuildNetworkParams {
+                config: &config,
+                client: client.clone(),
+                transaction_pool: transaction_pool.clone(),
+                spawn_handle: task_manager.spawn_handle(),
+                import_queue: mock_import_queue(
+                    block_import.clone(),
+                    &task_manager.spawn_essential_handle(),
+                ),
+                block_announce_validator_builder: None,
+                warp_sync_params: None,
+                block_relay: None,
+            })
+            .expect("Should be able to build network");
+
+        let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
+            network: network_service.clone(),
+            client: client.clone(),
+            keystore: keystore_container.keystore(),
+            task_manager: &mut task_manager,
+            transaction_pool: transaction_pool.clone(),
+            rpc_builder: Box::new(|_, _| Ok(RpcModule::new(()))),
+            backend: backend.clone(),
+            system_rpc_tx,
+            config,
+            telemetry: None,
+            tx_handler_controller,
+            sync_service: sync_service.clone(),
+        })
+        .expect("Should be able to spawn tasks");
 
         // The `maintain-bundles-stored-in-last-k` worker here is different from the one in the production code
         // that it subscribes the `block_importing_notification_stream`, which is intended to ensure the bundle
@@ -301,14 +349,6 @@ impl MockPrimaryNode {
             }),
         );
 
-        // Inform the tx pool about imported and finalized blocks and remove the tx of these
-        // blocks from the tx pool.
-        task_manager.spawn_handle().spawn(
-            "txpool-notifications",
-            Some("transaction-pool"),
-            sc_transaction_pool::notification_future(client.clone(), transaction_pool.clone()),
-        );
-
         let mock_solution = Solution::genesis_solution(
             FarmerPublicKey::unchecked_from(key.public().0),
             key.to_account_id(),
@@ -321,17 +361,49 @@ impl MockPrimaryNode {
             executor,
             transaction_pool,
             select_chain,
+            network_service,
+            sync_service,
+            rpc_handlers,
+            network_starter: Some(network_starter),
             next_slot: 1,
             new_slot_notification_subscribers: Vec::new(),
             block_import,
+            xdm_gossip_worker_builder: Some(GossipWorkerBuilder::new()),
             mock_solution,
             log_prefix,
         }
     }
 
-    /// Sync oracle for `MockPrimaryNode`
-    pub fn sync_oracle() -> Arc<dyn SyncOracle + Send + Sync> {
-        Arc::new(NoNetwork)
+    /// Start the mock primary node network
+    pub fn start_network(&mut self) {
+        self.network_starter
+            .take()
+            .expect("mock primary node network have not started yet")
+            .start_network();
+    }
+
+    /// Get the cross domain gossip message worker builder
+    pub fn xdm_gossip_worker_builder(&mut self) -> &mut GossipWorkerBuilder {
+        self.xdm_gossip_worker_builder
+            .as_mut()
+            .expect("gossip message worker have not started yet")
+    }
+
+    /// Start the cross domain gossip message worker.
+    pub fn start_cross_domain_gossip_message_worker(&mut self) {
+        let xdm_gossip_worker_builder = self
+            .xdm_gossip_worker_builder
+            .take()
+            .expect("gossip message worker have not started yet");
+        let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
+            .build::<Block, _, _>(self.network_service.clone(), self.sync_service.clone());
+        self.task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "cross-domain-gossip-message-worker",
+                None,
+                Box::pin(cross_domain_message_gossip_worker.run()),
+            );
     }
 
     /// Return the next slot number
@@ -638,12 +710,55 @@ fn log_new_block(block: &Block, used_time_ms: u128) {
     );
 }
 
+fn mock_import_queue<Block: BlockT, I>(
+    block_import: I,
+    spawner: &impl SpawnEssentialNamed,
+) -> BasicQueue<Block, I::Transaction>
+where
+    I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
+    I::Transaction: Send,
+{
+    BasicQueue::new(
+        MockVerifier::default(),
+        Box::new(block_import),
+        None,
+        spawner,
+        None,
+    )
+}
+
+struct MockVerifier<Block> {
+    _marker: PhantomData<Block>,
+}
+
+impl<Block> Default for MockVerifier<Block> {
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<Block> VerifierT<Block> for MockVerifier<Block>
+where
+    Block: BlockT,
+{
+    async fn verify(
+        &mut self,
+        block_params: BlockImportParams<Block, ()>,
+    ) -> Result<BlockImportParams<Block, ()>, String> {
+        Ok(block_params)
+    }
+}
+
 // `MockBlockImport` is mostly port from `sc-consensus-subspace::SubspaceBlockImport` with all
 // the consensus related logic removed.
+#[allow(clippy::type_complexity)]
 struct MockBlockImport<Inner, Client, Block: BlockT> {
     inner: Inner,
     block_importing_notification_subscribers:
-        Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>,
+        Arc<Mutex<Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>>>,
     _phantom_data: PhantomData<Client>,
 }
 
@@ -651,7 +766,7 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
     fn new(inner: Inner) -> Self {
         MockBlockImport {
             inner,
-            block_importing_notification_subscribers: Vec::new(),
+            block_importing_notification_subscribers: Arc::new(Mutex::new(Vec::new())),
             _phantom_data: Default::default(),
         }
     }
@@ -661,8 +776,22 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
         &mut self,
     ) -> TracingUnboundedReceiver<(NumberFor<Block>, mpsc::Sender<()>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
-        self.block_importing_notification_subscribers.push(tx);
+        self.block_importing_notification_subscribers
+            .lock()
+            .push(tx);
         rx
+    }
+}
+
+impl<Inner: Clone, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
+    fn clone(&self) -> Self {
+        MockBlockImport {
+            inner: self.inner.clone(),
+            block_importing_notification_subscribers: self
+                .block_importing_notification_subscribers
+                .clone(),
+            _phantom_data: Default::default(),
+        }
     }
 }
 
@@ -695,6 +824,7 @@ where
         {
             let value = (block_number, acknowledgement_sender);
             self.block_importing_notification_subscribers
+                .lock()
                 .retain(|subscriber| {
                     // It is necessary to notify the subscriber twice for each importing block in the test to ensure
                     // the imported block must be fully processed by the executor when all acknowledgements responded.
@@ -718,7 +848,7 @@ where
                 },
                 // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
                 _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
-                    self.block_importing_notification_subscribers.retain(|subscriber| !subscriber.is_closed());
+                    self.block_importing_notification_subscribers.lock().retain(|subscriber| !subscriber.is_closed());
                 }
             }
         }
