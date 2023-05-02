@@ -1,4 +1,5 @@
 use crate::object_mappings::{ObjectMappingError, ObjectMappings};
+use bytesize::ByteSize;
 use jsonrpsee::core::error::Error;
 use jsonrpsee::proc_macros::rpc;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
@@ -13,7 +14,7 @@ use subspace_core_primitives::{
 use tracing::{debug, error};
 
 /// Maximum expected size of one object in bytes
-const MAX_OBJECT_SIZE: usize = 5 * 1024 * 1024;
+const MAX_OBJECT_SIZE: ByteSize = ByteSize::mib(5);
 
 /// Something that can be used to get decoded pieces by index
 pub trait PieceGetter {
@@ -394,7 +395,13 @@ impl RpcServerImpl {
                 }
             }
 
-            if data.len() >= MAX_OBJECT_SIZE {
+            if data
+                .len()
+                .try_into()
+                .map(ByteSize::b)
+                .expect("Always fits in u64")
+                >= MAX_OBJECT_SIZE
+            {
                 break;
             }
         }
