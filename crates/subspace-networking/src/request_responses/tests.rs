@@ -3,6 +3,7 @@ use crate::request_responses::{
     RequestFailure, RequestHandler, RequestResponsesBehaviour,
 };
 use async_trait::async_trait;
+use bytesize::ByteSize;
 use futures::channel::{mpsc, oneshot};
 use futures::executor::LocalPool;
 use futures::task::Spawn;
@@ -93,8 +94,8 @@ async fn basic_request_response_works() {
 
             let protocol_config = ProtocolConfig {
                 name: protocol_name,
-                max_request_size: 1024,
-                max_response_size: 1024 * 1024,
+                max_request_size: ByteSize::kib(1),
+                max_response_size: ByteSize::mib(1),
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: Some(tx),
             };
@@ -192,8 +193,8 @@ async fn max_response_size_exceeded() {
 
             let protocol_config = ProtocolConfig {
                 name: protocol_name,
-                max_request_size: 1024,
-                max_response_size: 8, // <-- important for the test
+                max_request_size: ByteSize::kib(1),
+                max_response_size: ByteSize::b(8), // <-- important for the test
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: Some(tx),
             };
@@ -285,15 +286,15 @@ async fn request_id_collision() {
         let protocol_configs = vec![
             ProtocolConfig {
                 name: protocol_name_1,
-                max_request_size: 1024,
-                max_response_size: 1024 * 1024,
+                max_request_size: ByteSize::kib(1),
+                max_response_size: ByteSize::mib(1),
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: None,
             },
             ProtocolConfig {
                 name: protocol_name_2,
-                max_request_size: 1024,
-                max_response_size: 1024 * 1024,
+                max_request_size: ByteSize::kib(1),
+                max_response_size: ByteSize::mib(1),
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: None,
             },
@@ -309,15 +310,15 @@ async fn request_id_collision() {
         let protocol_configs = vec![
             ProtocolConfig {
                 name: protocol_name_1,
-                max_request_size: 1024,
-                max_response_size: 1024 * 1024,
+                max_request_size: ByteSize::kib(1),
+                max_response_size: ByteSize::mib(1),
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: Some(tx_1),
             },
             ProtocolConfig {
                 name: protocol_name_2,
-                max_request_size: 1024,
-                max_response_size: 1024 * 1024,
+                max_request_size: ByteSize::kib(1),
+                max_response_size: ByteSize::mib(1),
                 request_timeout: Duration::from_secs(30),
                 inbound_queue: Some(tx_2),
             },

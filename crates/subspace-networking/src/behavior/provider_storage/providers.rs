@@ -3,6 +3,7 @@ mod tests;
 
 use super::ProviderStorage;
 use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
+use bytesize::ByteSize;
 use either::Either;
 use libp2p::kad::record::Key;
 use libp2p::kad::store::{MemoryStoreConfig, RecordStore};
@@ -20,7 +21,8 @@ use std::time::{Duration, Instant, SystemTime};
 use tracing::{debug, error, trace, warn};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
-const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize = 100000; // ~100 MB
+const MEMORY_STORE_PROVIDED_KEY_LIMIT: usize =
+    (ByteSize::mb(100).as_u64() / ByteSize::kb(1).as_u64()) as usize;
 
 const PARITY_DB_ALL_PROVIDERS_COLUMN_NAME: u8 = 0;
 const PARITY_DB_LOCAL_PROVIDER_COLUMN_NAME: u8 = 1;

@@ -38,6 +38,7 @@
 mod tests;
 
 use async_trait::async_trait;
+use bytesize::ByteSize;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 use libp2p::core::{Multiaddr, PeerId};
@@ -92,17 +93,17 @@ pub struct ProtocolConfig {
     /// Name of the protocol on the wire. Should be something like `/foo/bar`.
     pub name: &'static str,
 
-    /// Maximum allowed size, in bytes, of a request.
+    /// Maximum allowed size, of a request.
     ///
     /// Any request larger than this value will be declined as a way to avoid allocating too
     /// much memory for it.
-    pub max_request_size: u64,
+    pub max_request_size: ByteSize,
 
-    /// Maximum allowed size, in bytes, of a response.
+    /// Maximum allowed size, of a response.
     ///
     /// Any response larger than this value will be declined as a way to avoid allocating too
     /// much memory for it.
-    pub max_response_size: u64,
+    pub max_response_size: ByteSize,
 
     /// Duration after which emitted requests are considered timed out.
     ///
@@ -137,8 +138,8 @@ impl ProtocolConfig {
     pub fn new(protocol_name: &'static str) -> ProtocolConfig {
         ProtocolConfig {
             name: protocol_name,
-            max_request_size: 1024 * 1024,
-            max_response_size: 16 * 1024 * 1024,
+            max_request_size: ByteSize::mib(1),
+            max_response_size: ByteSize::mib(16),
             request_timeout: Duration::from_secs(20),
             inbound_queue: None,
         }
@@ -858,8 +859,8 @@ pub enum ResponseFailure {
 #[derive(Debug, Clone)]
 #[doc(hidden)] // Needs to be public in order to satisfy the Rust compiler.
 pub struct GenericCodec {
-    max_request_size: u64,
-    max_response_size: u64,
+    max_request_size: ByteSize,
+    max_response_size: ByteSize,
 }
 
 #[async_trait::async_trait]
@@ -880,7 +881,7 @@ impl RequestResponseCodec for GenericCodec {
         let length = unsigned_varint::aio::read_usize(&mut io)
             .await
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-        if length > usize::try_from(self.max_request_size).unwrap_or(usize::MAX) {
+        if length > usize::try_from(self.max_request_size.as_u64()).unwrap_or(usize::MAX) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
@@ -920,7 +921,7 @@ impl RequestResponseCodec for GenericCodec {
             Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidInput, err)),
         };
 
-        if length > usize::try_from(self.max_response_size).unwrap_or(usize::MAX) {
+        if length > usize::try_from(self.max_response_size.as_u64()).unwrap_or(usize::MAX) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(

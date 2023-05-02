@@ -30,7 +30,7 @@ const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; q
 // Size of the LRU cache for addresses.
 const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
 // Pause duration between network parameters save.
-const DATA_FLUSH_DURATION_SECS: u64 = 5;
+const DATA_FLUSH_DURATION: Duration = Duration::from_secs(5);
 // Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
 const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
 // Defines an expiration period for the peer marked for the removal.
@@ -220,7 +220,7 @@ impl NetworkingParametersManager {
 
     // Create default delay for networking parameters.
     fn default_delay() -> Pin<Box<Fuse<Sleep>>> {
-        Box::pin(sleep(Duration::from_secs(DATA_FLUSH_DURATION_SECS)).fuse())
+        Box::pin(sleep(DATA_FLUSH_DURATION).fuse())
     }
 }
 

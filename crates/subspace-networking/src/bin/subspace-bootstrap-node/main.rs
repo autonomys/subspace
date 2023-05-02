@@ -135,8 +135,9 @@ async fn main() -> anyhow::Result<()> {
                 protocol_version
             );
 
-            const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
-            let recs = piece_providers_cache_size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
+            const APPROX_PROVIDER_RECORD_SIZE: ByteSize = ByteSize::kb(1);
+
+            let recs = piece_providers_cache_size.as_u64() / APPROX_PROVIDER_RECORD_SIZE.as_u64();
             let converted_cache_size =
                 NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
 
