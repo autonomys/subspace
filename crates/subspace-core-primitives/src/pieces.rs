@@ -298,12 +298,10 @@ impl AsRef<[u8]> for PieceIndexHash {
     }
 }
 
-impl PieceIndexHash {
-    // TODO: Remove and replace uses with `index.hash()`
-    /// Constructs `PieceIndexHash` from `PieceIndex`
+impl From<PieceIndex> for PieceIndexHash {
     #[inline]
-    pub fn from_index(index: PieceIndex) -> Self {
-        index.hash()
+    fn from(value: PieceIndex) -> Self {
+        value.hash()
     }
 }
 

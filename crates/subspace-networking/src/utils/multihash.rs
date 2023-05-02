@@ -32,7 +32,7 @@ impl TryFrom<u64> for MultihashCode {
 }
 
 pub fn create_multihash_by_piece_index(piece_index: PieceIndex) -> Multihash {
-    let piece_index_hash = PieceIndexHash::from_index(piece_index);
+    let piece_index_hash = PieceIndexHash::from(piece_index);
 
     piece_index_hash.to_multihash()
 }

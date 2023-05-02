@@ -244,7 +244,7 @@ where
                     (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes).map(
                         move |(piece_offset, piece_index)| {
                             (
-                                PieceIndexHash::from_index(piece_index),
+                                PieceIndexHash::from(piece_index),
                                 PieceDetails {
                                     plot_offset,
                                     sector_index: plotted_sector.sector_index,

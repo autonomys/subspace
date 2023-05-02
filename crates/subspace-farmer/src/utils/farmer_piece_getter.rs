@@ -40,7 +40,7 @@ where
         piece_index: PieceIndex,
         retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let piece_index_hash = PieceIndexHash::from(piece_index);
         let key = piece_index_hash.to_multihash().into();
 
         let maybe_should_store = {

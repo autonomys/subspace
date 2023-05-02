@@ -58,17 +58,11 @@ fn basic() {
 
     let piece_index = PieceIndex::default();
     let piece_by_kad_key = store
-        .get_piece_by_index_multihash(
-            &PieceIndexHash::from_index(piece_index)
-                .to_multihash()
-                .to_bytes(),
-        )
+        .get_piece_by_index_multihash(&PieceIndexHash::from(piece_index).to_multihash().to_bytes())
         .unwrap()
         .unwrap();
 
-    let piece_res = store
-        .get_piece(PieceIndexHash::from_index(piece_index))
-        .unwrap();
+    let piece_res = store.get_piece(PieceIndexHash::from(piece_index)).unwrap();
     let piece = piece_res.unwrap();
 
     assert_eq!(piece_by_kad_key, piece);
@@ -85,7 +79,7 @@ fn cache_nothing() {
     let piece_index = PieceIndex::default();
 
     assert!(store
-        .get_piece(PieceIndexHash::from_index(piece_index))
+        .get_piece(PieceIndexHash::from(piece_index))
         .unwrap()
         .is_none());
 }
@@ -104,7 +98,7 @@ fn auto_cleanup() {
         .unwrap();
     // It must be stored
     store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::default()))
+        .get_piece(PieceIndexHash::from(PieceIndex::default()))
         .unwrap()
         .unwrap();
 
@@ -114,12 +108,12 @@ fn auto_cleanup() {
         .unwrap();
     // It must be stored
     store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::ONE))
+        .get_piece(PieceIndexHash::from(PieceIndex::ONE))
         .unwrap()
         .unwrap();
     // But the first piece is evicted because it exceeds cache size
     assert!(store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::default()))
+        .get_piece(PieceIndexHash::from(PieceIndex::default()))
         .unwrap()
         .is_none());
 }

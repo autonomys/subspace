@@ -64,7 +64,7 @@ async fn main() {
 
     let key = {
         let piece_index = PieceIndex::ONE;
-        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let piece_index_hash = PieceIndexHash::from(piece_index);
         piece_index_hash.to_multihash()
     };
 
