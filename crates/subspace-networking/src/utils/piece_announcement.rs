@@ -1,4 +1,7 @@
 use crate::node::Node;
+use crate::request_handlers::piece_announcement::{
+    PieceAnnouncementRequest, PieceAnnouncementResponse,
+};
 use crate::utils::multihash::ToMultihash;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
@@ -140,7 +143,28 @@ async fn announce_key(
 
         contacted_peers.insert(peer_id);
 
-        // TODO: Add custom request to announce key
+        let request_result = node
+            .send_generic_request(
+                peer_id,
+                PieceAnnouncementRequest {
+                    piece_key: key.to_bytes(),
+                    addresses: external_addresses.clone(),
+                },
+            )
+            .await;
+
+        match request_result {
+            Ok(PieceAnnouncementResponse) => {
+                trace!(
+                    %peer_id,
+                    ?key,
+                    "Piece announcement request succeeded."
+                );
+            }
+            Err(error) => {
+                debug!(%peer_id, ?key, ?error, "Last root block request failed.");
+            }
+        }
 
         acknowledged_peers.insert(peer_id);
 

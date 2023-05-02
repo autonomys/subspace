@@ -44,11 +44,7 @@ where
         }
     }
 
-    pub async fn process_provider_record(
-        &mut self,
-        provider_record: ProviderRecord,
-        guard: Arc<InboundStreamEventGuard>,
-    ) {
+    pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
         trace!(?provider_record.key, "Starting processing provider record...");
 
         let multihash = match Multihash::from_bytes(provider_record.key.as_ref()) {
@@ -154,7 +150,6 @@ where
             }
 
             drop(permit);
-            drop(guard);
         });
     }
 }

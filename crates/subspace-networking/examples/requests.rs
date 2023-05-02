@@ -35,12 +35,14 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
-            sleep(Duration::from_secs(2)).await;
+        request_response_protocols: vec![GenericRequestHandler::create(
+            |_, &ExampleRequest| async {
+                sleep(Duration::from_secs(2)).await;
 
-            println!("Request handler for request");
-            Some(ExampleResponse)
-        })],
+                println!("Request handler for request");
+                Some(ExampleResponse)
+            },
+        )],
         metrics: Some(metrics),
         ..Config::default()
     };
@@ -92,7 +94,7 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
-            |_| async { None },
+            |_, _| async { None },
         )],
         ..Config::default()
     };

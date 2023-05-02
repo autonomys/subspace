@@ -40,7 +40,7 @@ pub use crate::node::{
     CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
     TopicSubscription,
 };
-pub use crate::node_runner::NodeRunner;
+pub use crate::node_runner::{NodeRunner, KADEMLIA_PROVIDER_TTL_IN_SECS};
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
 };
@@ -52,6 +52,9 @@ pub use request_handlers::object_mappings::{
 };
 pub use request_handlers::peer_info::{
     PeerInfo, PeerInfoRequest, PeerInfoRequestHandler, PeerInfoResponse, PeerSyncStatus,
+};
+pub use request_handlers::piece_announcement::{
+    PieceAnnouncementRequest, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
 };
 pub use request_handlers::piece_by_key::{
     PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,

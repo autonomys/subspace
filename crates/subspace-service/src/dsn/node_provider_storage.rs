@@ -11,6 +11,18 @@ pub struct NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorag
     persistent_provider_storage: PersistentProviderStorage,
 }
 
+impl<ImplicitProviderStorage: Clone, PersistentProviderStorage: Clone> Clone
+    for NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage>
+{
+    fn clone(&self) -> Self {
+        Self {
+            local_peer_id: self.local_peer_id,
+            implicit_provider_storage: self.implicit_provider_storage.clone(),
+            persistent_provider_storage: self.persistent_provider_storage.clone(),
+        }
+    }
+}
+
 impl<ImplicitProviderStorage, PersistentProviderStorage>
     NodeProviderStorage<ImplicitProviderStorage, PersistentProviderStorage>
 where

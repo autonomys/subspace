@@ -127,11 +127,13 @@ async fn test_async_handler_works_with_pending_internal_future() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        request_response_protocols: vec![GenericRequestHandler::create(|&ExampleRequest| async {
-            let fut = FuturePolledTwice::default();
+        request_response_protocols: vec![GenericRequestHandler::create(
+            |_, &ExampleRequest| async {
+                let fut = FuturePolledTwice::default();
 
-            Some(ExampleResponse { counter: fut.await })
-        })],
+                Some(ExampleResponse { counter: fut.await })
+            },
+        )],
         ..Config::default()
     };
     let (node_1, mut node_runner_1) = crate::create(config_1).unwrap();
@@ -165,7 +167,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
-            |_| async { None },
+            |_, _| async { None },
         )],
         ..Config::default()
     };

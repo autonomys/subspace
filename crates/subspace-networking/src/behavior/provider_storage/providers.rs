@@ -10,13 +10,15 @@ use libp2p::kad::{store, ProviderRecord, K_VALUE};
 use libp2p::{Multiaddr, PeerId};
 use parity_db::{ColumnOptions, Db, Options};
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
 use std::borrow::{Borrow, Cow};
-use std::collections::{hash_set, BTreeMap};
+use std::collections::BTreeMap;
 use std::iter;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
+use std::vec::IntoIter;
 use tracing::{debug, error, trace, warn};
 
 // Defines max provider records number. Each provider record is expected to be less than 1KB.
@@ -48,14 +50,15 @@ impl ProviderStorage for VoidProviderStorage {
 }
 
 /// Memory based provider records storage.
+#[derive(Clone)]
 pub struct MemoryProviderStorage {
-    inner: store::MemoryStore,
+    inner: Arc<Mutex<store::MemoryStore>>,
 }
 
 impl MemoryProviderStorage {
     pub fn new(peer_id: PeerId) -> Self {
         Self {
-            inner: store::MemoryStore::with_config(
+            inner: Arc::new(Mutex::new(store::MemoryStore::with_config(
                 peer_id,
                 MemoryStoreConfig {
                     max_records: 0,
@@ -63,35 +66,44 @@ impl MemoryProviderStorage {
                     max_providers_per_key: K_VALUE.get(),
                     max_provided_keys: MEMORY_STORE_PROVIDED_KEY_LIMIT,
                 },
-            ),
+            ))),
         }
     }
 }
 
 impl ProviderStorage for MemoryProviderStorage {
     type ProvidedIter<'a> = iter::Map<
-        hash_set::Iter<'a, ProviderRecord>,
-        fn(&'a ProviderRecord) -> Cow<'a, ProviderRecord>,
+        IntoIter<ProviderRecord>,
+        fn(ProviderRecord) -> Cow<'a, ProviderRecord>,
     > where Self:'a;
 
     fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
         trace!("New provider record added: {:?}", record);
 
-        self.inner.add_provider(record)
+        self.inner.lock().add_provider(record)
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        self.inner.providers(key)
+        self.inner.lock().providers(key)
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        self.inner.provided()
+        // We copy records here. The downstream usage of this method is a relatively rare periodic job.
+        let records = {
+            self.inner
+                .lock()
+                .provided()
+                .map(|item| item.into_owned())
+                .collect::<Vec<_>>()
+        };
+
+        records.into_iter().map(Cow::Owned)
     }
 
     fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
         trace!(?key, ?provider, "Provider record removed.");
 
-        self.inner.remove_provider(key, provider)
+        self.inner.lock().remove_provider(key, provider)
     }
 }
 
@@ -207,7 +219,7 @@ pub struct ParityDbProviderStorage {
     /// Parity DB instance
     db: Arc<Db>,
     /// Maintains a heap to limit total item number.
-    heap: UniqueRecordBinaryHeap,
+    heap: Arc<Mutex<UniqueRecordBinaryHeap>>,
     /// Local provider PeerID
     local_peer_id: PeerId,
 }
@@ -271,13 +283,13 @@ impl ParityDbProviderStorage {
 
         Ok(Self {
             db: Arc::new(db),
-            heap,
+            heap: Arc::new(Mutex::new(heap)),
             local_peer_id,
         })
     }
 
     pub fn size(&self) -> usize {
-        self.heap.size()
+        self.heap.lock().size()
     }
 
     fn add_provider_to_db(&self, key: &Key, rec: ParityDbProviderRecord) {
@@ -401,7 +413,7 @@ impl ProviderStorage for ParityDbProviderStorage {
 
         self.add_provider_to_db(&record_key, db_rec);
 
-        let evicted_key = self.heap.insert(record_key);
+        let evicted_key = { self.heap.lock().insert(record_key) };
 
         if let Some(key) = evicted_key {
             trace!(?key, "Record evicted from cache.");
@@ -422,7 +434,7 @@ impl ProviderStorage for ParityDbProviderStorage {
 
         self.remove_provider_from_db(key, provider.to_bytes());
 
-        self.heap.remove(key);
+        self.heap.lock().remove(key);
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
