@@ -3,11 +3,12 @@ use anyhow::Context;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
+use std::time::Instant;
 use std::{fs, io, thread};
 use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
@@ -18,15 +19,18 @@ use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::Keypair;
+use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    ParityDbProviderStorage, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
+    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use tokio::runtime::Handle;
-use tracing::{debug, error, info, Instrument, Span};
+use tracing::{debug, error, info, trace, Instrument, Span};
 
 const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
     NonZeroUsize::new(2000).expect("Not zero; qed");
@@ -156,69 +160,127 @@ pub(super) fn configure_dsn(
         }
     });
 
-    let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage);
+    let provider_record_announcer: Arc<RwLock<Option<NodeProviderRecordAnnouncer>>> =
+        Arc::new(RwLock::new(None));
+    let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage.clone());
     let config = Config {
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
         networking_parameters_registry,
         request_response_protocols: vec![
-            PieceByHashRequestHandler::create(move |&PieceByHashRequest { piece_index_hash }| {
-                debug!(?piece_index_hash, "Piece request received. Trying cache...");
-                let multihash = piece_index_hash.to_multihash();
+            PieceAnnouncementRequestHandler::create({
+                let provider_record_announcer = provider_record_announcer.clone();
 
-                let weak_readers_and_pieces = weak_readers_and_pieces.clone();
-                let piece_store = piece_store.clone();
-                let piece_memory_cache = piece_memory_cache.clone();
+                move |peer_id, req| {
+                    trace!(?req, %peer_id, "Piece announcement request received.");
 
-                async move {
-                    if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
-                        return Some(PieceByHashResponse { piece: Some(piece) });
-                    }
+                    let mut provider_storage = farmer_provider_storage.clone();
+                    let provider_record_announcer = provider_record_announcer.clone();
+                    let req = req.clone();
 
-                    let piece_from_store = piece_store.get(&multihash.into());
+                    async move {
+                        let key = match req.piece_key.clone().try_into() {
+                            Ok(key) => key,
 
-                    if let Some(piece) = piece_from_store {
-                        Some(PieceByHashResponse { piece: Some(piece) })
-                    } else {
-                        debug!(
-                            ?piece_index_hash,
-                            "No piece in the cache. Trying archival storage..."
-                        );
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    %peer_id,
+                                    ?req,
+                                    "Failed to convert received key to record:Key."
+                                );
 
-                        let read_piece_fut = {
-                            let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                                Some(readers_and_pieces) => readers_and_pieces,
-                                None => {
-                                    debug!("A readers and pieces are already dropped");
-                                    return None;
-                                }
-                            };
-                            let readers_and_pieces = readers_and_pieces.lock();
-                            let readers_and_pieces = match readers_and_pieces.as_ref() {
-                                Some(readers_and_pieces) => readers_and_pieces,
-                                None => {
-                                    debug!(
-                                        ?piece_index_hash,
-                                        "Readers and pieces are not initialized yet"
-                                    );
-                                    return None;
-                                }
-                            };
-
-                            readers_and_pieces
-                                .read_piece(&piece_index_hash)?
-                                .instrument(Span::current())
+                                return None;
+                            }
                         };
 
-                        let piece = read_piece_fut.await;
+                        let provider_record = ProviderRecord {
+                            provider: peer_id,
+                            key,
+                            addresses: req.converted_addresses(),
+                            expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
+                        };
 
-                        Some(PieceByHashResponse { piece })
+                        if let Err(error) = provider_storage.add_provider(provider_record.clone()) {
+                            error!(
+                                %error,
+                                %peer_id,
+                                ?req,
+                                "Failed to add provider for received key."
+                            );
+
+                            return None;
+                        }
+
+                        if let Some(provider_record_announcer) =
+                            provider_record_announcer.read().as_ref()
+                        {
+                            provider_record_announcer.announce(&provider_record);
+                        }
+
+                        Some(PieceAnnouncementResponse)
                     }
                 }
-                .instrument(Span::current())
             }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |req| {
+            PieceByHashRequestHandler::create(
+                move |_, &PieceByHashRequest { piece_index_hash }| {
+                    debug!(?piece_index_hash, "Piece request received. Trying cache...");
+                    let multihash = piece_index_hash.to_multihash();
+
+                    let weak_readers_and_pieces = weak_readers_and_pieces.clone();
+                    let piece_store = piece_store.clone();
+                    let piece_memory_cache = piece_memory_cache.clone();
+
+                    async move {
+                        if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
+                            return Some(PieceByHashResponse { piece: Some(piece) });
+                        }
+
+                        let piece_from_store = piece_store.get(&multihash.into());
+
+                        if let Some(piece) = piece_from_store {
+                            Some(PieceByHashResponse { piece: Some(piece) })
+                        } else {
+                            debug!(
+                                ?piece_index_hash,
+                                "No piece in the cache. Trying archival storage..."
+                            );
+
+                            let read_piece_fut = {
+                                let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
+                                    Some(readers_and_pieces) => readers_and_pieces,
+                                    None => {
+                                        debug!("A readers and pieces are already dropped");
+                                        return None;
+                                    }
+                                };
+                                let readers_and_pieces = readers_and_pieces.lock();
+                                let readers_and_pieces = match readers_and_pieces.as_ref() {
+                                    Some(readers_and_pieces) => readers_and_pieces,
+                                    None => {
+                                        debug!(
+                                            ?piece_index_hash,
+                                            "Readers and pieces are not initialized yet"
+                                        );
+                                        return None;
+                                    }
+                                };
+
+                                readers_and_pieces
+                                    .read_piece(&piece_index_hash)?
+                                    .instrument(Span::current())
+                            };
+
+                            let piece = read_piece_fut.await;
+
+                            Some(PieceByHashResponse { piece })
+                        }
+                    }
+                    .instrument(Span::current())
+                },
+            ),
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
                 debug!(?req, "Segment headers request received.");
 
                 let node_client = node_client.clone();
@@ -291,6 +353,7 @@ pub(super) fn configure_dsn(
 
     create(config)
         .map(|(node, node_runner)| {
+            let provider_record_announcer = provider_record_announcer.clone();
             node.on_new_listener(Arc::new({
                 let node = node.clone();
 
@@ -302,6 +365,10 @@ pub(super) fn configure_dsn(
                 }
             }))
             .detach();
+
+            provider_record_announcer
+                .write()
+                .replace(NodeProviderRecordAnnouncer::new(node.clone()));
 
             (node, node_runner, piece_cache)
         })
@@ -370,4 +437,20 @@ pub(crate) fn start_announcements_processor(
         })?;
 
     Ok(handler_id)
+}
+
+// TODO: Remove provider record announcement from Node
+/// Provider record announcement helper.
+struct NodeProviderRecordAnnouncer {
+    node: Node,
+}
+
+impl NodeProviderRecordAnnouncer {
+    fn new(node: Node) -> Self {
+        Self { node }
+    }
+
+    pub(crate) fn announce(&self, provider_record: &ProviderRecord) {
+        self.node.announce(provider_record);
+    }
 }

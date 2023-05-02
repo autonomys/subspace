@@ -37,6 +37,7 @@ pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
 
 pub type RequestHandlerFn<Request> = Arc<
     dyn (Fn(
+            PeerId,
             &Request,
         )
             -> Pin<Box<dyn Future<Output = Option<<Request as GenericRequest>::Response>> + Send>>)
@@ -54,7 +55,7 @@ pub struct GenericRequestHandler<Request: GenericRequest> {
 impl<Request: GenericRequest> GenericRequestHandler<Request> {
     pub fn create<RH, Fut>(request_handler: RH) -> Box<dyn RequestHandler>
     where
-        RH: (Fn(&Request) -> Fut) + Send + Sync + 'static,
+        RH: (Fn(PeerId, &Request) -> Fut) + Send + Sync + 'static,
         Fut: Future<Output = Option<Request::Response>> + Send + 'static,
     {
         let (request_sender, request_receiver) = mpsc::channel(REQUESTS_BUFFER_SIZE);
@@ -64,7 +65,9 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
 
         Box::new(Self {
             request_receiver,
-            request_handler: Arc::new(move |request| Box::pin(request_handler(request))),
+            request_handler: Arc::new(move |peer_id, request| {
+                Box::pin(request_handler(peer_id, request))
+            }),
             protocol_config,
         })
     }
@@ -78,7 +81,7 @@ impl<Request: GenericRequest> GenericRequestHandler<Request> {
         trace!(%peer, protocol=Request::LOG_TARGET, "Handling request...");
         let request = Request::decode(&mut payload.as_slice())
             .map_err(|_| RequestHandlerError::InvalidRequestFormat)?;
-        let response = (self.request_handler)(&request).await;
+        let response = (self.request_handler)(peer, &request).await;
 
         Ok(response.ok_or(RequestHandlerError::NoResponse)?.encode())
     }
