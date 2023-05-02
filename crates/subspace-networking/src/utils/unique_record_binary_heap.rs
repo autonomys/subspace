@@ -52,7 +52,7 @@ impl Ord for RecordHeapKey {
 /// The heap metrics depends on the Kademlia distance to the provided PeerId.
 /// It maintains limited size and evicts (pops) items when this limited is exceeded.
 /// Unique keys are only inserted once.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct UniqueRecordBinaryHeap {
     peer_key: KademliaBucketKey<PeerId>,
     set: BTreeSet<RecordHeapKey>,

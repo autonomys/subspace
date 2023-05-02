@@ -4,12 +4,11 @@ use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
-use subspace_networking::libp2p::kad::handler::InboundStreamEventGuard;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
+use subspace_networking::utils::piece_announcement::announce_piece;
 use subspace_networking::{Node, PieceByHashRequest, PieceByHashResponse};
 use tokio::sync::Semaphore;
 use tracing::{debug, trace, warn};
@@ -135,10 +134,7 @@ where
                 // not storing data in the first place.
                 if let Ok(permit) = re_announcements_semaphore.try_acquire_owned() {
                     tokio::spawn(async move {
-                        if let Err(error) =
-                            announce_single_piece_index_hash_with_backoff(piece_index_hash, &node)
-                                .await
-                        {
+                        if let Err(error) = announce_piece(piece_index_hash, &node).await {
                             debug!(
                                 ?error,
                                 ?piece_index_hash,

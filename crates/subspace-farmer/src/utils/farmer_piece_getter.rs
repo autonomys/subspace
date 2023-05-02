@@ -5,7 +5,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
+use subspace_networking::utils::piece_announcement::announce_piece;
 use subspace_networking::Node;
 use tracing::debug;
 
@@ -64,10 +64,7 @@ where
                     piece_cache.add_piece(key, piece.clone());
                     drop(piece_cache);
 
-                    if let Err(error) =
-                        announce_single_piece_index_hash_with_backoff(piece_index_hash, &self.node)
-                            .await
-                    {
+                    if let Err(error) = announce_piece(piece_index_hash, &self.node).await {
                         debug!(
                             ?error,
                             ?piece_index_hash,

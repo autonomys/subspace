@@ -29,8 +29,8 @@ use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::online_status_informer;
+use subspace_networking::utils::piece_announcement::announce_piece;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
@@ -331,9 +331,7 @@ where
                         let publish_fut = async move {
                             let mut pieces_publishing_futures = new_pieces
                                 .into_iter()
-                                .map(|piece_index| {
-                                    announce_single_piece_index_with_backoff(piece_index, &node)
-                                })
+                                .map(|piece_index| announce_piece(piece_index, &node))
                                 .collect::<FuturesUnordered<_>>();
 
                             while pieces_publishing_futures.next().await.is_some() {

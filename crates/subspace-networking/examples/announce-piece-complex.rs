@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{PieceIndex, PieceIndexHash};
 use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::utils::piece_announcement::announce_piece;
 use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
 #[tokio::main]
@@ -14,7 +15,7 @@ async fn main() {
 
     let mut bootstrap_nodes = Vec::new();
 
-    const TOTAL_NODE_COUNT: usize = 90;
+    const TOTAL_NODE_COUNT: usize = 30;
 
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
@@ -79,17 +80,12 @@ async fn main() {
 
     node.wait_for_connected_peers().await.unwrap();
 
-    let key = {
-        let piece_index = PieceIndex::ONE;
-        let piece_index_hash = PieceIndexHash::from(piece_index);
-        piece_index_hash.to_multihash()
-    };
+    let piece_index = PieceIndex::ONE;
+    let piece_index_hash = PieceIndexHash::from(piece_index);
+    let key = piece_index_hash.to_multihash();
 
-    node.start_announcing(key.into())
-        .await
-        .unwrap()
-        .next()
-        .await;
+    announce_piece(piece_index, &node).await.unwrap();
+
     println!("Node announced key: {key:?}");
 
     tokio::time::sleep(Duration::from_secs(15)).await;

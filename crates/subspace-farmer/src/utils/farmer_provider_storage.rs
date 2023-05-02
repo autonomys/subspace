@@ -13,7 +13,8 @@ use subspace_networking::utils::multihash::{MultihashCode, ToMultihash};
 use subspace_networking::ProviderStorage;
 use tracing::trace;
 
-pub struct FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache> {
+#[derive(Clone)]
+pub struct FarmerProviderStorage<PersistentProviderStorage: Clone, LocalPieceCache: Clone> {
     local_peer_id: PeerId,
     readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
     persistent_provider_storage: PersistentProviderStorage,
@@ -23,7 +24,8 @@ pub struct FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache> {
 impl<PersistentProviderStorage, LocalPieceCache>
     FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache>
 where
-    PersistentProviderStorage: ProviderStorage,
+    PersistentProviderStorage: ProviderStorage + Clone,
+    LocalPieceCache: PieceCache + Clone,
 {
     pub fn new(
         local_peer_id: PeerId,
@@ -43,8 +45,8 @@ where
 impl<PersistentProviderStorage, LocalPieceCache> ProviderStorage
     for FarmerProviderStorage<PersistentProviderStorage, LocalPieceCache>
 where
-    PersistentProviderStorage: ProviderStorage,
-    LocalPieceCache: PieceCache,
+    PersistentProviderStorage: ProviderStorage + Clone,
+    LocalPieceCache: PieceCache + Clone,
 {
     type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>>
     where
@@ -107,7 +109,7 @@ where
                 key: piece_index_hash.to_multihash().into(),
                 provider: self.local_peer_id,
                 expires: None,
-                addresses: Vec::new(), // TODO: add address hints
+                addresses: Vec::new(), // Kademlia adds addresses for local providers
             });
         }
 
@@ -146,7 +148,7 @@ where
                     key,
                     provider: self.local_peer_id,
                     expires: None,
-                    addresses: Vec::new(), // TODO: add address hints
+                    addresses: Vec::new(), // Kademlia adds addresses for local providers
                 }
             })
             .map(Cow::Owned)
