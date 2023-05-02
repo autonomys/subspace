@@ -13,7 +13,7 @@ use subspace_core_primitives::{
 };
 use tracing::{debug, error};
 
-/// Maximum expected size of one object in bytes
+/// Maximum expected size of one object
 const MAX_OBJECT_SIZE: ByteSize = ByteSize::mib(5);
 
 /// Something that can be used to get decoded pieces by index

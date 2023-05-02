@@ -40,11 +40,11 @@ pub struct EthConfiguration {
     #[arg(long, default_value = "10")]
     pub execute_gas_limit_multiplier: u64,
 
-    /// Size in bytes of the LRU cache for block data.
+    /// Size of the LRU cache for block data.
     #[arg(long, default_value = "50")]
     pub eth_log_block_cache: usize,
 
-    /// Size in bytes of the LRU cache for transactions statuses data.
+    /// Size of the LRU cache for transactions statuses data.
     #[arg(long, default_value = "50")]
     pub eth_statuses_cache: usize,
 }

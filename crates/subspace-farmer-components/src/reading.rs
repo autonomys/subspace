@@ -20,9 +20,9 @@ pub enum ReadingError {
     /// Wrong sector size
     #[error("Wrong sector size: expected {expected}, actual {actual}")]
     WrongSectorSize {
-        /// Expected size in bytes
+        /// Expected size
         expected: ByteSize,
-        /// Actual size in bytes
+        /// Actual size
         actual: ByteSize,
     },
     /// Failed to read chunk.

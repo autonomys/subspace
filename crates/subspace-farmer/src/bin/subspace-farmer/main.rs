@@ -132,7 +132,7 @@ enum Subcommand {
 struct DiskFarm {
     /// Path to directory where data is stored.
     directory: PathBuf,
-    /// How much space in bytes can farm use for plots (metadata space is not included)
+    /// How much space can farm use for plots (metadata space is not included)
     allocated_plotting_space: ByteSize,
 }
 

@@ -165,6 +165,7 @@ pub struct DomainConfig<Hash, Balance, Weight> {
     /// Slot probability
     pub bundle_slot_probability: (u64, u64),
 
+    // TODO: use `bytesize` here
     /// Maximum domain bundle size in bytes.
     pub max_bundle_size: u32,
 

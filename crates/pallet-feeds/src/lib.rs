@@ -72,6 +72,7 @@ mod pallet {
     /// Total amount of data and number of objects stored in a feed
     #[derive(Debug, Decode, Encode, TypeInfo, Default, PartialEq, Eq)]
     pub struct TotalObjectsAndSize {
+        // TODO: use `bytesize` here
         /// Total size of objects in bytes
         pub size: u64,
         /// Total number of objects

@@ -223,7 +223,7 @@ impl SingleDiskPlotInfo {
         *pieces_in_sector
     }
 
-    /// How much space in bytes is allocated for this plot
+    /// How much space is allocated for this plot
     pub fn allocated_space(&self) -> ByteSize {
         let Self::V0 {
             allocated_space, ..
@@ -279,7 +279,7 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub directory: PathBuf,
     /// Information necessary for farmer application
     pub farmer_app_info: FarmerAppInfo,
-    /// How much space in bytes can plot use for plot
+    /// How much space can plot use for plot
     pub allocated_space: ByteSize,
     /// How many pieces one sector is supposed to contain (max)
     pub max_pieces_in_sector: u16,

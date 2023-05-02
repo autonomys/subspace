@@ -169,7 +169,7 @@ pub enum SubspaceNetworking {
     Create {
         /// Configuration to use for DSN instantiation
         config: DsnConfig,
-        /// Piece cache size in bytes
+        /// Piece cache size
         piece_cache_size: ByteSize,
     },
 }
