@@ -14,7 +14,6 @@ include = [
 [dependencies]
 async-trait = "0.1.68"
 core-payments-domain-test-runtime = { version = "0.1.0", path = "../runtime/core-payments" }
-cross-domain-message-gossip = { version = "0.1.0", path = "../../client/cross-domain-message-gossip" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../../client/consensus-relay-chain" }
 domain-client-executor = { version = "0.1.0", path = "../../client/domain-executor" }
 domain-service = { version = "0.1.0", path = "../../service" }

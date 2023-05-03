@@ -17,7 +17,7 @@
 //! Subspace node implementation.
 
 use core_evm_runtime::AccountId as AccountId20;
-use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorker};
+use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorkerBuilder};
 use domain_client_executor::ExecutorStreams;
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
@@ -35,13 +35,11 @@ use sc_executor::NativeExecutionDispatch;
 use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sc_subspace_chain_specs::ExecutionChainSpec;
-use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
 use sp_runtime::traits::Identity;
 use std::any::TypeId;
-use std::collections::BTreeMap;
 use subspace_node::{
     AccountId32ToAccountId20Converter, Cli, ExecutorDispatch, Subcommand, SystemDomainCli,
 };
@@ -618,8 +616,7 @@ fn main() -> Result<(), Error> {
                             })
                     };
 
-                    let (gossip_msg_sink, gossip_msg_stream) =
-                        tracing_unbounded("cross_domain_gossip_messages", 100);
+                    let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
 
                     let executor_streams = ExecutorStreams {
                         primary_block_import_throttling_buffer_size,
@@ -646,12 +643,11 @@ fn main() -> Result<(), Error> {
                         primary_chain_node.sync_service.clone(),
                         &primary_chain_node.select_chain,
                         executor_streams,
-                        gossip_msg_sink.clone(),
+                        xdm_gossip_worker_builder.gossip_msg_sink(),
                     )
                         .await?;
 
-                    let mut domain_tx_pool_sinks = BTreeMap::new();
-                    domain_tx_pool_sinks.insert(DomainId::SYSTEM, system_domain_node.tx_pool_sink);
+                    xdm_gossip_worker_builder.push_domain_tx_pool_sink(DomainId::SYSTEM, system_domain_node.tx_pool_sink);
 
                     primary_chain_node
                         .task_manager
@@ -698,7 +694,7 @@ fn main() -> Result<(), Error> {
                                         .clone(),
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
-                                    gossip_message_sink: gossip_msg_sink,
+                                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                                     provider: DefaultProvider,
                                 };
 
@@ -720,7 +716,7 @@ fn main() -> Result<(), Error> {
                                     >(core_domain_params)
                                         .await?;
 
-                                domain_tx_pool_sinks.insert(
+                                xdm_gossip_worker_builder.push_domain_tx_pool_sink(
                                     core_domain_cli.domain_id,
                                     core_domain_node.tx_pool_sink,
                                 );
@@ -752,7 +748,7 @@ fn main() -> Result<(), Error> {
                                         .clone(),
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
-                                    gossip_message_sink: gossip_msg_sink,
+                                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                                     provider: DefaultProvider,
                                 };
 
@@ -774,7 +770,7 @@ fn main() -> Result<(), Error> {
                                     >(core_domain_params)
                                         .await?;
 
-                                domain_tx_pool_sinks.insert(
+                                xdm_gossip_worker_builder.push_domain_tx_pool_sink(
                                     core_domain_cli.domain_id,
                                     core_domain_node.tx_pool_sink,
                                 );
@@ -824,7 +820,7 @@ fn main() -> Result<(), Error> {
                                     primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
-                                    gossip_message_sink: gossip_msg_sink,
+                                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                                     provider: eth_provider,
                                 };
 
@@ -846,7 +842,7 @@ fn main() -> Result<(), Error> {
                                     >(core_domain_params)
                                         .await?;
 
-                                domain_tx_pool_sinks.insert(
+                                xdm_gossip_worker_builder.push_domain_tx_pool_sink(
                                     core_domain_cli.domain_id,
                                     core_domain_node.tx_pool_sink,
                                 );
@@ -864,10 +860,9 @@ fn main() -> Result<(), Error> {
                         }
                     }
 
-                    let cross_domain_message_gossip_worker = GossipWorker::<Block>::new(
+                    let cross_domain_message_gossip_worker = xdm_gossip_worker_builder.build::<Block, _, _>(
                         primary_chain_node.network_service.clone(),
                         primary_chain_node.sync_service.clone(),
-                        domain_tx_pool_sinks,
                     );
 
                     primary_chain_node
@@ -876,7 +871,7 @@ fn main() -> Result<(), Error> {
                         .spawn_essential_blocking(
                             "cross-domain-gossip-message-worker",
                             None,
-                            Box::pin(cross_domain_message_gossip_worker.run(gossip_msg_stream)),
+                            Box::pin(cross_domain_message_gossip_worker.run()),
                         );
 
                     system_domain_node.network_starter.start_network();
