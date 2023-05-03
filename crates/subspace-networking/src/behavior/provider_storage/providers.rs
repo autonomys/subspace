@@ -131,6 +131,10 @@ impl ParityDbProviderCollection {
     fn providers(&self) -> impl Iterator<Item = ParityDbProviderRecord> + '_ {
         self.map.values().cloned()
     }
+
+    fn len(&self) -> usize {
+        self.map.len()
+    }
 }
 
 #[derive(Clone, Debug, Decode, Encode)]
@@ -323,12 +327,13 @@ impl ParityDbProviderStorage {
 
     fn save_providers(&self, key: &Key, providers: ParityDbProviderCollection) -> bool {
         let key: &[u8] = key.borrow();
+        let data = if providers.len() > 0 {
+            Some(providers.to_vec())
+        } else {
+            None
+        };
 
-        let tx = [(
-            PARITY_DB_ALL_PROVIDERS_COLUMN_NAME,
-            key,
-            Some(providers.to_vec()),
-        )];
+        let tx = [(PARITY_DB_ALL_PROVIDERS_COLUMN_NAME, key, data)];
 
         let result = self.db.commit(tx);
         if let Err(err) = &result {
