@@ -1,4 +1,4 @@
-//! Utilities used for testing with the system domain.
+//! Utilities used for testing with the core domain.
 #![warn(missing_docs)]
 
 use crate::system_domain::SClient;
@@ -83,7 +83,7 @@ where
     pub addr: MultiaddrWithPeerId,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: RpcHandlers,
-    /// System domain executor.
+    /// Core domain executor.
     pub executor: CoreDomainExecutor<RuntimeApi, Executor>,
     _phantom_data: PhantomData<Runtime>,
 }
@@ -271,7 +271,7 @@ where
     }
 }
 
-/// A builder to create a [`SystemDomainNode`].
+/// A builder to create a [`CoreDomainNode`].
 pub struct CoreDomainNodeBuilder {
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
@@ -312,8 +312,8 @@ impl CoreDomainNodeBuilder {
     ///
     /// By default the node will not be connected to any node or will be able to discover any other
     /// node.
-    pub fn connect_to_core_domain_node(mut self, node: &SystemDomainNode) -> Self {
-        self.core_domain_nodes.push(node.addr.clone());
+    pub fn connect_to_core_domain_node(mut self, addr: MultiaddrWithPeerId) -> Self {
+        self.core_domain_nodes.push(addr);
         self
     }
 
