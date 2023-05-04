@@ -16,18 +16,21 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
-        use crate::mock::{TestExternalities, MockEndpoint, MessageId, Balance, AccountId, mock_pallet_receipts};
-        use sp_domains::DomainId;
-        use frame_support::parameter_types;
-        use frame_support::pallet_prelude::PhantomData;
-        use sp_core::H256;
-        use sp_runtime::testing::Header;
-        use sp_runtime::traits::{BlakeTwo256, ConstU16, ConstU32, ConstU64, IdentityLookup};
-        use sp_std::vec::Vec;
-        use sp_messenger::endpoint::{EndpointHandler, Endpoint, EndpointId};
-        use pallet_balances::AccountData;
-        use frame_support::assert_ok;
+        use crate::mock::{
+            mock_pallet_receipts, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
+        };
         use crate::relayer::RelayerId;
+        use codec::{Encode, Decode};
+        use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
+        use frame_support::pallet_prelude::PhantomData;
+        use frame_support::{assert_ok, parameter_types};
+        use pallet_balances::AccountData;
+        use sp_core::H256;
+        use sp_domains::DomainId;
+        use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
+        use sp_runtime::testing::Header;
+        use sp_runtime::traits::{BlakeTwo256, Convert, ConstU16, ConstU32, ConstU64, IdentityLookup};
+        use sp_std::vec::Vec;
 
         type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
         type Block = frame_system::mocking::MockBlock<Runtime>;
@@ -133,12 +136,31 @@ macro_rules! impl_runtime {
             pub const TransporterEndpointId: EndpointId = 100;
         }
 
+        #[derive(Debug)]
+        pub struct MockAccountIdConverter;
+
+        impl Convert<AccountId, MultiAccountId> for MockAccountIdConverter {
+            fn convert(account_id: AccountId) -> MultiAccountId {
+                MultiAccountId::Raw(account_id.encode())
+            }
+        }
+
+        impl TryConvertBack<AccountId, MultiAccountId> for MockAccountIdConverter {
+            fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
+                match multi_account_id {
+                    MultiAccountId::Raw(data) => AccountId::decode(&mut data.as_slice()).ok(),
+                    _ => None,
+                }
+            }
+        }
+
         impl pallet_transporter::Config for $runtime {
             type RuntimeEvent = RuntimeEvent;
             type SelfDomainId = SelfDomainId;
             type SelfEndpointId = TransporterEndpointId;
             type Currency = Balances;
             type Sender = Messenger;
+            type AccountIdConverter = MockAccountIdConverter;
         }
 
         pub const USER_ACCOUNT: AccountId = 1;

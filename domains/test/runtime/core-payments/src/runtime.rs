@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::opaque;
+use domain_runtime_primitives::{opaque, AccountIdConverter};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -299,6 +299,7 @@ impl pallet_transporter::Config for Runtime {
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
 }
 
 impl pallet_sudo::Config for Runtime {

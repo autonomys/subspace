@@ -1,7 +1,7 @@
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
-use domain_runtime_primitives::SLOT_DURATION;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
+use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::CheckedSignature;
 use frame_support::dispatch::DispatchClass;
@@ -29,8 +29,8 @@ use sp_messenger::messages::{
     CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable, IdentifyAccount, IdentityLookup,
-    PostDispatchInfoOf, UniqueSaturatedInto, Verify,
+    BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
 };
 use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
@@ -381,12 +381,30 @@ parameter_types! {
     pub const TransporterEndpointId: EndpointId = 1;
 }
 
+pub struct AccountId20Converter;
+
+impl Convert<AccountId, MultiAccountId> for AccountId20Converter {
+    fn convert(account_id: AccountId) -> MultiAccountId {
+        MultiAccountId::AccountId20(account_id.into())
+    }
+}
+
+impl TryConvertBack<AccountId, MultiAccountId> for AccountId20Converter {
+    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
+        match multi_account_id {
+            MultiAccountId::AccountId20(acc) => Some(AccountId::from(acc)),
+            _ => None,
+        }
+    }
+}
+
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = CoreDomainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
+    type AccountIdConverter = AccountId20Converter;
 }
 
 impl pallet_evm_chain_id::Config for Runtime {}

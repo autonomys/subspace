@@ -20,6 +20,7 @@
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
 use codec::{Decode, Encode};
+use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
 use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -32,22 +33,22 @@ mod tests;
 
 /// Location that either sends or receives transfers between domains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Location<AccountId> {
+pub struct Location {
     /// Unique identity of domain.
     pub domain_id: DomainId,
     /// Unique account on domain.
-    pub account_id: AccountId,
+    pub account_id: MultiAccountId,
 }
 
 /// Transfer of funds from one domain to another.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct Transfer<AccountId, Balance> {
+pub struct Transfer<Balance> {
     /// Amount being transferred between entities.
     pub amount: Balance,
     /// Sender location of the transfer.
-    pub sender: Location<AccountId>,
+    pub sender: Location,
     /// Receiver location of the transfer.
-    pub receiver: Location<AccountId>,
+    pub receiver: Location,
 }
 
 /// Balance type used by the pallet.
@@ -60,7 +61,7 @@ type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::{BalanceOf, Location, MessageIdOf, Transfer};
+    use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
     use codec::{Decode, Encode};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
@@ -70,6 +71,7 @@ mod pallet {
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
     };
+    use sp_runtime::traits::Convert;
     use sp_std::vec;
 
     #[pallet::config]
@@ -88,6 +90,9 @@ mod pallet {
 
         /// Sender used to transfer funds.
         type Sender: Sender<Self::AccountId>;
+
+        /// MultiAccountID <> T::AccountId converter.
+        type AccountIdConverter: TryConvertBack<Self::AccountId, MultiAccountId>;
     }
 
     /// Pallet transporter to move funds between domains.
@@ -104,13 +109,13 @@ mod pallet {
         DomainId,
         Identity,
         MessageIdOf<T>,
-        Transfer<T::AccountId, BalanceOf<T>>,
+        Transfer<BalanceOf<T>>,
         OptionQuery,
     >;
 
     /// Events emitted by pallet-transporter.
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Emits when there is a new outgoing transfer.
         OutgoingTransferInitiated {
@@ -160,6 +165,8 @@ mod pallet {
         InvalidTransferRequest,
         /// Emits when the incoming message is not bound to this domain.
         UnexpectedMessage,
+        /// Emits when the account id type is invalid.
+        InvalidAccountId,
     }
 
     #[pallet::call]
@@ -170,7 +177,7 @@ mod pallet {
         #[pallet::weight((10_000, Pays::No))]
         pub fn transfer(
             origin: OriginFor<T>,
-            dst_location: Location<T::AccountId>,
+            dst_location: Location,
             amount: BalanceOf<T>,
         ) -> DispatchResult {
             let sender = ensure_signed(origin)?;
@@ -190,7 +197,7 @@ mod pallet {
                 amount,
                 sender: Location {
                     domain_id: T::SelfDomainId::get(),
-                    account_id: sender.clone(),
+                    account_id: T::AccountIdConverter::convert(sender.clone()),
                 },
                 receiver: dst_location,
             };
@@ -240,13 +247,16 @@ mod pallet {
             );
 
             // decode payload and process message
-            let req = match Transfer::<_, _>::decode(&mut req.payload.as_slice()) {
+            let req = match Transfer::decode(&mut req.payload.as_slice()) {
                 Ok(req) => req,
                 Err(_) => return Err(Error::<T>::InvalidPayload.into()),
             };
 
             // mint the funds to dst_account
-            T::Currency::deposit_creating(&req.receiver.account_id, req.amount);
+            let account_id = T::AccountIdConverter::try_convert_back(req.receiver.account_id)
+                .ok_or(Error::<T>::InvalidAccountId)?;
+
+            T::Currency::deposit_creating(&account_id, req.amount);
             frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
                 Event::<T>::IncomingTransferSuccessful {
                     domain_id: src_domain_id,
@@ -287,7 +297,10 @@ mod pallet {
                 Err(err) => {
                     // transfer failed
                     // revert burned funds
-                    T::Currency::deposit_creating(&transfer.sender.account_id, transfer.amount);
+                    let account_id =
+                        T::AccountIdConverter::try_convert_back(transfer.sender.account_id)
+                            .ok_or(Error::<T>::InvalidAccountId)?;
+                    T::Currency::deposit_creating(&account_id, transfer.amount);
                     frame_system::Pallet::<T>::deposit_event(
                         Into::<<T as Config>::RuntimeEvent>::into(
                             Event::<T>::OutgoingTransferFailed {
