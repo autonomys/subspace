@@ -208,34 +208,40 @@ where
             // if not, the node is lagging behind and/or there is no way to generate a proof.
             // mark this block processed and continue to next one.
             if !can_relay_message_from_block(domain_id, number)? {
+                Relayer::store_relayed_block(&domain_client, domain_id, number, hash)?;
                 tracing::info!(
                     target: LOG_TARGET,
                     "Domain({domain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
                 );
-            } else if let Err(err) = message_processor(relayer_id.clone(), &domain_client, hash) {
-                match err {
-                    Error::CoreDomainNonConfirmedOnSystemDomain => {
+            } else {
+                match message_processor(relayer_id.clone(), &domain_client, hash) {
+                    Ok(_) => {
+                        Relayer::store_relayed_block(&domain_client, domain_id, number, hash)?;
                         tracing::info!(
                             target: LOG_TARGET,
-                            "Waiting for Core Domain[{domain_id:?}] block({number:?}, {hash:?}) to be confirmed on System domain."
+                            "Messages from {domain_id:?} at block({number:?}, {hash:?}) are processed."
                         )
                     }
-                    _ => {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
-                        );
+                    Err(err) => {
+                        match err {
+                            Error::CoreDomainNonConfirmedOnSystemDomain => {
+                                tracing::info!(
+                                    target: LOG_TARGET,
+                                    "Waiting for Core Domain[{domain_id:?}] block({number:?}, {hash:?}) to be confirmed on System domain."
+                                )
+                            }
+                            _ => {
+                                tracing::error!(
+                                    target: LOG_TARGET,
+                                    ?err,
+                                    "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
+                                );
+                            }
+                        }
+                        break;
                     }
                 }
             }
-
-            // TODO: at the moment the aux storage grows as the chain grows
-            // We can prune the the storage by doing another round of check for any undelivered messages
-            // and then prune the storage.
-            // We can use Finalize event but its not triggered yet as we dont finalize.
-            // Other option would be to use fraud proof period.
-            Relayer::store_relayed_block(&domain_client, domain_id, number, hash)?;
         }
     }
 

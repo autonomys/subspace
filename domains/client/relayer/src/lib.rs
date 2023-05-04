@@ -525,6 +525,11 @@ where
             .unwrap_or_default()
     }
 
+    // TODO: at the moment the aux storage grows as the chain grows
+    // We can prune the the storage by doing another round of check for any undelivered messages
+    // and then prune the storage.
+    // We can use Finalize event but its not triggered yet as we dont finalize.
+    // Other option would be to use fraud proof period.
     pub(crate) fn store_relayed_block(
         client: &Arc<Client>,
         domain_id: DomainId,
