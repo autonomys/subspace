@@ -27,6 +27,7 @@ sp-std = { version = "5.0.0", default-features = false, git = "https://github.co
 sp-trie = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 
 [dev-dependencies]
+domain-runtime-primitives = { path = "../../primitives/runtime" }
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 pallet-transporter = { version = "0.1.0", path = "../transporter" }
 sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
