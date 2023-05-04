@@ -9,7 +9,7 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::MultihashCode;
-use subspace_networking::utils::pieces::announce_single_piece_index_hash_with_backoff;
+use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{Node, PieceByHashRequest, PieceByHashResponse};
 use tokio::sync::Semaphore;
 use tracing::{debug, trace, warn};
