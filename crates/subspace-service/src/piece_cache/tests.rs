@@ -3,9 +3,7 @@ use sc_client_api::AuxStore;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subspace_core_primitives::{
-    ArchivedHistorySegment, FlatPieces, Piece, PieceIndex, PieceIndexHash,
-};
+use subspace_core_primitives::{ArchivedHistorySegment, FlatPieces, Piece, PieceIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 
@@ -58,17 +56,11 @@ fn basic() {
 
     let piece_index = PieceIndex::default();
     let piece_by_kad_key = store
-        .get_piece_by_index_multihash(
-            &PieceIndexHash::from_index(piece_index)
-                .to_multihash()
-                .to_bytes(),
-        )
+        .get_piece_by_index_multihash(&piece_index.hash().to_multihash().to_bytes())
         .unwrap()
         .unwrap();
 
-    let piece_res = store
-        .get_piece(PieceIndexHash::from_index(piece_index))
-        .unwrap();
+    let piece_res = store.get_piece(piece_index.hash()).unwrap();
     let piece = piece_res.unwrap();
 
     assert_eq!(piece_by_kad_key, piece);
@@ -84,10 +76,7 @@ fn cache_nothing() {
 
     let piece_index = PieceIndex::default();
 
-    assert!(store
-        .get_piece(PieceIndexHash::from_index(piece_index))
-        .unwrap()
-        .is_none());
+    assert!(store.get_piece(piece_index.hash()).unwrap().is_none());
 }
 
 #[test]
@@ -104,7 +93,7 @@ fn auto_cleanup() {
         .unwrap();
     // It must be stored
     store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::default()))
+        .get_piece(PieceIndex::default().hash())
         .unwrap()
         .unwrap();
 
@@ -113,13 +102,10 @@ fn auto_cleanup() {
         .add_pieces(PieceIndex::ONE, &FlatPieces::new(1))
         .unwrap();
     // It must be stored
-    store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::ONE))
-        .unwrap()
-        .unwrap();
+    store.get_piece(PieceIndex::ONE.hash()).unwrap().unwrap();
     // But the first piece is evicted because it exceeds cache size
     assert!(store
-        .get_piece(PieceIndexHash::from_index(PieceIndex::default()))
+        .get_piece(PieceIndex::default().hash())
         .unwrap()
         .is_none());
 }

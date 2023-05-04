@@ -298,15 +298,6 @@ impl AsRef<[u8]> for PieceIndexHash {
     }
 }
 
-impl PieceIndexHash {
-    // TODO: Remove and replace uses with `index.hash()`
-    /// Constructs `PieceIndexHash` from `PieceIndex`
-    #[inline]
-    pub fn from_index(index: PieceIndex) -> Self {
-        index.hash()
-    }
-}
-
 /// Raw record contained within recorded history segment before archiving is applied.
 ///
 /// NOTE: This is a stack-allocated data structure and can cause stack overflow!

@@ -8,7 +8,7 @@ use libp2p::PeerId;
 use std::error::Error;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use subspace_core_primitives::{Piece, PieceIndex, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndex};
 use tracing::{debug, error, trace, warn};
 
 /// Defines initial duration between get_piece calls.
@@ -71,7 +71,7 @@ where
 
     // Get from piece cache (L2) or archival storage (L1)
     async fn get_piece_from_storage(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let piece_index_hash = piece_index.hash();
         let key = piece_index_hash.to_multihash();
 
         let get_providers_result = self.node.get_providers(key).await;

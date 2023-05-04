@@ -174,11 +174,7 @@ where
     }
 
     fn key(piece_index: PieceIndex) -> Vec<u8> {
-        Self::key_from_bytes(
-            &PieceIndexHash::from_index(piece_index)
-                .to_multihash()
-                .to_bytes(),
-        )
+        Self::key_from_bytes(&piece_index.hash().to_multihash().to_bytes())
     }
 
     fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {
@@ -309,7 +305,7 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
 
         let peer_id = self.piece_cache.local_peer_id;
         let piece_index = self.piece_indexes[self.piece_indexes_cursor];
-        let piece_index_hash = PieceIndexHash::from_index(piece_index);
+        let piece_index_hash = piece_index.hash();
         let key = Key::from(piece_index_hash.to_multihash());
 
         let result = self
