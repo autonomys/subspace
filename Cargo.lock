@@ -2560,7 +2560,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "core-payments-domain-test-runtime",
- "cross-domain-message-gossip",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-runtime-primitives",
@@ -11181,10 +11180,13 @@ name = "subspace-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cross-domain-message-gossip",
  "futures",
  "futures-timer",
+ "jsonrpsee",
  "pallet-domains",
  "parity-scale-codec",
+ "parking_lot 0.12.1",
  "rand 0.8.5",
  "sc-block-builder",
  "sc-client-api",
@@ -11192,6 +11194,7 @@ dependencies = [
  "sc-consensus-fraud-proof",
  "sc-executor",
  "sc-network",
+ "sc-network-sync",
  "sc-service",
  "sc-tracing",
  "sc-transaction-pool",

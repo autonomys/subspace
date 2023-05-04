@@ -10,7 +10,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
 use sp_domains::{Bundle, BundleHeader};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -69,6 +69,7 @@ where
         ParentChain: ParentChainInterface<ParentChainBlock>,
     {
         let parent_number = self.client.info().best_number;
+        let parent_hash = self.client.info().best_hash;
 
         let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
         // TODO: proper timeout
@@ -114,7 +115,7 @@ where
         let receipts = if primary_number.is_zero() {
             Vec::new()
         } else {
-            self.collect_bundle_receipts(parent_number, parent_chain)?
+            self.collect_bundle_receipts(parent_number, parent_hash, parent_chain)?
         };
 
         receipts_sanity_check::<Block, PBlock>(&receipts)?;
@@ -134,9 +135,12 @@ where
     }
 
     /// Returns the receipts in the next domain bundle.
+    ///
+    /// There will be at least one receipt in the collected receipts.
     fn collect_bundle_receipts<ParentChain, ParentChainBlock>(
         &self,
         header_number: NumberFor<Block>,
+        header_hash: Block::Hash,
         parent_chain: ParentChain,
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
@@ -154,7 +158,7 @@ where
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
 
-        let load_receipt = |primary_block_hash| {
+        let load_receipt = |primary_block_hash, block_number| {
             crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
@@ -163,14 +167,34 @@ where
             >(&*self.client, primary_block_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
-                    "Receipt of primary block #{primary_block_hash} not found"
+                    "Receipt of primary block #{block_number},{primary_block_hash} not found"
                 ))
             })
         };
 
         let mut receipts = Vec::new();
         let mut to_send = head_receipt_number + 1;
-        let max_allowed = (head_receipt_number + max_drift).min(to_number_primitive(header_number));
+
+        let header_block_receipt_is_written =
+            crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(&*self.client, header_hash)?
+                .is_some();
+
+        // TODO: remove once the receipt generation can be done before the domain block is
+        // committed to the database, in other words, only when the receipt of block N+1 has
+        // been generated can the `client.info().best_number` be updated from N to N+1.
+        //
+        // This requires:
+        // 1. Reimplement `runtime_api.intermediate_roots()` on the client side.
+        // 2. Add a hook before the upstream `client.commit_operation(op)`.
+        let available_best_receipt_number = if header_block_receipt_is_written {
+            header_number
+        } else {
+            header_number.saturating_sub(One::one())
+        };
+
+        let max_allowed = (head_receipt_number + max_drift)
+            .min(to_number_primitive(available_best_receipt_number));
+
         loop {
             let primary_block_hash =
                 self.primary_chain_client
@@ -180,7 +204,7 @@ where
                             "Primary block hash for #{to_send:?} not found"
                         ))
                     })?;
-            receipts.push(load_receipt(primary_block_hash)?);
+            receipts.push(load_receipt(primary_block_hash, to_send)?);
             to_send += 1;
 
             if to_send > max_allowed {

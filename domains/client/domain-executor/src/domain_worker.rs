@@ -1,5 +1,4 @@
 use crate::utils::{to_number_primitive, BlockInfo, ExecutorSlotInfo};
-use codec::{Decode, Encode};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
@@ -214,10 +213,6 @@ where
 {
     let best_hash = primary_chain_client.info().best_hash;
     let best_number = primary_chain_client.info().best_number;
-
-    let best_hash = PBlock::Hash::decode(&mut best_hash.encode().as_slice())
-        .expect("Hash type must be correct");
-    let best_number = crate::utils::translate_number_type(best_number);
 
     let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
