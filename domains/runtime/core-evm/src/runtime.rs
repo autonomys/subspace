@@ -1,14 +1,14 @@
-use crate::precompiles::FrontierPrecompiles;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::SLOT_DURATION;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use fp_account::EthereumSignature;
-use fp_evm::weight_per_gas;
+use fp_self_contained::CheckedSignature;
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
+    WEIGHT_REF_TIME_PER_SECOND,
 };
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -16,7 +16,8 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use pallet_ethereum::Call::transact;
 use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
 use pallet_evm::{
-    Account as EVMAccount, EnsureAccountId20, FeeCalculator, IdentityAddressMapping, Runner,
+    Account as EVMAccount, EnsureAddressNever, EnsureAddressRoot, FeeCalculator,
+    IdentityAddressMapping, Runner,
 };
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
@@ -28,7 +29,7 @@ use sp_messenger::messages::{
     CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    BlakeTwo256, Block as BlockT, DispatchInfoOf, Dispatchable, IdentifyAccount, IdentityLookup,
     PostDispatchInfoOf, UniqueSaturatedInto, Verify,
 };
 use sp_runtime::transaction_validity::{
@@ -53,7 +54,7 @@ pub type Signature = EthereumSignature;
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 /// The address format for describing accounts.
-pub type Address = MultiAddress<AccountId, ()>;
+pub type Address = AccountId;
 
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
@@ -63,6 +64,9 @@ pub type SignedBlock = generic::SignedBlock<Block>;
 
 /// BlockId type as expected by this runtime.
 pub type BlockId = generic::BlockId<Block>;
+
+/// Precompiles we use for EVM
+pub type Precompiles = crate::precompiles::Precompiles<Runtime>;
 
 /// The SignedExtension to the basic transaction logic.
 pub type SignedExtra = (
@@ -234,7 +238,7 @@ impl frame_system::Config for Runtime {
     /// The aggregated dispatch type that is available for extrinsics.
     type RuntimeCall = RuntimeCall;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
-    type Lookup = AccountIdLookup<AccountId, ()>;
+    type Lookup = IdentityLookup<AccountId>;
     /// The index type for storing how many extrinsics an account has signed.
     type Index = Index;
     /// The index type for blocks.
@@ -271,8 +275,7 @@ impl frame_system::Config for Runtime {
     type BlockWeights = RuntimeBlockWeights;
     /// The maximum length of a block (in bytes).
     type BlockLength = RuntimeBlockLength;
-    /// This is used as an identifier of the chain. 42 is the generic substrate prefix.
-    type SS58Prefix = ConstU16<42>;
+    type SS58Prefix = ConstU16<2254>;
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
@@ -400,12 +403,23 @@ impl FindAuthor<H160> for FindAuthorTruncated {
     }
 }
 
-const BLOCK_GAS_LIMIT: u64 = 75_000_000;
+/// Current approximation of the gas/s consumption considering
+/// EVM execution over compiled WASM (on 4.4Ghz CPU).
+/// Given the 500ms Weight, from which 75% only are used for transactions,
+/// the total EVM execution gas limit is: GAS_PER_SECOND * 0.500 * 0.75 ~= 15_000_000.
+pub const GAS_PER_SECOND: u64 = 40_000_000;
+
+/// Approximate ratio of the amount of Weight per Gas.
+/// u64 works for approximations because Weight is a very small unit compared to gas.
+pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
 
 parameter_types! {
-    pub BlockGasLimit: U256 = U256::from(BLOCK_GAS_LIMIT);
-    pub PrecompilesValue: FrontierPrecompiles<Runtime> = FrontierPrecompiles::<_>::default();
-    pub WeightPerGas: Weight = Weight::from_parts(weight_per_gas(BLOCK_GAS_LIMIT, NORMAL_DISPATCH_RATIO, WEIGHT_MILLISECS_PER_BLOCK), 0);
+    /// EVM gas limit
+    pub BlockGasLimit: U256 = U256::from(
+        NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
+    );
+    pub PrecompilesValue: Precompiles = Precompiles::default();
+    pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
 impl pallet_evm::Config for Runtime {
@@ -413,12 +427,12 @@ impl pallet_evm::Config for Runtime {
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
     type WeightPerGas = WeightPerGas;
     type BlockHashMapping = pallet_ethereum::EthereumBlockHashMapping<Self>;
-    type CallOrigin = EnsureAccountId20;
-    type WithdrawOrigin = EnsureAccountId20;
+    type CallOrigin = EnsureAddressRoot<AccountId>;
+    type WithdrawOrigin = EnsureAddressNever<AccountId>;
     type AddressMapping = IdentityAddressMapping;
     type Currency = Balances;
     type RuntimeEvent = RuntimeEvent;
-    type PrecompilesType = FrontierPrecompiles<Self>;
+    type PrecompilesType = Precompiles;
     type PrecompilesValue = PrecompilesValue;
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
@@ -443,14 +457,10 @@ parameter_types! {
     pub BoundDivision: U256 = U256::from(1024);
 }
 
-// TODO: This pallet needs inherents to pass target_gas price for each block.
-impl pallet_dynamic_fee::Config for Runtime {
-    type MinGasPriceBoundDivisor = BoundDivision;
-}
-
 parameter_types! {
     pub DefaultBaseFeePerGas: U256 = U256::from(1_000_000_000);
-    pub DefaultElasticity: Permill = Permill::from_parts(125_000);
+    // mark it to 5% increments on beyond target weight.
+    pub DefaultElasticity: Permill = Permill::from_parts(50_000);
 }
 
 pub struct BaseFeeThreshold;
@@ -501,8 +511,7 @@ construct_runtime!(
         Ethereum: pallet_ethereum = 80,
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
-        DynamicFee: pallet_dynamic_fee = 83,
-        BaseFee: pallet_base_fee = 84,
+        BaseFee: pallet_base_fee = 83,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -643,10 +652,8 @@ impl_runtime_apis! {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
-            use domain_runtime_primitives::Signer;
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            // TODO: we should return the actual eth transaction signer.
-            extrinsics.into_iter().map(|xt| (xt.0.signer(&lookup).map(|signer| signer.encode()), xt)).collect()
+            extract_signers(extrinsics, &lookup)
         }
 
         fn intermediate_roots() -> Vec<[u8; 32]> {
@@ -955,4 +962,29 @@ fn extract_xdm_proof_state_roots(
     } else {
         None
     }
+}
+
+pub fn extract_signers<Lookup>(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    lookup: &Lookup,
+) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)>
+where
+    Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
+{
+    use sp_runtime::traits::Checkable;
+
+    let mut signer_extrinsics = sp_std::vec![];
+    for extrinsic in extrinsics {
+        if let Ok(checked) = extrinsic.clone().check(lookup) {
+            let maybe_signer = match checked.signed {
+                CheckedSignature::SelfContained(account_id) => Some(account_id.encode()),
+                CheckedSignature::Signed(account_id, _) => Some(account_id.encode()),
+                CheckedSignature::Unsigned => None,
+            };
+
+            signer_extrinsics.push((maybe_signer, extrinsic))
+        }
+    }
+
+    signer_extrinsics
 }

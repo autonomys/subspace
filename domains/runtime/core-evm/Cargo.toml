@@ -33,7 +33,6 @@ hex-literal = { version = '0.4.0', optional = true }
 log = { version = "0.4.17", default-features = false }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 pallet-base-fee = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-pallet-dynamic-fee = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 pallet-ethereum = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
 pallet-evm-chain-id = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
@@ -84,7 +83,6 @@ std = [
 	"log/std",
 	"pallet-balances/std",
 	"pallet-base-fee/std",
-	"pallet-dynamic-fee/std",
 	"pallet-ethereum/std",
 	"pallet-evm/std",
 	"pallet-evm-chain-id/std",
