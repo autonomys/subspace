@@ -1,6 +1,6 @@
 use crate::feed_processor::{feed_processor, FeedProcessorId, FeedProcessorKind};
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{opaque, SLOT_DURATION};
+use domain_runtime_primitives::{opaque, AccountIdConverter, SLOT_DURATION};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -299,6 +299,7 @@ impl pallet_transporter::Config for Runtime {
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
 }
 
 impl pallet_sudo::Config for Runtime {

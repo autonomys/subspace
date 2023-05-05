@@ -17,8 +17,10 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use parity_scale_codec::{Decode, Encode};
 use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{Block as BlockT, IdentifyAccount, Verify};
+use sp_runtime::scale_info::TypeInfo;
+use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, Verify};
 use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 use subspace_runtime_primitives::Moment;
@@ -67,6 +69,41 @@ where
         self.signature
             .as_ref()
             .and_then(|(signed, _, _)| lookup.lookup(signed.clone()).ok())
+    }
+}
+
+/// MultiAccountId used by all the domains to describe their account type.
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub enum MultiAccountId {
+    /// 32 byte account Id.
+    AccountId32([u8; 32]),
+    /// 20 byte account Id. Ex: Ethereum
+    AccountId20([u8; 20]),
+    /// Some raw bytes
+    Raw(Vec<u8>),
+}
+
+/// Extensible conversion trait. Generic over both source and destination types.
+pub trait TryConvertBack<A, B>: Convert<A, B> {
+    /// Make conversion back.
+    fn try_convert_back(b: B) -> Option<A>;
+}
+
+/// An AccountId32 to MultiAccount converter.
+pub struct AccountIdConverter;
+
+impl Convert<AccountId, MultiAccountId> for AccountIdConverter {
+    fn convert(account_id: AccountId) -> MultiAccountId {
+        MultiAccountId::AccountId32(account_id.into())
+    }
+}
+
+impl TryConvertBack<AccountId, MultiAccountId> for AccountIdConverter {
+    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
+        match multi_account_id {
+            MultiAccountId::AccountId32(acc) => Some(AccountId::new(acc)),
+            _ => None,
+        }
     }
 }
 

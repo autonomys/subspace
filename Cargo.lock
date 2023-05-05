@@ -2478,6 +2478,7 @@ name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
+ "scale-info",
  "sp-api",
  "sp-core",
  "sp-runtime",
@@ -6728,6 +6729,7 @@ dependencies = [
 name = "pallet-messenger"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system",
  "log",
@@ -6941,6 +6943,7 @@ dependencies = [
 name = "pallet-transporter"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system",
  "pallet-balances",
