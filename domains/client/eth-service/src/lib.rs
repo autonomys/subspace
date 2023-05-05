@@ -1,5 +1,4 @@
-#![allow(dead_code)]
-#![deny(unused_crate_dependencies)]
+#![warn(rust_2018_idioms)]
 
 pub mod provider;
 pub(crate) mod rpc;
