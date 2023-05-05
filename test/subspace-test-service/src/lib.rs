@@ -239,6 +239,13 @@ impl MockPrimaryNode {
         // by `TemporarilyBanned`
         config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
+        config.network.node_name = format!("{} (MockPrimaryChain)", config.network.node_name);
+        let span = sc_tracing::tracing::info_span!(
+            sc_tracing::logging::PREFIX_LOG_SPAN,
+            name = config.network.node_name.as_str()
+        );
+        let _enter = span.enter();
+
         let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
             config.wasm_method,
             config.default_heap_pages,
