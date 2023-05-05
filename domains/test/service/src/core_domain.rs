@@ -124,6 +124,7 @@ where
         base_path: BasePath,
         core_domain_nodes: Vec<MultiaddrWithPeerId>,
         core_domain_nodes_exclusive: bool,
+        run_relayer: bool,
         role: Role,
         mock_primary_node: &mut MockPrimaryNode,
         system_domain_node: &SystemDomainNode,
@@ -147,9 +148,10 @@ where
 
         let multiaddr = service_config.network.listen_addresses[0].clone();
 
+        let maybe_relayer_id = if run_relayer { Some(key.into()) } else { None };
         let core_domain_config = domain_service::DomainConfiguration {
             service_config,
-            maybe_relayer_id: None,
+            maybe_relayer_id,
         };
         let executor_streams = ExecutorStreams {
             // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
@@ -297,6 +299,7 @@ pub struct CoreDomainNodeBuilder {
     core_domain_nodes: Vec<MultiaddrWithPeerId>,
     core_domain_nodes_exclusive: bool,
     base_path: BasePath,
+    run_relayer: bool,
 }
 
 impl CoreDomainNodeBuilder {
@@ -316,7 +319,14 @@ impl CoreDomainNodeBuilder {
             core_domain_nodes: Vec::new(),
             core_domain_nodes_exclusive: false,
             base_path,
+            run_relayer: false,
         }
+    }
+
+    /// Run relayer with the node account id as the relayer id
+    pub fn run_relayer(mut self) -> Self {
+        self.run_relayer = true;
+        self
     }
 
     /// Instruct the node to exclusively connect to registered parachain nodes.
@@ -350,6 +360,7 @@ impl CoreDomainNodeBuilder {
             self.base_path,
             self.core_domain_nodes,
             self.core_domain_nodes_exclusive,
+            self.run_relayer,
             role,
             mock_primary_node,
             system_domain_node,

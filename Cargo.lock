@@ -2327,6 +2327,7 @@ name = "domain-client-executor"
 version = "0.1.0"
 dependencies = [
  "core-payments-domain-runtime",
+ "core-payments-domain-test-runtime",
  "crossbeam",
  "domain-block-builder",
  "domain-block-preprocessor",
@@ -2339,6 +2340,9 @@ dependencies = [
  "futures-timer",
  "pallet-balances",
  "pallet-domains",
+ "pallet-messenger",
+ "pallet-sudo",
+ "pallet-transporter",
  "parity-scale-codec",
  "sc-cli",
  "sc-client-api",
@@ -2370,6 +2374,7 @@ dependencies = [
  "subspace-wasm-tools",
  "substrate-test-runtime-client",
  "substrate-test-utils",
+ "system-domain-test-runtime",
  "system-runtime-primitives",
  "tempfile",
  "thiserror",
@@ -2551,7 +2556,10 @@ dependencies = [
 name = "domain-test-primitives"
 version = "0.1.0"
 dependencies = [
+ "parity-scale-codec",
  "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-domains",
+ "sp-messenger",
  "subspace-runtime-primitives",
 ]
 
@@ -2565,6 +2573,7 @@ dependencies = [
  "domain-client-executor",
  "domain-runtime-primitives",
  "domain-service",
+ "domain-test-primitives",
  "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "frame-system",
  "frame-system-rpc-runtime-api",
@@ -12072,6 +12081,7 @@ dependencies = [
  "core-payments-domain-runtime",
  "domain-pallet-executive",
  "domain-runtime-primitives",
+ "domain-test-primitives",
  "frame-benchmarking",
  "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "frame-system",
@@ -12084,8 +12094,10 @@ dependencies = [
  "pallet-executor-registry",
  "pallet-messenger",
  "pallet-receipts",
+ "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
  "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",

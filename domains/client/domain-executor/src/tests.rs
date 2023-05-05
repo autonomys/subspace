@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_runtime_primitives::{AccountIdConverter, DomainCoreApi, Hash};
 use domain_test_primitives::TimestampApi;
 use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
@@ -18,7 +18,7 @@ use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutorApi, SignedBundle};
 use sp_messenger::messages::InitiateChannelParams;
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
@@ -1050,4 +1050,96 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
         Ok(_) | Err(sc_transaction_pool::error::Error::Pool(TxPoolError::AlreadyImported(_))) => {}
         Err(err) => panic!("Unexpected error: {err}"),
     }
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_cross_domains_message_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .run_relayer()
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    // Run Alice (a core payments domain authority node)
+    let mut bob = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .run_relayer()
+    .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+
+    // Open channel on both sides
+    bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+        call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_domain_id: DomainId::SYSTEM,
+                params: InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                    fee_model: Default::default(),
+                },
+            },
+        )),
+    })
+    .await
+    .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, bob, {
+        alice
+            .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
+            .is_some()
+            && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance cross domain
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+    let transfer_amount = 1;
+    alice
+        .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                domain_id: DomainId::CORE_PAYMENTS,
+                account_id: AccountIdConverter::convert(Bob.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until transfer succeed
+    produce_blocks_until!(ferdie, alice, bob, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+
+        post_alice_free_balance == pre_alice_free_balance - transfer_amount
+            && post_bob_free_balance == pre_bob_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
 }

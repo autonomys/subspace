@@ -95,6 +95,7 @@ impl sc_executor::NativeExecutionDispatch for SystemDomainExecutorDispatch {
 async fn run_executor_with_mock_primary_node(
     system_domain_config: ServiceConfiguration,
     mock_primary_node: &mut MockPrimaryNode,
+    maybe_relayer_id: Option<AccountId>,
 ) -> sc_service::error::Result<(
     TaskManager,
     Arc<SClient>,
@@ -108,7 +109,7 @@ async fn run_executor_with_mock_primary_node(
 )> {
     let system_domain_config = DomainConfiguration {
         service_config: system_domain_config,
-        maybe_relayer_id: None,
+        maybe_relayer_id,
     };
     let executor_streams = ExecutorStreams {
         // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
@@ -211,6 +212,7 @@ pub struct SystemDomainNodeBuilder {
     system_domain_nodes: Vec<MultiaddrWithPeerId>,
     system_domain_nodes_exclusive: bool,
     base_path: BasePath,
+    run_relayer: bool,
 }
 
 impl SystemDomainNodeBuilder {
@@ -230,7 +232,14 @@ impl SystemDomainNodeBuilder {
             system_domain_nodes: Vec::new(),
             system_domain_nodes_exclusive: false,
             base_path,
+            run_relayer: false,
         }
+    }
+
+    /// Run relayer with the node account id as the relayer id
+    pub fn run_relayer(mut self) -> Self {
+        self.run_relayer = true;
+        self
     }
 
     /// Instruct the node to exclusively connect to registered parachain nodes.
@@ -282,6 +291,12 @@ impl SystemDomainNodeBuilder {
         .expect("could not generate system domain node Configuration");
 
         let multiaddr = system_domain_config.network.listen_addresses[0].clone();
+
+        let maybe_relayer_id = if self.run_relayer {
+            Some(self.key.into())
+        } else {
+            None
+        };
         let (
             task_manager,
             client,
@@ -292,9 +307,13 @@ impl SystemDomainNodeBuilder {
             rpc_handlers,
             executor,
             gossip_message_validator,
-        ) = run_executor_with_mock_primary_node(system_domain_config, mock_primary_node)
-            .await
-            .expect("could not start system domain node");
+        ) = run_executor_with_mock_primary_node(
+            system_domain_config,
+            mock_primary_node,
+            maybe_relayer_id,
+        )
+        .await
+        .expect("could not start system domain node");
 
         let peer_id = network_service.local_peer_id();
         let addr = MultiaddrWithPeerId { multiaddr, peer_id };
