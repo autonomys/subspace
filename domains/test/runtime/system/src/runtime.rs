@@ -324,7 +324,7 @@ impl pallet_receipts::Config for Runtime {
 
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 7;
+    pub const RelayConfirmationDepth: BlockNumber = 1;
 }
 
 parameter_types! {

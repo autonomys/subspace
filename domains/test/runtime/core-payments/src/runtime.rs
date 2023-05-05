@@ -252,7 +252,7 @@ impl domain_pallet_executive::Config for Runtime {
 
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 7;
+    pub const RelayConfirmationDepth: BlockNumber = 1;
 }
 
 parameter_types! {
