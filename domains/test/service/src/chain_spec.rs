@@ -158,5 +158,8 @@ fn testnet_system_genesis() -> system_domain_test_runtime::GenesisConfig {
         messenger: system_domain_test_runtime::MessengerConfig {
             relayers: vec![(Alice.to_account_id(), Alice.to_account_id())],
         },
+        sudo: system_domain_test_runtime::SudoConfig {
+            key: Some(Alice.to_account_id()),
+        },
     }
 }
