@@ -2,7 +2,9 @@
 #![warn(missing_docs)]
 use crate::{construct_extrinsic_generic, node_config};
 use domain_client_executor::ExecutorStreams;
+use domain_runtime_primitives::{AccountId, Balance};
 use domain_service::{DomainConfiguration, FullPool};
+use domain_test_primitives::OnchainStateApi;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use sc_client_api::{BlockchainEvents, HeaderBackend};
 use sc_network::{NetworkService, NetworkStateInfo};
@@ -16,6 +18,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
+use sp_messenger::messages::ChannelId;
 use sp_runtime::OpaqueExtrinsic;
 use std::future::Future;
 use std::sync::Arc;
@@ -326,6 +329,22 @@ impl SystemDomainNode {
             .runtime_api()
             .account_nonce(self.client.info().best_hash, self.key.into())
             .expect("Fail to get account nonce")
+    }
+
+    /// Get the free balance of the given account
+    pub fn free_balance(&self, account_id: AccountId) -> Balance {
+        self.client
+            .runtime_api()
+            .free_balance(self.client.info().best_hash, account_id)
+            .expect("Fail to get account free balance")
+    }
+
+    /// Get the last open channel of the given domain
+    pub fn get_open_channel_for_domain(&self, dst_domain_id: DomainId) -> Option<ChannelId> {
+        self.client
+            .runtime_api()
+            .get_open_channel_for_domain(self.client.info().best_hash, dst_domain_id)
+            .expect("Fail to get open channel")
     }
 
     /// Construct an extrinsic with the current nonce of the node account and send it to this node.

@@ -10,6 +10,7 @@ use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
+use domain_test_primitives::OnchainStateApi;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockchainEvents, HeaderBackend, StateBackendFor};
@@ -23,6 +24,7 @@ use sp_block_builder::BlockBuilder;
 use sp_core::H256;
 use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
+use sp_messenger::messages::ChannelId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::Dispatchable;
@@ -108,6 +110,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
+        + OnchainStateApi<Block, AccountId, Balance>
         + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
@@ -236,6 +239,22 @@ where
             .runtime_api()
             .account_nonce(self.client.info().best_hash, self.key.into())
             .expect("Fail to get account nonce")
+    }
+
+    /// Get the free balance of the given account
+    pub fn free_balance(&self, account_id: AccountId) -> Balance {
+        self.client
+            .runtime_api()
+            .free_balance(self.client.info().best_hash, account_id)
+            .expect("Fail to get account free balance")
+    }
+
+    /// Get the last open channel of the given domain
+    pub fn get_open_channel_for_domain(&self, dst_domain_id: DomainId) -> Option<ChannelId> {
+        self.client
+            .runtime_api()
+            .get_open_channel_for_domain(self.client.info().best_hash, dst_domain_id)
+            .expect("Fail to get open channel")
     }
 
     /// Construct an extrinsic with the current nonce of the node account and send it to this node.

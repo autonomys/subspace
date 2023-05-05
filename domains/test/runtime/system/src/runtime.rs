@@ -20,7 +20,8 @@ use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+    ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
+    RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor, StaticLookup};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
@@ -761,6 +762,16 @@ impl_runtime_apis! {
                 }
                 _ => PreValidationObject::Null,
             }
+        }
+    }
+
+    impl domain_test_primitives::OnchainStateApi<Block, AccountId, Balance> for Runtime {
+        fn free_balance(account_id: AccountId) -> Balance {
+            Balances::free_balance(account_id)
+        }
+
+        fn get_open_channel_for_domain(dst_domain_id: DomainId) -> Option<ChannelId> {
+            Messenger::get_open_channel_for_domain(dst_domain_id).map(|(c, _)| c)
         }
     }
 }
