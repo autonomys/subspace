@@ -112,7 +112,7 @@ fn testnet_system_genesis() -> system_domain_test_runtime::GenesisConfig {
             balances: endowed_accounts()
                 .iter()
                 .cloned()
-                .map(|k| (k, 1_000_000 * SSC))
+                .map(|k| (k, 2_000_000 * SSC))
                 .collect(),
         },
         executor_registry: system_domain_test_runtime::ExecutorRegistryConfig {
@@ -121,13 +121,13 @@ fn testnet_system_genesis() -> system_domain_test_runtime::GenesisConfig {
             executors: vec![
                 (
                     Alice.to_account_id(),
-                    10_000 * SSC,
+                    1_000_000 * SSC,
                     Alice.to_account_id(),
                     ExecutorPublicKey::unchecked_from(Alice.public().0),
                 ),
                 (
                     Bob.to_account_id(),
-                    10 * SSC,
+                    SSC,
                     Bob.to_account_id(),
                     ExecutorPublicKey::unchecked_from(Bob.public().0),
                 ),
@@ -148,7 +148,7 @@ fn testnet_system_genesis() -> system_domain_test_runtime::GenesisConfig {
                         max_bundle_size: 1024 * 1024,
                         bundle_slot_probability: (1, 1),
                         max_bundle_weight: Weight::MAX,
-                        min_operator_stake: 10 * SSC,
+                        min_operator_stake: SSC,
                     },
                     Bob.to_account_id(),
                     Percent::one(),
