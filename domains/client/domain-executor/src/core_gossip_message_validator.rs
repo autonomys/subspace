@@ -123,7 +123,7 @@ where
         Self {
             client,
             gossip_message_validator,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 }

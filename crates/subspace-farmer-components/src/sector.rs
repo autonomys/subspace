@@ -14,14 +14,14 @@ use thiserror::Error;
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
 pub const fn sector_record_chunks_size(pieces_in_sector: u16) -> usize {
-    usize::from(pieces_in_sector) * Record::SIZE
+    pieces_in_sector as usize * Record::SIZE
 }
 
 /// Size of the part of the plot containing commitments and witnesses for records.
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
 pub const fn sector_commitments_witnesses_size(pieces_in_sector: u16) -> usize {
-    usize::from(pieces_in_sector) * (RecordWitness::SIZE + RecordCommitment::SIZE)
+    pieces_in_sector as usize * (RecordWitness::SIZE + RecordCommitment::SIZE)
 }
 
 /// Exact sector plot size (sector contents map, record chunks, record commitments and witnesses).
@@ -290,7 +290,7 @@ impl SectorContentsMap {
     /// Size of sector contents map when encoded and stored in the plot for specified number of
     /// pieces in sector
     pub const fn encoded_size(pieces_in_sector: u16) -> usize {
-        SINGLE_RECORD_BIT_ARRAY_SIZE * usize::from(pieces_in_sector)
+        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize
     }
 
     /// Number of encoded chunks in each record

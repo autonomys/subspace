@@ -20,8 +20,6 @@
 #![cfg_attr(feature = "std", warn(missing_debug_implementations))]
 #![feature(
     array_chunks,
-    const_convert,
-    const_num_from_num,
     const_option,
     const_trait_impl,
     const_try,
@@ -143,14 +141,14 @@ pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
 pub struct PosSeed([u8; Self::SIZE]);
 
-impl const From<[u8; PosSeed::SIZE]> for PosSeed {
+impl From<[u8; PosSeed::SIZE]> for PosSeed {
     #[inline]
     fn from(value: [u8; Self::SIZE]) -> Self {
         Self(value)
     }
 }
 
-impl const From<PosSeed> for [u8; PosSeed::SIZE] {
+impl From<PosSeed> for [u8; PosSeed::SIZE] {
     #[inline]
     fn from(value: PosSeed) -> Self {
         value.0
@@ -166,14 +164,14 @@ impl PosSeed {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
 pub struct PosQualityBytes([u8; Self::SIZE]);
 
-impl const From<[u8; PosQualityBytes::SIZE]> for PosQualityBytes {
+impl From<[u8; PosQualityBytes::SIZE]> for PosQualityBytes {
     #[inline]
     fn from(value: [u8; Self::SIZE]) -> Self {
         Self(value)
     }
 }
 
-impl const From<PosQualityBytes> for [u8; PosQualityBytes::SIZE] {
+impl From<PosQualityBytes> for [u8; PosQualityBytes::SIZE] {
     #[inline]
     fn from(value: PosQualityBytes) -> Self {
         value.0
@@ -191,14 +189,14 @@ impl PosQualityBytes {
 )]
 pub struct PosProof([u8; Self::SIZE]);
 
-impl const From<[u8; PosProof::SIZE]> for PosProof {
+impl From<[u8; PosProof::SIZE]> for PosProof {
     #[inline]
     fn from(value: [u8; Self::SIZE]) -> Self {
         Self(value)
     }
 }
 
-impl const From<PosProof> for [u8; PosProof::SIZE] {
+impl From<PosProof> for [u8; PosProof::SIZE] {
     #[inline]
     fn from(value: PosProof) -> Self {
         value.0

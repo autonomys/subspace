@@ -54,7 +54,7 @@ where
             client,
             primary_chain_client,
             transaction_pool,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 

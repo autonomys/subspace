@@ -71,7 +71,7 @@ impl Step for SBucket {
     }
 }
 
-impl const TryFrom<usize> for SBucket {
+impl TryFrom<usize> for SBucket {
     type Error = TryFromIntError;
 
     #[inline]
@@ -80,28 +80,28 @@ impl const TryFrom<usize> for SBucket {
     }
 }
 
-impl const From<u16> for SBucket {
+impl From<u16> for SBucket {
     #[inline]
     fn from(original: u16) -> Self {
         Self(original)
     }
 }
 
-impl const From<SBucket> for u16 {
+impl From<SBucket> for u16 {
     #[inline]
     fn from(original: SBucket) -> Self {
         original.0
     }
 }
 
-impl const From<SBucket> for u32 {
+impl From<SBucket> for u32 {
     #[inline]
     fn from(original: SBucket) -> Self {
         u32::from(original.0)
     }
 }
 
-impl const From<SBucket> for usize {
+impl From<SBucket> for usize {
     #[inline]
     fn from(original: SBucket) -> Self {
         usize::from(original.0)
@@ -161,14 +161,14 @@ impl Step for PieceIndex {
     }
 }
 
-impl const From<u64> for PieceIndex {
+impl From<u64> for PieceIndex {
     #[inline]
     fn from(original: u64) -> Self {
         Self(original)
     }
 }
 
-impl const From<PieceIndex> for u64 {
+impl From<PieceIndex> for u64 {
     #[inline]
     fn from(original: PieceIndex) -> Self {
         original.0
@@ -194,7 +194,7 @@ impl PieceIndex {
 
     /// Segment index piece index corresponds to
     #[inline]
-    pub const fn segment_index(&self) -> SegmentIndex {
+    pub fn segment_index(&self) -> SegmentIndex {
         SegmentIndex::from(self.0 / ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
@@ -252,21 +252,21 @@ impl Step for PieceOffset {
     }
 }
 
-impl const From<u16> for PieceOffset {
+impl From<u16> for PieceOffset {
     #[inline]
     fn from(original: u16) -> Self {
         Self(original)
     }
 }
 
-impl const From<PieceOffset> for u16 {
+impl From<PieceOffset> for u16 {
     #[inline]
     fn from(original: PieceOffset) -> Self {
         original.0
     }
 }
 
-impl const From<PieceOffset> for usize {
+impl From<PieceOffset> for usize {
     #[inline]
     fn from(original: PieceOffset) -> Self {
         usize::from(original.0)

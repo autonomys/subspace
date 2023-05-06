@@ -206,7 +206,7 @@ where
             transaction_pool: params.transaction_pool,
             backend: params.backend,
             fraud_proof_generator,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         })
     }
 

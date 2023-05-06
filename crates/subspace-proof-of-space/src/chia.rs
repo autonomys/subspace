@@ -85,15 +85,15 @@ impl Table for ChiaTable {
 mod tests {
     use super::*;
 
-    const SEED: PosSeed = PosSeed::from([
-        35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
-        198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
-    ]);
-
     #[test]
     fn basic() {
-        let table = ChiaTable::generate(&SEED);
-        let table_parallel = ChiaTable::generate_parallel(&SEED);
+        let seed = PosSeed::from([
+            35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
+            198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
+        ]);
+
+        let table = ChiaTable::generate(&seed);
+        let table_parallel = ChiaTable::generate_parallel(&seed);
 
         assert!(table.find_quality(1232460437).is_none());
         assert!(table_parallel.find_quality(1232460437).is_none());
@@ -109,7 +109,7 @@ mod tests {
                     .to_bytes()
             );
             let proof = quality.create_proof();
-            let maybe_quality = ChiaTable::is_proof_valid(&SEED, challenge_index, &proof);
+            let maybe_quality = ChiaTable::is_proof_valid(&seed, challenge_index, &proof);
             assert_eq!(maybe_quality, Some(quality.to_bytes()));
         }
     }

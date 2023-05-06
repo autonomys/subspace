@@ -83,7 +83,7 @@ where
             }
         }
         deserializer.deserialize_string(StringVisitor {
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         })
     }
 }
