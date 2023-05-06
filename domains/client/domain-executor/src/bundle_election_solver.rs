@@ -153,10 +153,10 @@ where
                         vrf_proof: vrf_signature.proof.to_bytes(),
                         executor_public_key: authority_id.clone(),
                         global_challenge,
-                        state_root,
                         storage_proof,
-                        block_number: to_number_primitive(best_number),
-                        block_hash,
+                        system_state_root: state_root,
+                        system_block_number: to_number_primitive(best_number),
+                        system_block_hash: block_hash,
                     };
 
                     let preliminary_bundle_solution = if domain_id.is_system() {

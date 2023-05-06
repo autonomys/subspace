@@ -20,7 +20,7 @@
 #[cfg(test)]
 mod tests;
 
-use codec::{Decode, Encode};
+use codec::Decode;
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
@@ -777,7 +777,7 @@ impl<T: Config> Pallet<T> {
         let ProofOfElection {
             vrf_output,
             storage_proof,
-            state_root,
+            system_state_root,
             executor_public_key,
             global_challenge,
             ..
@@ -843,13 +843,12 @@ impl<T: Config> Pallet<T> {
 
         let db = storage_proof.clone().into_memory_db::<BlakeTwo256>();
 
-        let state_root =
-            sp_core::H256::decode(&mut state_root.encode().as_slice()).expect("StateRootNotH256");
+        let system_state_root: sp_core::H256 = (*system_state_root).into();
 
         let read_value = |storage_key: Vec<u8>| {
             sp_trie::read_trie_value::<sp_trie::LayoutV1<BlakeTwo256>, _>(
                 &db,
-                &state_root,
+                &system_state_root,
                 &storage_key,
                 None,
                 None,

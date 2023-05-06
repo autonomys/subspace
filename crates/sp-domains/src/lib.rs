@@ -207,14 +207,14 @@ pub struct ProofOfElection<DomainHash> {
     pub executor_public_key: ExecutorPublicKey,
     /// Global challenge.
     pub global_challenge: Blake2b256Hash,
-    /// State root corresponding to the storage proof above.
-    pub state_root: DomainHash,
-    /// Storage proof for the bundle election state.
+    /// Storage proof containing the partial state for verifying the bundle election.
     pub storage_proof: StorageProof,
+    /// State root corresponding to the storage proof above.
+    pub system_state_root: DomainHash,
     /// Number of the system domain block at which the proof of election was created.
-    pub block_number: BlockNumber,
+    pub system_block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
-    pub block_hash: DomainHash,
+    pub system_block_hash: DomainHash,
 }
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
@@ -226,10 +226,10 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             vrf_proof: [0u8; VRF_PROOF_LENGTH],
             executor_public_key,
             global_challenge: Blake2b256Hash::default(),
-            state_root: Default::default(),
             storage_proof: StorageProof::empty(),
-            block_number: Default::default(),
-            block_hash: Default::default(),
+            system_state_root: Default::default(),
+            system_block_number: Default::default(),
+            system_block_hash: Default::default(),
         }
     }
 }
@@ -268,6 +268,18 @@ impl<DomainHash> BundleSolution<DomainHash> {
             | Self::Core {
                 proof_of_election, ..
             } => proof_of_election,
+        }
+    }
+
+    /// Returns the hash of the block on top of which the solution was created.
+    pub fn creation_block_hash(&self) -> &DomainHash {
+        match self {
+            Self::System {
+                proof_of_election, ..
+            } => &proof_of_election.system_block_hash,
+            Self::Core {
+                core_block_hash, ..
+            } => core_block_hash,
         }
     }
 }

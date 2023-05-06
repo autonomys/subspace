@@ -55,7 +55,8 @@ mod pallet {
             + sp_std::hash::Hash
             + AsRef<[u8]>
             + AsMut<[u8]>
-            + MaxEncodedLen;
+            + MaxEncodedLen
+            + Into<H256>;
 
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 

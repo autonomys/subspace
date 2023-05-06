@@ -385,13 +385,15 @@ impl<T: Config> Pallet<T> {
         proof_of_election: &ProofOfElection<T::DomainHash>,
     ) -> Result<(), BundleError> {
         let ProofOfElection {
-            state_root,
-            block_number,
-            block_hash,
+            system_state_root,
+            system_block_number,
+            system_block_hash,
             ..
         } = proof_of_election;
 
-        let block_number = T::BlockNumber::from(*block_number);
+        let state_root = *system_state_root;
+        let block_number = T::BlockNumber::from(*system_block_number);
+        let block_hash = *system_block_hash;
 
         let new_best_receipt_number = receipts
             .iter()
@@ -405,8 +407,7 @@ impl<T: Config> Pallet<T> {
         if !block_number.is_zero() && state_root_verifiable {
             let maybe_state_root = receipts.iter().find_map(|receipt| {
                 receipt.trace.last().and_then(|state_root| {
-                    if (receipt.primary_number, receipt.domain_hash) == (block_number, *block_hash)
-                    {
+                    if (receipt.primary_number, receipt.domain_hash) == (block_number, block_hash) {
                         Some(*state_root)
                     } else {
                         None
@@ -433,7 +434,7 @@ impl<T: Config> Pallet<T> {
                 })?,
             };
 
-            if expected_state_root != *state_root {
+            if expected_state_root != state_root {
                 log::debug!(
                     target: "runtime::domains",
                     "Bad state root for #{block_number:?},{block_hash:?}, \

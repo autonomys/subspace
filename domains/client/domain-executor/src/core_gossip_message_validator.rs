@@ -204,12 +204,12 @@ where
             self.gossip_message_validator
                 .validate_bundle_receipts(&bundle.receipts, domain_id)?;
 
-            let at = bundle_solution.proof_of_election().block_hash;
+            let at = bundle_solution.creation_block_hash();
 
             self.gossip_message_validator.validate_bundle_transactions(
                 &bundle.extrinsics,
                 domain_id,
-                at,
+                *at,
             )?;
 
             // TODO: all checks pass, add to the bundle pool
