@@ -677,19 +677,13 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    let alice_nonce = alice.account_nonce();
-    let transfer_from_alice_to_one = alice.construct_extrinsic(
-        alice_nonce,
-        pallet_balances::Call::transfer {
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer {
             dest: domain_test_service::system_domain_test_runtime::Address::Id(One.public().into()),
             value: 500 + 1,
-        },
-    );
-
-    alice
-        .send_extrinsic(transfer_from_alice_to_one)
+        })
         .await
-        .expect("Failed to send domain extrinsic");
+        .expect("Send an extrinsic to transfer some balance from Alice to One");
 
     ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
@@ -784,4 +778,9 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
             .is_ok(),
         "Valid proof must be accepeted"
     );
+
+    ferdie
+        .produce_blocks(1)
+        .await
+        .expect("FraudProof verification in the block import pipeline is fine too");
 }

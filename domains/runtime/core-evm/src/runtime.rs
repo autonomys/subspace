@@ -1000,6 +1000,8 @@ fn extract_xdm_proof_state_roots(
     }
 }
 
+// TODO: this is inconsistent with other domains.
+// Ref https://github.com/subspace/subspace/pull/1434#discussion_r1186633233
 pub fn extract_signers<Lookup>(
     extrinsics: Vec<UncheckedExtrinsic>,
     lookup: &Lookup,
