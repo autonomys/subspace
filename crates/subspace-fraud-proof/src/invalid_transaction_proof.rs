@@ -6,7 +6,7 @@ use crate::verifier_api::VerifierApi;
 use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash, Index};
+use domain_runtime_primitives::{DomainCoreApi, Hash};
 use sc_client_api::StorageProof;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -18,6 +18,7 @@ use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, Storage};
 use sp_trie::{read_trie_value, LayoutV1};
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -61,23 +62,6 @@ where
     }
 }
 
-// TODO: Retrieve the storage key using runtime api.
-struct AccountStorageInstance;
-
-impl frame_support::traits::StorageInstance for AccountStorageInstance {
-    fn pallet_prefix() -> &'static str {
-        "System"
-    }
-    const STORAGE_PREFIX: &'static str = "Account";
-}
-
-type AccountStorageMap = frame_support::storage::types::StorageMap<
-    AccountStorageInstance,
-    frame_support::Blake2_128Concat,
-    AccountId,
-    frame_system::AccountInfo<Index, pallet_balances::AccountData<Balance>>,
->;
-
 fn create_runtime_api_light<Exec>(
     storage_proof: StorageProof,
     state_root: &Hash,
@@ -88,22 +72,6 @@ fn create_runtime_api_light<Exec>(
 where
     Exec: CodeExecutor,
 {
-    let db = storage_proof.into_memory_db::<BlakeTwo256>();
-    let read_value = |storage_key| {
-        read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, storage_key, None, None)
-            .map_err(|_| VerificationError::InvalidStorageProof)
-    };
-
-    // TODO: Retrieve the storage key using runtime api.
-    let next_fee_multiplier_storage_key = [
-        63, 20, 103, 160, 150, 188, 215, 26, 91, 106, 12, 129, 85, 226, 8, 16, 63, 46, 223, 59,
-        223, 56, 29, 235, 227, 49, 171, 116, 70, 173, 223, 220,
-    ];
-    let next_fee_multiplier_value =
-        read_value(&next_fee_multiplier_storage_key)?.ok_or_else(|| {
-            VerificationError::StateNotFound(next_fee_multiplier_storage_key.to_vec())
-        })?;
-
     let mut runtime_api_light = RuntimeApiLight::new(executor, wasm_bundle);
 
     let sender = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extract_signer(
@@ -115,23 +83,31 @@ where
     .next()
     .and_then(|(maybe_signer, _)| maybe_signer)
     .ok_or(VerificationError::SignerNotFound)?;
-    // TODO: make sure core-evm is workable too.
-    let sender = AccountId::decode(&mut sender.as_slice())?;
 
-    let account_storage_key = AccountStorageMap::hashed_key_for(sender);
-    let account_value = read_value(&account_storage_key)?
-        .ok_or_else(|| VerificationError::StateNotFound(account_storage_key.clone()))?;
+    let storage_keys = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::storage_keys_for_verifying_transaction_validity(
+        &runtime_api_light,
+        Default::default(),
+        sender
+    )?
+    .map_err(|e| {
+        sp_api::ApiError::Application(Box::from(format!(
+            "Failed to fetch storage keys for tx validity: {e:?}"
+        )))
+    })?;
+
+    let db = storage_proof.into_memory_db::<BlakeTwo256>();
+
+    let mut top_storage_map = BTreeMap::new();
+    for storage_key in storage_keys.into_iter() {
+        let storage_value =
+            read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, &storage_key, None, None)
+                .map_err(|_| VerificationError::InvalidStorageProof)?
+                .ok_or_else(|| VerificationError::StateNotFound(storage_key.clone()))?;
+        top_storage_map.insert(storage_key, storage_value);
+    }
 
     let storage = Storage {
-        top: [
-            (
-                next_fee_multiplier_storage_key.to_vec(),
-                next_fee_multiplier_value,
-            ),
-            (account_storage_key, account_value),
-        ]
-        .into_iter()
-        .collect(),
+        top: top_storage_map,
         children_default: Default::default(),
     };
 

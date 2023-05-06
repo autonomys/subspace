@@ -578,6 +578,17 @@ impl_runtime_apis! {
                 Ok(())
             }
         }
+
+        fn storage_keys_for_verifying_transaction_validity(
+            who: opaque::AccountId,
+        ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
+            let sender = AccountId::decode(&mut who.as_slice())
+                .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
+            Ok(sp_std::vec![
+                frame_system::Account::<Runtime>::hashed_key_for(sender),
+                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+            ])
+        }
     }
 
     impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {

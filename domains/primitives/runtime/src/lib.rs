@@ -148,6 +148,12 @@ impl From<LookupError> for CheckTxValidityError {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
+pub enum VerifyTxValidityError {
+    /// Failed to decode the opaque account id into the runtime account type.
+    FailedToDecodeAccountId,
+}
+
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     pub trait DomainCoreApi {
@@ -173,6 +179,11 @@ sp_api::decl_runtime_apis! {
             uxt: <Block as BlockT>::Extrinsic,
             block_hash: <Block as BlockT>::Hash,
         ) -> Result<(), CheckTxValidityError>;
+
+        /// Returns the storage keys of states accessed in the API `check_transaction_validity`.
+        fn storage_keys_for_verifying_transaction_validity(
+            account_id: opaque::AccountId,
+        ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
     }
 
     /// Api that construct inherent extrinsics.

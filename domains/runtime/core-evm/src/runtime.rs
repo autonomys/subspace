@@ -705,6 +705,17 @@ impl_runtime_apis! {
         ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
             unimplemented!("TODO: check transaction fee to core-evm")
         }
+
+        fn storage_keys_for_verifying_transaction_validity(
+            who: opaque::AccountId,
+        ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
+            let sender = AccountId::decode(&mut who.as_slice())
+                .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
+            Ok(sp_std::vec![
+                frame_system::Account::<Runtime>::hashed_key_for(sender),
+                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+            ])
+        }
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
