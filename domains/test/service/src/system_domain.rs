@@ -56,6 +56,22 @@ pub type SystemExecutor = domain_client_executor::SystemExecutor<
     SystemCodeExecutor,
 >;
 
+type SystemGossipMessageValidator = domain_client_executor::SystemGossipMessageValidator<
+    Block,
+    PBlock,
+    SClient,
+    subspace_test_client::Client,
+    FullPool<
+        PBlock,
+        subspace_test_client::Client,
+        system_domain_test_runtime::RuntimeApi,
+        SystemDomainExecutorDispatch,
+    >,
+    Backend,
+    SystemCodeExecutor,
+    domain_client_executor::SystemDomainParentChain<subspace_test_client::Client, Block, PBlock>,
+>;
+
 /// The System domain native executor instance.
 pub struct SystemDomainExecutorDispatch;
 
@@ -85,6 +101,7 @@ async fn run_executor_with_mock_primary_node(
     Arc<SyncingService<Block>>,
     RpcHandlers,
     SystemExecutor,
+    SystemGossipMessageValidator,
 )> {
     let system_domain_config = DomainConfiguration {
         service_config: system_domain_config,
@@ -134,6 +151,7 @@ async fn run_executor_with_mock_primary_node(
         network_starter,
         rpc_handlers,
         executor,
+        gossip_message_validator,
         tx_pool_sink,
     } = system_domain_node;
 
@@ -152,6 +170,7 @@ async fn run_executor_with_mock_primary_node(
         sync_service,
         rpc_handlers,
         executor,
+        gossip_message_validator,
     ))
 }
 
@@ -178,6 +197,8 @@ pub struct SystemDomainNode {
     pub rpc_handlers: RpcHandlers,
     /// System domain executor.
     pub executor: SystemExecutor,
+    /// System domain gossip message validator.
+    pub gossip_message_validator: SystemGossipMessageValidator,
 }
 
 /// A builder to create a [`SystemDomainNode`].
@@ -267,6 +288,7 @@ impl SystemDomainNodeBuilder {
             sync_service,
             rpc_handlers,
             executor,
+            gossip_message_validator,
         ) = run_executor_with_mock_primary_node(system_domain_config, mock_primary_node)
             .await
             .expect("could not start system domain node");
@@ -285,6 +307,7 @@ impl SystemDomainNodeBuilder {
             addr,
             rpc_handlers,
             executor,
+            gossip_message_validator,
         }
     }
 }
@@ -330,6 +353,26 @@ impl SystemDomainNode {
             &self.client,
             function,
             self.key,
+            false,
+            nonce,
+        )
+    }
+
+    /// Construct an extrinsic.
+    pub fn construct_extrinsic_with_caller(
+        &mut self,
+        caller: Sr25519Keyring,
+        function: impl Into<system_domain_test_runtime::RuntimeCall>,
+    ) -> system_domain_test_runtime::UncheckedExtrinsic {
+        let nonce = self
+            .client
+            .runtime_api()
+            .account_nonce(self.client.info().best_hash, caller.into())
+            .expect("Fail to get account nonce");
+        crate::construct_extrinsic_generic::<system_domain_test_runtime::Runtime, _>(
+            &self.client,
+            function,
+            caller,
             false,
             nonce,
         )

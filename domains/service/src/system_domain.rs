@@ -4,7 +4,6 @@ use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
-    SystemGossipMessageValidator,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -55,6 +54,18 @@ type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = Syste
     FullBackend<Block>,
     NativeElseWasmExecutor<ExecutorDispatch>,
 >;
+
+type SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
+    domain_client_executor::SystemGossipMessageValidator<
+        Block,
+        PBlock,
+        FullClient<Block, RuntimeApi, ExecutorDispatch>,
+        PClient,
+        FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+        FullBackend<Block>,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+        SystemDomainParentChain<PClient, Block, PBlock>,
+    >;
 
 /// System domain full node along with some other components.
 pub struct NewFullSystem<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch>
@@ -108,6 +119,8 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    pub gossip_message_validator:
+        SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
 }
@@ -124,6 +137,22 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
         RuntimeApiFull<FullClient<Block, RuntimeApi, Executor>>,
     >,
 >;
+
+type InvalidTransactionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
+    subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier<
+        PBlock,
+        PClient,
+        Hash,
+        NativeElseWasmExecutor<Executor>,
+        VerifierClient<FullClient<Block, RuntimeApi, Executor>, Block>,
+        CoreDomainExtrinsicsBuilder<
+            PBlock,
+            Block,
+            PClient,
+            FullClient<Block, RuntimeApi, Executor>,
+            NativeElseWasmExecutor<Executor>,
+        >,
+    >;
 
 type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
     subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
@@ -145,6 +174,7 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
 type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
     subspace_fraud_proof::ProofVerifier<
         Block,
+        InvalidTransactionProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
         InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
     >;
 
@@ -226,19 +256,32 @@ where
         telemetry
     });
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(Arc::new(
-        InvalidStateTransitionProofVerifier::new(
+    let domain_extrinsics_builder = CoreDomainExtrinsicsBuilder::<PBlock, Block, _, _, _>::new(
+        primary_chain_client.clone(),
+        client.clone(),
+        Arc::new(executor.clone()),
+    );
+
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
+        primary_chain_client.clone(),
+        executor.clone(),
+        task_manager.spawn_handle(),
+        VerifierClient::new(client.clone()),
+        domain_extrinsics_builder.clone(),
+    );
+
+    let invalid_transaction_proof_verifier =
+        InvalidTransactionProofVerifier::<PBlock, _, _, _>::new(
             primary_chain_client.clone(),
-            executor.clone(),
-            task_manager.spawn_handle(),
+            Arc::new(executor.clone()),
             VerifierClient::new(client.clone()),
-            CoreDomainExtrinsicsBuilder::new(
-                primary_chain_client.clone(),
-                client.clone(),
-                Arc::new(executor.clone()),
-            ),
-        ),
-    ));
+            domain_extrinsics_builder,
+        );
+
+    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
 
     let system_domain_tx_pre_validator = SystemDomainTxPreValidator::new(
         client.clone(),
@@ -299,6 +342,7 @@ pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi,
 where
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>> + Into<u32>,
+    <Block as BlockT>::Hash: From<Hash>,
     PBlock::Hash: From<Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -448,7 +492,7 @@ where
         domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
             network: network_service.clone(),
             sync: sync_service.clone(),
-            executor: gossip_message_validator,
+            executor: gossip_message_validator.clone(),
             bundle_receiver,
         });
     spawn_essential.spawn_essential_blocking(
@@ -528,6 +572,7 @@ where
         rpc_handlers,
         network_starter,
         executor,
+        gossip_message_validator,
         tx_pool_sink: msg_sender,
     };
 

@@ -27,7 +27,7 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
-use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::Witness;
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, ProofOfElection, SignedOpaqueBundle};
@@ -42,7 +42,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use pallet_receipts::{Error as ReceiptError, FraudProofError};
     use sp_core::H256;
-    use sp_domains::fraud_proof::{BundleEquivocationProof, FraudProof, InvalidTransactionProof};
+    use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
     use sp_runtime::traits::{One, Zero};
@@ -139,10 +139,6 @@ mod pallet {
             bundle_hash: H256,
             bundle_author: ExecutorPublicKey,
         },
-        /// A bundle equivocation proof was processed.
-        BundleEquivocationProofProcessed,
-        /// An invalid transaction proof was processed.
-        InvalidTransactionProofProcessed,
     }
 
     #[pallet::call]
@@ -194,44 +190,6 @@ mod pallet {
                     .map_err(Error::<T>::from)?;
             }
 
-            // TODO: slash the executor accordingly.
-
-            Ok(())
-        }
-
-        // TODO: proper weight
-        #[pallet::call_index(2)]
-        #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_bundle_equivocation_proof(
-            origin: OriginFor<T>,
-            bundle_equivocation_proof: BundleEquivocationProof<T::BlockNumber, T::Hash>,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            log::trace!(target: "runtime::domains", "Processing bundle equivocation proof: {bundle_equivocation_proof:?}");
-
-            // TODO: slash the executor accordingly.
-
-            Self::deposit_event(Event::BundleEquivocationProofProcessed);
-
-            Ok(())
-        }
-
-        // TODO: proper weight
-        #[pallet::call_index(3)]
-        #[pallet::weight((10_000, Pays::No))]
-        pub fn submit_invalid_transaction_proof(
-            origin: OriginFor<T>,
-            invalid_transaction_proof: InvalidTransactionProof,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            log::trace!(target: "runtime::domains", "Processing invalid transaction proof: {invalid_transaction_proof:?}");
-
-            // TODO: slash the executor accordingly.
-
-            Self::deposit_event(Event::InvalidTransactionProofProcessed);
-
             Ok(())
         }
     }
@@ -281,8 +239,6 @@ mod pallet {
                     signed_opaque_bundle,
                 } => Self::pre_dispatch_submit_bundle(signed_opaque_bundle),
                 Call::submit_fraud_proof { .. } => Ok(()),
-                Call::submit_bundle_equivocation_proof { .. } => Ok(()),
-                Call::submit_invalid_transaction_proof { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -325,42 +281,6 @@ mod pallet {
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
-                }
-                Call::submit_bundle_equivocation_proof {
-                    bundle_equivocation_proof,
-                } => {
-                    if let Err(e) =
-                        Self::validate_bundle_equivocation_proof(bundle_equivocation_proof)
-                    {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Bad bundle equivocation proof: {bundle_equivocation_proof:?}, error: {e:?}",
-                        );
-                        return InvalidTransactionCode::BundleEquivicationProof.into();
-                    }
-
-                    unsigned_validity(
-                        "SubspaceSubmitBundleEquivocationProof",
-                        bundle_equivocation_proof.hash(),
-                    )
-                }
-                Call::submit_invalid_transaction_proof {
-                    invalid_transaction_proof,
-                } => {
-                    if let Err(e) =
-                        Self::validate_invalid_transaction_proof(invalid_transaction_proof)
-                    {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Bad invalid transaction proof: {invalid_transaction_proof:?}, error: {e:?}",
-                        );
-                        return InvalidTransactionCode::TrasactionProof.into();
-                    }
-
-                    unsigned_validity(
-                        "SubspaceSubmitInvalidTransactionProof",
-                        invalid_transaction_proof,
-                    )
                 }
 
                 _ => InvalidTransaction::Call.into(),
@@ -465,13 +385,15 @@ impl<T: Config> Pallet<T> {
         proof_of_election: &ProofOfElection<T::DomainHash>,
     ) -> Result<(), BundleError> {
         let ProofOfElection {
-            state_root,
-            block_number,
-            block_hash,
+            system_state_root,
+            system_block_number,
+            system_block_hash,
             ..
         } = proof_of_election;
 
-        let block_number = T::BlockNumber::from(*block_number);
+        let state_root = *system_state_root;
+        let block_number = T::BlockNumber::from(*system_block_number);
+        let block_hash = *system_block_hash;
 
         let new_best_receipt_number = receipts
             .iter()
@@ -485,8 +407,7 @@ impl<T: Config> Pallet<T> {
         if !block_number.is_zero() && state_root_verifiable {
             let maybe_state_root = receipts.iter().find_map(|receipt| {
                 receipt.trace.last().and_then(|state_root| {
-                    if (receipt.primary_number, receipt.domain_hash) == (block_number, *block_hash)
-                    {
+                    if (receipt.primary_number, receipt.domain_hash) == (block_number, block_hash) {
                         Some(*state_root)
                     } else {
                         None
@@ -513,7 +434,7 @@ impl<T: Config> Pallet<T> {
                 })?,
             };
 
-            if expected_state_root != *state_root {
+            if expected_state_root != state_root {
                 log::debug!(
                     target: "runtime::domains",
                     "Bad state root for #{block_number:?},{block_hash:?}, \
@@ -705,20 +626,6 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        Ok(())
-    }
-
-    // TODO: Checks if the bundle equivocation proof is valid.
-    fn validate_bundle_equivocation_proof(
-        _bundle_equivocation_proof: &BundleEquivocationProof<T::BlockNumber, T::Hash>,
-    ) -> Result<(), Error<T>> {
-        Ok(())
-    }
-
-    // TODO: Checks if the invalid transaction proof is valid.
-    fn validate_invalid_transaction_proof(
-        _invalid_transaction_proof: &InvalidTransactionProof,
-    ) -> Result<(), Error<T>> {
         Ok(())
     }
 }

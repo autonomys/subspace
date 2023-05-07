@@ -132,6 +132,15 @@ pub enum VerificationError {
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
     HeaderDecode(parity_scale_codec::Error),
+    /// Transaction validity check passes.
+    #[cfg_attr(feature = "thiserror", error("Valid transaction"))]
+    ValidTransaction,
+    /// State not found in the storage proof.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("State under storage key ({0:?}) not found in the storage proof")
+    )]
+    StateNotFound(Vec<u8>),
     /// Decode error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
@@ -140,6 +149,23 @@ pub enum VerificationError {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]
     RuntimeApi(#[from] sp_api::ApiError),
+    /// Runtime api error.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Client error: {0}"))]
+    Client(#[from] sp_blockchain::Error),
+    /// Invalid storage proof.
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
+    InvalidStorageProof,
+    /// Can not find signer from the domain extrinsic.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Can not find signer from the domain extrinsic")
+    )]
+    SignerNotFound,
+    /// Domain state root not found.
+    #[cfg_attr(feature = "thiserror", error("Domain state root not found"))]
+    DomainStateRootNotFound,
     /// Fail to get runtime code.
     // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
     // error, but it will be improper to use `WasmError` directly here since it will make
@@ -250,6 +276,14 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 pub struct InvalidTransactionProof {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
+    /// Number of the block at which the invalid transaction occurred.
+    pub block_number: u32,
+    /// Hash of the domain block corresponding to `block_number`.
+    pub domain_block_hash: H256,
+    // TODO: Verifiable invalid extrinsic.
+    pub invalid_extrinsic: Vec<u8>,
+    /// Storage witness needed for verifying this proof.
+    pub storage_proof: StorageProof,
 }
 
 /// Represents an invalid transaction proof.

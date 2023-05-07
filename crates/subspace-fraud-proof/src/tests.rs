@@ -1,16 +1,18 @@
 use crate::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
 use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
+use crate::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
-use codec::Encode;
+use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_test_service::system_domain::SClient as DomainClient;
 use domain_test_service::system_domain_test_runtime::{Address, Header};
-use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie};
+use domain_test_service::Keyring::{Alice, Bob, Charlie, Dave, Ferdie, One};
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
-use sp_core::H256;
+use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
@@ -18,6 +20,7 @@ use sp_domains::fraud_proof::{
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use sp_runtime::OpaqueExtrinsic;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
@@ -26,12 +29,14 @@ use tempfile::TempDir;
 
 struct TestVerifierClient {
     primary_chain_client: Arc<Client>,
+    system_domain_client: Arc<DomainClient>,
 }
 
 impl TestVerifierClient {
-    fn new(primary_chain_client: Arc<Client>) -> Self {
+    fn new(primary_chain_client: Arc<Client>, system_domain_client: Arc<DomainClient>) -> Self {
         Self {
             primary_chain_client,
+            system_domain_client,
         }
     }
 }
@@ -66,6 +71,20 @@ impl VerifierApi for TestVerifierClient {
             .hash(domain_block_number)
             .unwrap()
             .unwrap())
+    }
+
+    fn state_root(
+        &self,
+        _domain_id: DomainId,
+        _domain_block_number: u32,
+        domain_block_hash: H256,
+    ) -> Result<Hash, VerificationError> {
+        Ok(*self
+            .system_domain_client
+            .header(domain_block_hash)
+            .unwrap()
+            .unwrap()
+            .state_root())
     }
 }
 
@@ -250,18 +269,33 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
+    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+    );
+
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
-        TestVerifierClient::new(ferdie.client.clone()),
+        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
         SystemDomainExtrinsicsBuilder::new(
             ferdie.client.clone(),
             Arc::new(ferdie.executor.clone()),
         ),
     );
-    let proof_verifier =
-        ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
+
+    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
+        domain_extrinsics_builder,
+    );
+
+    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
 
     let parent_number_alice = *parent_header.number();
     let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
@@ -550,14 +584,29 @@ async fn invalid_execution_proof_should_not_work() {
         ferdie.client.clone(),
         ferdie.executor.clone(),
         ferdie.task_manager.spawn_handle(),
-        TestVerifierClient::new(ferdie.client.clone()),
+        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
         SystemDomainExtrinsicsBuilder::new(
             ferdie.client.clone(),
             Arc::new(ferdie.executor.clone()),
         ),
     );
-    let proof_verifier =
-        ProofVerifier::<Block, _>::new(Arc::new(invalid_state_transition_proof_verifier));
+
+    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+    );
+
+    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
+        domain_extrinsics_builder,
+    );
+
+    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
 
     let parent_number_alice = *parent_header.number();
     let primary_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
@@ -600,4 +649,138 @@ async fn invalid_execution_proof_should_not_work() {
     };
     let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_invalid_transaction_proof_creation_and_verification() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("runtime=debug");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer {
+            dest: domain_test_service::system_domain_test_runtime::Address::Id(One.public().into()),
+            value: 500 + 1,
+        })
+        .await
+        .expect("Send an extrinsic to transfer some balance from Alice to One");
+
+    ferdie.produce_slot_and_wait_for_bundle_submission().await;
+
+    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
+        .1
+        .unwrap();
+
+    let (_slot, maybe_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+
+    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
+        .1
+        .unwrap();
+
+    // This is an invalid transaction.
+    let transfer_from_one_to_bob = alice.construct_extrinsic_with_caller(
+        One,
+        pallet_balances::Call::transfer {
+            dest: domain_test_service::system_domain_test_runtime::Address::Id(Bob.public().into()),
+            value: 1000,
+        },
+    );
+
+    let mut bundle_with_bad_extrinsics = maybe_bundle.unwrap();
+    bundle_with_bad_extrinsics.bundle.extrinsics =
+        vec![OpaqueExtrinsic::from_bytes(&transfer_from_one_to_bob.encode()).unwrap()];
+    bundle_with_bad_extrinsics.signature = alice
+        .key
+        .pair()
+        .sign(bundle_with_bad_extrinsics.bundle.hash().as_ref())
+        .into();
+
+    alice
+        .gossip_message_validator
+        .validate_gossiped_bundle(&bundle_with_bad_extrinsics)
+        .expect("Create an invalid transaction proof and submit to tx pool");
+
+    let extract_fraud_proof_from_tx_pool = || {
+        let ready_txs = ferdie
+            .transaction_pool
+            .pool()
+            .validated_pool()
+            .ready()
+            .collect::<Vec<_>>();
+
+        ready_txs
+            .into_iter()
+            .find_map(|ready_tx| {
+                let uxt = subspace_test_runtime::UncheckedExtrinsic::decode(
+                    &mut ready_tx.data.encode().as_slice(),
+                )
+                .unwrap();
+                match uxt.function {
+                    subspace_test_runtime::RuntimeCall::Domains(
+                        pallet_domains::Call::submit_fraud_proof { fraud_proof },
+                    ) => Some(fraud_proof),
+                    _ => None,
+                }
+            })
+            .expect("Can not find submit_fraud_proof extrinsic")
+    };
+
+    let good_invalid_transaction_proof = extract_fraud_proof_from_tx_pool();
+
+    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+    );
+
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
+        ferdie.client.clone(),
+        ferdie.executor.clone(),
+        ferdie.task_manager.spawn_handle(),
+        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
+        domain_extrinsics_builder.clone(),
+    );
+
+    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        ferdie.client.clone(),
+        Arc::new(ferdie.executor.clone()),
+        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
+        domain_extrinsics_builder,
+    );
+
+    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+        Arc::new(invalid_transaction_proof_verifier),
+        Arc::new(invalid_state_transition_proof_verifier),
+    );
+
+    assert!(
+        proof_verifier
+            .verify(&good_invalid_transaction_proof)
+            .is_ok(),
+        "Valid proof must be accepeted"
+    );
+
+    ferdie
+        .produce_blocks(1)
+        .await
+        .expect("FraudProof verification in the block import pipeline is fine too");
 }

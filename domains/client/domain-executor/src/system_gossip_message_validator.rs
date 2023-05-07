@@ -3,10 +3,12 @@ use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator
 use crate::parent_chain::ParentChainInterface;
 use crate::TransactionFor;
 use domain_client_executor_gossip::{Action, GossipMessageHandler};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::H256;
 use sp_domains::SignedBundle;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_runtime::RuntimeAppPublic;
@@ -74,13 +76,15 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain>
 where
     Block: BlockT,
     PBlock: BlockT,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     PClient: HeaderBackend<PBlock> + 'static,
@@ -109,6 +113,57 @@ where
             gossip_message_validator,
         }
     }
+
+    pub fn validate_gossiped_bundle(
+        &self,
+        signed_bundle: &SignedBundle<
+            Block::Extrinsic,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+            Block::Hash,
+        >,
+    ) -> Result<Action, GossipMessageError> {
+        let SignedBundle {
+            bundle,
+            bundle_solution,
+            signature,
+        } = signed_bundle;
+
+        self.gossip_message_validator
+            .check_bundle_equivocation(bundle)?;
+
+        let bundle_exists = false;
+
+        if bundle_exists {
+            Ok(Action::Empty)
+        } else {
+            let executor_public_key = &bundle_solution.proof_of_election().executor_public_key;
+
+            if !executor_public_key.verify(&bundle.hash(), signature) {
+                return Err(GossipMessageError::BadBundleSignature);
+            }
+
+            // TODO: validate the bundle election.
+
+            // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
+            let domain_id = bundle_solution.proof_of_election().domain_id;
+
+            self.gossip_message_validator
+                .validate_bundle_receipts(&bundle.receipts, domain_id)?;
+
+            let at = bundle_solution.creation_block_hash();
+
+            self.gossip_message_validator.validate_bundle_transactions(
+                &bundle.extrinsics,
+                domain_id,
+                *at,
+            )?;
+
+            // TODO: all checks pass, add to the bundle pool
+
+            Ok(Action::RebroadcastBundle)
+        }
+    }
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain>
@@ -126,13 +181,15 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, ParentChain>
 where
     Block: BlockT,
     PBlock: BlockT,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ProvideRuntimeApi<Block>
         + AuxStore
         + ProofProvider<Block>
         + 'static,
-    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+    Client::Api: DomainCoreApi<Block>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     Backend: sc_client_api::Backend<Block> + 'static,
@@ -153,40 +210,6 @@ where
             Block::Hash,
         >,
     ) -> Result<Action, Self::Error> {
-        let SignedBundle {
-            bundle,
-            bundle_solution,
-            signature,
-        } = signed_bundle;
-
-        self.gossip_message_validator
-            .check_bundle_equivocation(bundle)?;
-
-        let bundle_exists = false;
-
-        if bundle_exists {
-            Ok(Action::Empty)
-        } else {
-            let executor_public_key = &bundle_solution.proof_of_election().executor_public_key;
-
-            if !executor_public_key.verify(&bundle.hash(), signature) {
-                return Err(Self::Error::BadBundleSignature);
-            }
-
-            // TODO: validate the bundle election.
-
-            // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
-            let domain_id = bundle_solution.proof_of_election().domain_id;
-
-            self.gossip_message_validator
-                .validate_bundle_receipts(&bundle.receipts, domain_id)?;
-
-            self.gossip_message_validator
-                .validate_bundle_transactions(&bundle.extrinsics, domain_id)?;
-
-            // TODO: all checks pass, add to the bundle pool
-
-            Ok(Action::RebroadcastBundle)
-        }
+        self.validate_gossiped_bundle(signed_bundle)
     }
 }

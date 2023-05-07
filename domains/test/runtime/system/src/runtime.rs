@@ -21,7 +21,7 @@ use sp_messenger::endpoint::{Endpoint, EndpointHandler};
 use sp_messenger::messages::{
     CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
 };
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor, StaticLookup};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -520,6 +520,47 @@ impl_runtime_apis! {
                     weight: Weight::zero()
                 }.into()
             ).encode()
+        }
+
+        fn check_transaction_validity(
+            uxt: <Block as BlockT>::Extrinsic,
+            block_hash: <Block as BlockT>::Hash,
+        ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
+            let maybe_address = uxt
+                .signature
+                .as_ref()
+                .map(|(address, _signature, _extra)| address.clone());
+
+            if let Some(address) = maybe_address {
+                let sender = <Runtime as frame_system::Config>::Lookup::lookup(address)?;
+
+                let tx_validity =
+                    Executive::validate_transaction(TransactionSource::External, uxt, block_hash);
+
+                tx_validity.map(|_| ()).map_err(|tx_validity_error| {
+                    let storage_keys = sp_std::vec![
+                        frame_system::Account::<Runtime>::hashed_key_for(&sender),
+                        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+                    ];
+                    domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
+                        error: tx_validity_error,
+                        storage_keys,
+                    }
+                })
+            } else {
+                Ok(())
+            }
+        }
+
+        fn storage_keys_for_verifying_transaction_validity(
+            who: opaque::AccountId,
+        ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
+            let sender = AccountId::decode(&mut who.as_slice())
+                .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
+            Ok(sp_std::vec![
+                frame_system::Account::<Runtime>::hashed_key_for(sender),
+                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+            ])
         }
     }
 

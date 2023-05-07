@@ -33,6 +33,16 @@ pub struct SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor> {
     _phantom: PhantomData<PBlock>,
 }
 
+impl<PBlock, PClient, Executor> Clone for SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor> {
+    fn clone(&self) -> Self {
+        Self {
+            primary_chain_client: self.primary_chain_client.clone(),
+            executor: self.executor.clone(),
+            _phantom: self._phantom,
+        }
+    }
+}
+
 impl<PBlock, PClient, Executor> SystemDomainExtrinsicsBuilder<PBlock, PClient, Executor>
 where
     PBlock: BlockT,
@@ -101,6 +111,19 @@ pub struct CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executo
     system_domain_client: Arc<SClient>,
     executor: Arc<Executor>,
     _phantom: PhantomData<(PBlock, SBlock)>,
+}
+
+impl<PBlock, SBlock, PClient, SClient, Executor> Clone
+    for CoreDomainExtrinsicsBuilder<PBlock, SBlock, PClient, SClient, Executor>
+{
+    fn clone(&self) -> Self {
+        Self {
+            primary_chain_client: self.primary_chain_client.clone(),
+            system_domain_client: self.system_domain_client.clone(),
+            executor: self.executor.clone(),
+            _phantom: self._phantom,
+        }
+    }
 }
 
 impl<PBlock, SBlock, PClient, SClient, Executor>
