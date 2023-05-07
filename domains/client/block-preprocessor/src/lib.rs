@@ -13,7 +13,6 @@
 //! 5. Push back the potential new domain runtime extrisnic.
 
 #![warn(rust_2018_idioms)]
-#![deny(unused_crate_dependencies)]
 
 mod inherents;
 pub mod runtime_api;
