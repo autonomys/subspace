@@ -13,6 +13,7 @@ include = [
 
 [dependencies]
 async-trait = "0.1.68"
+core-eth-relay-domain-test-runtime = { version = "0.1.0", path = "../runtime/core-eth-relay" }
 core-payments-domain-test-runtime = { version = "0.1.0", path = "../runtime/core-payments" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../../client/consensus-relay-chain" }
 domain-client-executor = { version = "0.1.0", path = "../../client/domain-executor" }

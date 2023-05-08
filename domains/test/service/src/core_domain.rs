@@ -367,6 +367,28 @@ impl CoreDomainNodeBuilder {
         )
         .await
     }
+
+    /// Build a core eth relay domain node
+    pub async fn build_core_eth_relay_node(
+        self,
+        role: Role,
+        mock_primary_node: &mut MockPrimaryNode,
+        system_domain_node: &SystemDomainNode,
+    ) -> CoreEthRelayDomainNode {
+        CoreDomainNode::build(
+            DomainId::CORE_ETH_RELAY,
+            self.tokio_handle,
+            self.key,
+            self.base_path,
+            self.core_domain_nodes,
+            self.core_domain_nodes_exclusive,
+            self.run_relayer,
+            role,
+            mock_primary_node,
+            system_domain_node,
+        )
+        .await
+    }
 }
 
 /// Core payments domain executor instance.
@@ -389,4 +411,26 @@ pub type CorePaymentsDomainNode = CoreDomainNode<
     core_payments_domain_test_runtime::Runtime,
     core_payments_domain_test_runtime::RuntimeApi,
     CorePaymentsDomainExecutorDispatch,
+>;
+
+/// Core eth reply domain executor instance.
+pub struct CoreEthRelayDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for CoreEthRelayDomainExecutorDispatch {
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_eth_relay_domain_test_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_eth_relay_domain_test_runtime::native_version()
+    }
+}
+
+/// The core paymants domain node
+pub type CoreEthRelayDomainNode = CoreDomainNode<
+    core_eth_relay_domain_test_runtime::Runtime,
+    core_eth_relay_domain_test_runtime::RuntimeApi,
+    CoreEthRelayDomainExecutorDispatch,
 >;
