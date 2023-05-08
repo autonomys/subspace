@@ -2,7 +2,7 @@ use codec::{Decode, Encode};
 use domain_runtime_primitives::{AccountIdConverter, DomainCoreApi, Hash};
 use domain_test_primitives::TimestampApi;
 use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
-use domain_test_service::Keyring::{Alice, Bob, Ferdie};
+use domain_test_service::Keyring::{Alice, Bob, Charlie, Ferdie};
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
@@ -16,7 +16,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutorApi, SignedBundle};
-use sp_messenger::messages::InitiateChannelParams;
+use sp_messenger::messages::{ExecutionFee, FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
@@ -1079,7 +1079,7 @@ async fn test_cross_domains_message_should_work() {
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    // Run Alice (a core payments domain authority node)
+    // Run Bob (a core payments domain authority node)
     let mut bob = domain_test_service::CoreDomainNodeBuilder::new(
         tokio_handle.clone(),
         Bob,
@@ -1089,19 +1089,41 @@ async fn test_cross_domains_message_should_work() {
     .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
     .await;
 
+    // Run Charlie (a core eth relay domain authority node)
+    let mut charlie = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Charlie,
+        BasePath::new(directory.path().join("charlie")),
+    )
+    .run_relayer()
+    .build_core_eth_relay_node(Role::Authority, &mut ferdie, &alice)
+    .await;
+
     // Run the cross domain gossip message worker
     ferdie.start_cross_domain_gossip_message_worker();
 
-    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+    produce_blocks!(ferdie, alice, bob, charlie, 3)
+        .await
+        .unwrap();
 
-    // Open channel on both sides
+    // Open channel between the system domain and the core payments domain
+    let fee_model = FeeModel {
+        outbox_fee: ExecutionFee {
+            relayer_pool_fee: 2,
+            compute_fee: 0,
+        },
+        inbox_fee: ExecutionFee {
+            relayer_pool_fee: 0,
+            compute_fee: 5,
+        },
+    };
     bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
         call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
             pallet_messenger::Call::initiate_channel {
                 dst_domain_id: DomainId::SYSTEM,
                 params: InitiateChannelParams {
                     max_outgoing_messages: 100,
-                    fee_model: Default::default(),
+                    fee_model,
                 },
             },
         )),
@@ -1118,10 +1140,10 @@ async fn test_cross_domains_message_should_work() {
     .await
     .unwrap();
 
-    // Transfer balance cross domain
+    // Transfer balance cross the system domain and the core payments domain
     let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
     let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-    let transfer_amount = 1;
+    let transfer_amount = 10;
     alice
         .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
             dst_location: pallet_transporter::Location {
@@ -1133,12 +1155,80 @@ async fn test_cross_domains_message_should_work() {
         .await
         .expect("Failed to construct and send extrinsic");
     // Wait until transfer succeed
-    produce_blocks_until!(ferdie, alice, bob, {
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
         let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
         let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
 
-        post_alice_free_balance == pre_alice_free_balance - transfer_amount
+        post_alice_free_balance
+            == pre_alice_free_balance
+                - transfer_amount
+                - fee_model.outbox_fee().unwrap()
+                - fee_model.inbox_fee().unwrap()
             && post_bob_free_balance == pre_bob_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+
+    // Open channel between the core payments domain and the core eth relay domain
+    let fee_model = FeeModel {
+        outbox_fee: ExecutionFee {
+            relayer_pool_fee: 1,
+            compute_fee: 5,
+        },
+        inbox_fee: ExecutionFee {
+            relayer_pool_fee: 2,
+            compute_fee: 3,
+        },
+    };
+    charlie
+        .construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+            call: Box::new(core_eth_relay_domain_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::initiate_channel {
+                    dst_domain_id: DomainId::CORE_PAYMENTS,
+                    params: InitiateChannelParams {
+                        max_outgoing_messages: 100,
+                        fee_model,
+                    },
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
+        bob.get_open_channel_for_domain(DomainId::CORE_ETH_RELAY)
+            .is_some()
+            && charlie
+                .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
+                .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance cross the core payments domain and the core eth relay domain
+    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+    let pre_charlie_free_balance = charlie.free_balance(charlie.key.to_account_id());
+    let transfer_amount = 10;
+    bob.construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+        dst_location: pallet_transporter::Location {
+            domain_id: DomainId::CORE_ETH_RELAY,
+            account_id: AccountIdConverter::convert(Charlie.into()),
+        },
+        amount: transfer_amount,
+    })
+    .await
+    .expect("Failed to construct and send extrinsic");
+    // Wait until transfer succeed
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
+        let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+        let post_charlie_free_balance = charlie.free_balance(charlie.key.to_account_id());
+
+        post_bob_free_balance
+            == pre_bob_free_balance
+                - transfer_amount
+                - fee_model.outbox_fee().unwrap()
+                - fee_model.inbox_fee().unwrap()
+            && post_charlie_free_balance == pre_charlie_free_balance + transfer_amount
     })
     .await
     .unwrap();

@@ -44,6 +44,7 @@ tokio = { version = "1.27.0", features = ["macros"] }
 
 [dev-dependencies]
 core-payments-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/core-payments" }
+core-eth-relay-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/core-eth-relay" }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../runtime/core-payments" }
 domain-test-primitives = { version = "0.1.0", path = "../../test/primitives" }
 domain-test-service = { version = "0.1.0", path = "../../test/service" }
