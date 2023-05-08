@@ -2,7 +2,8 @@
 
 use crate::utils::decode_response;
 use crate::{
-    NetworkStub, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, Resolved, LOG_TARGET,
+    EncoderFn, NetworkInterface, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError,
+    Resolved, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -19,13 +20,29 @@ use tracing::{trace, warn};
 /// replaced by using the is_inherent() API if needed
 const PROTOCOL_UNIT_SIZE_THRESHOLD: NonZeroUsize = NonZeroUsize::new(32).expect("Not zero; qed");
 
+/// Request messages
+#[derive(Encode, Decode)]
+pub(crate) enum CompactBlockReq<DownloadUnitId, ProtocolUnitId> {
+    /// Initial request
+    Initial,
+
+    /// Request for missing transactions
+    MissingEntries(MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>),
+}
+
+/// Response messages
+#[derive(Encode, Decode)]
+pub(crate) enum CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
+    /// Initial/compact response
+    Initial(InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>),
+
+    /// Response for missing transactions request
+    MissingEntries(MissingEntriesResponse<ProtocolUnit>),
+}
+
 /// The protocol unit info carried in the compact response
 #[derive(Encode, Decode)]
-struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit>
-where
-    ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
-{
+struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
     /// The protocol unit Id
     id: ProtocolUnitId,
 
@@ -37,12 +54,7 @@ where
 
 /// The compact response
 #[derive(Encode, Decode)]
-struct CompactResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    DownloadUnitId: Encode + Decode,
-    ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
-{
+pub(crate) struct InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     /// The download unit
     download_unit_id: DownloadUnitId,
 
@@ -52,11 +64,7 @@ where
 
 /// Request for missing transactions
 #[derive(Encode, Decode)]
-struct MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>
-where
-    DownloadUnitId: Encode + Decode,
-    ProtocolUnitId: Encode + Decode,
-{
+pub(crate) struct MissingEntriesRequest<DownloadUnitId, ProtocolUnitId> {
     /// The download unit
     download_unit_id: DownloadUnitId,
 
@@ -68,10 +76,7 @@ where
 
 /// Response for missing transactions
 #[derive(Encode, Decode)]
-struct MissingEntriesResponse<ProtocolUnit>
-where
-    ProtocolUnit: Encode + Decode,
-{
+pub(crate) struct MissingEntriesResponse<ProtocolUnit> {
     /// Map of missing entry Id ->  protocol unit.
     protocol_units: BTreeMap<u64, ProtocolUnit>,
 }
@@ -81,12 +86,7 @@ struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
     local_miss: BTreeMap<u64, ProtocolUnitId>,
 }
 
-pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    DownloadUnitId: Encode + Decode,
-    ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
-{
+pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     pub(crate) backend: Arc<
         dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
     >,
@@ -95,14 +95,14 @@ where
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    DownloadUnitId: Encode + Decode + Clone,
-    ProtocolUnitId: Encode + Decode + Clone,
-    ProtocolUnit: Encode + Decode + Clone,
+    DownloadUnitId: Send + Sync + Encode + Decode + Clone,
+    ProtocolUnitId: Send + Sync + Encode + Decode + Clone,
+    ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
-    /// Tries to resolve the entries in CompactResponse locally
+    /// Tries to resolve the entries in InitialResponse locally
     fn resolve_local(
         &self,
-        compact_response: &CompactResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+        compact_response: &InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
     ) -> Result<ResolveContext<ProtocolUnitId, ProtocolUnit>, RelayError> {
         let mut context = ResolveContext {
             resolved: BTreeMap::new(),
@@ -141,9 +141,7 @@ where
                 Ok(None) => {
                     context.local_miss.insert(index as u64, id.clone());
                 }
-                Err(err) => {
-                    return Err(format!("resolve_local: protocol unit lookup: {err:?}").into())
-                }
+                Err(err) => return Err(err),
             }
         }
 
@@ -153,9 +151,10 @@ where
     /// Fetches the missing entries from the server
     async fn resolve_misses(
         &self,
-        compact_response: CompactResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+        compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
-        stub: &dyn NetworkStub,
+        encoder_fn: EncoderFn<CompactBlockReq<DownloadUnitId, ProtocolUnitId>>,
+        network: &dyn NetworkInterface,
     ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError> {
         let ResolveContext {
             mut resolved,
@@ -163,21 +162,23 @@ where
         } = context;
         let missing = local_miss.len();
         // Request the missing entries from the server
-        let request = MissingEntriesRequest {
+        let request = encoder_fn(CompactBlockReq::MissingEntries(MissingEntriesRequest {
             download_unit_id: compact_response.download_unit_id.clone(),
             protocol_unit_ids: local_miss.clone(),
-        }
-        .encode();
-        let missing_entries_response: MissingEntriesResponse<ProtocolUnit> =
-            decode_response(stub.request_response(request, true).await)?;
+        }));
+        let response: CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
+            decode_response(network.request_response(request).await)?;
+        let missing_entries_response = if let CompactBlockRsp::MissingEntries(rsp) = response {
+            rsp
+        } else {
+            return Err(RelayError::UnexpectedProtocolRespone);
+        };
 
         if missing_entries_response.protocol_units.len() != missing {
-            return Err(format!(
-                "resolve_misses: missing entries response mismatch: {}, {}",
-                missing_entries_response.protocol_units.len(),
-                missing
-            )
-            .into());
+            return Err(RelayError::ResolveMismatch {
+                expected: missing,
+                actual: missing_entries_response.protocol_units.len(),
+            });
         }
 
         // Merge the resolved entries from the server
@@ -192,11 +193,7 @@ where
                     },
                 );
             } else {
-                return Err(format!(
-                    "resolve_misses: response missing {missing_key}: {}",
-                    missing
-                )
-                .into());
+                return Err(RelayError::ResolvedNotFound(missing));
             }
         }
 
@@ -209,23 +206,27 @@ impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    DownloadUnitId: Encode + Decode + Send + Clone + std::fmt::Debug,
-    ProtocolUnitId: Encode + Decode + Send + Clone,
-    ProtocolUnit: Encode + Decode + Send + Clone,
+    DownloadUnitId: Send + Sync + Encode + Decode + Send + Clone + std::fmt::Debug,
+    ProtocolUnitId: Send + Sync + Encode + Decode + Send + Clone,
+    ProtocolUnit: Send + Sync + Encode + Decode + Send + Clone,
 {
-    fn build_initial_request(&self) -> Option<Vec<u8>> {
-        // Nothing to do for compact blocks
-        None
+    type ProtocolReq = CompactBlockReq<DownloadUnitId, ProtocolUnitId>;
+    type ProtocolRsp = CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit>;
+
+    fn build_initial_request(&self) -> Self::ProtocolReq {
+        CompactBlockReq::Initial
     }
 
-    async fn resolve(
+    async fn resolve_initial_response(
         &self,
-        response: Vec<u8>,
-        stub: Arc<dyn NetworkStub>,
+        response: Self::ProtocolRsp,
+        encoder_fn: EncoderFn<Self::ProtocolReq>,
+        network: Arc<dyn NetworkInterface>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError> {
-        let compact_response: CompactResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
-            Decode::decode(&mut response.as_ref())
-                .map_err(|err| format!("resolve: decode compact_response: {err:?}"))?;
+        let compact_response = match response {
+            CompactBlockRsp::Initial(compact_response) => compact_response,
+            _ => return Err(RelayError::UnexpectedInitialResponse),
+        };
 
         // Try to resolve the hashes locally first.
         let context = self.resolve_local(&compact_response)?;
@@ -246,7 +247,7 @@ where
         let misses = context.local_miss.len();
         let download_unit_id = compact_response.download_unit_id.clone();
         let resolved = self
-            .resolve_misses(compact_response, context, stub.as_ref())
+            .resolve_misses(compact_response, context, encoder_fn, network.as_ref())
             .await?;
         trace!(
             target: LOG_TARGET,
@@ -259,12 +260,7 @@ where
     }
 }
 
-pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    DownloadUnitId: Encode + Decode,
-    ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
-{
+pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     pub(crate) backend: Arc<
         dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
     >,
@@ -278,14 +274,21 @@ where
     ProtocolUnitId: Encode + Decode + Clone,
     ProtocolUnit: Encode + Decode,
 {
+    type ProtocolReq = CompactBlockReq<DownloadUnitId, ProtocolUnitId>;
+    type ProtocolRsp = CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit>;
+
     fn build_initial_response(
         &self,
         download_unit_id: &DownloadUnitId,
-        _initial_request: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, RelayError> {
+        initial_request: Self::ProtocolReq,
+    ) -> Result<Self::ProtocolRsp, RelayError> {
+        if !matches!(initial_request, CompactBlockReq::Initial) {
+            return Err(RelayError::UnexpectedInitialRequest);
+        }
+
         // Return the hash of the members in the download unit.
         let members = self.backend.download_unit_members(download_unit_id)?;
-        let response = CompactResponse {
+        let response = InitialResponse {
             download_unit_id: download_unit_id.clone(),
             protocol_units: members
                 .into_iter()
@@ -299,19 +302,14 @@ where
                 })
                 .collect(),
         };
-        Ok(response.encode())
+        Ok(CompactBlockRsp::Initial(response))
     }
 
-    fn on_request(&self, request: Vec<u8>) -> Result<Vec<u8>, RelayError> {
-        let req: MissingEntriesRequest<DownloadUnitId, ProtocolUnitId> =
-            match Decode::decode(&mut request.as_ref()) {
-                Ok(req) => req,
-                Err(err) => {
-                    return Err(RelayError::from(format!(
-                        "on_request: decode missing entries: {err:?}"
-                    )))
-                }
-            };
+    fn on_request(&self, request: Self::ProtocolReq) -> Result<Self::ProtocolRsp, RelayError> {
+        let req = match request {
+            CompactBlockReq::MissingEntries(req) => req,
+            _ => return Err(RelayError::UnexpectedProtocolRequest),
+        };
 
         let mut protocol_units = BTreeMap::new();
         let total_len = req.protocol_unit_ids.len();
@@ -329,7 +327,7 @@ where
                         "relay::on_request: missing entry not found"
                     );
                 }
-                Err(err) => return Err(format!("on_request: missing entry lookup: {err:?}").into()),
+                Err(err) => return Err(err),
             }
         }
         if total_len != protocol_units.len() {
@@ -339,8 +337,8 @@ where
                 protocol_units.len()
             );
         }
-        let response = MissingEntriesResponse { protocol_units };
-
-        Ok(response.encode())
+        Ok(CompactBlockRsp::MissingEntries(MissingEntriesResponse {
+            protocol_units,
+        }))
     }
 }

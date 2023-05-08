@@ -1,4 +1,42 @@
 //! Block relay implementation.
+//!
+//! The components in the system:
+//! 1. Relay users like consensus, execution. They implement the use case
+//!    specific logic that drives the relay protocol. This has a client
+//!    side stub, and a server side task to process incoming requests.
+//! 2. Relay protocol that is agnostic to the relay user. The protocol
+//!    is abstracted to be reused for different use cases. The protocol
+//!    also has corresponding client/server side components.
+//! 3. Protocol backend: relay user specific abstraction used by the relay
+//!    protocol to populate the protocol messages
+//!
+//! Nodes advertise/exchange DownloadUnits with each other. DownloadUnit has
+//! two parts:
+//! - ProtocolUnits: the part fetched by the relay protocol. This is bulk of
+//!   the data transfer that we would like to optimize
+//! - Rest of the download unit, handled directly by the relay user
+//!
+//! Examples:
+//! 1. Consensus
+//!    DownloadUnit = Block, ProtocolUnit = extrinsics
+//!    The extrinsics are handled by the protocol, remaining block
+//!    fields are directly filled by the caller. The protocol backend
+//!    helps fetch blocks/transactions from the substrate backend
+//! 2. Execution
+//!    TODO
+//! 3. Other possible use cases (e.g) reconcile/sync the transaction pool
+//!    between two nodes. In this case, DownloadUnit = transaction pool,
+//!    ProtocolUnit = transaction
+//!
+//! The download has two phases:
+//! -  Initial request/response
+//!    Ideally, download of all the protocol units in the download unit should
+//!    be completed during this phase
+//! -  Reconcile phase
+//!    If the initial phase could not complete the download, additional
+//!    request/response messages are initiated by the protocol to fetch the
+//!    protocol units
+//!
 
 #![feature(const_option)]
 
@@ -17,45 +55,9 @@ mod utils;
 pub use crate::consensus::build_consensus_relay;
 pub use crate::utils::NetworkWrapper;
 
-///
-/// The components in the system:
-/// 1. Relay users like consensus, execution. They implement the use case
-///    specific logic that drives the relay protocol. This has a client
-///    side stub, and a server side task to process incoming requests.
-/// 2. Relay protocol that is agnostic to the relay user. The protocol
-///    is abstracted to be reused for different use cases. The protocol
-///    also has corresponding client/server side components.
-/// 3. Protocol backend: relay user specific abstraction used by the relay
-///    protocol to populate the protocol messages
-///
-/// Nodes advertise/exchange DownloadUnits with each other. DownloadUnit has
-/// two parts:
-/// - ProtocolUnits: the part fetched by the relay protocol. This is bulk of
-///   the data transfer that we would like to optimize
-/// - Rest of the download unit, handled directly by the relay user
-///
-/// Examples:
-/// 1. Consensus
-///    DownloadUnit = Block, ProtocolUnit = extrinsics
-///    The extrinsics are handled by the protocol, remaining block
-///    fields are directly filled by the caller. The protocol backend
-///    helps fetch blocks/transactions from the substrate backend
-/// 2. Execution
-///    TODO
-/// 3. Other possible use cases (e.g) reconcile/sync the transaction pool
-///    between two nodes. In this case, DownloadUnit = transaction pool,
-///    ProtocolUnit = transaction
-///
-/// The download has two phases:
-/// -  Initial request/response
-///    Ideally, download of all the protocol units in the download unit should
-///    be completed during this phase
-/// -  Reconcile phase
-///    If the initial phase could not complete the download, additional
-///    request/response messages are initiated by the protocol to fetch the
-///    protocol units
-
 pub(crate) const LOG_TARGET: &str = "block_relay";
+
+pub(crate) type EncoderFn<T> = Box<dyn Fn(T) -> Vec<u8> + Send>;
 
 /// The downloaded entry and meta info
 pub(crate) struct DownloadResult<DownloadUnitId> {
@@ -90,45 +92,42 @@ pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
 #[async_trait]
 pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
     Send + Sync
-where
-    DownloadUnitId: Encode + Decode,
-    ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
 {
-    /// Builds the protocol portion of the initial request
-    fn build_initial_request(&self) -> Option<Vec<u8>>;
+    type ProtocolReq: Send + Sync + Encode + Decode;
+    type ProtocolRsp: Send + Sync + Encode + Decode;
 
-    /// Resolves the initial response to produce the protocol units
-    async fn resolve(
+    /// Builds the protocol portion of the initial request
+    fn build_initial_request(&self) -> Self::ProtocolReq;
+
+    /// Resolves the initial response to produce the protocol units.
+    /// `encoder_fn` needs to be called to generate the request payload
+    /// as part of request/response sequences initiated by the protocol.
+    async fn resolve_initial_response(
         &self,
-        response: Vec<u8>,
-        stub: Arc<dyn NetworkStub>,
+        response: Self::ProtocolRsp,
+        encoder_fn: EncoderFn<Self::ProtocolReq>,
+        network: Arc<dyn NetworkInterface>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 
 /// The server side of the relay protocol
-pub(crate) trait ProtocolServer<DownloadUnitId>
-where
-    DownloadUnitId: Encode + Decode,
-{
+pub(crate) trait ProtocolServer<DownloadUnitId> {
+    type ProtocolReq: Encode + Decode;
+    type ProtocolRsp: Encode + Decode;
+
     /// Builds the protocol response to the initial request
     fn build_initial_response(
         &self,
         download_unit_id: &DownloadUnitId,
-        initial_request: Option<Vec<u8>>,
-    ) -> Result<Vec<u8>, RelayError>;
+        initial_request: Self::ProtocolReq,
+    ) -> Result<Self::ProtocolRsp, RelayError>;
 
     /// Handles the additional client messages during the reconcile phase
-    fn on_request(&self, request: Vec<u8>) -> Result<Vec<u8>, RelayError>;
+    fn on_request(&self, request: Self::ProtocolReq) -> Result<Self::ProtocolRsp, RelayError>;
 }
 
 /// The relay user specific backend interface
-pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    DownloadUnitId: Encode + Decode,
-    ProtocolUnitId: Encode + Decode,
-    ProtocolUnit: Encode + Decode,
-{
+pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     /// Returns all the protocol units for the given download unit
     fn download_unit_members(
         &self,
@@ -145,11 +144,10 @@ where
 
 /// Network interface helper
 #[async_trait]
-pub(crate) trait NetworkStub: Send + Sync {
+pub(crate) trait NetworkInterface: Send + Sync {
     /// Performs the request response and returns the result
     async fn request_response(
         &self,
         request: Vec<u8>,
-        is_protocol_message: bool,
     ) -> Result<Result<Vec<u8>, RequestFailure>, Canceled>;
 }

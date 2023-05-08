@@ -1,9 +1,9 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::utils::{decode_response, NetworkStubImpl, NetworkWrapper, ServerMessage};
+use crate::utils::{decode_response, NetworkInterfaceImpl, NetworkWrapper};
 use crate::{
-    DownloadResult, NetworkStub, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError,
+    DownloadResult, NetworkInterface, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError,
     LOG_TARGET,
 };
 use async_trait::async_trait;
@@ -44,28 +44,31 @@ const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(512).expect("Not 
 /// We currently ignore the direction field and return a single block,
 /// revisit if needed
 #[derive(Encode, Decode)]
-struct InitialRequest<Block: BlockT> {
+struct InitialRequest<Block: BlockT, ProtocolReq> {
     /// Starting block
     from_block: BlockId<Block>,
 
     /// Requested block components
     block_attributes: u32,
 
-    /// The opaque protocol specific part of the request
-    protocol_request: Option<Vec<u8>>,
+    /// The protocol specific part of the request
+    protocol_request: ProtocolReq,
 }
 
 /// Initial response from server
 #[derive(Encode, Decode)]
-struct InitialResponse<Block: BlockT> {
+struct InitialResponse<Block: BlockT, ProtocolRsp> {
     ///  Hash of the block being downloaded
     block_hash: BlockHash<Block>,
 
     /// The partial block, without the extrinsics
     partial_block: PartialBlock<Block>,
 
-    /// The opaque protocol specific part of the response
-    protocol_response: Option<Vec<u8>>,
+    /// The opaque protocol specific part of the response.
+    /// This is optional because BlockAttributes::BODY may not be set in
+    /// the BlockRequest, in which case we don't need to fetch the
+    /// extrinsics
+    protocol_response: Option<ProtocolRsp>,
 }
 
 /// The partial block response from the server. It has all the fields
@@ -78,14 +81,35 @@ struct PartialBlock<Block: BlockT> {
     justifications: Option<Justifications>,
 }
 
-/// The client side of the consensus block relay
-struct ConsensusRelayClient<Block: BlockT, Pool: TransactionPool> {
-    network: Arc<NetworkWrapper<Block>>,
-    protocol_name: ProtocolName,
-    protocol_client: Arc<dyn ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>>,
+/// The message to the server
+#[derive(Encode, Decode)]
+enum ServerMessage<Block: BlockT, ProtocolReq> {
+    /// Initial message, to be handled both by the client
+    /// and the protocol
+    InitialRequest(InitialRequest<Block, ProtocolReq>),
+
+    /// Message to be handled by the protocol
+    ProtocolReq(ProtocolReq),
 }
 
-impl<Block: BlockT, Pool: TransactionPool> ConsensusRelayClient<Block, Pool> {
+/// The client side of the consensus block relay
+struct ConsensusRelayClient<
+    Block: BlockT,
+    Pool: TransactionPool,
+    ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+> {
+    network: Arc<NetworkWrapper<Block>>,
+    protocol_name: ProtocolName,
+    protocol_client: Arc<ProtoClient>,
+    _pool: std::marker::PhantomData<Pool>,
+}
+
+impl<
+        Block: BlockT,
+        Pool: TransactionPool,
+        ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+    > ConsensusRelayClient<Block, Pool, ProtoClient>
+{
     /// Downloads the requested block from the peer using the relay protocol
     async fn download(
         &self,
@@ -96,12 +120,10 @@ impl<Block: BlockT, Pool: TransactionPool> ConsensusRelayClient<Block, Pool> {
         let network = match self.network.get() {
             Some(network) => network,
             None => {
-                return Err(RelayError::Internal(
-                    "relay::download: network not initialized".to_string(),
-                ));
+                return Err(RelayError::NetworkUninitialized);
             }
         };
-        let stub = Arc::new(NetworkStubImpl::new(
+        let network = Arc::new(NetworkInterfaceImpl::new(
             self.protocol_name.clone(),
             who,
             network,
@@ -116,8 +138,9 @@ impl<Block: BlockT, Pool: TransactionPool> ConsensusRelayClient<Block, Pool> {
             block_attributes: request.fields.to_be_u32(),
             protocol_request: self.protocol_client.build_initial_request(),
         };
-        let initial_response: InitialResponse<Block> =
-            match decode_response(stub.request_response(initial_request.encode(), false).await) {
+        let msg = ServerMessage::InitialRequest(initial_request).encode();
+        let initial_response: InitialResponse<Block, ProtoClient::ProtocolRsp> =
+            match decode_response(network.request_response(msg).await) {
                 Ok(response) => response,
                 Err(err) => return Err(err.into()),
             };
@@ -126,7 +149,7 @@ impl<Block: BlockT, Pool: TransactionPool> ConsensusRelayClient<Block, Pool> {
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics(protocol_response, stub.clone())
+                .resolve_extrinsics(protocol_response, network.clone())
                 .await?;
             (Some(body), local_miss)
         } else {
@@ -156,12 +179,17 @@ impl<Block: BlockT, Pool: TransactionPool> ConsensusRelayClient<Block, Pool> {
     /// Resolves the extrinsics from the initial response
     async fn resolve_extrinsics(
         &self,
-        protocol_response: Vec<u8>,
-        stub: Arc<dyn NetworkStub>,
+        protocol_response: ProtoClient::ProtocolRsp,
+        network: Arc<dyn NetworkInterface>,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
+        let encoder_fn = |request: ProtoClient::ProtocolReq| {
+            let msg: ServerMessage<Block, ProtoClient::ProtocolReq> =
+                ServerMessage::ProtocolReq(request);
+            msg.encode()
+        };
         let (block_hash, resolved) = self
             .protocol_client
-            .resolve(protocol_response, stub)
+            .resolve_initial_response(protocol_response, Box::new(encoder_fn), network)
             .await?;
         let mut local_miss = 0;
         let extrinsics = resolved
@@ -186,8 +214,11 @@ impl<Block: BlockT, Pool: TransactionPool> ConsensusRelayClient<Block, Pool> {
 }
 
 #[async_trait]
-impl<Block: BlockT, Pool: TransactionPool> BlockDownloader<Block>
-    for ConsensusRelayClient<Block, Pool>
+impl<
+        Block: BlockT,
+        Pool: TransactionPool,
+        ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+    > BlockDownloader<Block> for ConsensusRelayClient<Block, Pool, ProtoClient>
 {
     async fn download_block(
         &self,
@@ -232,20 +263,22 @@ impl<Block: BlockT, Pool: TransactionPool> BlockDownloader<Block>
 }
 
 /// The server side of the consensus block relay
-struct ConsensusRelayServer<Block, Client>
-where
+struct ConsensusRelayServer<
     Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block>,
-{
+    Client,
+    ProtoServer: ProtocolServer<BlockHash<Block>> + Send,
+> {
     client: Arc<Client>,
-    protocol: Box<dyn ProtocolServer<BlockHash<Block>> + Send>,
+    protocol: Box<ProtoServer>,
     request_receiver: mpsc::Receiver<IncomingRequest>,
+    _block: std::marker::PhantomData<Block>,
 }
 
-impl<Block, Client> ConsensusRelayServer<Block, Client>
+impl<Block, Client, ProtoServer> ConsensusRelayServer<Block, Client, ProtoServer>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
+    ProtoServer: ProtocolServer<BlockHash<Block>> + Send,
 {
     /// Handles the received request from the client side
     async fn on_request(&mut self, request: IncomingRequest) {
@@ -256,22 +289,23 @@ where
             payload,
             pending_response,
         } = request;
-        let server_msg: ServerMessage = match Decode::decode(&mut payload.as_ref()) {
-            Ok(msg) => msg,
-            Err(err) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "relay::on_request: decode incoming: {peer}: {err:?}"
-                );
-                return;
-            }
+        let server_msg: ServerMessage<Block, ProtoServer::ProtocolReq> =
+            match Decode::decode(&mut payload.as_ref()) {
+                Ok(msg) => msg,
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "relay::on_request: decode incoming: {peer}: {err:?}"
+                    );
+                    return;
+                }
+            };
+
+        let ret = match server_msg {
+            ServerMessage::InitialRequest(req) => self.on_initial_request(req),
+            ServerMessage::ProtocolReq(req) => self.on_protocol_request(req),
         };
 
-        let ret = if !server_msg.is_protocol_message {
-            self.on_initial_request(server_msg.message)
-        } else {
-            self.protocol.on_request(server_msg.message)
-        };
         match ret {
             Ok(response) => {
                 self.send_response(peer, response, pending_response);
@@ -290,18 +324,13 @@ where
     }
 
     /// Handles the initial request from the client
-    fn on_initial_request(&mut self, msg: Vec<u8>) -> Result<Vec<u8>, RelayError> {
-        let initial_request: InitialRequest<Block> = match Decode::decode(&mut msg.as_ref()) {
-            Ok(initial_request) => initial_request,
-            Err(err) => {
-                return Err(RelayError::from(format!(
-                    "on_initial_request: decode initial request: {err:?}"
-                )))
-            }
-        };
+    fn on_initial_request(
+        &mut self,
+        initial_request: InitialRequest<Block, ProtoServer::ProtocolReq>,
+    ) -> Result<Vec<u8>, RelayError> {
         let block_hash = self.block_hash(&initial_request.from_block)?;
         let block_attributes = BlockAttributes::from_be_u32(initial_request.block_attributes)
-            .map_err(|err| format!("on_initial_request: block attributes: {err:?}"))?;
+            .map_err(RelayError::InvalidBlockAttributes)?;
 
         // Build the generic and the protocol specific parts of the response
         let partial_block = self.get_partial_block(&block_hash, block_attributes)?;
@@ -314,12 +343,21 @@ where
             None
         };
 
-        let initial_response: InitialResponse<Block> = InitialResponse {
+        let initial_response: InitialResponse<Block, ProtoServer::ProtocolRsp> = InitialResponse {
             block_hash,
             partial_block,
             protocol_response,
         };
         Ok(initial_response.encode())
+    }
+
+    /// Handles the protocol request from the client
+    fn on_protocol_request(
+        &mut self,
+        request: ProtoServer::ProtocolReq,
+    ) -> Result<Vec<u8>, RelayError> {
+        let response = self.protocol.on_request(request)?;
+        Ok(response.encode())
     }
 
     /// Builds the partial block response
@@ -328,34 +366,34 @@ where
         block_hash: &BlockHash<Block>,
         block_attributes: BlockAttributes,
     ) -> Result<PartialBlock<Block>, RelayError> {
-        let block_hdr = match self.client.header(*block_hash) {
+        let block_header = match self.client.header(*block_hash) {
             Ok(Some(hdr)) => hdr,
             Ok(None) => {
-                return Err(format!("get_partial_block: missing hdr: {block_hash:?}").into())
+                return Err(RelayError::BlockHeader(format!(
+                    "Missing hdr: {block_hash:?}"
+                )))
             }
-            Err(err) => {
-                return Err(format!("get_partial_block: get hdr: {block_hash:?}, {err:?}").into())
-            }
+            Err(err) => return Err(RelayError::BlockHeader(format!("{block_hash:?}, {err:?}"))),
         };
-        let hash = block_hdr.hash();
+        let hash = block_header.hash();
 
         let header = if block_attributes.contains(BlockAttributes::HEADER) {
-            Some(block_hdr)
+            Some(block_header)
         } else {
             None
         };
 
         let indexed_body = if block_attributes.contains(BlockAttributes::INDEXED_BODY) {
-            self.client.block_indexed_body(*block_hash).map_err(|err| {
-                format!("get_partial_block: block_indexed_body: {block_hash:?}, {err:?}")
-            })?
+            self.client
+                .block_indexed_body(*block_hash)
+                .map_err(|err| RelayError::BlockIndexedBody(format!("{block_hash:?}, {err:?}")))?
         } else {
             None
         };
 
         let justifications = if block_attributes.contains(BlockAttributes::JUSTIFICATION) {
             self.client.justifications(*block_hash).map_err(|err| {
-                format!("get_partial_block: justifications: {block_hash:?}, {err:?}")
+                RelayError::BlockJustifications(format!("{block_hash:?}, {err:?}"))
             })?
         } else {
             None
@@ -373,8 +411,8 @@ where
     fn block_hash(&self, block_id: &BlockId<Block>) -> Result<BlockHash<Block>, RelayError> {
         match self.client.block_hash_from_id(block_id) {
             Ok(Some(hash)) => Ok(hash),
-            Ok(None) => Err(format!("block_hash: {block_id:?}: None").into()),
-            Err(err) => Err(format!("block_hash: {block_id:?}: {err:?}").into()),
+            Ok(None) => Err(RelayError::BlockHash(format!("Missing: {block_id:?}"))),
+            Err(err) => Err(RelayError::BlockHash(format!("{block_id:?}, {err:?}"))),
         }
     }
 
@@ -390,20 +428,22 @@ where
             reputation_changes: Vec::new(),
             sent_feedback: None,
         };
-        if let Err(err) = sender.send(response) {
+        if sender.send(response).is_err() {
             warn!(
                 target: LOG_TARGET,
-                "relay::send_response: failed to send to {peer}: {err:?}"
+                "relay::send_response: failed to send to {peer}"
             );
         }
     }
 }
 
 #[async_trait]
-impl<Block, Client> BlockServer<Block> for ConsensusRelayServer<Block, Client>
+impl<Block, Client, ProtoServer> BlockServer<Block>
+    for ConsensusRelayServer<Block, Client, ProtoServer>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block>,
+    ProtoServer: ProtocolServer<BlockHash<Block>> + Send,
 {
     async fn run(&mut self) {
         info!(
@@ -417,12 +457,7 @@ where
 }
 
 /// The backend interface for the consensus block relay
-struct ConsensusBackend<Block, Client, Pool>
-where
-    Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block>,
-    Pool: TransactionPool,
-{
+struct ConsensusBackend<Block: BlockT, Client, Pool: TransactionPool> {
     client: Arc<Client>,
     transaction_pool: Arc<Pool>,
     transaction_cache: Arc<Mutex<LruCache<TxHash<Pool>, Extrinsic<Block>>>>,
@@ -440,17 +475,13 @@ where
         spawn_handle: SpawnTaskHandle,
     ) -> Self {
         let transaction_cache = Arc::new(Mutex::new(LruCache::new(TRANSACTION_CACHE_SIZE)));
-        let transaction_pool_cl = transaction_pool.clone();
-        let transaction_cache_cl = transaction_cache.clone();
         spawn_handle.spawn_blocking("block-relay-transaction-import", None, {
+            let transaction_pool = transaction_pool.clone();
+            let transaction_cache = transaction_cache.clone();
             Box::pin(async move {
-                while let Some(hash) = transaction_pool_cl
-                    .import_notification_stream()
-                    .next()
-                    .await
-                {
-                    if let Some(transaction) = transaction_pool_cl.ready_transaction(&hash) {
-                        transaction_cache_cl
+                while let Some(hash) = transaction_pool.import_notification_stream().next().await {
+                    if let Some(transaction) = transaction_pool.ready_transaction(&hash) {
+                        transaction_cache
                             .lock()
                             .put(hash.clone(), transaction.data().clone());
                         trace!(
@@ -495,7 +526,7 @@ where
         let extrinsics = self
             .client
             .block_body(*block_hash)
-            .map_err(|err| format!("download_unit_members:block_body: {block_hash:?}, {err:?}"))?
+            .map_err(|err| RelayError::BlockBody(format!("{block_hash:?}, {err:?}")))?
             .unwrap_or_default();
         Ok(extrinsics
             .into_iter()
@@ -557,18 +588,20 @@ where
     let (tx, request_receiver) = mpsc::channel(NUM_PEER_HINT.get());
 
     let backend = Arc::new(ConsensusBackend::new(client.clone(), pool, spawn_handle));
-    let relay_client: ConsensusRelayClient<Block, Pool> = ConsensusRelayClient {
+    let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient {
         network,
         protocol_name: SYNC_PROTOCOL.into(),
         protocol_client: Arc::new(CompactBlockClient {
             backend: backend.clone(),
         }),
+        _pool: Default::default(),
     };
 
     let relay_server = ConsensusRelayServer {
         client,
         protocol: Box::new(CompactBlockServer { backend }),
         request_receiver,
+        _block: Default::default(),
     };
 
     let mut protocol_config = ProtocolConfig {

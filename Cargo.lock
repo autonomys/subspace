@@ -11236,6 +11236,7 @@ dependencies = [
  "sc-service",
  "sc-transaction-pool-api",
  "sp-runtime",
+ "thiserror",
  "tracing",
 ]
 

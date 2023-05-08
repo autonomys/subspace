@@ -1,8 +1,8 @@
 //! Common utils.
 
-use crate::NetworkStub;
+use crate::NetworkInterface;
 use async_trait::async_trait;
-use codec::{Decode, Encode};
+use codec::{self, Decode};
 use futures::channel::oneshot::{self, Canceled};
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
@@ -12,16 +12,6 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 type NetworkHandle<Block> = Arc<NetworkService<Block, <Block as BlockT>::Hash>>;
-
-/// The message sent to the server as part of the request/response.
-#[derive(Encode, Decode)]
-pub(crate) struct ServerMessage {
-    /// The serialized messages
-    pub(crate) message: Vec<u8>,
-
-    /// If the message is meant for the protocol component on the server side.
-    pub(crate) is_protocol_message: bool,
-}
 
 /// Wrapper to work around the circular dependency in substrate:
 /// `build_network()` requires the block relay to be passed in,
@@ -47,15 +37,15 @@ impl<Block: BlockT> NetworkWrapper<Block> {
     }
 }
 
-/// Network stub for request response.
+/// Helper for request response.
 #[derive(Clone)]
-pub(crate) struct NetworkStubImpl<Block: BlockT> {
+pub(crate) struct NetworkInterfaceImpl<Block: BlockT> {
     protocol_name: ProtocolName,
     who: PeerId,
     network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
 }
 
-impl<Block: BlockT> NetworkStubImpl<Block> {
+impl<Block: BlockT> NetworkInterfaceImpl<Block> {
     pub(crate) fn new(
         protocol_name: ProtocolName,
         who: PeerId,
@@ -70,22 +60,16 @@ impl<Block: BlockT> NetworkStubImpl<Block> {
 }
 
 #[async_trait]
-impl<Block: BlockT> NetworkStub for NetworkStubImpl<Block> {
+impl<Block: BlockT> NetworkInterface for NetworkInterfaceImpl<Block> {
     async fn request_response(
         &self,
         request: Vec<u8>,
-        is_protocol_message: bool,
     ) -> Result<Result<Vec<u8>, RequestFailure>, Canceled> {
-        let msg = ServerMessage {
-            message: request,
-            is_protocol_message,
-        };
-
         let (tx, rx) = oneshot::channel();
         self.network.start_request(
             self.who,
             self.protocol_name.clone(),
-            msg.encode(),
+            request,
             tx,
             IfDisconnected::ImmediateError,
         );
@@ -102,26 +86,29 @@ pub(crate) fn decode_response<RspType: Decode>(
         Ok(Ok(bytes)) => {
             let resp_len = bytes.len();
             let response: Result<RspType, _> = Decode::decode(&mut bytes.as_ref());
-            response.map_err(|err| {
-                RequestResponseErr::DecodeFailed(format!("Request/response: {resp_len}, {err:?}"))
-            })
+            response.map_err(|err| RequestResponseErr::DecodeFailed { resp_len, err })
         }
         Ok(Err(err)) => Err(RequestResponseErr::RequestFailure(err)),
         Err(_) => Err(RequestResponseErr::Canceled),
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum RequestResponseErr {
-    DecodeFailed(String),
+    #[error("RequestResponseErr::DecodeFailed: {resp_len}/{err:?}")]
+    DecodeFailed { resp_len: usize, err: codec::Error },
+
+    #[error("RequestResponseErr::RequestFailure {0:?}")]
     RequestFailure(RequestFailure),
+
+    #[error("RequestResponseErr::Canceled")]
     Canceled,
 }
 
 impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
     fn from(err: RequestResponseErr) -> Self {
         match err {
-            RequestResponseErr::DecodeFailed(_) => {
+            RequestResponseErr::DecodeFailed { .. } => {
                 Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)))
             }
             RequestResponseErr::RequestFailure(err) => Ok(Err(err)),
@@ -130,29 +117,56 @@ impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, onesho
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum RelayError {
-    Internal(String),
-    RequestResponse(RequestResponseErr),
-}
+    #[error("Network not initialized")]
+    NetworkUninitialized,
 
-impl From<String> for RelayError {
-    fn from(msg: String) -> Self {
-        Self::Internal(msg)
-    }
-}
+    #[error("Invalid block attributes: {0}")]
+    InvalidBlockAttributes(codec::Error),
 
-impl From<RequestResponseErr> for RelayError {
-    fn from(err: RequestResponseErr) -> Self {
-        Self::RequestResponse(err)
-    }
+    #[error("Block header: {0}")]
+    BlockHeader(String),
+
+    #[error("Block indexed body: {0}")]
+    BlockIndexedBody(String),
+
+    #[error("Block justifications: {0}")]
+    BlockJustifications(String),
+
+    #[error("Block hash: {0}")]
+    BlockHash(String),
+
+    #[error("Block body: {0}")]
+    BlockBody(String),
+
+    #[error("Unexpected number of resolved entries: {expected}, {actual}")]
+    ResolveMismatch { expected: usize, actual: usize },
+
+    #[error("Resolved entry not found: {0}")]
+    ResolvedNotFound(usize),
+
+    #[error("Unexpected initial request")]
+    UnexpectedInitialRequest,
+
+    #[error("Unexpected initial response")]
+    UnexpectedInitialResponse,
+
+    #[error("Unexpected protocol request")]
+    UnexpectedProtocolRequest,
+
+    #[error("Unexpected protocol response")]
+    UnexpectedProtocolRespone,
+
+    #[error("Request/response error: {0}")]
+    RequestResponse(#[from] RequestResponseErr),
 }
 
 impl From<RelayError> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
     fn from(err: RelayError) -> Self {
         match err {
-            RelayError::Internal(_) => Ok(Err(RequestFailure::Network(OutboundFailure::Timeout))),
             RelayError::RequestResponse(rr_err) => rr_err.into(),
+            _ => Ok(Err(RequestFailure::Network(OutboundFailure::Timeout))),
         }
     }
 }
