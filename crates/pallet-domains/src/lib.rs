@@ -24,6 +24,8 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod weights;
+
 use codec::{Decode, Encode};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
