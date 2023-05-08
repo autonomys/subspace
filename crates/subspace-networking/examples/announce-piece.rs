@@ -4,7 +4,7 @@ use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{PieceIndex, PieceIndexHash};
+use subspace_core_primitives::PieceIndex;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{BootstrappedNetworkingParameters, Config};
 
@@ -64,8 +64,7 @@ async fn main() {
 
     let key = {
         let piece_index = PieceIndex::ONE;
-        let piece_index_hash = PieceIndexHash::from_index(piece_index);
-        piece_index_hash.to_multihash()
+        piece_index.hash().to_multihash()
     };
 
     node_2

@@ -27,10 +27,8 @@ pub async fn announce_single_piece_index_with_backoff(
     piece_index: PieceIndex,
     node: &Node,
 ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let piece_index_hash = PieceIndexHash::from_index(piece_index);
-
     retry(default_backoff(), || {
-        announce_single_piece_index_hash(piece_index_hash, node)
+        announce_single_piece_index_hash(piece_index.hash(), node)
     })
     .await
 }
