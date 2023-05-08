@@ -42,7 +42,9 @@ use sp_runtime::RuntimeAppPublic;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
+    use frame_support::weights::Weight;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use pallet_receipts::{Error as ReceiptError, FraudProofError};
@@ -59,6 +61,9 @@ mod pallet {
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -148,9 +153,16 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // TODO: proper weight
         #[pallet::call_index(0)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(
+            if signed_opaque_bundle.domain_id().is_system() {
+                T::WeightInfo::submit_system_bundle(
+                    signed_opaque_bundle.bundle.receipts.len() as u32
+                )
+            } else {
+                T::WeightInfo::submit_core_bundle()
+            }
+        )]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -179,9 +191,21 @@ mod pallet {
             Ok(())
         }
 
-        // TODO: proper weight
         #[pallet::call_index(1)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(
+            match fraud_proof {
+                FraudProof::InvalidStateTransition(proof) => (
+                    if proof.domain_id.is_system() {
+                        T::WeightInfo::submit_system_domain_invalid_state_transition_proof()
+                    } else {
+                        T::WeightInfo::submit_core_domain_invalid_state_transition_proof()
+                    },
+                    Pays::Yes
+                ),
+                // TODO: proper weight
+                _ => (Weight::from_all(10_000), Pays::No),
+            }
+        )]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: FraudProof<T::BlockNumber, T::Hash>,

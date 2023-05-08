@@ -83,4 +83,6 @@ runtime-benchmarks = [
 	"frame-benchmarking-cli/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
 	"system-domain-runtime/runtime-benchmarks",
+	"core-eth-relay-runtime/runtime-benchmarks",
+	"core-evm-runtime/runtime-benchmarks",
 ]
