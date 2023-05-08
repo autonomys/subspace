@@ -27,7 +27,7 @@ use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
-use sp_core::crypto::KeyTypeId;
+use sp_core::crypto::{KeyTypeId, UncheckedFrom};
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
@@ -218,7 +218,6 @@ pub struct ProofOfElection<DomainHash> {
 }
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
-    #[cfg(feature = "std")]
     pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id,
@@ -419,6 +418,59 @@ pub type OpaqueBundles<Block, DomainHash> =
 /// List of [`SignedOpaqueBundle`].
 pub type SignedOpaqueBundles<Block, DomainHash> =
     Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
+
+pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
+    domain_id: DomainId,
+    primary_number: BlockNumber,
+    primary_hash: Hash,
+    receipts: Vec<ExecutionReceipt<BlockNumber, Hash, DomainHash>>,
+) -> SignedOpaqueBundle<BlockNumber, Hash, DomainHash>
+where
+    BlockNumber: Encode + Default,
+    Hash: Encode + Default,
+    DomainHash: Encode + Default,
+{
+    let header = BundleHeader {
+        primary_number,
+        primary_hash,
+        slot_number: 0u64,
+        extrinsics_root: Default::default(),
+    };
+
+    let bundle = Bundle {
+        header,
+        receipts,
+        extrinsics: Vec::new(),
+    };
+
+    let signature = ExecutorSignature::unchecked_from([0u8; 64]);
+
+    let proof_of_election =
+        ProofOfElection::dummy(domain_id, ExecutorPublicKey::unchecked_from([0u8; 32]));
+
+    let bundle_solution = if domain_id.is_system() {
+        BundleSolution::System {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
+        }
+    } else if domain_id.is_core() {
+        BundleSolution::Core {
+            proof_of_election,
+            core_block_number: Default::default(),
+            core_block_hash: Default::default(),
+            core_state_root: Default::default(),
+        }
+    } else {
+        panic!("Open domain unsupported");
+    };
+
+    SignedOpaqueBundle {
+        bundle,
+        bundle_solution,
+        signature,
+    }
+}
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.

@@ -7,8 +7,8 @@ use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    Bundle, BundleHeader, BundleSolution, DomainId, ExecutionReceipt, ExecutorPair,
-    ProofOfElection, SignedOpaqueBundle,
+    create_dummy_bundle_with_receipts_generic, Bundle, BundleHeader, BundleSolution, DomainId,
+    ExecutionReceipt, ExecutorPair, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -90,6 +90,7 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
 }
 
 impl pallet_receipts::Config for Test {
@@ -99,7 +100,7 @@ impl pallet_receipts::Config for Test {
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
-fn new_test_ext() -> sp_io::TestExternalities {
+pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
@@ -178,47 +179,12 @@ fn create_dummy_bundle_with_receipts(
     primary_hash: Hash,
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
-    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
-
-    let header = BundleHeader {
+    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
+        domain_id,
         primary_number,
         primary_hash,
-        slot_number: 0u64,
-        extrinsics_root: Default::default(),
-    };
-
-    let bundle = Bundle {
-        header,
         receipts,
-        extrinsics: Vec::new(),
-    };
-
-    let signature = pair.sign(bundle.hash().as_ref());
-
-    let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
-
-    let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System {
-            authority_stake_weight: Default::default(),
-            authority_witness: Default::default(),
-            proof_of_election,
-        }
-    } else if domain_id.is_core() {
-        BundleSolution::Core {
-            proof_of_election,
-            core_block_number: Default::default(),
-            core_block_hash: Default::default(),
-            core_state_root: Default::default(),
-        }
-    } else {
-        panic!("Open domain unsupported");
-    };
-
-    SignedOpaqueBundle {
-        bundle,
-        bundle_solution,
-        signature,
-    }
+    )
 }
 
 #[test]
