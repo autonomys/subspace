@@ -17,7 +17,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
-use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
+use subspace_networking::utils::piece_announcement::announce_single_piece_index_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
     NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,

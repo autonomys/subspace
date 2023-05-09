@@ -437,7 +437,7 @@ impl RpcServerImpl {
     fn read_and_decode_piece(&self, piece_index: PieceIndex) -> Result<Piece, Error> {
         let piece_getter = self.piece_getter.clone();
         piece_getter
-            .get_piece(piece_index, PieceIndexHash::from_index(piece_index))
+            .get_piece(piece_index, piece_index.hash())
             .ok_or_else(|| {
                 Error::Custom("Object mapping found, but reading piece failed".to_string())
             })
@@ -448,7 +448,7 @@ impl RpcServer for RpcServerImpl {
     fn get_piece(&self, piece_index: PieceIndex) -> Result<Option<HexPiece>, Error> {
         let piece_getter = self.piece_getter.clone();
         piece_getter
-            .get_piece(piece_index, PieceIndexHash::from_index(piece_index))
+            .get_piece(piece_index, piece_index.hash())
             .map(HexPiece::from)
             .map(Some)
             .ok_or_else(|| Error::Custom("Piece not found".to_string()))

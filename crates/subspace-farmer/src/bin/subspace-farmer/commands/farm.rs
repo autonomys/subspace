@@ -29,8 +29,8 @@ use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::online_status_informer;
+use subspace_networking::utils::piece_announcement::announce_single_piece_index_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use subspace_networking::utils::pieces::announce_single_piece_index_with_backoff;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
@@ -244,7 +244,7 @@ where
                     (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes).map(
                         move |(piece_offset, piece_index)| {
                             (
-                                PieceIndexHash::from_index(piece_index),
+                                piece_index.hash(),
                                 PieceDetails {
                                     plot_offset,
                                     sector_index: plotted_sector.sector_index,
