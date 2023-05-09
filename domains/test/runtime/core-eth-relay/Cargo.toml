@@ -1,25 +1,18 @@
 [package]
-name = "system-domain-test-runtime"
+name = "core-eth-relay-domain-test-runtime"
 version = "0.1.0"
-authors = ["Anonymous"]
-description = "A new Cumulus FRAME-based Substrate Runtime, ready for hacking together a parachain."
-license = "Unlicense"
-homepage = "https://substrate.io"
-repository = "https://github.com/paritytech/cumulus/"
+authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>, Parth Desai <desaiparth08@gmail.com>"]
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace/"
 edition = "2021"
-links = "system-domain-test-runtime"
+links = "core-eth-relay-domain-test-runtime"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
-[build-dependencies]
-sp-domains = { version = "0.1.0", path = "../../../../crates/sp-domains" }
-subspace-wasm-tools = { version = "0.1.0", path = "../../../../crates/subspace-wasm-tools" }
-substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", optional = true }
-
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"]}
-core-payments-domain-runtime = { version = "0.1.0", path = "../../../runtime/core-payments", default-features = false }
+codec = { package = "parity-scale-codec", version = "3.2.1", default-features = false, features = ["derive"] }
 domain-pallet-executive = { version = "0.1.0", path = "../../../pallets/executive", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../../primitives/runtime", default-features = false }
 domain-test-primitives = { version = "0.1.0", path = "../../primitives", default-features = false }
@@ -33,29 +26,35 @@ log = { version = "0.4.17", default-features = false }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 pallet-domain-registry = { version = "0.1.0", path = "../../../pallets/domain-registry", default-features = false }
 pallet-executor-registry = { version = "0.1.0", path = "../../../pallets/executor-registry", default-features = false }
+pallet-feeds = { version = "0.1.0", path = "../../../../crates/pallet-feeds", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../../pallets/messenger", default-features = false }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-pallet-receipts = { version = "0.1.0", path = "../../../../crates/pallet-receipts", default-features = false }
+pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 pallet-transporter = { version = "0.1.0", path = "../../../pallets/transporter", default-features = false }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
+# Light client pallet and primitives
+snowbridge-beacon-primitives = { git = "https://github.com/Snowfork/snowbridge", rev = "cac98d860b8f24a9c3a3eabb5bcbee8dc2880960", default-features = false }
+snowbridge-ethereum-beacon-client = { git = "https://github.com/Snowfork/snowbridge", rev = "cac98d860b8f24a9c3a3eabb5bcbee8dc2880960", default-features = false }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-domains = { version = "0.1.0", path = "../../../../crates/sp-domains", default-features = false }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-io = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-messenger = { version = "0.1.0", path = "../../../primitives/messenger", default-features = false }
+sp-messenger = { version = "0.1.0", default-features = false, path = "../../../primitives/messenger" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-receipts = { version = "0.1.0", path = "../../../../crates/sp-receipts", default-features = false }
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-system-runtime-primitives = { version = "0.1.0", path = "../../../primitives/system-runtime", default-features = false }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../../crates/subspace-runtime-primitives", default-features = false }
+
+[build-dependencies]
+subspace-wasm-tools = { version = "0.1.0", path = "../../../../crates/subspace-wasm-tools" }
+substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", optional = true }
 
 [features]
 default = [
@@ -63,7 +62,6 @@ default = [
 ]
 std = [
 	"codec/std",
-	"core-payments-domain-runtime/std",
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
 	"frame-support/std",
@@ -71,30 +69,44 @@ std = [
 	"frame-system-rpc-runtime-api/std",
 	"log/std",
 	"pallet-balances/std",
+	"pallet-domain-registry/std",
+	"pallet-executor-registry/std",
+	"pallet-feeds/std",
+	"pallet-messenger/std",
+	"pallet-sudo/std",
+	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
-	"pallet-domain-registry/std",
-	"pallet-receipts/std",
-	"pallet-messenger/std",
-	"pallet-executor-registry/std",
+	"pallet-transporter/std",
 	"scale-info/std",
+	"snowbridge-beacon-primitives/std",
+	"snowbridge-ethereum-beacon-client/std",
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-core/std",
 	"sp-domains/std",
+	"sp-session/std",
 	"sp-inherents/std",
 	"sp-io/std",
 	"sp-messenger/std",
 	"sp-offchain/std",
-	"sp-receipts/std",
 	"sp-runtime/std",
-	"sp-session/std",
 	"sp-std/std",
 	"sp-transaction-pool/std",
 	"sp-version/std",
-	"system-runtime-primitives/std",
 	"subspace-runtime-primitives/std",
 	"substrate-wasm-builder",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
+runtime-benchmarks = [
+	'hex-literal',
+	"sp-runtime/runtime-benchmarks",
+	"frame-benchmarking",
+	"frame-system-benchmarking",
+	"frame-system-benchmarking/runtime-benchmarks",
+	"frame-support/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"pallet-balances/runtime-benchmarks",
+	"snowbridge-ethereum-beacon-client/runtime-benchmarks"
+]

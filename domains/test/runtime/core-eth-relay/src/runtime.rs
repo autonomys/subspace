@@ -1,29 +1,29 @@
+use crate::feed_processor::{feed_processor, FeedProcessorId, FeedProcessorKind};
 use codec::{Decode, Encode};
+use domain_runtime_primitives::{opaque, AccountIdConverter, SLOT_DURATION};
 pub use domain_runtime_primitives::{
-    AccountId, AccountIdConverter, Address, Balance, BlockNumber, Hash, Index, Signature,
+    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, Everything};
-use frame_support::weights::constants::{
-    BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND,
-};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything};
+use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_feeds::feed_processor::FeedProcessor;
 use pallet_transporter::EndpointHandler;
+use snowbridge_beacon_primitives::{Fork, ForkVersions};
+use snowbridge_ethereum_beacon_client as pallet_ethereum_beacon_client;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::{OpaqueMetadata, H256};
-use sp_domains::bundle_election::BundleElectionSolverParams;
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_core::OpaqueMetadata;
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
     RelayerMessagesWithStorageKey,
 };
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor, StaticLookup};
+use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, StaticLookup};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
@@ -32,13 +32,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
-
-#[cfg(any(feature = "std", test))]
-pub use sp_runtime::BuildStorage;
-
-// Make core-payments WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
@@ -81,30 +75,6 @@ pub type Executive = domain_pallet_executive::Executive<
     Runtime,
 >;
 
-/// The payload being signed in transactions.
-pub type SignedPayload = generic::SignedPayload<RuntimeCall, SignedExtra>;
-
-/// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
-/// the specifics of the runtime. They can then be made to be agnostic over specific formats
-/// of data like extrinsics, allowing for them to continue syncing the network through upgrades
-/// to even the core data structures.
-pub mod opaque {
-    use super::*;
-    use sp_runtime::generic;
-    use sp_runtime::traits::BlakeTwo256;
-
-    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
-
-    /// Opaque block header type.
-    pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
-    /// Opaque block type.
-    pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-    /// Opaque block identifier type.
-    pub type BlockId = generic::BlockId<Block>;
-    /// Opaque Account ID identifier type.
-    pub type AccountId = Vec<u8>;
-}
-
 impl_opaque_keys! {
     pub struct SessionKeys {
         /// Primarily used for adding the executor authority key into the keystore in the dev mode.
@@ -114,8 +84,8 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("subspace-executor"),
-    impl_name: create_runtime_str!("subspace-executor"),
+    spec_name: create_runtime_str!("subspace-eth-relay-domain"),
+    impl_name: create_runtime_str!("subspace-eth-relay-domain"),
     authoring_version: 0,
     spec_version: 0,
     impl_version: 0,
@@ -135,9 +105,8 @@ const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
 /// `Operational` extrinsics.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
-/// We allow for 0.5 of a second of compute with a 12 second average block time.
-const MAXIMUM_BLOCK_WEIGHT: Weight =
-    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_div(2), u64::MAX);
+/// TODO: Proper max block weight
+const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::MAX;
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -230,6 +199,14 @@ impl frame_system::Config for Runtime {
     type MaxConsumers = ConstU32<16>;
 }
 
+impl pallet_timestamp::Config for Runtime {
+    /// A timestamp: milliseconds since the unix epoch.
+    type Moment = Moment;
+    type OnTimestampSet = ();
+    type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
+    type WeightInfo = ();
+}
+
 parameter_types! {
     pub const ExistentialDeposit: Balance = EXISTENTIAL_DEPOSIT;
     pub const MaxLocks: u32 = 50;
@@ -274,55 +251,6 @@ impl domain_pallet_executive::Config for Runtime {
 }
 
 parameter_types! {
-    pub const MinExecutorStake: Balance = SSC;
-    pub const MaxExecutorStake: Balance = 1_000_000 * SSC;
-    pub const MinExecutors: u32 = 1;
-    pub const MaxExecutors: u32 = 10;
-    pub const EpochDuration: BlockNumber = 3;
-    pub const MaxWithdrawals: u32 = 1;
-    pub const WithdrawalDuration: BlockNumber = 10;
-}
-
-impl pallet_executor_registry::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type StakeWeight = sp_domains::StakeWeight;
-    type MinExecutorStake = MinExecutorStake;
-    type MaxExecutorStake = MaxExecutorStake;
-    type MinExecutors = MinExecutors;
-    type MaxExecutors = MaxExecutors;
-    type MaxWithdrawals = MaxWithdrawals;
-    type WithdrawalDuration = WithdrawalDuration;
-    type EpochDuration = EpochDuration;
-    type OnNewEpoch = DomainRegistry;
-}
-
-parameter_types! {
-    pub const MinDomainDeposit: Balance = 10 * SSC;
-    pub const MaxDomainDeposit: Balance = 1000 * SSC;
-    pub const MinDomainOperatorStake: Balance = SSC;
-    pub const MaximumReceiptDrift: BlockNumber = 128;
-    pub const ReceiptsPruningDepth: BlockNumber = 256;
-}
-
-impl pallet_domain_registry::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type Currency = Balances;
-    type StakeWeight = sp_domains::StakeWeight;
-    type ExecutorRegistry = ExecutorRegistry;
-    type MinDomainDeposit = MinDomainDeposit;
-    type MaxDomainDeposit = MaxDomainDeposit;
-    type MinDomainOperatorStake = MinDomainOperatorStake;
-}
-
-impl pallet_receipts::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
-}
-
-parameter_types! {
     pub const StateRootsBound: u32 = 50;
     pub const RelayConfirmationDepth: BlockNumber = 1;
 }
@@ -330,37 +258,12 @@ parameter_types! {
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
-    pub const SystemDomainId: DomainId = DomainId::SYSTEM;
-}
-
-parameter_types! {
-    pub const TransporterEndpointId: EndpointId = 1;
-}
-
-impl pallet_transporter::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = SystemDomainId;
-    type SelfEndpointId = TransporterEndpointId;
-    type Currency = Balances;
-    type Sender = Messenger;
-    type AccountIdConverter = AccountIdConverter;
-}
-
-pub struct DomainInfo;
-
-impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
-    fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-        Some(Receipts::head_receipt_number(domain_id))
-    }
-
-    fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
-        Receipts::domain_state_root_at(domain_id, number, hash)
-    }
+    pub const CoreEthRelayDomainId: DomainId = DomainId::CORE_ETH_RELAY;
 }
 
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = SystemDomainId;
+    type SelfDomainId = CoreEthRelayDomainId;
 
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
@@ -375,7 +278,7 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
-    type DomainInfo = DomainInfo;
+    type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
 }
 
@@ -387,38 +290,122 @@ where
     type OverarchingCall = RuntimeCall;
 }
 
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = CoreEthRelayDomainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
+}
+
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
 }
 
+// Ethereum mainnet configuration
+parameter_types! {
+    pub const MaxSyncCommitteeSize: u32 = 512;
+    pub const MaxProofBranchSize: u32 = 20;
+    pub const MaxExtraDataSize: u32 = 32;
+    pub const MaxLogsBloomSize: u32 = 256;
+    pub const MaxFeeRecipientSize: u32 = 20;
+    pub const MaxPublicKeySize: u32 = 48;
+    pub const MaxSignatureSize: u32 = 96;
+    pub const MaxSlotsPerHistoricalRoot: u64 = 8192;
+    pub const MaxFinalizedHeaderSlotArray: u32 = 1000;
+    pub const WeakSubjectivityPeriodSeconds: u32 = 97200;
+    pub const ChainForkVersions: ForkVersions = ForkVersions{
+        genesis: Fork {
+            version: [0, 0, 16, 32], // 0x00001020
+            epoch: 0,
+        },
+        altair: Fork {
+            version: [1, 0, 16, 32], // 0x01001020
+            epoch: 36660,
+        },
+        bellatrix: Fork {
+            version: [2, 0, 16, 32], // 0x02001020
+            epoch: 112260,
+        },
+        capella: Fork {
+            version: [3, 0, 16, 32], // 0x03001020
+            epoch: 162304,
+        },
+    };
+}
+
+impl pallet_ethereum_beacon_client::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type TimeProvider = Timestamp;
+    type MaxSyncCommitteeSize = MaxSyncCommitteeSize;
+    type MaxProofBranchSize = MaxProofBranchSize;
+    type MaxExtraDataSize = MaxExtraDataSize;
+    type MaxLogsBloomSize = MaxLogsBloomSize;
+    type MaxFeeRecipientSize = MaxFeeRecipientSize;
+    type MaxPublicKeySize = MaxPublicKeySize;
+    type MaxSignatureSize = MaxSignatureSize;
+    type MaxSlotsPerHistoricalRoot = MaxSlotsPerHistoricalRoot;
+    type MaxFinalizedHeaderSlotArray = MaxFinalizedHeaderSlotArray;
+    type ForkVersions = ChainForkVersions;
+    type WeakSubjectivityPeriodSeconds = WeakSubjectivityPeriodSeconds;
+    type WeightInfo = pallet_ethereum_beacon_client::weights::SnowbridgeWeight<Self>;
+}
+
+pub type FeedId = u64;
+
+parameter_types! {
+    // Limit maximum number of feeds per account
+    pub const MaxFeeds: u32 = 1;
+    pub const EthereumFeedProcessorId: FeedProcessorId  = FeedProcessorId(*b"py/feprx");
+}
+
+impl pallet_feeds::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type FeedId = FeedId;
+    type FeedProcessorKind = FeedProcessorKind;
+    type MaxFeeds = MaxFeeds;
+
+    fn feed_processor(
+        feed_processor_kind: Self::FeedProcessorKind,
+    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
+        feed_processor(EthereumFeedProcessorId::get(), feed_processor_kind)
+    }
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
+//
+// NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
 construct_runtime!(
-    pub struct Runtime
-    where
+    pub struct Runtime where
         Block = Block,
         NodeBlock = opaque::Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         // System support stuff.
-        System: frame_system,
-        ExecutivePallet: domain_pallet_executive,
+        System: frame_system = 0,
+        Timestamp: pallet_timestamp = 1,
+        ExecutivePallet: domain_pallet_executive = 2,
 
         // Monetary stuff.
-        Balances: pallet_balances,
-        TransactionPayment: pallet_transaction_payment,
-
-        // System domain.
-        //
-        // Must be after Balances pallet so that its genesis is built after the Balances genesis is
-        // built.
-        ExecutorRegistry: pallet_executor_registry,
-        Receipts: pallet_receipts,
-        DomainRegistry: pallet_domain_registry,
+        Balances: pallet_balances = 20,
+        TransactionPayment: pallet_transaction_payment = 21,
 
         // messenger stuff
+        // Note: Indexes should match the indexes of the System domain runtime
         Messenger: pallet_messenger = 60,
         Transporter: pallet_transporter = 61,
+
+        // Having beacon client at 90 to have plenty of room for system domain runtime pallets
+        // (w.r.t future upgrade of system domain runtime) as well as some room for adding light client
+        // related pallets after 90
+        EthereumBeaconClient: pallet_ethereum_beacon_client::{Pallet, Config<T>, Storage, Event<T>} = 90,
+        Feeds: pallet_feeds = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -555,12 +542,11 @@ impl_runtime_apis! {
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
             use codec::Encode;
-            // Use `set_code_without_checks` instead of `set_code` in the test environment.
-            let set_code_call = frame_system::Call::set_code_without_checks { code };
+            let set_code_call = frame_system::Call::set_code { code };
             UncheckedExtrinsic::new_unsigned(
                 domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
-                    weight: Weight::zero()
+                    weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
         }
@@ -607,116 +593,43 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_receipts::ReceiptsApi<Block, Hash> for Runtime {
-        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<Hash> {
-            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
-        }
-
-        fn state_root(
-            domain_id: DomainId,
-            domain_block_number: BlockNumber,
-            domain_block_hash: Hash,
-        ) -> Option<Hash> {
-            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
-        }
-
-        fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Receipts::primary_hash(domain_id, domain_block_number)
-        }
-
-        fn receipts_pruning_depth() -> BlockNumber {
-            ReceiptsPruningDepth::get()
+    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
+             Some(
+                UncheckedExtrinsic::new_unsigned(
+                    pallet_timestamp::Call::set{ now: moment }.into()
+                )
+             )
         }
     }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
-        fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
-        ) -> Vec<Vec<u8>> {
-            use codec::Encode;
-            signed_opaque_bundles
-                .into_iter()
-                .map(|signed_opaque_bundle| {
-                    UncheckedExtrinsic::new_unsigned(
-                        pallet_domain_registry::Call::submit_core_bundle {
-                            signed_opaque_bundle
-                        }.into()
-                    ).encode()
-                })
-                .collect()
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
         }
 
-        fn bundle_election_solver_params(domain_id: DomainId) -> BundleElectionSolverParams {
-            if domain_id.is_system() {
-                BundleElectionSolverParams {
-                    authorities: ExecutorRegistry::authorities().into(),
-                    total_stake_weight: ExecutorRegistry::total_stake_weight(),
-                    slot_probability: ExecutorRegistry::slot_probability(),
-                }
-            } else {
-                match (
-                    DomainRegistry::domain_authorities(domain_id),
-                    DomainRegistry::domain_total_stake_weight(domain_id),
-                    DomainRegistry::domain_slot_probability(domain_id),
-                ) {
-                    (authorities, Some(total_stake_weight), Some(slot_probability)) => {
-                        BundleElectionSolverParams {
-                            authorities,
-                            total_stake_weight,
-                            slot_probability,
-                        }
-                    }
-                    _ => BundleElectionSolverParams::empty(),
-                }
-            }
-        }
-
-        fn core_bundle_election_storage_keys(
-            domain_id: DomainId,
-            executor_public_key: ExecutorPublicKey,
-        ) -> Option<Vec<Vec<u8>>> {
-            let executor = ExecutorRegistry::key_owner(&executor_public_key)?;
-            let mut storage_keys = DomainRegistry::core_bundle_election_storage_keys(domain_id, executor);
-            storage_keys.push(ExecutorRegistry::key_owner_hashed_key_for(&executor_public_key));
-            Some(storage_keys)
-        }
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
-            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
-        fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
-            Receipts::domain_state_root_at(domain_id, number, domain_hash)
+        fn confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
         }
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
         fn domain_id() -> DomainId {
-            SystemDomainId::get()
+            CoreEthRelayDomainId::get()
         }
 
         fn relay_confirmation_depth() -> BlockNumber {
             RelayConfirmationDepth::get()
         }
 
-        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-            Some(Receipts::head_receipt_number(domain_id))
+        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
+            None
         }
 
-        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash>{
-            Receipts::domain_state_root_at(domain_id, number, hash)
+        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+            None
         }
 
         fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
@@ -740,31 +653,6 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
-        fn extract_xdm_proof_state_roots(
-            extrinsic: Vec<u8>,
-        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            extract_xdm_proof_state_roots(extrinsic)
-        }
-
-        fn confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
-        }
-    }
-
-    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn extract_pre_validation_object(
-            extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> PreValidationObject<Block, domain_runtime_primitives::Hash> {
-            match extrinsic.function {
-                RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof }) => {
-                    PreValidationObject::FraudProof(fraud_proof)
-                }
-                _ => PreValidationObject::Null,
-            }
-        }
-    }
-
     impl domain_test_primitives::OnchainStateApi<Block, AccountId, Balance> for Runtime {
         fn free_balance(account_id: AccountId) -> Balance {
             Balances::free_balance(account_id)
@@ -772,6 +660,58 @@ impl_runtime_apis! {
 
         fn get_open_channel_for_domain(dst_domain_id: DomainId) -> Option<ChannelId> {
             Messenger::get_open_channel_for_domain(dst_domain_id).map(|(c, _)| c)
+        }
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    impl frame_benchmarking::Benchmark<Block> for Runtime {
+        fn benchmark_metadata(extra: bool) -> (
+            Vec<frame_benchmarking::BenchmarkList>,
+            Vec<frame_support::traits::StorageInfo>,
+        ) {
+            use frame_benchmarking::{Benchmarking, BenchmarkList, list_benchmark};
+            use frame_support::traits::StorageInfoTrait;
+            use frame_system_benchmarking::Pallet as SystemBench;
+
+            let mut list = Vec::<BenchmarkList>::new();
+
+            list_benchmark!(list, extra, frame_system, SystemBench::<Runtime>);
+            list_benchmark!(list, extra, ethereum_beacon_client, EthereumBeaconClient);
+
+            let storage_info = AllPalletsWithSystem::storage_info();
+
+            return (list, storage_info)
+        }
+
+        fn dispatch_benchmark(
+            config: frame_benchmarking::BenchmarkConfig
+        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
+            use frame_benchmarking::{Benchmarking, BenchmarkBatch, TrackedStorageKey, add_benchmark};
+
+            use frame_system_benchmarking::Pallet as SystemBench;
+            impl frame_system_benchmarking::Config for Runtime {}
+
+            let whitelist: Vec<TrackedStorageKey> = vec![
+                // Block Number
+                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef702a5c1b19ab7a04f536c519aca4983ac").to_vec().into(),
+                // Total Issuance
+                hex_literal::hex!("c2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80").to_vec().into(),
+                // Execution Phase
+                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef7ff553b5a9862a516939d82b3d3d8661a").to_vec().into(),
+                // RuntimeEvent Count
+                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef70a98fdbe9ce6c55837576c60c7af3850").to_vec().into(),
+                // System Events
+                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7").to_vec().into(),
+            ];
+
+            let mut batches = Vec::<BenchmarkBatch>::new();
+            let params = (&config, &whitelist);
+
+            add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
+            add_benchmark!(params, batches, ethereum_beacon_client, EthereumBeaconClient);
+
+            if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
+            Ok(batches)
         }
     }
 }

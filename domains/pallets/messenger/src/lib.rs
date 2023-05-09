@@ -579,7 +579,7 @@ mod pallet {
 
     impl<T: Config> Pallet<T> {
         /// Returns the last open channel for a given domain.
-        fn get_open_channel_for_domain(
+        pub fn get_open_channel_for_domain(
             dst_domain_id: DomainId,
         ) -> Option<(ChannelId, FeeModel<BalanceOf<T>>)> {
             let mut next_channel_id = NextChannelId::<T>::get(dst_domain_id);
