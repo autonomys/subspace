@@ -31,8 +31,8 @@ default = ["std"]
 std = [
     "subspace-core-primitives/std",
 ]
-# Enable Chia proof of space support, only works in `std` environment for now
-chia = [
+# Enable Chia proof of space support (legacy implementation uses C++ chiapos), only works in `std` environment for now
+chia-legacy = [
     "std",
     "subspace-chiapos",
 ]

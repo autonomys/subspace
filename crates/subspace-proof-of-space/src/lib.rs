@@ -3,8 +3,8 @@
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
 #![feature(const_trait_impl)]
 
-#[cfg(feature = "chia")]
-pub mod chia;
+#[cfg(feature = "chia-legacy")]
+pub mod chia_legacy;
 #[cfg(feature = "shim")]
 pub mod shim;
 
@@ -23,8 +23,8 @@ pub trait Quality {
 #[derive(Debug, Clone, Copy)]
 pub enum PosTableType {
     /// Chia table
-    #[cfg(feature = "chia")]
-    Chia,
+    #[cfg(feature = "chia-legacy")]
+    ChiaLegacy,
     /// Shim table
     #[cfg(feature = "shim")]
     Shim,

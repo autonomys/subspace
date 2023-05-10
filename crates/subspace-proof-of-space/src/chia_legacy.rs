@@ -31,7 +31,7 @@ pub struct ChiaTable {
 }
 
 impl Table for ChiaTable {
-    const TABLE_TYPE: PosTableType = PosTableType::Chia;
+    const TABLE_TYPE: PosTableType = PosTableType::ChiaLegacy;
 
     type Quality<'a> = ChiaQuality<'a>;
 
