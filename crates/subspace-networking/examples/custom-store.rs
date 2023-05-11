@@ -18,7 +18,7 @@ fn main() -> anyhow::Result<()> {
         .into_boxed_path();
 
     let keypair = Keypair::generate();
-    let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair));
+    let local_peer_id = peer_id(&libp2p::identity::Keypair::from(keypair));
 
     let mut provider_storage =
         ParityDbProviderStorage::new(&db_path, NonZeroUsize::new(1000).unwrap(), local_peer_id)

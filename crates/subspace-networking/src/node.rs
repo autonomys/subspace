@@ -8,8 +8,7 @@ use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
-use libp2p::gossipsub::error::SubscriptionError;
-use libp2p::gossipsub::Sha256Topic;
+use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
 use libp2p::kad::{PeerRecord, ProviderRecord};
 use libp2p::{Multiaddr, PeerId};
@@ -158,7 +157,7 @@ pub enum PublishError {
     NodeRunnerDropped,
     /// Failed to publish message.
     #[error("Failed to publish message: {0}")]
-    Publish(#[from] libp2p::gossipsub::error::PublishError),
+    Publish(#[from] libp2p::gossipsub::PublishError),
 }
 
 impl From<oneshot::Canceled> for PublishError {

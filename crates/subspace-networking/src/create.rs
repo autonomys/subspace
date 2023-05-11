@@ -239,9 +239,9 @@ impl Default for Config<MemoryProviderStorage> {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
+        let keypair = identity::Keypair::from(ed25519_keypair);
+        let peer_id = keypair.public().to_peer_id();
 
-        let peer_id = identity::PublicKey::Ed25519(ed25519_keypair.public()).to_peer_id();
-        let keypair = identity::Keypair::Ed25519(ed25519_keypair);
         Self::new(
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
