@@ -92,7 +92,7 @@ pub fn embedded_kzg_settings() -> FsKZGSettings {
 }
 
 /// Commitment to polynomial
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From)]
 pub struct Polynomial(FsPoly);
 
 impl Polynomial {
