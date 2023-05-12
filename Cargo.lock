@@ -922,9 +922,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "blst_from_scratch"
+name = "blst_rust"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=b71e7ace37420db889488cbd64d53eea38176111#b71e7ace37420db889488cbd64d53eea38176111"
+source = "git+https://github.com/subspace/rust-kzg?rev=1058cc8c8af8461b490dc212c41d7d506a746577#1058cc8c8af8461b490dc212c41d7d506a746577"
 dependencies = [
  "blst",
  "kzg",
@@ -4856,7 +4856,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=b71e7ace37420db889488cbd64d53eea38176111#b71e7ace37420db889488cbd64d53eea38176111"
+source = "git+https://github.com/subspace/rust-kzg?rev=1058cc8c8af8461b490dc212c41d7d506a746577#1058cc8c8af8461b490dc212c41d7d506a746577"
 dependencies = [
  "blst",
  "sha2 0.10.6",
@@ -11266,7 +11266,7 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake2",
- "blst_from_scratch",
+ "blst_rust",
  "criterion",
  "derive_more",
  "hex",
@@ -11292,7 +11292,7 @@ dependencies = [
 name = "subspace-erasure-coding"
 version = "0.1.0"
 dependencies = [
- "blst_from_scratch",
+ "blst_rust",
  "criterion",
  "kzg",
  "rand 0.8.5",
