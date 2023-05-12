@@ -48,7 +48,7 @@ pub enum PosTableType {
 }
 
 /// Proof of space kind
-pub trait Table: Send + Sync + 'static {
+pub trait Table: Sized + Send + Sync + 'static {
     /// Proof of space table type
     const TABLE_TYPE: PosTableType;
 
@@ -57,8 +57,19 @@ pub trait Table: Send + Sync + 'static {
     where
         Self: 'a;
 
-    /// Generate new table with 32 bytes seed
+    /// Generate new table with 32 bytes seed.
+    ///
+    /// There is also [`Self::generate_parallel()`] that can achieve lower latency.
     fn generate(seed: &PosSeed) -> Self;
+
+    /// Generate new table with 32 bytes seed using parallelism.
+    ///
+    /// This implementation will trade efficiency of CPU and memory usage for lower latency, prefer
+    /// [`Self::generate()`] unless lower latency is critical.
+    #[cfg(any(feature = "parallel", test))]
+    fn generate_parallel(seed: &PosSeed) -> Self {
+        Self::generate(seed)
+    }
 
     /// Try to find quality of the proof at `challenge_index` if proof exists
     fn find_quality(&self, challenge_index: u32) -> Option<Self::Quality<'_>>;

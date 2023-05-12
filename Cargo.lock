@@ -11522,6 +11522,7 @@ dependencies = [
  "chacha20 0.9.1",
  "criterion",
  "rand 0.8.5",
+ "rayon",
  "sha2 0.10.6",
  "subspace-chiapos",
  "subspace-core-primitives",

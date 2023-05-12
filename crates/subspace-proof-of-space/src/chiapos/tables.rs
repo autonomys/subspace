@@ -71,13 +71,11 @@ where
     EvaluatableUsize<{ quality_hashing_buffer_bytes(K) }>: Sized,
     EvaluatableUsize<{ 64 * K as usize / 8 }>: Sized,
 {
-    /// Create Chia proof of space tables.
-    ///
-    /// Advanced version of [`Self::create_simple`] that allows to reuse allocations using cache.
+    /// Create Chia proof of space tables. There also exists [`Self::create_parallel()`] that trades
+    /// CPU efficiency and memory usage for lower latency.
     ///
     /// ## Panics
-    /// Panics when [`K`] is too large due to values not fitting into [`ValueNumberT`]. Also
-    /// panics if `K` is too large for buckets to be kept in memory on current platform.
+    /// Panics when [`K`] is too large on current platform.
     pub(super) fn create(seed: Seed, cache: &mut TablesCache<K>) -> Self {
         let heap_size_bits = usize::MAX as u128 * u128::from(u8::BITS);
         let num_values = 1 << K;
@@ -97,6 +95,44 @@ where
         let table_5 = Table::<K, 5>::create(&table_4, cache);
         let table_6 = Table::<K, 6>::create(&table_5, cache);
         let table_7 = Table::<K, 7>::create(&table_6, cache);
+
+        Self {
+            table_1,
+            table_2,
+            table_3,
+            table_4,
+            table_5,
+            table_6,
+            table_7,
+        }
+    }
+
+    /// Almost the same as [`Self::create()`], but uses parallelism internally for better
+    /// performance (though not efficiency of CPU and memory usage), if you create multiple tables
+    /// in parallel, prefer [`Self::create()`] for better overall performance.
+    ///
+    /// ## Panics
+    /// Panics when [`K`] is too large on current platform.
+    #[cfg(any(feature = "parallel", test))]
+    pub(super) fn create_parallel(seed: Seed, cache: &mut TablesCache<K>) -> Self {
+        let heap_size_bits = usize::MAX as u128 * u128::from(u8::BITS);
+        let num_values = 1 << K;
+        // Check that space for `y` values can be allocated on the heap
+        assert!(num_values * y_size_bits(K) as u128 <= heap_size_bits);
+        // Check that positions can be allocated on the heap
+        assert!(num_values * u128::from(K) * 2 <= heap_size_bits);
+        // Check that metadata can be allocated on the heap
+        assert!(num_values * max_metadata_size_bits(K) as u128 * 2 <= heap_size_bits);
+        // `y` must fit into `usize`
+        assert!(y_size_bits(K) <= usize::BITS as usize);
+
+        let table_1 = Table::<K, 1>::create_parallel(seed);
+        let table_2 = Table::<K, 2>::create_parallel(&table_1, cache);
+        let table_3 = Table::<K, 3>::create_parallel(&table_2, cache);
+        let table_4 = Table::<K, 4>::create_parallel(&table_3, cache);
+        let table_5 = Table::<K, 5>::create_parallel(&table_4, cache);
+        let table_6 = Table::<K, 6>::create_parallel(&table_5, cache);
+        let table_7 = Table::<K, 7>::create_parallel(&table_6, cache);
 
         Self {
             table_1,

@@ -3,6 +3,8 @@
 #[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 use criterion::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
+#[cfg(feature = "parallel")]
+use rayon::ThreadPoolBuilder;
 #[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 use subspace_core_primitives::PosSeed;
 #[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
@@ -23,13 +25,28 @@ fn pos_bench<PosTable>(
 ) where
     PosTable: Table,
 {
+    ThreadPoolBuilder::new()
+        // Change number of threads if necessary
+        .num_threads(4)
+        .build_global()
+        .unwrap();
+
     let mut group = c.benchmark_group(name);
 
-    group.bench_function("table", |b| {
+    group.bench_function("table/single", |b| {
         b.iter(|| {
             PosTable::generate(black_box(&SEED));
         });
     });
+
+    #[cfg(feature = "parallel")]
+    {
+        group.bench_function("table/parallel", |b| {
+            b.iter(|| {
+                PosTable::generate_parallel(black_box(&SEED));
+            });
+        });
+    }
 
     let table = PosTable::generate(&SEED);
 
