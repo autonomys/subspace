@@ -23,10 +23,13 @@ members = [
 #
 # This list is ordered alphabetically.
 [profile.dev.package]
+bitvec = { opt-level = 3 }
 blake2 = { opt-level = 3 }
+blake3 = { opt-level = 3 }
 blake2b_simd = { opt-level = 3 }
 blst = { opt-level = 3 }
 blst_from_scratch = { opt-level = 3 }
+chacha20 = { opt-level = 3 }
 chacha20poly1305 = { opt-level = 3 }
 cranelift-codegen = { opt-level = 3 }
 cranelift-wasm = { opt-level = 3 }

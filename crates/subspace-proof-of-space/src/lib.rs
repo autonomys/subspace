@@ -1,10 +1,24 @@
 //! Subspace proof of space implementation based on Chia
 #![cfg_attr(not(feature = "std"), no_std)]
+// `generic_const_exprs` is an incomplete feature
+#![allow(incomplete_features)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![feature(const_trait_impl)]
+#![feature(
+    array_chunks,
+    array_windows,
+    const_num_from_num,
+    const_trait_impl,
+    generic_const_exprs,
+    int_roundings,
+    iter_collect_into
+)]
 
 #[cfg(feature = "chia")]
 pub mod chia;
+#[cfg(feature = "chia-legacy")]
+pub mod chia_legacy;
+#[cfg(feature = "chia")]
+pub mod chiapos;
 #[cfg(feature = "shim")]
 pub mod shim;
 
@@ -22,6 +36,9 @@ pub trait Quality {
 /// Proof of space table type
 #[derive(Debug, Clone, Copy)]
 pub enum PosTableType {
+    /// Chia table
+    #[cfg(feature = "chia-legacy")]
+    ChiaLegacy,
     /// Chia table
     #[cfg(feature = "chia")]
     Chia,
