@@ -45,6 +45,7 @@ tokio = { version = "1.27.0", features = ["macros", "parking_lot", "rt-multi-thr
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"]}
 unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_codec"] }
+void = "1.0.2"
 
 [dependencies.libp2p]
 git = "https://github.com/libp2p/rust-libp2p"
