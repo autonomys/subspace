@@ -1,4 +1,6 @@
-use crate::{Block, BlockNumber, Hash, RuntimeCall, RuntimeEvent, System, UncheckedExtrinsic};
+use crate::{
+    Block, BlockNumber, Hash, Receipts, RuntimeCall, RuntimeEvent, System, UncheckedExtrinsic,
+};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::H256;
@@ -89,11 +91,13 @@ pub(crate) fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<FraudProof<BlockNumber, Hash>> {
+    let successful_fraud_proofs = Receipts::successful_fraud_proofs();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id =>
+                if fraud_proof.domain_id() == domain_id
+                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
             {
                 Some(fraud_proof)
             }
