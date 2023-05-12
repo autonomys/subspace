@@ -4,7 +4,9 @@ use crate::runtime_api::{
 };
 use crate::utils::extract_xdm_proof_state_roots_with_runtime;
 use codec::{Codec, Encode};
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi, Moment};
+use domain_runtime_primitives::{
+    runtime_decl_for_inherent_extrinsic_api, DomainCoreApi, InherentExtrinsicApi, Moment,
+};
 use sc_executor::RuntimeVersionOf;
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
@@ -250,8 +252,15 @@ where
         at: Block::Hash,
         moment: Moment,
     ) -> Result<Option<Block::Extrinsic>, ApiError> {
-        <Self as InherentExtrinsicApi<Block>>::construct_inherent_timestamp_extrinsic(
-            self, at, moment,
-        )
+        let runtime_version = self.runtime_version()?;
+        if runtime_version.has_api_with(&runtime_decl_for_inherent_extrinsic_api::ID, |v| {
+            v == runtime_decl_for_inherent_extrinsic_api::VERSION
+        }) {
+            <Self as InherentExtrinsicApi<Block>>::construct_inherent_timestamp_extrinsic(
+                self, at, moment,
+            )
+        } else {
+            Ok(None)
+        }
     }
 }

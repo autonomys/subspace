@@ -4,7 +4,7 @@ use crate::runtime_api::{
 };
 use crate::utils::extract_xdm_proof_state_roots_with_client;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi, Moment};
-use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, BlockT, ProvideRuntimeApi};
 use sp_domains::SignedOpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
@@ -79,7 +79,11 @@ where
         moment: Moment,
     ) -> Result<Option<Block::Extrinsic>, ApiError> {
         let api = self.client.runtime_api();
-        api.construct_inherent_timestamp_extrinsic(at, moment)
+        if api.has_api::<dyn InherentExtrinsicApi<Block>>(at)? {
+            api.construct_inherent_timestamp_extrinsic(at, moment)
+        } else {
+            Ok(None)
+        }
     }
 }
 
