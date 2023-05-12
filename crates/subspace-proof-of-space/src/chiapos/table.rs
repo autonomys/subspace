@@ -380,27 +380,29 @@ where
     (y_output, metadata)
 }
 
-fn match_and_extend_table<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
-    last_table: &Table<K, PARENT_TABLE_NUMBER>,
+fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
+    last_table: &'a Table<K, PARENT_TABLE_NUMBER>,
     left_bucket: &'a Bucket<K>,
     right_bucket: &'a Bucket<K>,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<usize>>],
-    table_output: &'a mut Vec<(Y<K>, Metadata<K, TABLE_NUMBER>, [Position<K>; 2])>,
-) where
+) -> impl Iterator<Item = (Y<K>, Metadata<K, TABLE_NUMBER>, [Position<K>; 2])> + 'a
+where
     EvaluatableUsize<{ x_size_bytes(K) }>: Sized,
     EvaluatableUsize<{ y_size_bytes(K) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ fn_hashing_input_bytes(K) }>: Sized,
 {
-    if let Some(matches) = find_matches::<K>(
+    let maybe_matches = find_matches::<K>(
         &left_bucket.ys,
         &right_bucket.ys,
         rmap_scratch,
         left_targets,
-    ) {
-        table_output.extend(matches.map(|m| {
+    );
+
+    maybe_matches.into_iter().flat_map(|matches| {
+        matches.map(|m| {
             let left_position = left_bucket.start_position + m.left_index;
             let right_position = right_bucket.start_position + m.right_index;
             let left_metadata = last_table
@@ -423,8 +425,8 @@ fn match_and_extend_table<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_
                     Position::from(right_position),
                 ],
             )
-        }));
-    }
+        })
+    })
 }
 
 #[derive(Debug)]
@@ -589,14 +591,13 @@ where
                 continue;
             }
 
-            match_and_extend_table(
+            t_n.extend(match_and_compute_fn(
                 last_table,
                 left_bucket,
                 right_bucket,
                 rmap_scratch,
                 left_targets,
-                &mut t_n,
-            );
+            ));
 
             if bucket_index == right_bucket.bucket_index + 1 {
                 // Move right bucket into left bucket while reusing existing allocations
@@ -619,14 +620,13 @@ where
             }
         }
         // Iteration stopped, but we did not process contents of the last pair of buckets yet
-        match_and_extend_table(
+        t_n.extend(match_and_compute_fn(
             last_table,
             left_bucket,
             right_bucket,
             rmap_scratch,
             left_targets,
-            &mut t_n,
-        );
+        ));
 
         t_n.sort_unstable_by_key(|(y, ..)| *y);
 
