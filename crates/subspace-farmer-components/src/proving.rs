@@ -1,11 +1,8 @@
 use crate::auditing::ChunkCandidate;
-use crate::reading::{
-    read_record_metadata, read_sector_record_chunks, recover_extended_record_chunks, ReadingError,
-};
+use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingError};
 use crate::sector::{SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadata};
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
@@ -226,43 +223,14 @@ where
                     .expect("Within s-bucket range; qed")
                     .expect("Winning chunk was plotted; qed");
 
-                let extended_chunks = recover_extended_record_chunks(
-                    &sector_record_chunks,
-                    piece_offset,
-                    self.erasure_coding,
-                )?;
-
-                // A bit complicated way to avoid re-allocation in performance-sensitive place
-                let source_chunks = {
-                    let mut extended_chunks = ManuallyDrop::new(extended_chunks);
-
-                    // SAFETY: Original memory is not dropped, size of the data is statically known
-                    let mut extended_chunks = unsafe {
-                        Vec::from_raw_parts(
-                            extended_chunks.as_mut_ptr(),
-                            extended_chunks.len(),
-                            extended_chunks.len(),
-                        )
-                    };
-
-                    // Move source chunks into the first half of the vector
-                    for i in 0..Record::NUM_CHUNKS {
-                        extended_chunks[i] =
-                            extended_chunks[i * Record::NUM_S_BUCKETS / Record::NUM_CHUNKS];
-                    }
-
-                    // Shrink vector to just the source chunks without re-allocating
-                    extended_chunks.truncate(Record::NUM_CHUNKS);
-
-                    extended_chunks
-                };
-
-                let source_chunks_polynomial = self.kzg.poly(&source_chunks).map_err(|error| {
-                    ProvingError::FailedToCreatePolynomialForRecord {
+                let source_chunks_polynomial = self
+                    .erasure_coding
+                    .recover_poly(sector_record_chunks.as_slice())
+                    .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
                         piece_offset,
                         error,
-                    }
-                })?;
+                    })?;
+                drop(sector_record_chunks);
 
                 let (record_commitment, record_witness) = read_record_metadata(
                     piece_offset,
