@@ -199,10 +199,8 @@ where
                 }
             }
 
-            // TODO: Can potentially happen in parallel with other work below, saving a bit of
-            //  end-to-end latency
             // Derive PoSpace table
-            let pos_table = PosTable::generate(
+            let pos_table = PosTable::generate_parallel(
                 &self
                     .sector_id
                     .evaluation_seed(piece_offset, self.sector_metadata.history_size),

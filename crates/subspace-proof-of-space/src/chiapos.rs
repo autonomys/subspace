@@ -37,11 +37,22 @@ macro_rules! impl_any {
     ($($k: expr$(,)? )*) => {
         $(
 impl Tables<$k> {
-    /// Create Chia proof of space tables.
+    /// Create Chia proof of space tables. There also exists [`Self::create_parallel()`] that trades
+    /// CPU efficiency and memory usage for lower latency.
     ///
     /// Advanced version of [`Self::create_simple`] that allows to reuse cache.
     pub fn create(seed: Seed, cache: &mut TablesCache<$k>) -> Self {
         Self(TablesGeneric::<$k>::create(
+            seed, cache,
+        ))
+    }
+
+    /// Almost the same as [`Self::create()`], but uses parallelism internally for better
+    /// performance (though not efficiency of CPU and memory usage), if you create multiple tables
+    /// in parallel, prefer [`Self::create()`] for better overall performance.
+    #[cfg(any(feature = "parallel", test))]
+    pub fn create_parallel(seed: Seed, cache: &mut TablesCache<$k>) -> Self {
+        Self(TablesGeneric::<$k>::create_parallel(
             seed, cache,
         ))
     }

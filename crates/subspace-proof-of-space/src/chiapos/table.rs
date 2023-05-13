@@ -8,10 +8,13 @@ use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT, PARAM_M};
 use crate::chiapos::table::types::{CopyBitsDestination, Metadata, Position, X, Y};
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::Seed;
+use alloc::vec;
 use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
 use core::mem;
+#[cfg(any(feature = "parallel", test))]
+use rayon::prelude::*;
 
 /// Compute the size of `x` in bytes
 pub const fn x_size_bytes(k: u8) -> usize {
@@ -178,7 +181,7 @@ where
     right_index: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Bucket<const K: u8>
 where
     EvaluatableUsize<{ y_size_bytes(K) }>: Sized,
@@ -380,27 +383,29 @@ where
     (y_output, metadata)
 }
 
-fn match_and_extend_table<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
-    last_table: &Table<K, PARENT_TABLE_NUMBER>,
+fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
+    last_table: &'a Table<K, PARENT_TABLE_NUMBER>,
     left_bucket: &'a Bucket<K>,
     right_bucket: &'a Bucket<K>,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<usize>>],
-    table_output: &'a mut Vec<(Y<K>, Metadata<K, TABLE_NUMBER>, [Position<K>; 2])>,
-) where
+) -> impl Iterator<Item = (Y<K>, Metadata<K, TABLE_NUMBER>, [Position<K>; 2])> + 'a
+where
     EvaluatableUsize<{ x_size_bytes(K) }>: Sized,
     EvaluatableUsize<{ y_size_bytes(K) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ fn_hashing_input_bytes(K) }>: Sized,
 {
-    if let Some(matches) = find_matches::<K>(
+    let maybe_matches = find_matches::<K>(
         &left_bucket.ys,
         &right_bucket.ys,
         rmap_scratch,
         left_targets,
-    ) {
-        table_output.extend(matches.map(|m| {
+    );
+
+    maybe_matches.into_iter().flat_map(|matches| {
+        matches.map(|m| {
             let left_position = left_bucket.start_position + m.left_index;
             let right_position = right_bucket.start_position + m.right_index;
             let left_metadata = last_table
@@ -423,8 +428,8 @@ fn match_and_extend_table<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_
                     Position::from(right_position),
                 ],
             )
-        }));
-    }
+        })
+    })
 }
 
 #[derive(Debug)]
@@ -472,7 +477,29 @@ where
             })
             .collect::<Vec<_>>();
 
-        t_1.sort_unstable_by_key(|(y, ..)| *y);
+        t_1.sort_unstable();
+
+        let (ys, xs) = t_1.into_iter().unzip();
+
+        Self::First { ys, xs }
+    }
+
+    /// Create the table, leverages available parallelism
+    #[cfg(any(feature = "parallel", test))]
+    pub(super) fn create_parallel(seed: Seed) -> Self {
+        let partial_ys = partial_ys::<K>(seed);
+
+        let mut t_1 = (0..1 << K)
+            .map(|x| {
+                let partial_y_offset = x * usize::from(K);
+                let x = X::from(x);
+                let y = compute_f1::<K>(x, &partial_ys, partial_y_offset);
+
+                (y, x)
+            })
+            .collect::<Vec<_>>();
+
+        t_1.par_sort_unstable();
 
         let (ys, xs) = t_1.into_iter().unzip();
 
@@ -550,6 +577,8 @@ where
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ fn_hashing_input_bytes(K) }>: Sized,
 {
+    /// Creates new [`TABLE_NUMBER`] table. There also exists [`Self::create_parallel()`] that
+    /// trades CPU efficiency and memory usage for lower latency.
     pub(super) fn create<const PARENT_TABLE_NUMBER: u8>(
         last_table: &Table<K, PARENT_TABLE_NUMBER>,
         cache: &mut TablesCache<K>,
@@ -572,9 +601,6 @@ where
 
         let num_values = 1 << K;
         let mut t_n = Vec::with_capacity(num_values);
-        // TODO: Parallelize something here?
-        // TODO: [unstable] `group_by` can be used here:
-        //  https://doc.rust-lang.org/std/primitive.slice.html#method.group_by
         for (position, &y) in last_table.ys().iter().enumerate() {
             let bucket_index = usize::from(&y) / usize::from(PARAM_BC);
 
@@ -589,14 +615,13 @@ where
                 continue;
             }
 
-            match_and_extend_table(
+            t_n.extend(match_and_compute_fn(
                 last_table,
                 left_bucket,
                 right_bucket,
                 rmap_scratch,
                 left_targets,
-                &mut t_n,
-            );
+            ));
 
             if bucket_index == right_bucket.bucket_index + 1 {
                 // Move right bucket into left bucket while reusing existing allocations
@@ -619,16 +644,15 @@ where
             }
         }
         // Iteration stopped, but we did not process contents of the last pair of buckets yet
-        match_and_extend_table(
+        t_n.extend(match_and_compute_fn(
             last_table,
             left_bucket,
             right_bucket,
             rmap_scratch,
             left_targets,
-            &mut t_n,
-        );
+        ));
 
-        t_n.sort_unstable_by_key(|(y, ..)| *y);
+        t_n.sort_unstable();
 
         let mut ys = Vec::with_capacity(num_values);
         let mut positions = Vec::with_capacity(num_values);
@@ -637,7 +661,113 @@ where
         for (y, metadata, [left_position, right_position]) in t_n {
             ys.push(y);
             positions.push([left_position, right_position]);
-            if TABLE_NUMBER != 7 {
+            // Last table doesn't have metadata
+            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
+                metadatas.push(metadata);
+            }
+        }
+
+        Self::Other {
+            ys,
+            positions,
+            metadatas,
+        }
+    }
+
+    /// Almost the same as [`Self::create()`], but uses parallelism internally for better
+    /// performance (though not efficiency of CPU and memory usage), if you create multiple tables
+    /// in parallel, prefer [`Self::create()`] for better overall performance.
+    #[cfg(any(feature = "parallel", test))]
+    pub(super) fn create_parallel<const PARENT_TABLE_NUMBER: u8>(
+        last_table: &Table<K, PARENT_TABLE_NUMBER>,
+        cache: &mut TablesCache<K>,
+    ) -> Self
+    where
+        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    {
+        let left_bucket = &mut cache.left_bucket;
+        let right_bucket = &mut cache.right_bucket;
+        let left_targets = &cache.left_targets;
+
+        // Clear input variables just in case
+        left_bucket.bucket_index = 0;
+        left_bucket.ys.clear();
+        left_bucket.start_position = 0;
+        right_bucket.bucket_index = 1;
+        right_bucket.ys.clear();
+        right_bucket.start_position = 0;
+
+        // Experimentally found that this value seems reasonable
+        let mut buckets = Vec::with_capacity(usize::from(PARAM_BC) / (1 << PARAM_EXT) * 3);
+        for (position, &y) in last_table.ys().iter().enumerate() {
+            let bucket_index = usize::from(&y) / usize::from(PARAM_BC);
+
+            if bucket_index == left_bucket.bucket_index {
+                left_bucket.ys.push(y);
+                continue;
+            } else if bucket_index == right_bucket.bucket_index {
+                if right_bucket.ys.is_empty() {
+                    right_bucket.start_position = position;
+                }
+                right_bucket.ys.push(y);
+                continue;
+            }
+
+            buckets.push(left_bucket.clone());
+
+            if bucket_index == right_bucket.bucket_index + 1 {
+                // Move right bucket into left bucket while reusing existing allocations
+                mem::swap(left_bucket, right_bucket);
+                right_bucket.bucket_index = bucket_index;
+                right_bucket.ys.clear();
+                right_bucket.start_position = position;
+
+                right_bucket.ys.push(y);
+            } else {
+                // We have skipped some buckets, clean up both left and right buckets
+                left_bucket.bucket_index = bucket_index;
+                left_bucket.ys.clear();
+                left_bucket.start_position = position;
+
+                left_bucket.ys.push(y);
+
+                right_bucket.bucket_index = bucket_index + 1;
+                right_bucket.ys.clear();
+            }
+        }
+        // Iteration stopped, but we did not store the last two buckets yet
+        buckets.push(left_bucket.clone());
+        buckets.push(right_bucket.clone());
+
+        let num_values = 1 << K;
+        let mut t_n = Vec::with_capacity(num_values);
+        t_n.par_extend(buckets.par_windows(2).flat_map_iter(|buckets| {
+            match_and_compute_fn(
+                last_table,
+                &buckets[0],
+                &buckets[1],
+                &mut Vec::new(),
+                left_targets,
+            )
+            .collect::<Vec<_>>()
+        }));
+
+        // Drop in thread pool to return faster from here
+        rayon::spawn(move || {
+            drop(buckets);
+        });
+
+        t_n.par_sort_unstable();
+
+        let mut ys = Vec::with_capacity(num_values);
+        let mut positions = Vec::with_capacity(num_values);
+        let mut metadatas = Vec::with_capacity(num_values);
+
+        for (y, metadata, [left_position, right_position]) in t_n {
+            ys.push(y);
+            positions.push([left_position, right_position]);
+            // Last table doesn't have metadata
+            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
                 metadatas.push(metadata);
             }
         }
