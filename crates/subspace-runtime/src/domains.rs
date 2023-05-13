@@ -1,9 +1,6 @@
-use crate::{
-    Block, BlockNumber, Hash, Receipts, RuntimeCall, RuntimeEvent, System, UncheckedExtrinsic,
-};
+use crate::{Block, BlockNumber, Domains, Hash, Receipts, RuntimeCall, UncheckedExtrinsic};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt};
@@ -18,21 +15,20 @@ pub(crate) fn extract_system_bundles(
     sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
     sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
 ) {
+    let successful_bundles = Domains::successful_bundles();
     let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) = uxt.function
-            {
+            }) if successful_bundles.contains(&signed_opaque_bundle.hash()) => {
                 if signed_opaque_bundle.domain_id().is_system() {
                     Some((Some(signed_opaque_bundle.bundle), None))
                 } else {
                     Some((None, Some(signed_opaque_bundle)))
                 }
-            } else {
-                None
             }
+            _ => None,
         })
         .unzip();
     (
@@ -45,12 +41,15 @@ pub(crate) fn extract_core_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+    let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id => {
+            }) if signed_opaque_bundle.domain_id() == domain_id
+                && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+            {
                 Some(signed_opaque_bundle.bundle)
             }
             _ => None,
@@ -58,27 +57,19 @@ pub(crate) fn extract_core_bundles(
         .collect()
 }
 
-pub(crate) fn extract_stored_bundle_hashes() -> Vec<H256> {
-    System::read_events_no_consensus()
-        .filter_map(|e| match e.event {
-            RuntimeEvent::Domains(pallet_domains::Event::BundleStored { bundle_hash, .. }) => {
-                Some(bundle_hash)
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-}
-
 pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
+    let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id => {
+            }) if signed_opaque_bundle.domain_id() == domain_id
+                && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+            {
                 Some(signed_opaque_bundle.bundle.receipts)
             }
             _ => None,

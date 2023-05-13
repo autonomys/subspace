@@ -34,6 +34,7 @@ use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, ProofOfElection, Si
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
+use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
@@ -47,6 +48,7 @@ mod pallet {
     use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
     use sp_runtime::traits::{One, Zero};
     use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_receipts::Config {
@@ -59,6 +61,10 @@ mod pallet {
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
+
+    /// Bundles submitted successfully in current block.
+    #[pallet::storage]
+    pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -165,9 +171,13 @@ mod pallet {
                 .map_err(Error::<T>::from)?;
             }
 
+            let bundle_hash = signed_opaque_bundle.hash();
+
+            SuccessfulBundles::<T>::append(bundle_hash);
+
             Self::deposit_event(Event::BundleStored {
                 domain_id,
-                bundle_hash: signed_opaque_bundle.hash(),
+                bundle_hash,
                 bundle_author: signed_opaque_bundle.into_executor_public_key(),
             });
 
@@ -215,7 +225,9 @@ mod pallet {
                 );
             }
 
-            T::DbWeight::get().writes(1)
+            SuccessfulBundles::<T>::kill();
+
+            T::DbWeight::get().writes(2)
         }
     }
 
@@ -290,6 +302,10 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn successful_bundles() -> Vec<H256> {
+        SuccessfulBundles::<T>::get()
+    }
+
     /// Returns the block number of the latest receipt.
     pub fn head_receipt_number() -> T::BlockNumber {
         pallet_receipts::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
