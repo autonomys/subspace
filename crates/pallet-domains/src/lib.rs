@@ -26,7 +26,7 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
-use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
+use sp_domains::bundle_election::verify_system_bundle_solution;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::Witness;
 use sp_domains::transaction::InvalidTransactionCode;
@@ -539,13 +539,9 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        verify_vrf_proof(
-            &proof_of_election.executor_public_key,
-            &proof_of_election.vrf_output,
-            &proof_of_election.vrf_proof,
-            &proof_of_election.global_challenge,
-        )
-        .map_err(|_| BundleError::BadVrfProof)?;
+        proof_of_election
+            .verify_vrf_proof()
+            .map_err(|_| BundleError::BadVrfProof)?;
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 
