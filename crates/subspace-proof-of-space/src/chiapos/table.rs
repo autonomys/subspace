@@ -661,7 +661,8 @@ where
         for (y, metadata, [left_position, right_position]) in t_n {
             ys.push(y);
             positions.push([left_position, right_position]);
-            if TABLE_NUMBER != 7 {
+            // Last table doesn't have metadata
+            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
                 metadatas.push(metadata);
             }
         }
@@ -765,7 +766,8 @@ where
         for (y, metadata, [left_position, right_position]) in t_n {
             ys.push(y);
             positions.push([left_position, right_position]);
-            if TABLE_NUMBER != 7 {
+            // Last table doesn't have metadata
+            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
                 metadatas.push(metadata);
             }
         }
