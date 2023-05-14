@@ -11235,7 +11235,7 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-transaction-pool-api",
- "sp-runtime",
+ "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "thiserror",
  "tracing",
 ]

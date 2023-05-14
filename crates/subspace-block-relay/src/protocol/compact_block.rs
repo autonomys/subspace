@@ -206,9 +206,9 @@ impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    DownloadUnitId: Send + Sync + Encode + Decode + Send + Clone + std::fmt::Debug,
-    ProtocolUnitId: Send + Sync + Encode + Decode + Send + Clone,
-    ProtocolUnit: Send + Sync + Encode + Decode + Send + Clone,
+    DownloadUnitId: Send + Sync + Encode + Decode + Clone + std::fmt::Debug,
+    ProtocolUnitId: Send + Sync + Encode + Decode + Clone,
+    ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
     type ProtocolReq = CompactBlockReq<DownloadUnitId, ProtocolUnitId>;
     type ProtocolRsp = CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit>;

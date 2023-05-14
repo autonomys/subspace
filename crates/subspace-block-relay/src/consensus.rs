@@ -115,7 +115,7 @@ impl<
         &self,
         who: PeerId,
         request: BlockRequest<Block>,
-    ) -> Result<DownloadResult<BlockHash<Block>>, RelayError> {
+    ) -> Result<DownloadResult<BlockHash<Block>, BlockData<Block>>, RelayError> {
         let start_ts = Instant::now();
         let network = match self.network.get() {
             Some(network) => network,
@@ -170,7 +170,7 @@ impl<
 
         Ok(DownloadResult {
             download_unit_id: initial_response.block_hash,
-            download_unit: block_data.encode(),
+            downloaded: block_data,
             latency: start_ts.elapsed(),
             local_miss,
         })
@@ -228,15 +228,16 @@ impl<
         let ret = self.download(who, request).await;
         match ret {
             Ok(result) => {
+                let downloaded = result.downloaded.encode();
                 trace!(
                     target: LOG_TARGET,
                     "relay::download_block: {:?} => {},{},{:?}",
                     result.download_unit_id,
-                    result.download_unit.len(),
+                    downloaded.len(),
                     result.local_miss,
                     result.latency
                 );
-                Ok(Ok(result.download_unit))
+                Ok(Ok(downloaded))
             }
             Err(err) => {
                 warn!(

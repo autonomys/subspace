@@ -60,12 +60,12 @@ pub(crate) const LOG_TARGET: &str = "block_relay";
 pub(crate) type EncoderFn<T> = Box<dyn Fn(T) -> Vec<u8> + Send>;
 
 /// The downloaded entry and meta info
-pub(crate) struct DownloadResult<DownloadUnitId> {
+pub(crate) struct DownloadResult<DownloadUnitId, DownloadUnit: Encode> {
     /// Downloaded unit Id
     download_unit_id: DownloadUnitId,
 
     /// Downloaded entry
-    download_unit: Vec<u8>,
+    downloaded: DownloadUnit,
 
     /// Total transactions (in bytes) that could not be resolved
     /// locally, and had to be fetched from the server
