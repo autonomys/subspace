@@ -396,6 +396,17 @@ where
 
         // TODO: The applied txs can be fully removed from the transaction pool
 
+        self.check_invalid_state_transition::<PCB>(primary_hash, oldest_receipt_number)
+    }
+
+    fn check_invalid_state_transition<PCB>(
+        &self,
+        primary_hash: PBlock::Hash,
+        oldest_receipt_number: NumberFor<Block>,
+    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
+    where
+        PCB: BlockT,
+    {
         self.check_receipts_in_primary_block(primary_hash)?;
 
         if self.primary_network_sync_oracle.is_major_syncing() {
