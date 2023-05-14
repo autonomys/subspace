@@ -447,7 +447,28 @@ where
     where
         PCB: BlockT,
     {
-        self.check_receipts_in_primary_block(primary_hash)?;
+        let extrinsics = self
+            .primary_chain_client
+            .block_body(primary_hash)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Primary block body for {primary_hash:?} not found",
+                ))
+            })?;
+
+        // TODO: core domain's receipts/fraud proof should be fetched from system domain.
+        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
+            primary_hash,
+            extrinsics.clone(),
+            self.domain_id,
+        )?;
+
+        let fraud_proofs = self
+            .primary_chain_client
+            .runtime_api()
+            .extract_fraud_proofs(primary_hash, extrinsics, self.domain_id)?;
+
+        self.check_receipts(receipts, fraud_proofs)?;
 
         if self.primary_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
@@ -462,25 +483,11 @@ where
         self.create_fraud_proof_for_first_unconfirmed_bad_receipt::<PCB>()
     }
 
-    fn check_receipts_in_primary_block(
+    fn check_receipts(
         &self,
-        primary_hash: PBlock::Hash,
+        receipts: Vec<ExecutionReceiptFor<PBlock, Block::Hash>>,
+        fraud_proofs: Vec<FraudProof<NumberFor<PBlock>, PBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
-        let extrinsics = self
-            .primary_chain_client
-            .block_body(primary_hash)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Primary block body for {primary_hash:?} not found",
-                ))
-            })?;
-
-        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
-            primary_hash,
-            extrinsics.clone(),
-            self.domain_id,
-        )?;
-
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
@@ -507,11 +514,6 @@ where
                 ));
             }
         }
-
-        let fraud_proofs = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_fraud_proofs(primary_hash, extrinsics, self.domain_id)?;
 
         let bad_receipts_to_delete = fraud_proofs
             .into_iter()
