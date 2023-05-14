@@ -37,10 +37,8 @@ where
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
     pub(crate) primary_chain_client: Arc<PClient>,
-    pub(crate) primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub(crate) backend: Arc<Backend>,
-    pub(crate) fraud_proof_generator:
-        FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+    pub(crate) receipts_checker: ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
     pub(crate) block_import: Arc<BI>,
 }
@@ -55,9 +53,8 @@ where
             domain_id: self.domain_id,
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
-            primary_network_sync_oracle: self.primary_network_sync_oracle.clone(),
             backend: self.backend.clone(),
-            fraud_proof_generator: self.fraud_proof_generator.clone(),
+            receipts_checker: self.receipts_checker.clone(),
             domain_confirmation_depth: self.domain_confirmation_depth,
             block_import: self.block_import.clone(),
         }
@@ -396,9 +393,52 @@ where
 
         // TODO: The applied txs can be fully removed from the transaction pool
 
-        self.check_invalid_state_transition::<PCB>(primary_hash, oldest_receipt_number)
+        self.receipts_checker
+            .check_invalid_state_transition::<PCB>(primary_hash, oldest_receipt_number)
     }
+}
 
+pub(crate) struct ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E> {
+    pub(crate) domain_id: DomainId,
+    pub(crate) client: Arc<Client>,
+    pub(crate) primary_chain_client: Arc<PClient>,
+    pub(crate) primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub(crate) fraud_proof_generator:
+        FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+}
+
+impl<Block, PBlock, Client, PClient, Backend, E> Clone
+    for ReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>
+where
+    Block: BlockT,
+{
+    fn clone(&self) -> Self {
+        Self {
+            domain_id: self.domain_id,
+            client: self.client.clone(),
+            primary_chain_client: self.primary_chain_client.clone(),
+            primary_network_sync_oracle: self.primary_network_sync_oracle.clone(),
+            fraud_proof_generator: self.fraud_proof_generator.clone(),
+        }
+    }
+}
+
+impl<Block, Client, PBlock, PClient, Backend, E>
+    ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+    Client:
+        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainCoreApi<Block>
+        + sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    Backend: sc_client_api::Backend<Block> + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    E: CodeExecutor,
+{
     fn check_invalid_state_transition<PCB>(
         &self,
         primary_hash: PBlock::Hash,

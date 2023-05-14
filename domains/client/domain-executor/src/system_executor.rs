@@ -1,4 +1,4 @@
-use crate::domain_block_processor::DomainBlockProcessor;
+use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
@@ -151,9 +151,14 @@ where
             domain_id: DomainId::SYSTEM,
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
-            primary_network_sync_oracle: params.primary_network_sync_oracle,
             backend: params.backend.clone(),
-            fraud_proof_generator: fraud_proof_generator.clone(),
+            receipts_checker: ReceiptsChecker {
+                domain_id: DomainId::SYSTEM,
+                client: params.client.clone(),
+                primary_chain_client: params.primary_chain_client.clone(),
+                primary_network_sync_oracle: params.primary_network_sync_oracle,
+                fraud_proof_generator: fraud_proof_generator.clone(),
+            },
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
         };
