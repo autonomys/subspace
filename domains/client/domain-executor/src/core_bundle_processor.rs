@@ -227,29 +227,18 @@ where
         // "Consensus chain number must larger than execution chain number by at least 1"
         // );
 
-        let oldest_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .oldest_receipt_number(system_domain_hash, self.domain_id)?;
-        let oldest_receipt_number =
-            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(oldest_receipt_number);
-
         let built_block_info = (
             domain_block_result.header_hash,
             domain_block_result.header_number,
         );
 
-        if let Some(fraud_proof) = self
-            .domain_block_processor
-            .on_domain_block_processed::<SBlock>(
-                primary_hash,
-                domain_block_result,
-                head_receipt_number,
-                oldest_receipt_number,
-            )?
-        {
-            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-        }
+        self.domain_block_processor.on_domain_block_processed(
+            primary_hash,
+            domain_block_result,
+            head_receipt_number,
+        )?;
+
+        // TODO: check core domain invalid state transition in another separate task.
 
         Ok(built_block_info)
     }

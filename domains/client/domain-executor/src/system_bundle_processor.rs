@@ -218,14 +218,18 @@ where
             domain_block_result.header_number,
         );
 
+        self.domain_block_processor.on_domain_block_processed(
+            primary_hash,
+            domain_block_result,
+            head_receipt_number,
+        )?;
+
+        // TODO: The applied txs can be fully removed from the transaction pool
+
         if let Some(fraud_proof) = self
             .domain_block_processor
-            .on_domain_block_processed::<PBlock>(
-                primary_hash,
-                domain_block_result,
-                head_receipt_number,
-                oldest_receipt_number,
-            )?
+            .receipts_checker
+            .check_invalid_state_transition::<PBlock>(primary_hash, oldest_receipt_number)?
         {
             self.primary_chain_client
                 .runtime_api()

@@ -365,16 +365,12 @@ where
 
     // TODO: remove once fraud-proof is enabled again.
     #[allow(unreachable_code, unused_variables)]
-    pub(crate) fn on_domain_block_processed<PCB>(
+    pub(crate) fn on_domain_block_processed(
         &self,
         primary_hash: PBlock::Hash,
         domain_block_result: DomainBlockResult<Block, PBlock>,
         head_receipt_number: NumberFor<Block>,
-        oldest_receipt_number: NumberFor<Block>,
-    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
-    where
-        PCB: BlockT,
-    {
+    ) -> sp_blockchain::Result<()> {
         let DomainBlockResult {
             header_hash,
             header_number,
@@ -403,15 +399,7 @@ where
                 .is_ok()
         });
 
-        // Disable the fraud proof except for the system domain.
-        if !self.domain_id.is_system() {
-            return Ok(None);
-        }
-
-        // TODO: The applied txs can be fully removed from the transaction pool
-
-        self.receipts_checker
-            .check_invalid_state_transition::<PCB>(primary_hash, oldest_receipt_number)
+        Ok(())
     }
 }
 
@@ -456,7 +444,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
-    fn check_invalid_state_transition<PCB>(
+    pub(crate) fn check_invalid_state_transition<PCB>(
         &self,
         primary_hash: PBlock::Hash,
         oldest_receipt_number: NumberFor<Block>,
