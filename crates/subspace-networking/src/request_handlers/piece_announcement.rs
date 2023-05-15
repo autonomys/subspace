@@ -12,7 +12,7 @@ use tracing::debug;
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub struct PieceAnnouncementRequest {
     /// Request key - piece index multihash
-    pub piece_key: Vec<u8>,
+    pub piece_index_hash: Vec<u8>,
 
     /// External addresses of the peer
     pub addresses: Vec<Vec<u8>>,
@@ -44,7 +44,9 @@ impl GenericRequest for PieceAnnouncementRequest {
 
 /// Piece announcement protocol response.
 #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
-pub struct PieceAnnouncementResponse; // just an acknowledgement
+pub enum PieceAnnouncementResponse {
+    Success, // just an acknowledgement
+}
 
 //TODO: remove attribute on the first usage
 #[allow(dead_code)]

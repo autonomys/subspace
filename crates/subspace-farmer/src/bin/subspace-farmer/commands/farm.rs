@@ -1,6 +1,8 @@
 mod dsn;
 
-use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
+use crate::commands::farm::dsn::{
+    configure_dsn, start_announcements_processor, ProviderRecordAnnouncer,
+};
 use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
@@ -83,6 +85,8 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    let provider_record_announcer = ProviderRecordAnnouncer::default();
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -106,6 +110,7 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
+            provider_record_announcer.clone(),
         )?
     };
 
@@ -115,6 +120,7 @@ where
         node.clone(),
         Arc::clone(&piece_cache),
         Arc::downgrade(&readers_and_pieces),
+        provider_record_announcer,
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());

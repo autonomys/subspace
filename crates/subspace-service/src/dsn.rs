@@ -154,7 +154,7 @@ where
                     let req = req.clone();
 
                     async move {
-                        let key = match req.piece_key.clone().try_into() {
+                        let key = match req.piece_index_hash.clone().try_into() {
                             Ok(key) => key,
 
                             Err(error) => {
@@ -187,7 +187,7 @@ where
                             return None;
                         }
 
-                        Some(PieceAnnouncementResponse)
+                        Some(PieceAnnouncementResponse::Success)
                     }
                 }
             }),

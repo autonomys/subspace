@@ -143,14 +143,14 @@ async fn announce_key(
             .send_generic_request(
                 peer_id,
                 PieceAnnouncementRequest {
-                    piece_key: key.to_bytes(),
+                    piece_index_hash: key.to_bytes(),
                     addresses: external_addresses.clone(),
                 },
             )
             .await;
 
         match request_result {
-            Ok(PieceAnnouncementResponse) => {
+            Ok(PieceAnnouncementResponse::Success) => {
                 trace!(
                     %peer_id,
                     ?key,

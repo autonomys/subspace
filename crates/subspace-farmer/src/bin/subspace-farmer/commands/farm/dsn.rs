@@ -1,9 +1,9 @@
 use crate::DsnArgs;
 use anyhow::Context;
-use event_listener_primitives::HandlerId;
+use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
 use futures::StreamExt;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -40,7 +40,10 @@ const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
-#[allow(clippy::type_complexity)]
+type ProviderRecordHandlerFn = Arc<dyn Fn(&ProviderRecord) + Send + Sync + 'static>;
+type ProviderRecordHandler = Bag<ProviderRecordHandlerFn, ProviderRecord>;
+
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
     protocol_prefix: String,
     base_path: PathBuf,
@@ -61,6 +64,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
+    provider_record_announcer: ProviderRecordAnnouncer,
 ) -> Result<
     (
         Node,
@@ -160,8 +164,6 @@ pub(super) fn configure_dsn(
         }
     });
 
-    let provider_record_announcer: Arc<RwLock<Option<NodeProviderRecordAnnouncer>>> =
-        Arc::new(RwLock::new(None));
     let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage.clone());
     let config = Config {
         reserved_peers,
@@ -170,8 +172,6 @@ pub(super) fn configure_dsn(
         networking_parameters_registry,
         request_response_protocols: vec![
             PieceAnnouncementRequestHandler::create({
-                let provider_record_announcer = provider_record_announcer.clone();
-
                 move |peer_id, req| {
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
@@ -180,7 +180,7 @@ pub(super) fn configure_dsn(
                     let req = req.clone();
 
                     async move {
-                        let key = match req.piece_key.clone().try_into() {
+                        let key = match req.piece_index_hash.clone().try_into() {
                             Ok(key) => key,
 
                             Err(error) => {
@@ -213,13 +213,9 @@ pub(super) fn configure_dsn(
                             return None;
                         }
 
-                        if let Some(provider_record_announcer) =
-                            provider_record_announcer.read().as_ref()
-                        {
-                            provider_record_announcer.announce(&provider_record);
-                        }
+                        provider_record_announcer.announce(&provider_record);
 
-                        Some(PieceAnnouncementResponse)
+                        Some(PieceAnnouncementResponse::Success)
                     }
                 }
             }),
@@ -353,7 +349,6 @@ pub(super) fn configure_dsn(
 
     create(config)
         .map(|(node, node_runner)| {
-            let provider_record_announcer = provider_record_announcer.clone();
             node.on_new_listener(Arc::new({
                 let node = node.clone();
 
@@ -366,10 +361,6 @@ pub(super) fn configure_dsn(
             }))
             .detach();
 
-            provider_record_announcer
-                .write()
-                .replace(NodeProviderRecordAnnouncer::new(node.clone()));
-
             (node, node_runner, piece_cache)
         })
         .map_err(Into::into)
@@ -381,11 +372,12 @@ pub(crate) fn start_announcements_processor(
     node: Node,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
+    provider_record_announcer: ProviderRecordAnnouncer,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
         mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
 
-    let handler_id = node.on_announcement(Arc::new({
+    let handler_id = provider_record_announcer.on_announcement(Arc::new({
         let provider_records_sender = Mutex::new(provider_records_sender);
 
         move |record| {
@@ -439,18 +431,20 @@ pub(crate) fn start_announcements_processor(
     Ok(handler_id)
 }
 
-// TODO: Remove provider record announcement from Node
 /// Provider record announcement helper.
-struct NodeProviderRecordAnnouncer {
-    node: Node,
+#[derive(Default, Clone)]
+pub(crate) struct ProviderRecordAnnouncer {
+    pub(crate) announcement: Arc<ProviderRecordHandler>,
 }
 
-impl NodeProviderRecordAnnouncer {
-    fn new(node: Node) -> Self {
-        Self { node }
+impl ProviderRecordAnnouncer {
+    /// Callback is called when we process a new provider record.
+    pub fn on_announcement(&self, callback: ProviderRecordHandlerFn) -> HandlerId {
+        self.announcement.add(callback)
     }
 
-    pub(crate) fn announce(&self, provider_record: &ProviderRecord) {
-        self.node.announce(provider_record);
+    /// Announce provider record.
+    pub fn announce(&self, provider_record: &ProviderRecord) {
+        self.announcement.call_simple(provider_record);
     }
 }
