@@ -5,7 +5,7 @@ use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkRequest, OutboundFailure, PeerId, RequestFailure};
+use sc_network::{NetworkRequest, PeerId, RequestFailure};
 use std::sync::Arc;
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
@@ -29,25 +29,28 @@ impl NetworkWrapper {
         *self.network.lock() = Some(network);
     }
 
-    pub fn get(&self) -> Option<NetworkRequestService> {
-        self.network.lock().as_ref().cloned()
+    pub(crate) fn network_peer_handle(
+        &self,
+        protocol_name: ProtocolName,
+        who: PeerId,
+    ) -> Result<NetworkPeerHandle, RequestResponseErr> {
+        match self.network.lock().as_ref().cloned() {
+            Some(network) => Ok(NetworkPeerHandle::new(protocol_name, who, network)),
+            None => Err(RequestResponseErr::NetworkUninitialized),
+        }
     }
 }
 
-/// Helper for request response.
+/// Network handle that allows making requests to specific peer and protocol.
 #[derive(Clone)]
-pub(crate) struct RequestResponseWrapper {
+pub(crate) struct NetworkPeerHandle {
     protocol_name: ProtocolName,
     who: PeerId,
-    network: Arc<dyn NetworkRequest + Send + Sync + 'static>,
+    network: NetworkRequestService,
 }
 
-impl RequestResponseWrapper {
-    pub(crate) fn new(
-        protocol_name: ProtocolName,
-        who: PeerId,
-        network: Arc<dyn NetworkRequest + Send + Sync + 'static>,
-    ) -> Self {
+impl NetworkPeerHandle {
+    fn new(protocol_name: ProtocolName, who: PeerId, network: NetworkRequestService) -> Self {
         Self {
             protocol_name,
             who,
@@ -95,27 +98,15 @@ pub(crate) enum RequestResponseErr {
     #[error("RequestResponseErr::RequestFailure {0:?}")]
     RequestFailure(RequestFailure),
 
+    #[error("Network not initialized")]
+    NetworkUninitialized,
+
     #[error("RequestResponseErr::Canceled")]
     Canceled,
 }
 
-impl From<RequestResponseErr> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-    fn from(err: RequestResponseErr) -> Self {
-        match err {
-            RequestResponseErr::DecodeFailed { .. } => {
-                Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)))
-            }
-            RequestResponseErr::RequestFailure(err) => Ok(Err(err)),
-            RequestResponseErr::Canceled => Err(oneshot::Canceled),
-        }
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RelayError {
-    #[error("Network not initialized")]
-    NetworkUninitialized,
-
     #[error("Invalid block attributes: {0}")]
     InvalidBlockAttributes(codec::Error),
 
@@ -154,13 +145,4 @@ pub(crate) enum RelayError {
 
     #[error("Request/response error: {0}")]
     RequestResponse(#[from] RequestResponseErr),
-}
-
-impl From<RelayError> for Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-    fn from(err: RelayError) -> Self {
-        match err {
-            RelayError::RequestResponse(rr_err) => rr_err.into(),
-            _ => Ok(Err(RequestFailure::Network(OutboundFailure::Timeout))),
-        }
-    }
 }

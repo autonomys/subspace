@@ -1,7 +1,7 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::utils::{NetworkWrapper, RequestResponseWrapper};
+use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
 use crate::{
     DownloadResult, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET,
 };
@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 use sc_network::types::ProtocolName;
-use sc_network::{PeerId, RequestFailure};
+use sc_network::{OutboundFailure, PeerId, RequestFailure};
 use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest, FromBlock};
 use sc_network_sync::block_relay_protocol::{
     BlockDownloader, BlockRelayParams, BlockResponseError, BlockServer,
@@ -116,17 +116,9 @@ impl<
         request: BlockRequest<Block>,
     ) -> Result<DownloadResult<BlockHash<Block>, BlockData<Block>>, RelayError> {
         let start_ts = Instant::now();
-        let network = match self.network.get() {
-            Some(network) => network,
-            None => {
-                return Err(RelayError::NetworkUninitialized);
-            }
-        };
-        let req_rsp = Arc::new(RequestResponseWrapper::new(
-            self.protocol_name.clone(),
-            who,
-            network,
-        ));
+        let network_peer_handle = self
+            .network
+            .network_peer_handle(self.protocol_name.clone(), who)?;
 
         // Perform the initial request/response
         let initial_request = InitialRequest {
@@ -137,7 +129,7 @@ impl<
             block_attributes: request.fields.to_be_u32(),
             protocol_request: self.protocol_client.build_initial_request(),
         };
-        let initial_response = req_rsp
+        let initial_response = network_peer_handle
             .request::<_, InitialResponse<Block, ProtoClient::ProtocolRsp>>(
                 ServerMessage::InitialRequest(initial_request),
             )
@@ -147,7 +139,7 @@ impl<
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics(protocol_response, req_rsp.clone())
+                .resolve_extrinsics(protocol_response, &network_peer_handle)
                 .await?;
             (Some(body), local_miss)
         } else {
@@ -178,11 +170,11 @@ impl<
     async fn resolve_extrinsics(
         &self,
         protocol_response: ProtoClient::ProtocolRsp,
-        req_rsp: Arc<RequestResponseWrapper>,
+        network_peer_handle: &NetworkPeerHandle,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
         let (block_hash, resolved) = self
             .protocol_client
-            .resolve_initial_response(protocol_response, &req_rsp)
+            .resolve_initial_response(protocol_response, network_peer_handle)
             .await?;
         let mut local_miss = 0;
         let extrinsics = resolved
@@ -232,12 +224,28 @@ impl<
                 );
                 Ok(Ok(downloaded))
             }
-            Err(err) => {
+            Err(error) => {
                 warn!(
                     target: LOG_TARGET,
-                    "relay::download_block: peer = {who:?}, err = {err:?}"
+                    "relay::download_block: peer = {who:?}, err = {error:?}"
                 );
-                err.into()
+                match error {
+                    RelayError::RequestResponse(error) => match error {
+                        RequestResponseErr::DecodeFailed { .. } => {
+                            Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)))
+                        }
+                        RequestResponseErr::RequestFailure(err) => Ok(Err(err)),
+                        RequestResponseErr::NetworkUninitialized => {
+                            // TODO: This is the best error found that kind of matches
+                            Ok(Err(RequestFailure::NotConnected))
+                        }
+                        RequestResponseErr::Canceled => Err(oneshot::Canceled),
+                    },
+                    _ => {
+                        // Why timeout???
+                        Ok(Err(RequestFailure::Network(OutboundFailure::Timeout)))
+                    }
+                }
             }
         }
     }

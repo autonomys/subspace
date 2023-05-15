@@ -1,6 +1,6 @@
 //! Compact block implementation.
 
-use crate::utils::RequestResponseWrapper;
+use crate::utils::NetworkPeerHandle;
 use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, Resolved, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -150,7 +150,7 @@ where
         &self,
         compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
-        req_rsp: &RequestResponseWrapper,
+        network_peer_handle: &NetworkPeerHandle,
     ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError> {
         let ResolveContext {
             mut resolved,
@@ -163,7 +163,7 @@ where
             protocol_unit_ids: local_miss.clone(),
         });
         let response: CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
-            req_rsp.request(request).await?;
+            network_peer_handle.request(request).await?;
         let missing_entries_response = if let CompactBlockRsp::MissingEntries(rsp) = response {
             rsp
         } else {
@@ -216,7 +216,7 @@ where
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        req_rsp: &RequestResponseWrapper,
+        network_peer_handle: &NetworkPeerHandle,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError> {
         let compact_response = match response {
             CompactBlockRsp::Initial(compact_response) => compact_response,
@@ -242,7 +242,7 @@ where
         let misses = context.local_miss.len();
         let download_unit_id = compact_response.download_unit_id.clone();
         let resolved = self
-            .resolve_misses(compact_response, context, req_rsp)
+            .resolve_misses(compact_response, context, network_peer_handle)
             .await?;
         trace!(
             target: LOG_TARGET,

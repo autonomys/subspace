@@ -40,7 +40,7 @@
 
 #![feature(const_option)]
 
-use crate::utils::{RelayError, RequestResponseWrapper};
+use crate::utils::{NetworkPeerHandle, RelayError};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::time::Duration;
@@ -101,7 +101,7 @@ where
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        req_rsp: &RequestResponseWrapper,
+        network_peer_handle: &NetworkPeerHandle,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 
