@@ -9134,6 +9134,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-subspace-block-relay"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "lru 0.10.0",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-client-api",
+ "sc-network",
+ "sc-network-common",
+ "sc-network-sync",
+ "sc-service",
+ "sc-transaction-pool-api",
+ "sp-runtime",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "sc-subspace-chain-specs"
 version = "0.1.0"
 dependencies = [
@@ -10743,26 +10763,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-block-relay"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "lru 0.10.0",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "sc-client-api",
- "sc-network",
- "sc-network-common",
- "sc-network-sync",
- "sc-service",
- "sc-transaction-pool-api",
- "sp-runtime",
- "thiserror",
- "tracing",
-]
-
-[[package]]
 name = "subspace-chiapos"
 version = "0.1.0"
 source = "git+https://github.com/subspace/chiapos?rev=3b1ab3ca24764d25da30e0c8243e0bf304b776a5#3b1ab3ca24764d25da30e0c8243e0bf304b776a5"
@@ -11142,6 +11142,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-rpc-spec-v2",
  "sc-service",
+ "sc-subspace-block-relay",
  "sc-telemetry",
  "sc-tracing",
  "sc-transaction-pool",
@@ -11164,7 +11165,6 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie",
  "subspace-archiving",
- "subspace-block-relay",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-networking",

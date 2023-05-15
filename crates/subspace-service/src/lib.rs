@@ -55,6 +55,7 @@ use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
     TaskManager,
 };
+use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
@@ -76,7 +77,6 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
-use subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
 use subspace_fraud_proof::verifier_api::VerifierClient;

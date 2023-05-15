@@ -1,5 +1,5 @@
 [package]
-name = "subspace-block-relay"
+name = "sc-subspace-block-relay"
 description = "Block relay implementation"
 license = "MIT OR Apache-2.0"
 version = "0.1.0"
