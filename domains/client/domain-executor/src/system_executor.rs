@@ -138,7 +138,7 @@ where
             DomainId::SYSTEM,
             params.client.clone(),
             params.client.clone(),
-            parent_chain,
+            parent_chain.clone(),
             domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
@@ -166,8 +166,10 @@ where
             domain_id: DomainId::SYSTEM,
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
-            primary_network_sync_oracle: params.primary_network_sync_oracle,
             fraud_proof_generator: fraud_proof_generator.clone(),
+            parent_chain,
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            _phantom: std::marker::PhantomData,
         };
 
         let bundle_processor = SystemBundleProcessor::new(

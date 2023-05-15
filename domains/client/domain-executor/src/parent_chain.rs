@@ -42,14 +42,14 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
 
     fn extract_receipts(
         &self,
-        extrinsics: Vec<ParentChainBlock::Extrinsic>,
         at: ParentChainBlock::Hash,
+        extrinsics: Vec<ParentChainBlock::Extrinsic>,
     ) -> Result<Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>, sp_api::ApiError>;
 
     fn extract_fraud_proofs(
         &self,
-        extrinsics: Vec<ParentChainBlock::Extrinsic>,
         at: ParentChainBlock::Hash,
+        extrinsics: Vec<ParentChainBlock::Extrinsic>,
     ) -> Result<Vec<FraudProofFor<ParentChainBlock>>, sp_api::ApiError>;
 
     fn submit_fraud_proof_unsigned(
@@ -140,8 +140,8 @@ where
 
     fn extract_receipts(
         &self,
-        extrinsics: Vec<SBlock::Extrinsic>,
         at: SBlock::Hash,
+        extrinsics: Vec<SBlock::Extrinsic>,
     ) -> Result<Vec<ExecutionReceiptFor<SBlock, Block::Hash>>, sp_api::ApiError> {
         self.system_domain_client
             .runtime_api()
@@ -150,8 +150,8 @@ where
 
     fn extract_fraud_proofs(
         &self,
-        extrinsics: Vec<SBlock::Extrinsic>,
         at: SBlock::Hash,
+        extrinsics: Vec<SBlock::Extrinsic>,
     ) -> Result<Vec<FraudProofFor<SBlock>>, sp_api::ApiError> {
         self.system_domain_client
             .runtime_api()
@@ -245,8 +245,8 @@ where
 
     fn extract_receipts(
         &self,
-        extrinsics: Vec<PBlock::Extrinsic>,
         at: PBlock::Hash,
+        extrinsics: Vec<PBlock::Extrinsic>,
     ) -> Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>, sp_api::ApiError> {
         self.primary_chain_client
             .runtime_api()
@@ -255,8 +255,8 @@ where
 
     fn extract_fraud_proofs(
         &self,
-        extrinsics: Vec<PBlock::Extrinsic>,
         at: PBlock::Hash,
+        extrinsics: Vec<PBlock::Extrinsic>,
     ) -> Result<Vec<FraudProofFor<PBlock>>, sp_api::ApiError> {
         self.primary_chain_client
             .runtime_api()

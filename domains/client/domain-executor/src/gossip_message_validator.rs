@@ -372,7 +372,9 @@ where
         // TODO: What happens for this obvious error?
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-        if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
+        if let Some(trace_mismatch_index) =
+            find_trace_mismatch(&local_receipt.trace, &execution_receipt.trace)
+        {
             let fraud_proof = self
                 .fraud_proof_generator
                 .generate_invalid_state_transition_proof::<ParentChainBlock>(

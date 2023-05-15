@@ -1,4 +1,5 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
+use crate::parent_chain::ParentChainInterface;
 use crate::utils::{
     to_number_primitive, translate_number_type, DomainBlockImportNotification,
     DomainImportNotificationSinks,
@@ -400,19 +401,31 @@ where
     }
 }
 
-pub(crate) struct ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E> {
+pub(crate) struct ReceiptsChecker<
+    Block,
+    Client,
+    PBlock,
+    PClient,
+    Backend,
+    E,
+    ParentChain,
+    ParentChainBlock,
+> {
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
     pub(crate) primary_chain_client: Arc<PClient>,
     pub(crate) primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub(crate) fraud_proof_generator:
         FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+    pub(crate) parent_chain: ParentChain,
+    pub(crate) _phantom: std::marker::PhantomData<ParentChainBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for ReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E, ParentChain, ParentChainBlock> Clone
+    for ReceiptsChecker<Block, PBlock, Client, PClient, Backend, E, ParentChain, ParentChainBlock>
 where
     Block: BlockT,
+    ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -421,15 +434,19 @@ where
             primary_chain_client: self.primary_chain_client.clone(),
             primary_network_sync_oracle: self.primary_network_sync_oracle.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
+            parent_chain: self.parent_chain.clone(),
+            _phantom: self._phantom,
         }
     }
 }
 
-impl<Block, Client, PBlock, PClient, Backend, E>
-    ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>
+impl<Block, Client, PBlock, PClient, Backend, E, ParentChain, ParentChainBlock>
+    ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E, ParentChain, ParentChainBlock>
 where
     Block: BlockT,
     PBlock: BlockT,
+    ParentChainBlock: BlockT,
+    NumberFor<PBlock>: Into<NumberFor<Block>>,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block>
@@ -440,35 +457,23 @@ where
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock>,
 {
-    pub(crate) fn check_invalid_state_transition<PCB>(
+    pub(crate) fn check_invalid_state_transition(
         &self,
-        primary_hash: PBlock::Hash,
-        oldest_receipt_number: NumberFor<Block>,
-    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
-    where
-        PCB: BlockT,
-    {
-        let extrinsics = self
-            .primary_chain_client
-            .block_body(primary_hash)?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Primary block body for {primary_hash:?} not found",
-                ))
-            })?;
+        parent_chain_block_hash: ParentChainBlock::Hash,
+    ) -> sp_blockchain::Result<
+        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+    > {
+        let extrinsics = self.parent_chain.block_body(parent_chain_block_hash)?;
 
-        // TODO: core domain's receipts/fraud proof should be fetched from system domain.
-        let receipts = self.primary_chain_client.runtime_api().extract_receipts(
-            primary_hash,
-            extrinsics.clone(),
-            self.domain_id,
-        )?;
+        let receipts = self
+            .parent_chain
+            .extract_receipts(parent_chain_block_hash, extrinsics.clone())?;
 
         let fraud_proofs = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_fraud_proofs(primary_hash, extrinsics, self.domain_id)?;
+            .parent_chain
+            .extract_fraud_proofs(parent_chain_block_hash, extrinsics)?;
 
         self.check_receipts(receipts, fraud_proofs)?;
 
@@ -480,15 +485,18 @@ where
         }
 
         // Submit fraud proof for the first unconfirmed incorrent ER.
+        let oldest_receipt_number = self
+            .parent_chain
+            .oldest_receipt_number(parent_chain_block_hash)?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        self.create_fraud_proof_for_first_unconfirmed_bad_receipt::<PCB>()
+        self.create_fraud_proof_for_first_unconfirmed_bad_receipt()
     }
 
     fn check_receipts(
         &self,
-        receipts: Vec<ExecutionReceiptFor<PBlock, Block::Hash>>,
-        fraud_proofs: Vec<FraudProof<NumberFor<PBlock>, PBlock::Hash>>,
+        receipts: Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>,
+        fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
 
@@ -498,8 +506,8 @@ where
             let local_receipt = crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
-                NumberFor<PBlock>,
-                PBlock::Hash,
+                NumberFor<Block>,
+                ParentChainBlock::Hash,
             >(&*self.client, primary_block_hash)?
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "receipt for primary block #{},{primary_block_hash} not found",
@@ -507,7 +515,7 @@ where
             )))?;
 
             if let Some(trace_mismatch_index) =
-                find_trace_mismatch(&local_receipt, execution_receipt)
+                find_trace_mismatch(&local_receipt.trace, &execution_receipt.trace)
             {
                 bad_receipts_to_write.push((
                     execution_receipt.primary_number,
@@ -544,7 +552,7 @@ where
             .collect::<Vec<_>>();
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
-            crate::aux_schema::write_bad_receipt::<_, PBlock>(
+            crate::aux_schema::write_bad_receipt::<_, ParentChainBlock>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -570,12 +578,11 @@ where
         Ok(())
     }
 
-    fn create_fraud_proof_for_first_unconfirmed_bad_receipt<PCB>(
+    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
-    ) -> sp_blockchain::Result<Option<FraudProof<NumberFor<PCB>, PCB::Hash>>>
-    where
-        PCB: BlockT,
-    {
+    ) -> sp_blockchain::Result<
+        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+    > {
         if let Some((bad_receipt_hash, trace_mismatch_index, primary_block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, PBlock, _>(
                 &*self.client,
@@ -598,7 +605,7 @@ where
 
             let fraud_proof = self
                 .fraud_proof_generator
-                .generate_invalid_state_transition_proof::<PCB>(
+                .generate_invalid_state_transition_proof::<ParentChainBlock>(
                     self.domain_id,
                     trace_mismatch_index,
                     &local_receipt,

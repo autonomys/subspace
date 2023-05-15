@@ -323,15 +323,14 @@ where
 }
 
 /// Returns the index of first mismatch between the receipts `local` and `other` if any.
-pub(crate) fn find_trace_mismatch<Number, Hash: Copy + Eq, PHash>(
-    local: &ExecutionReceipt<Number, PHash, Hash>,
-    other: &ExecutionReceipt<Number, PHash, Hash>,
+pub(crate) fn find_trace_mismatch<Hash: Copy + Eq>(
+    local_trace: &[Hash],
+    other_trace: &[Hash],
 ) -> Option<u32> {
-    local
-        .trace
+    local_trace
         .iter()
         .enumerate()
-        .zip(other.trace.iter().enumerate())
+        .zip(other_trace.iter().enumerate())
         .find_map(|((local_index, local_root), (_, other_root))| {
             if local_root != other_root {
                 Some(

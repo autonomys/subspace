@@ -154,7 +154,7 @@ where
             domain_id,
             system_domain_client.clone(),
             params.client.clone(),
-            parent_chain,
+            parent_chain.clone(),
             domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
@@ -178,13 +178,15 @@ where
             import_notification_sinks: Default::default(),
         };
 
-        let receipts_checker = ReceiptsChecker {
-            domain_id,
-            client: params.client.clone(),
-            primary_chain_client: params.primary_chain_client.clone(),
-            primary_network_sync_oracle: params.primary_network_sync_oracle,
-            fraud_proof_generator: fraud_proof_generator.clone(),
-        };
+        // let receipts_checker = ReceiptsChecker {
+        // domain_id,
+        // client: params.client.clone(),
+        // primary_chain_client: params.primary_chain_client.clone(),
+        // fraud_proof_generator: fraud_proof_generator.clone(),
+        // parent_chain,
+        // primary_network_sync_oracle: params.primary_network_sync_oracle,
+        // _phantom: std::marker::PhantomData,
+        // };
 
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
