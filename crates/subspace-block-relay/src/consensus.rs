@@ -1,7 +1,7 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::utils::{decode_response, NetworkWrapper, RequestResponseWrapper};
+use crate::utils::{NetworkWrapper, RequestResponseWrapper};
 use crate::{
     DownloadResult, ProtocolBackend, ProtocolClient, ProtocolRequestResponse, ProtocolServer,
     RelayError, LOG_TARGET,
@@ -138,12 +138,11 @@ impl<
             block_attributes: request.fields.to_be_u32(),
             protocol_request: self.protocol_client.build_initial_request(),
         };
-        let msg = ServerMessage::InitialRequest(initial_request).encode();
-        let initial_response: InitialResponse<Block, ProtoClient::ProtocolRsp> =
-            match decode_response(req_rsp.request_response(msg).await) {
-                Ok(response) => response,
-                Err(err) => return Err(err.into()),
-            };
+        let initial_response = req_rsp
+            .request::<_, InitialResponse<Block, ProtoClient::ProtocolRsp>>(
+                ServerMessage::InitialRequest(initial_request),
+            )
+            .await?;
 
         // Resolve the protocol response to get the extrinsics
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
@@ -581,9 +580,10 @@ impl<Block: BlockT, Req: Encode + Send + 'static, Rsp: Send + Decode + 'static>
     ProtocolRequestResponse<Req, Rsp> for ProtocolRequestResponseImpl<Block>
 {
     async fn request_response(&self, request: Req) -> Result<Rsp, RelayError> {
-        let msg: ServerMessage<Block, Req> = ServerMessage::ProtocolReq(request);
-        let msg = msg.encode();
-        decode_response::<Rsp>(self.req_rsp.request_response(msg).await).map_err(|err| err.into())
+        self.req_rsp
+            .request(ServerMessage::<Block, Req>::ProtocolReq(request))
+            .await
+            .map_err(Into::into)
     }
 }
 

@@ -1,7 +1,7 @@
 //! Common utils.
 
-use codec::{self, Decode};
-use futures::channel::oneshot::{self, Canceled};
+use codec::{self, Decode, Encode};
+use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
@@ -56,43 +56,42 @@ impl<Block: BlockT> RequestResponseWrapper<Block> {
         }
     }
 
-    /// Performs the request response
-    pub(crate) async fn request_response(
+    /// Performs the request
+    pub(crate) async fn request<Request, Response>(
         &self,
-        request: Vec<u8>,
-    ) -> Result<Result<Vec<u8>, RequestFailure>, Canceled> {
+        request: Request,
+    ) -> Result<Response, RequestResponseErr>
+    where
+        Request: Encode,
+        Response: Decode,
+    {
         let (tx, rx) = oneshot::channel();
         self.network.start_request(
             self.who,
             self.protocol_name.clone(),
-            request,
+            request.encode(),
             tx,
             IfDisconnected::ImmediateError,
         );
 
-        rx.await
-    }
-}
+        let response_bytes = rx
+            .await
+            .map_err(|_cancelled| RequestResponseErr::Canceled)?
+            .map_err(RequestResponseErr::RequestFailure)?;
 
-/// Extracts `RspType` from the result of request/response
-pub(crate) fn decode_response<RspType: Decode>(
-    result: Result<Result<Vec<u8>, RequestFailure>, Canceled>,
-) -> Result<RspType, RequestResponseErr> {
-    match result {
-        Ok(Ok(bytes)) => {
-            let resp_len = bytes.len();
-            let response: Result<RspType, _> = Decode::decode(&mut bytes.as_ref());
-            response.map_err(|err| RequestResponseErr::DecodeFailed { resp_len, err })
-        }
-        Ok(Err(err)) => Err(RequestResponseErr::RequestFailure(err)),
-        Err(_) => Err(RequestResponseErr::Canceled),
+        let response_len = response_bytes.len();
+        Response::decode(&mut response_bytes.as_ref())
+            .map_err(|err| RequestResponseErr::DecodeFailed { response_len, err })
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RequestResponseErr {
-    #[error("RequestResponseErr::DecodeFailed: {resp_len}/{err:?}")]
-    DecodeFailed { resp_len: usize, err: codec::Error },
+    #[error("RequestResponseErr::DecodeFailed: {response_len}/{err:?}")]
+    DecodeFailed {
+        response_len: usize,
+        err: codec::Error,
+    },
 
     #[error("RequestResponseErr::RequestFailure {0:?}")]
     RequestFailure(RequestFailure),
