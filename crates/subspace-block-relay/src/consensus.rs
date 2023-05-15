@@ -48,7 +48,7 @@ struct InitialRequest<Block: BlockT, ProtocolRequest> {
     from_block: BlockId<Block>,
 
     /// Requested block components
-    block_attributes: u32,
+    block_attributes: BlockAttributes,
 
     /// The protocol specific part of the request
     protocol_request: ProtocolRequest,
@@ -127,7 +127,7 @@ where
                 FromBlock::Hash(h) => BlockId::<Block>::Hash(h),
                 FromBlock::Number(n) => BlockId::<Block>::Number(n),
             },
-            block_attributes: request.fields.to_be_u32(),
+            block_attributes: request.fields,
             protocol_request: self.protocol_client.build_initial_request(),
         };
         let initial_response = network_peer_handle
@@ -333,8 +333,7 @@ where
         initial_request: InitialRequest<Block, ProtoServer::Request>,
     ) -> Result<Vec<u8>, RelayError> {
         let block_hash = self.block_hash(&initial_request.from_block)?;
-        let block_attributes = BlockAttributes::from_be_u32(initial_request.block_attributes)
-            .map_err(RelayError::InvalidBlockAttributes)?;
+        let block_attributes = initial_request.block_attributes;
 
         // Build the generic and the protocol specific parts of the response
         let partial_block = self.get_partial_block(&block_hash, block_attributes)?;

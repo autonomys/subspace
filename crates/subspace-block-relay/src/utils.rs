@@ -109,9 +109,6 @@ pub(crate) enum RequestResponseErr {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RelayError {
-    #[error("Invalid block attributes: {0}")]
-    InvalidBlockAttributes(codec::Error),
-
     #[error("Block header: {0}")]
     BlockHeader(String),
 
