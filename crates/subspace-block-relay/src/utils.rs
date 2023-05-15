@@ -5,32 +5,31 @@ use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkRequest, NetworkService, OutboundFailure, PeerId, RequestFailure};
-use sp_runtime::traits::Block as BlockT;
+use sc_network::{NetworkRequest, OutboundFailure, PeerId, RequestFailure};
 use std::sync::Arc;
 
-type NetworkHandle<Block> = Arc<NetworkService<Block, <Block as BlockT>::Hash>>;
+type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
 
 /// Wrapper to work around the circular dependency in substrate:
 /// `build_network()` requires the block relay to be passed in,
 /// which internally needs the network handle. `set()` is
 /// used to fill in the network after the network is created.
-pub struct NetworkWrapper<Block: BlockT> {
-    network: Mutex<Option<NetworkHandle<Block>>>,
+pub struct NetworkWrapper {
+    network: Mutex<Option<NetworkRequestService>>,
 }
 
-impl<Block: BlockT> NetworkWrapper<Block> {
+impl NetworkWrapper {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             network: Mutex::new(None),
         }
     }
-    pub fn set(&self, network: NetworkHandle<Block>) {
+    pub fn set(&self, network: NetworkRequestService) {
         *self.network.lock() = Some(network);
     }
 
-    pub fn get(&self) -> Option<NetworkHandle<Block>> {
+    pub fn get(&self) -> Option<NetworkRequestService> {
         self.network.lock().as_ref().cloned()
     }
 }

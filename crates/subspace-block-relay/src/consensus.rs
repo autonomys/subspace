@@ -97,10 +97,10 @@ struct ConsensusRelayClient<
     Pool: TransactionPool,
     ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
 > {
-    network: Arc<NetworkWrapper<Block>>,
+    network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
     protocol_client: Arc<ProtoClient>,
-    _pool: std::marker::PhantomData<Pool>,
+    _phantom_data: std::marker::PhantomData<(Block, Pool)>,
 }
 
 impl<
@@ -569,7 +569,7 @@ where
 }
 
 pub fn build_consensus_relay<Block, Client, Pool>(
-    network: Arc<NetworkWrapper<Block>>,
+    network: Arc<NetworkWrapper>,
     client: Arc<Client>,
     pool: Arc<Pool>,
     spawn_handle: SpawnTaskHandle,
@@ -588,7 +588,7 @@ where
         protocol_client: Arc::new(CompactBlockClient {
             backend: backend.clone(),
         }),
-        _pool: Default::default(),
+        _phantom_data: Default::default(),
     };
 
     let relay_server = ConsensusRelayServer {
