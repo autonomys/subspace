@@ -1,10 +1,10 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::opaque;
+use domain_runtime_primitives::{opaque, AccountIdConverter};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
 use frame_support::dispatch::DispatchClass;
-use frame_support::traits::{ConstU16, ConstU32, Everything};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
@@ -27,7 +27,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -199,6 +199,13 @@ impl frame_system::Config for Runtime {
     type MaxConsumers = ConstU32<16>;
 }
 
+impl pallet_timestamp::Config for Runtime {
+    type Moment = subspace_runtime_primitives::Moment;
+    type OnTimestampSet = ();
+    type MinimumPeriod = ConstU64<0>;
+    type WeightInfo = ();
+}
+
 parameter_types! {
     pub const ExistentialDeposit: Balance = EXISTENTIAL_DEPOSIT;
     pub const MaxLocks: u32 = 50;
@@ -292,6 +299,7 @@ impl pallet_transporter::Config for Runtime {
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -310,16 +318,17 @@ construct_runtime!(
     {
         // System support stuff.
         System: frame_system = 0,
-        ExecutivePallet: domain_pallet_executive = 1,
+        Timestamp: pallet_timestamp = 1,
+        ExecutivePallet: domain_pallet_executive = 2,
 
         // Monetary stuff.
-        Balances: pallet_balances = 2,
-        TransactionPayment: pallet_transaction_payment = 3,
+        Balances: pallet_balances = 20,
+        TransactionPayment: pallet_transaction_payment = 21,
 
         // messenger stuff
         // Note: Indexes should match the indexes of the System domain runtime
-        Messenger: pallet_messenger = 6,
-        Transporter: pallet_transporter = 7,
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -514,6 +523,22 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
+        }
+    }
+
+    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
+             Some(
+                UncheckedExtrinsic::new_unsigned(
+                    pallet_timestamp::Call::set{ now: moment }.into()
+                )
+             )
+        }
+    }
+
+    impl domain_test_primitives::TimestampApi<Block> for Runtime {
+        fn timestamp() -> Moment {
+             Timestamp::now()
         }
     }
 

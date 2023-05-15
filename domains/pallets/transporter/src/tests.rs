@@ -1,6 +1,6 @@
 use crate::mock::{
-    new_test_ext, AccountId, Balance, Balances, MockRuntime, RuntimeEvent, RuntimeOrigin,
-    SelfDomainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
+    new_test_ext, AccountId, Balance, Balances, MockAccountIdConverter, MockRuntime, RuntimeEvent,
+    RuntimeOrigin, SelfDomainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
@@ -10,6 +10,7 @@ use sp_domains::DomainId;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,
 };
+use sp_runtime::traits::Convert;
 use std::marker::PhantomData;
 
 #[test]
@@ -23,7 +24,7 @@ fn test_initiate_transfer_failed() {
         let dst_domain_id = 1.into();
         let dst_location = Location {
             domain_id: dst_domain_id,
-            account_id: account,
+            account_id: MockAccountIdConverter::convert(account),
         };
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
         assert_err!(res, Error::<MockRuntime>::LowBalance);
@@ -43,7 +44,7 @@ fn test_initiate_transfer() {
         let dst_domain_id = 1.into();
         let dst_location = Location {
             domain_id: dst_domain_id,
-            account_id: account,
+            account_id: MockAccountIdConverter::convert(account),
         };
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
         assert_ok!(res);
@@ -63,12 +64,12 @@ fn test_initiate_transfer() {
                 amount: 500,
                 sender: Location {
                     domain_id: SelfDomainId::get(),
-                    account_id: account
+                    account_id: MockAccountIdConverter::convert(account),
                 },
                 receiver: Location {
                     domain_id: dst_domain_id,
-                    account_id: account
-                }
+                    account_id: MockAccountIdConverter::convert(account),
+                },
             }
         )
     })
@@ -84,11 +85,11 @@ fn test_transfer_response_missing_request() {
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
         }
         .encode();
@@ -100,7 +101,7 @@ fn test_transfer_response_missing_request() {
 fn initiate_transfer(dst_domain_id: DomainId, account: AccountId, amount: Balance) {
     let dst_location = Location {
         domain_id: dst_domain_id,
-        account_id: account,
+        account_id: MockAccountIdConverter::convert(account),
     };
 
     let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, amount);
@@ -156,12 +157,12 @@ fn test_transfer_response_invalid_request() {
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
                 domain_id: dst_domain_id,
                 // change receiver id
-                account_id: 100,
+                account_id: MockAccountIdConverter::convert(100),
             },
         }
         .encode();
@@ -198,11 +199,11 @@ fn test_transfer_response_revert() {
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
         }
         .encode();
@@ -256,11 +257,11 @@ fn test_transfer_response_successful() {
             amount,
             sender: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
                 domain_id: dst_domain_id,
-                account_id: account,
+                account_id: MockAccountIdConverter::convert(account),
             },
         }
         .encode();
@@ -302,11 +303,11 @@ fn test_receive_incoming_transfer() {
                 amount,
                 sender: Location {
                     domain_id: src_domain_id,
-                    account_id: 0,
+                    account_id: MockAccountIdConverter::convert(0),
                 },
                 receiver: Location {
                     domain_id: dst_domain_id,
-                    account_id: receiver,
+                    account_id: MockAccountIdConverter::convert(receiver),
                 },
             }
             .encode(),

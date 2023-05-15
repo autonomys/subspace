@@ -23,7 +23,7 @@ use sp_messenger::messages::{
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_messenger::verification::{StorageProofVerifier, VerificationError};
-use sp_runtime::traits::ValidateUnsigned;
+use sp_runtime::traits::{Convert, ValidateUnsigned};
 
 fn create_channel(domain_id: DomainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {
     let params = InitiateChannelParams {
@@ -680,7 +680,7 @@ fn initiate_transfer_on_domain(domain_a_ext: &mut TestExternalities) {
             domain_a::RuntimeOrigin::signed(account_id),
             Location {
                 domain_id: domain_b::SelfDomainId::get(),
-                account_id,
+                account_id: domain_b::MockAccountIdConverter::convert(account_id),
             },
             500,
         );
@@ -852,7 +852,7 @@ fn test_transport_funds_between_domains_failed_low_balance() {
             domain_a::RuntimeOrigin::signed(account_id),
             Location {
                 domain_id: domain_b::SelfDomainId::get(),
-                account_id,
+                account_id: domain_b::MockAccountIdConverter::convert(account_id),
             },
             500,
         );
@@ -874,7 +874,7 @@ fn test_transport_funds_between_domains_failed_no_open_channel() {
             domain_a::RuntimeOrigin::signed(account_id),
             Location {
                 domain_id: domain_b::SelfDomainId::get(),
-                account_id,
+                account_id: domain_b::MockAccountIdConverter::convert(account_id),
             },
             500,
         );

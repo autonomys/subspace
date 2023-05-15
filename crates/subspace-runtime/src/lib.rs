@@ -91,7 +91,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 2,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -803,6 +803,10 @@ impl_runtime_apis! {
             domain_hash: domain_runtime_primitives::Hash
         ) -> Option<domain_runtime_primitives::Hash>{
             Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
+        }
+
+        fn timestamp() -> Moment{
+            Timestamp::now()
         }
     }
 

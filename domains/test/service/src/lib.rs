@@ -44,6 +44,7 @@ use sp_runtime::codec::Encode;
 use sp_runtime::generic;
 use sp_runtime::traits::Dispatchable;
 
+pub use core_domain::*;
 pub use sp_keyring::Sr25519Keyring as Keyring;
 pub use system_domain::*;
 pub use system_domain_test_runtime;
@@ -229,4 +230,21 @@ where
         Signature::Sr25519(signature),
         extra,
     )
+}
+
+/// Construct an unsigned extrinsic that can be applied to the test runtime.
+pub fn construct_unsigned_extrinsic<Runtime>(
+    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+) -> UncheckedExtrinsicFor<Runtime>
+where
+    Runtime: frame_system::Config<Hash = H256, BlockNumber = u32>
+        + pallet_transaction_payment::Config
+        + Send
+        + Sync,
+    Runtime::RuntimeCall:
+        Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+{
+    let function = function.into();
+    UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)
 }

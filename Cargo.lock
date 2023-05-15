@@ -1481,6 +1481,7 @@ dependencies = [
  "pallet-feeds",
  "pallet-messenger",
  "pallet-sudo",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -1525,7 +1526,6 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-base-fee",
- "pallet-dynamic-fee",
  "pallet-ethereum",
  "pallet-evm",
  "pallet-evm-chain-id",
@@ -1534,6 +1534,7 @@ dependencies = [
  "pallet-evm-precompile-simple",
  "pallet-messenger",
  "pallet-sudo",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -1620,6 +1621,7 @@ version = "0.1.0"
 dependencies = [
  "domain-pallet-executive",
  "domain-runtime-primitives",
+ "domain-test-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -1632,6 +1634,7 @@ dependencies = [
  "pallet-executor-registry",
  "pallet-messenger",
  "pallet-sudo",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
@@ -2416,6 +2419,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "system-runtime-primitives",
  "tracing",
@@ -2448,6 +2452,7 @@ dependencies = [
  "domain-client-consensus-relay-chain",
  "domain-client-executor-gossip",
  "domain-runtime-primitives",
+ "domain-test-primitives",
  "domain-test-service",
  "futures",
  "futures-timer",
@@ -2592,10 +2597,12 @@ name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
+ "scale-info",
  "sp-api",
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -2657,6 +2664,14 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "system-runtime-primitives",
  "tracing",
+]
+
+[[package]]
+name = "domain-test-primitives"
+version = "0.1.0"
+dependencies = [
+ "sp-api",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]
@@ -3410,16 +3425,6 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
-]
-
-[[package]]
-name = "fp-dynamic-fee"
-version = "1.0.0"
-source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
-dependencies = [
- "async-trait",
- "sp-core",
- "sp-inherents",
 ]
 
 [[package]]
@@ -6701,22 +6706,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-dynamic-fee"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
-dependencies = [
- "fp-dynamic-fee",
- "fp-evm",
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-inherents",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-ethereum"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
@@ -6864,6 +6853,7 @@ dependencies = [
 name = "pallet-messenger"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system",
  "log",
@@ -7073,6 +7063,7 @@ dependencies = [
 name = "pallet-transporter"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system",
  "pallet-balances",
@@ -11052,6 +11043,7 @@ dependencies = [
  "domain-eth-service",
  "domain-runtime-primitives",
  "domain-service",
+ "fp-evm",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-support",

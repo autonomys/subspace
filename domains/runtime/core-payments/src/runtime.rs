@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::opaque;
+use domain_runtime_primitives::{opaque, AccountIdConverter};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -27,7 +27,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -85,7 +85,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-core-payments-domain"),
     impl_name: create_runtime_str!("subspace-core-payments-domain"),
     authoring_version: 0,
-    spec_version: 0,
+    spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -290,6 +290,7 @@ impl pallet_transporter::Config for Runtime {
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -311,13 +312,13 @@ construct_runtime!(
         ExecutivePallet: domain_pallet_executive = 1,
 
         // Monetary stuff.
-        Balances: pallet_balances = 2,
-        TransactionPayment: pallet_transaction_payment = 3,
+        Balances: pallet_balances = 20,
+        TransactionPayment: pallet_transaction_payment = 21,
 
         // messenger stuff
         // Note: Indexes should match the indexes of the System domain runtime
-        Messenger: pallet_messenger = 6,
-        Transporter: pallet_transporter = 7,
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -461,6 +462,12 @@ impl_runtime_apis! {
                     weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
+        }
+    }
+
+    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
+        fn construct_inherent_timestamp_extrinsic(_moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
+             None
         }
     }
 

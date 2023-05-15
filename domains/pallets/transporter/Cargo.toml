@@ -15,6 +15,7 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
+domain-runtime-primitives = { path = "../../primitives/runtime" , default-features = false }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "fdb68194ab6995447610b3dbdee70559711dbd63" }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
@@ -32,6 +33,7 @@ sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev 
 default = ["std"]
 std = [
   "codec/std",
+  "domain-runtime-primitives/std",
   "frame-support/std",
   "frame-system/std",
   "scale-info/std",

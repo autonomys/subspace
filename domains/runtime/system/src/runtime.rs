@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::opaque;
+use domain_runtime_primitives::{opaque, AccountIdConverter};
 pub use domain_runtime_primitives::{
     AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
@@ -92,7 +92,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-system-domain"),
     impl_name: create_runtime_str!("subspace-system-domain"),
     authoring_version: 0,
-    spec_version: 2,
+    spec_version: 3,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -361,6 +361,7 @@ impl pallet_transporter::Config for Runtime {
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -382,19 +383,20 @@ construct_runtime!(
         ExecutivePallet: domain_pallet_executive = 1,
 
         // Monetary stuff.
-        Balances: pallet_balances = 2,
-        TransactionPayment: pallet_transaction_payment = 3,
+        Balances: pallet_balances = 20,
+        TransactionPayment: pallet_transaction_payment = 21,
 
         // System domain.
         //
         // Must be after Balances pallet so that its genesis is built after the Balances genesis is
         // built.
-        ExecutorRegistry: pallet_executor_registry = 4,
-        Receipts: pallet_receipts = 9,
-        DomainRegistry: pallet_domain_registry = 5,
+        ExecutorRegistry: pallet_executor_registry = 40,
+        Receipts: pallet_receipts = 41,
+        DomainRegistry: pallet_domain_registry = 42,
+
         // Note: Indexes should be used by all other core domain for proper xdm decode.
-        Messenger: pallet_messenger = 6,
-        Transporter: pallet_transporter = 7,
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
