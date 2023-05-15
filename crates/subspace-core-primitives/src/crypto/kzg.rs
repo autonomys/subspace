@@ -107,7 +107,7 @@ impl Polynomial {
             .count();
         self.0
             .coeffs
-            .truncate(self.0.coeffs.len() - trailing_zeroes);
+            .truncate((self.0.coeffs.len() - trailing_zeroes).max(1));
     }
 }
 
