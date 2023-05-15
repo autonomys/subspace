@@ -1,4 +1,4 @@
-use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
+use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, ReceiptsChecker};
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
@@ -27,10 +27,10 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: KeystorePtr,
+    receipts_checker: ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>,
     system_domain_block_preprocessor:
         SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
-    domain_block_processor:
-        DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, Client>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, Client>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E> Clone
@@ -45,6 +45,7 @@ where
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
+            receipts_checker: self.receipts_checker.clone(),
             system_domain_block_preprocessor: self.system_domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
         }
@@ -89,13 +90,13 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
+        receipts_checker: ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>,
         domain_block_processor: DomainBlockProcessor<
             Block,
             PBlock,
             Client,
             PClient,
             Backend,
-            E,
             Client,
         >,
     ) -> Self {
@@ -108,6 +109,7 @@ where
             client,
             backend,
             keystore,
+            receipts_checker,
             system_domain_block_preprocessor,
             domain_block_processor,
         }
@@ -227,7 +229,6 @@ where
         // TODO: The applied txs can be fully removed from the transaction pool
 
         if let Some(fraud_proof) = self
-            .domain_block_processor
             .receipts_checker
             .check_invalid_state_transition::<PBlock>(primary_hash, oldest_receipt_number)?
         {

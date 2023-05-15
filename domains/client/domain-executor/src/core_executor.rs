@@ -168,16 +168,17 @@ where
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
             backend: params.backend.clone(),
-            receipts_checker: ReceiptsChecker {
-                domain_id,
-                client: params.client.clone(),
-                primary_chain_client: params.primary_chain_client.clone(),
-                primary_network_sync_oracle: params.primary_network_sync_oracle,
-                fraud_proof_generator: fraud_proof_generator.clone(),
-            },
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
             import_notification_sinks: Default::default(),
+        };
+
+        let receipts_checker = ReceiptsChecker {
+            domain_id,
+            client: params.client.clone(),
+            primary_chain_client: params.primary_chain_client.clone(),
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            fraud_proof_generator: fraud_proof_generator.clone(),
         };
 
         let bundle_processor = CoreBundleProcessor::new(

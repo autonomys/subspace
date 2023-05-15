@@ -33,7 +33,7 @@ where
 }
 
 /// A common component shared between the system and core domain bundle processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -42,14 +42,13 @@ where
     pub(crate) client: Arc<Client>,
     pub(crate) primary_chain_client: Arc<PClient>,
     pub(crate) backend: Arc<Backend>,
-    pub(crate) receipts_checker: ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
     pub(crate) block_import: Arc<BI>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, PBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E, BI> Clone
-    for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+impl<Block, PBlock, Client, PClient, Backend, BI> Clone
+    for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -60,7 +59,6 @@ where
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
             backend: self.backend.clone(),
-            receipts_checker: self.receipts_checker.clone(),
             domain_confirmation_depth: self.domain_confirmation_depth,
             block_import: self.block_import.clone(),
             import_notification_sinks: self.import_notification_sinks.clone(),
@@ -82,8 +80,8 @@ pub(crate) struct PendingPrimaryBlocks<Block: BlockT, PBlock: BlockT> {
     pub primary_imports: Vec<HashAndNumber<PBlock>>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E, BI>
-    DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+impl<Block, PBlock, Client, PClient, Backend, BI>
+    DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -109,7 +107,6 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    E: CodeExecutor,
 {
     /// Returns a list of primary blocks waiting to be processed if any.
     ///

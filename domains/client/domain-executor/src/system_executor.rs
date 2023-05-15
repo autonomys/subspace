@@ -38,8 +38,7 @@ where
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    domain_block_processor:
-        DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, Client>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, Client>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -158,16 +157,17 @@ where
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
             backend: params.backend.clone(),
-            receipts_checker: ReceiptsChecker {
-                domain_id: DomainId::SYSTEM,
-                client: params.client.clone(),
-                primary_chain_client: params.primary_chain_client.clone(),
-                primary_network_sync_oracle: params.primary_network_sync_oracle,
-                fraud_proof_generator: fraud_proof_generator.clone(),
-            },
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
             import_notification_sinks: Default::default(),
+        };
+
+        let receipts_checker = ReceiptsChecker {
+            domain_id: DomainId::SYSTEM,
+            client: params.client.clone(),
+            primary_chain_client: params.primary_chain_client.clone(),
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            fraud_proof_generator: fraud_proof_generator.clone(),
         };
 
         let bundle_processor = SystemBundleProcessor::new(
@@ -175,6 +175,7 @@ where
             params.client.clone(),
             params.backend.clone(),
             params.keystore,
+            receipts_checker,
             domain_block_processor.clone(),
         );
 

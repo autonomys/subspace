@@ -1,5 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
-use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
+use crate::parent_chain::CoreDomainParentChain;
 use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
@@ -9,7 +9,6 @@ use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
@@ -17,17 +16,8 @@ use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct CoreBundleProcessor<
-    Block,
-    SBlock,
-    PBlock,
-    Client,
-    SClient,
-    PClient,
-    Backend,
-    E,
-    BI,
-> where
+pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
+where
     Block: BlockT,
     PBlock: BlockT,
 {
@@ -46,11 +36,11 @@ pub(crate) struct CoreBundleProcessor<
         SClient,
         RuntimeApiFull<Client>,
     >,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI> Clone
-    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E, BI>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI> Clone
+    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -70,8 +60,8 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI>
-    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
+    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
 where
     Block: BlockT,
     SBlock: BlockT,
@@ -106,7 +96,6 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    E: CodeExecutor,
 {
     pub(crate) fn new(
         domain_id: DomainId,
@@ -115,15 +104,7 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
-        domain_block_processor: DomainBlockProcessor<
-            Block,
-            PBlock,
-            Client,
-            PClient,
-            Backend,
-            E,
-            BI,
-        >,
+        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
     ) -> Self {
         let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
             system_domain_client.clone(),
