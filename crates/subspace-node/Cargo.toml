@@ -85,4 +85,5 @@ runtime-benchmarks = [
 	"system-domain-runtime/runtime-benchmarks",
 	"core-eth-relay-runtime/runtime-benchmarks",
 	"core-evm-runtime/runtime-benchmarks",
+	"core-payments-domain-runtime/runtime-benchmarks",
 ]

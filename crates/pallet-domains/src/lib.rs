@@ -200,7 +200,7 @@ mod pallet {
                     } else {
                         T::WeightInfo::submit_core_domain_invalid_state_transition_proof()
                     },
-                    Pays::Yes
+                    Pays::No
                 ),
                 // TODO: proper weight
                 _ => (Weight::from_all(10_000), Pays::No),

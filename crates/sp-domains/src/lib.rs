@@ -29,7 +29,7 @@ use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
 use sp_core::crypto::{KeyTypeId, UncheckedFrom};
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
@@ -218,6 +218,7 @@ pub struct ProofOfElection<DomainHash> {
 }
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id,
@@ -411,6 +412,27 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, 
     }
 }
 
+impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(
+        primary_number: Number,
+        primary_hash: Hash,
+    ) -> ExecutionReceipt<Number, Hash, DomainHash> {
+        let trace = if primary_number.is_zero() {
+            Vec::new()
+        } else {
+            vec![Default::default(), Default::default()]
+        };
+        ExecutionReceipt {
+            primary_number,
+            primary_hash,
+            domain_hash: Default::default(),
+            trace,
+            trace_root: Default::default(),
+        }
+    }
+}
+
 /// List of [`OpaqueBundle`].
 pub type OpaqueBundles<Block, DomainHash> =
     Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
@@ -419,6 +441,7 @@ pub type OpaqueBundles<Block, DomainHash> =
 pub type SignedOpaqueBundles<Block, DomainHash> =
     Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
 
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
 pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
     domain_id: DomainId,
     primary_number: BlockNumber,

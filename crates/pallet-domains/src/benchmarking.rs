@@ -29,7 +29,7 @@ mod benchmarks {
         // Import `ReceiptsPruningDepth` number of receipts which will be pruned later
         run_to_block::<T>(1, receipts_pruning_depth);
         let receipts: Vec<_> = (0..receipts_pruning_depth)
-            .map(create_dummy_receipt::<T>)
+            .map(|i| ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i)))
             .collect();
         let bundle = create_dummy_bundle_with_receipts_generic(
             DomainId::SYSTEM,
@@ -46,7 +46,7 @@ mod benchmarks {
         // Construct a bundle that contain `x` number of new receipts
         run_to_block::<T>(receipts_pruning_depth + 1, receipts_pruning_depth + x);
         let receipts: Vec<_> = (receipts_pruning_depth..(receipts_pruning_depth + x))
-            .map(create_dummy_receipt::<T>)
+            .map(|i| ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i)))
             .collect();
         let bundle = create_dummy_bundle_with_receipts_generic(
             DomainId::SYSTEM,
@@ -71,7 +71,7 @@ mod benchmarks {
             DomainId::CORE_PAYMENTS,
             2u32.into(),
             Default::default(),
-            vec![create_dummy_receipt::<T>(1)],
+            vec![ExecutionReceipt::dummy(1u32.into(), block_hash_n::<T>(1))],
         );
 
         #[extrinsic_call]
@@ -88,7 +88,7 @@ mod benchmarks {
         // Import `ReceiptsPruningDepth` number of receipts which will be revert later
         run_to_block::<T>(1, receipts_pruning_depth);
         let receipts: Vec<_> = (0..receipts_pruning_depth)
-            .map(create_dummy_receipt::<T>)
+            .map(|i| ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i)))
             .collect();
         let bundle = create_dummy_bundle_with_receipts_generic(
             DomainId::SYSTEM,
@@ -144,22 +144,6 @@ mod benchmarks {
             );
             <Domains<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
             System::<T>::finalize();
-        }
-    }
-
-    fn create_dummy_receipt<T: Config>(
-        primary_number: u32,
-    ) -> ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash> {
-        ExecutionReceipt {
-            primary_number: primary_number.into(),
-            primary_hash: block_hash_n::<T>(primary_number),
-            domain_hash: Default::default(),
-            trace: if primary_number == 0 {
-                Vec::new()
-            } else {
-                vec![Default::default(), Default::default()]
-            },
-            trace_root: Default::default(),
         }
     }
 
