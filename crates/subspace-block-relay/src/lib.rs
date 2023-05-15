@@ -89,36 +89,36 @@ pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     Self: Send + Sync,
 {
-    type ProtocolReq: Send + Sync + Encode + Decode + 'static;
-    type ProtocolRsp: Send + Sync + Encode + Decode + 'static;
+    type Request: Send + Sync + Encode + Decode + 'static;
+    type Response: Send + Sync + Encode + Decode + 'static;
 
     /// Builds the protocol portion of the initial request
-    fn build_initial_request(&self) -> Self::ProtocolReq;
+    fn build_initial_request(&self) -> Self::Request;
 
     /// Resolves the initial response to produce the protocol units.
     /// `encoder_fn` needs to be called to generate the request payload
     /// as part of request/response sequences initiated by the protocol.
     async fn resolve_initial_response(
         &self,
-        response: Self::ProtocolRsp,
+        response: Self::Response,
         network_peer_handle: &NetworkPeerHandle,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 
 /// The server side of the relay protocol
 pub(crate) trait ProtocolServer<DownloadUnitId> {
-    type ProtocolReq: Encode + Decode;
-    type ProtocolRsp: Encode + Decode;
+    type Request: Encode + Decode;
+    type Response: Encode + Decode;
 
     /// Builds the protocol response to the initial request
     fn build_initial_response(
         &self,
         download_unit_id: &DownloadUnitId,
-        initial_request: Self::ProtocolReq,
-    ) -> Result<Self::ProtocolRsp, RelayError>;
+        initial_request: Self::Request,
+    ) -> Result<Self::Response, RelayError>;
 
     /// Handles the additional client messages during the reconcile phase
-    fn on_request(&self, request: Self::ProtocolReq) -> Result<Self::ProtocolRsp, RelayError>;
+    fn on_request(&self, request: Self::Request) -> Result<Self::Response, RelayError>;
 }
 
 /// The relay user specific backend interface
