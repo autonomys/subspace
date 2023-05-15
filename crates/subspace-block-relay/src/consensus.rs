@@ -95,7 +95,7 @@ enum ServerMessage<Block: BlockT, ProtocolReq> {
 struct ConsensusRelayClient<
     Block: BlockT,
     Pool: TransactionPool,
-    ProtoClient: ProtocolClient<Block, BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+    ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
 > {
     network: Arc<NetworkWrapper<Block>>,
     protocol_name: ProtocolName,
@@ -106,7 +106,7 @@ struct ConsensusRelayClient<
 impl<
         Block: BlockT,
         Pool: TransactionPool,
-        ProtoClient: ProtocolClient<Block, BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+        ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
     > ConsensusRelayClient<Block, Pool, ProtoClient>
 {
     /// Downloads the requested block from the peer using the relay protocol
@@ -178,7 +178,7 @@ impl<
     async fn resolve_extrinsics(
         &self,
         protocol_response: ProtoClient::ProtocolRsp,
-        req_rsp: Arc<RequestResponseWrapper<Block>>,
+        req_rsp: Arc<RequestResponseWrapper>,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
         let (block_hash, resolved) = self
             .protocol_client
@@ -210,7 +210,7 @@ impl<
 impl<
         Block: BlockT,
         Pool: TransactionPool,
-        ProtoClient: ProtocolClient<Block, BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+        ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
     > BlockDownloader<Block> for ConsensusRelayClient<Block, Pool, ProtoClient>
 {
     async fn download_block(

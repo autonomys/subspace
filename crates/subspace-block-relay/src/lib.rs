@@ -43,7 +43,6 @@
 use crate::utils::{RelayError, RequestResponseWrapper};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use sp_runtime::traits::Block as BlockT;
 use std::time::Duration;
 
 mod consensus;
@@ -86,10 +85,9 @@ pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
 
 /// The client side of the relay protocol
 #[async_trait]
-pub(crate) trait ProtocolClient<Block, DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     Self: Send + Sync,
-    Block: BlockT,
 {
     type ProtocolReq: Send + Sync + Encode + Decode + 'static;
     type ProtocolRsp: Send + Sync + Encode + Decode + 'static;
@@ -103,7 +101,7 @@ where
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        req_rsp: &RequestResponseWrapper<Block>,
+        req_rsp: &RequestResponseWrapper,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 

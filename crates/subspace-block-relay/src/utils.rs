@@ -37,17 +37,17 @@ impl<Block: BlockT> NetworkWrapper<Block> {
 
 /// Helper for request response.
 #[derive(Clone)]
-pub(crate) struct RequestResponseWrapper<Block: BlockT> {
+pub(crate) struct RequestResponseWrapper {
     protocol_name: ProtocolName,
     who: PeerId,
-    network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    network: Arc<dyn NetworkRequest + Send + Sync + 'static>,
 }
 
-impl<Block: BlockT> RequestResponseWrapper<Block> {
+impl RequestResponseWrapper {
     pub(crate) fn new(
         protocol_name: ProtocolName,
         who: PeerId,
-        network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+        network: Arc<dyn NetworkRequest + Send + Sync + 'static>,
     ) -> Self {
         Self {
             protocol_name,

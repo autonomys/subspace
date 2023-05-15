@@ -4,7 +4,6 @@ use crate::utils::RequestResponseWrapper;
 use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, Resolved, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use sp_runtime::traits::Block as BlockT;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -147,15 +146,12 @@ where
     }
 
     /// Fetches the missing entries from the server
-    async fn resolve_misses<Block>(
+    async fn resolve_misses(
         &self,
         compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
-        req_rsp: &RequestResponseWrapper<Block>,
-    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError>
-    where
-        Block: BlockT,
-    {
+        req_rsp: &RequestResponseWrapper,
+    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError> {
         let ResolveContext {
             mut resolved,
             local_miss,
@@ -202,11 +198,10 @@ where
 }
 
 #[async_trait]
-impl<Block, DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-    ProtocolClient<Block, DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+    ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    Block: BlockT,
     DownloadUnitId: Send + Sync + Encode + Decode + Clone + std::fmt::Debug + 'static,
     ProtocolUnitId: Send + Sync + Encode + Decode + Clone + 'static,
     ProtocolUnit: Send + Sync + Encode + Decode + Clone + 'static,
@@ -221,7 +216,7 @@ where
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        req_rsp: &RequestResponseWrapper<Block>,
+        req_rsp: &RequestResponseWrapper,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError> {
         let compact_response = match response {
             CompactBlockRsp::Initial(compact_response) => compact_response,
