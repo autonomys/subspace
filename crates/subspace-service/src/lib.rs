@@ -755,7 +755,7 @@ where
             })?;
     }
 
-    let network_wrapper = Arc::new(NetworkWrapper::new());
+    let network_wrapper = Arc::new(NetworkWrapper::default());
     let block_relay = if config.enable_subspace_block_relay {
         Some(build_consensus_relay(
             network_wrapper.clone(),
