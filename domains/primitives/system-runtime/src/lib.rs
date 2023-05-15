@@ -20,7 +20,7 @@
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_std::vec::Vec;
 
@@ -45,6 +45,18 @@ sp_api::decl_runtime_apis! {
         fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
 
         fn maximum_receipt_drift() -> NumberFor<Block>;
+
+        /// Extracts the successful core domain receipts.
+        fn extract_receipts(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<PNumber, PHash, Block::Hash>>;
+
+        /// Extracts the successful core domain fraud proofs.
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
 

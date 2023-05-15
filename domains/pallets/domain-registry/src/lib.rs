@@ -25,6 +25,7 @@ use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, Wit
 use frame_support::weights::Weight;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
+use sp_core::H256;
 use sp_domains::bundle_election::{
     verify_bundle_solution_threshold, ReadBundleElectionParamsError,
 };
@@ -56,6 +57,7 @@ mod pallet {
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use pallet_receipts::{Error as PalletReceiptError, FraudProofError};
+    use sp_core::H256;
     use sp_domain_digests::AsPredigest;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::fraud_proof::FraudProof;
@@ -111,6 +113,10 @@ mod pallet {
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
+
+    /// Core domain bundles submitted successfully in current block.
+    #[pallet::storage]
+    pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
 
     /// Domain id for the next core domain.
     #[pallet::storage]
@@ -310,6 +316,10 @@ mod pallet {
                 signed_opaque_bundle.bundle.receipts.as_slice(),
             )
             .map_err(Error::<T>::from)?;
+
+            let bundle_hash = signed_opaque_bundle.hash();
+
+            SuccessfulBundles::<T>::append(bundle_hash);
 
             Ok(())
         }
@@ -644,6 +654,10 @@ where
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn successful_bundles() -> Vec<H256> {
+        SuccessfulBundles::<T>::get()
+    }
+
     pub fn head_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         pallet_receipts::Pallet::<T>::head_receipt_number(domain_id)
     }

@@ -17,7 +17,7 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
@@ -691,6 +691,46 @@ impl_runtime_apis! {
 
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
+        }
+
+        fn extract_receipts(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<BlockNumber, Hash, Hash>> {
+            let successful_bundles = DomainRegistry::successful_bundles();
+            extrinsics
+                .into_iter()
+                .filter_map(|uxt| match uxt.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
+                        signed_opaque_bundle,
+                    }) if signed_opaque_bundle.domain_id() == domain_id
+                        && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+                    {
+                        Some(signed_opaque_bundle.bundle.receipts)
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .collect()
+        }
+
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
+            let successful_fraud_proofs = Receipts::successful_fraud_proofs();
+            extrinsics
+                .into_iter()
+                .filter_map(|uxt| match uxt.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof })
+                        if fraud_proof.domain_id() == domain_id
+                            && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
+                    {
+                        Some(fraud_proof)
+                    }
+                    _ => None,
+                })
+                .collect()
         }
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
