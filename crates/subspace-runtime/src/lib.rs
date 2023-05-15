@@ -787,8 +787,8 @@ impl_runtime_apis! {
             crate::domains::extract_core_bundles(extrinsics, domain_id)
         }
 
-        fn extract_stored_bundle_hashes() -> Vec<H256> {
-            crate::domains::extract_stored_bundle_hashes()
+        fn successful_bundle_hashes() -> Vec<H256> {
+            Domains::successful_bundles()
         }
 
         fn extract_receipts(

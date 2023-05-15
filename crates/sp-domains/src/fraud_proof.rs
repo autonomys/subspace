@@ -201,6 +201,16 @@ impl<Number, Hash> FraudProof<Number, Hash> {
     }
 }
 
+impl<Number, Hash> FraudProof<Number, Hash>
+where
+    Number: Encode,
+    Hash: Encode,
+{
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash(&self.encode())
+    }
+}
+
 /// Proves an invalid state transition by challenging the trace at specific index in a bad receipt.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InvalidStateTransitionProof {
