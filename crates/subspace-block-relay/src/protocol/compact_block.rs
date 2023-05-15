@@ -1,11 +1,10 @@
 //! Compact block implementation.
 
-use crate::{
-    ProtocolBackend, ProtocolClient, ProtocolRequestResponse, ProtocolServer, RelayError, Resolved,
-    LOG_TARGET,
-};
+use crate::utils::RequestResponseWrapper;
+use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, Resolved, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
+use sp_runtime::traits::Block as BlockT;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -18,11 +17,6 @@ use tracing::{trace, warn};
 /// a local miss/extra round trip. This threshold based scheme could be
 /// replaced by using the is_inherent() API if needed
 const PROTOCOL_UNIT_SIZE_THRESHOLD: NonZeroUsize = NonZeroUsize::new(32).expect("Not zero; qed");
-
-type CompactBlockReqRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit> = dyn ProtocolRequestResponse<
-    CompactBlockReq<DownloadUnitId, ProtocolUnitId>,
-    CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
->;
 
 /// Request messages
 #[derive(Encode, Decode)]
@@ -153,12 +147,15 @@ where
     }
 
     /// Fetches the missing entries from the server
-    async fn resolve_misses(
+    async fn resolve_misses<Block>(
         &self,
         compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
-        req_rsp: &CompactBlockReqRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError> {
+        req_rsp: &RequestResponseWrapper<Block>,
+    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError>
+    where
+        Block: BlockT,
+    {
         let ResolveContext {
             mut resolved,
             local_miss,
@@ -170,7 +167,7 @@ where
             protocol_unit_ids: local_miss.clone(),
         });
         let response: CompactBlockRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
-            req_rsp.request_response(request).await?;
+            req_rsp.request(request).await?;
         let missing_entries_response = if let CompactBlockRsp::MissingEntries(rsp) = response {
             rsp
         } else {
@@ -205,10 +202,11 @@ where
 }
 
 #[async_trait]
-impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-    ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+impl<Block, DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+    ProtocolClient<Block, DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
+    Block: BlockT,
     DownloadUnitId: Send + Sync + Encode + Decode + Clone + std::fmt::Debug + 'static,
     ProtocolUnitId: Send + Sync + Encode + Decode + Clone + 'static,
     ProtocolUnit: Send + Sync + Encode + Decode + Clone + 'static,
@@ -223,7 +221,7 @@ where
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        req_rsp: Arc<CompactBlockReqRsp<DownloadUnitId, ProtocolUnitId, ProtocolUnit>>,
+        req_rsp: &RequestResponseWrapper<Block>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError> {
         let compact_response = match response {
             CompactBlockRsp::Initial(compact_response) => compact_response,
@@ -249,7 +247,7 @@ where
         let misses = context.local_miss.len();
         let download_unit_id = compact_response.download_unit_id.clone();
         let resolved = self
-            .resolve_misses(compact_response, context, req_rsp.as_ref())
+            .resolve_misses(compact_response, context, req_rsp)
             .await?;
         trace!(
             target: LOG_TARGET,

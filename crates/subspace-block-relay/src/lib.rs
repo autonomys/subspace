@@ -40,10 +40,10 @@
 
 #![feature(const_option)]
 
-use crate::utils::RelayError;
+use crate::utils::{RelayError, RequestResponseWrapper};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use std::sync::Arc;
+use sp_runtime::traits::Block as BlockT;
 use std::time::Duration;
 
 mod consensus;
@@ -86,8 +86,10 @@ pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
 
 /// The client side of the relay protocol
 #[async_trait]
-pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
-    Send + Sync
+pub(crate) trait ProtocolClient<Block, DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+where
+    Self: Send + Sync,
+    Block: BlockT,
 {
     type ProtocolReq: Send + Sync + Encode + Decode + 'static;
     type ProtocolRsp: Send + Sync + Encode + Decode + 'static;
@@ -101,7 +103,7 @@ pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        network: Arc<dyn ProtocolRequestResponse<Self::ProtocolReq, Self::ProtocolRsp>>,
+        req_rsp: &RequestResponseWrapper<Block>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 
@@ -135,11 +137,4 @@ pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
         download_unit_id: &DownloadUnitId,
         protocol_unit_id: &ProtocolUnitId,
     ) -> Result<Option<ProtocolUnit>, RelayError>;
-}
-
-/// Helper for protocol request/response
-#[async_trait]
-pub(crate) trait ProtocolRequestResponse<Req, Rsp>: Send + Sync {
-    /// Performs the request response and returns the result
-    async fn request_response(&self, request: Req) -> Result<Rsp, RelayError>;
 }

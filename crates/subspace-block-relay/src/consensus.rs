@@ -3,8 +3,7 @@
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::utils::{NetworkWrapper, RequestResponseWrapper};
 use crate::{
-    DownloadResult, ProtocolBackend, ProtocolClient, ProtocolRequestResponse, ProtocolServer,
-    RelayError, LOG_TARGET,
+    DownloadResult, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -96,7 +95,7 @@ enum ServerMessage<Block: BlockT, ProtocolReq> {
 struct ConsensusRelayClient<
     Block: BlockT,
     Pool: TransactionPool,
-    ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+    ProtoClient: ProtocolClient<Block, BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
 > {
     network: Arc<NetworkWrapper<Block>>,
     protocol_name: ProtocolName,
@@ -107,7 +106,7 @@ struct ConsensusRelayClient<
 impl<
         Block: BlockT,
         Pool: TransactionPool,
-        ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+        ProtoClient: ProtocolClient<Block, BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
     > ConsensusRelayClient<Block, Pool, ProtoClient>
 {
     /// Downloads the requested block from the peer using the relay protocol
@@ -181,10 +180,9 @@ impl<
         protocol_response: ProtoClient::ProtocolRsp,
         req_rsp: Arc<RequestResponseWrapper<Block>>,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
-        let protocol_req_rsp = Arc::new(ProtocolRequestResponseImpl { req_rsp });
         let (block_hash, resolved) = self
             .protocol_client
-            .resolve_initial_response(protocol_response, protocol_req_rsp)
+            .resolve_initial_response(protocol_response, &req_rsp)
             .await?;
         let mut local_miss = 0;
         let extrinsics = resolved
@@ -212,7 +210,7 @@ impl<
 impl<
         Block: BlockT,
         Pool: TransactionPool,
-        ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
+        ProtoClient: ProtocolClient<Block, BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
     > BlockDownloader<Block> for ConsensusRelayClient<Block, Pool, ProtoClient>
 {
     async fn download_block(
@@ -567,23 +565,6 @@ where
         }
 
         Ok(None)
-    }
-}
-
-/// Protocol request/response implementation
-struct ProtocolRequestResponseImpl<Block: BlockT> {
-    req_rsp: Arc<RequestResponseWrapper<Block>>,
-}
-
-#[async_trait]
-impl<Block: BlockT, Req: Encode + Send + 'static, Rsp: Send + Decode + 'static>
-    ProtocolRequestResponse<Req, Rsp> for ProtocolRequestResponseImpl<Block>
-{
-    async fn request_response(&self, request: Req) -> Result<Rsp, RelayError> {
-        self.req_rsp
-            .request(ServerMessage::<Block, Req>::ProtocolReq(request))
-            .await
-            .map_err(Into::into)
     }
 }
 
