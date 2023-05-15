@@ -1,5 +1,5 @@
 use crate::ErasureCoding;
-use blst_from_scratch::types::g1::FsG1;
+use blst_rust::types::g1::FsG1;
 use kzg::G1;
 use std::iter;
 use std::num::NonZeroUsize;

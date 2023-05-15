@@ -5,16 +5,15 @@ mod tests;
 
 extern crate alloc;
 
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_from_scratch::types::fft_settings::FsFFTSettings;
-use blst_from_scratch::types::fr::FsFr;
-use blst_from_scratch::types::g1::FsG1;
-use blst_from_scratch::types::poly::FsPoly;
+use blst_rust::types::fft_settings::FsFFTSettings;
+use blst_rust::types::g1::FsG1;
+use blst_rust::types::poly::FsPoly;
 use core::num::NonZeroUsize;
 use kzg::{FFTSettings, PolyRecover, DAS, FFTG1, G1};
-use subspace_core_primitives::crypto::kzg::Commitment;
+use subspace_core_primitives::crypto::kzg::{Commitment, Polynomial};
 use subspace_core_primitives::crypto::Scalar;
 
 /// Erasure coding abstraction.
@@ -57,17 +56,28 @@ impl ErasureCoding {
     /// Both in input and output source shards are interleaved with parity shards:
     /// source, parity, source, parity, ...
     pub fn recover(&self, shards: &[Option<Scalar>]) -> Result<Vec<Scalar>, String> {
-        // TODO This is only necessary because upstream silently doesn't recover anything:
-        //  https://github.com/sifraitech/rust-kzg/issues/195
-        if shards.iter().filter(|scalar| scalar.is_none()).count() > shards.len() / 2 {
-            return Err("Impossible to recover, too many shards are missing".to_string());
-        }
-        let poly = <FsPoly as PolyRecover<FsFr, FsPoly, _>>::recover_poly_from_samples(
+        let poly = FsPoly::recover_poly_from_samples(
             Scalar::slice_option_to_repr(shards),
             &self.fft_settings,
         )?;
 
         Ok(Scalar::vec_from_repr(poly.coeffs))
+    }
+
+    /// Recovery of missing shards from given shards (at least 1/2 should be `Some`) in form of
+    /// normalized polynomial (allows to not do inverse FFT afterwards if polynomial is desired).
+    ///
+    /// Both in input and output source shards are interleaved with parity shards:
+    /// source, parity, source, parity, ...
+    pub fn recover_poly(&self, shards: &[Option<Scalar>]) -> Result<Polynomial, String> {
+        let mut poly = Polynomial::from(FsPoly::recover_poly_coeffs_from_samples(
+            Scalar::slice_option_to_repr(shards),
+            &self.fft_settings,
+        )?);
+
+        poly.normalize();
+
+        Ok(poly)
     }
 
     /// Recovery of source shards from given shards (at least 1/2 should be `Some`).
