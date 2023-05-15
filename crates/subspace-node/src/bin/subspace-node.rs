@@ -689,6 +689,9 @@ fn main() -> Result<(), Error> {
                                     system_domain_sync_service: system_domain_node
                                         .sync_service
                                         .clone(),
+                                    system_domain_block_import_notifications: system_domain_node
+                                        .executor
+                                        .import_notification_stream(),
                                     primary_chain_client: primary_chain_node.client.clone(),
                                     primary_network_sync_oracle: primary_chain_node
                                         .sync_service
@@ -743,6 +746,9 @@ fn main() -> Result<(), Error> {
                                     system_domain_sync_service: system_domain_node
                                         .sync_service
                                         .clone(),
+                                    system_domain_block_import_notifications: system_domain_node
+                                        .executor
+                                        .import_notification_stream(),
                                     primary_chain_client: primary_chain_node.client.clone(),
                                     primary_network_sync_oracle: primary_chain_node
                                         .sync_service
@@ -817,6 +823,9 @@ fn main() -> Result<(), Error> {
                                     core_domain_config,
                                     system_domain_client: system_domain_node.client.clone(),
                                     system_domain_sync_service: system_domain_node.sync_service.clone(),
+                                    system_domain_block_import_notifications: system_domain_node
+                                        .executor
+                                        .import_notification_stream(),
                                     primary_chain_client: primary_chain_node.client.clone(),
                                     primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
                                     select_chain: primary_chain_node.select_chain.clone(),

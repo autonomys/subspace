@@ -4,7 +4,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_processor::SystemBundleProcessor;
-use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
+use crate::{active_leaves, DomainImportNotifications, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -12,6 +12,7 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
 };
+use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
@@ -37,6 +38,8 @@ where
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
     bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_processor:
+        DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, Client>,
 }
 
 impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
@@ -54,6 +57,7 @@ where
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             bundle_processor: self.bundle_processor.clone(),
+            domain_block_processor: self.domain_block_processor.clone(),
         }
     }
 }
@@ -171,7 +175,7 @@ where
             params.client.clone(),
             params.backend.clone(),
             params.keystore,
-            domain_block_processor,
+            domain_block_processor.clone(),
         );
 
         spawn_essential.spawn_essential_blocking(
@@ -198,6 +202,7 @@ where
             backend: params.backend,
             fraud_proof_generator,
             bundle_processor,
+            domain_block_processor,
         })
     }
 
@@ -205,6 +210,19 @@ where
         &self,
     ) -> FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E> {
         self.fraud_proof_generator.clone()
+    }
+
+    /// Get system domain block import notification stream.
+    ///
+    /// NOTE: Unlike `BlockchainEvents::import_notification_stream()`, this notification won't be
+    /// fired until the system domain block's receipt processing is done.
+    pub fn import_notification_stream(&self) -> DomainImportNotifications<Block, PBlock> {
+        let (sink, stream) = tracing_unbounded("mpsc_domain_import_notification_stream", 100);
+        self.domain_block_processor
+            .import_notification_sinks
+            .lock()
+            .push(sink);
+        stream
     }
 
     /// Processes the bundles extracted from the primary block.

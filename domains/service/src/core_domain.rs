@@ -4,8 +4,8 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
-    CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
-    ExecutorStreams,
+    CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, DomainImportNotifications,
+    EssentialExecutorParams, ExecutorStreams,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -294,6 +294,7 @@ pub struct CoreDomainParams<
     pub core_domain_config: DomainConfiguration<AccountId>,
     pub system_domain_client: Arc<SClient>,
     pub system_domain_sync_service: Arc<SyncingService<SBlock>>,
+    pub system_domain_block_import_notifications: DomainImportNotifications<SBlock, PBlock>,
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
@@ -438,6 +439,7 @@ where
         mut core_domain_config,
         system_domain_client,
         system_domain_sync_service,
+        system_domain_block_import_notifications,
         primary_chain_client,
         primary_network_sync_oracle,
         select_chain,
@@ -548,6 +550,7 @@ where
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
+        system_domain_block_import_notifications,
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         EssentialExecutorParams::<

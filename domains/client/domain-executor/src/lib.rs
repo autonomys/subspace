@@ -106,6 +106,7 @@ pub use self::core_gossip_message_validator::CoreGossipMessageValidator;
 pub use self::parent_chain::{CoreDomainParentChain, SystemDomainParentChain};
 pub use self::system_executor::Executor as SystemExecutor;
 pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
+pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;

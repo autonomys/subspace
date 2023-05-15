@@ -4,10 +4,10 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::CoreDomainParentChain;
-use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
+use crate::{active_leaves, DomainImportNotifications, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
-use futures::{FutureExt, Stream};
+use futures::{FutureExt, Stream, StreamExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
@@ -111,6 +111,7 @@ where
     pub async fn new<SC, IBNS, CIBNS, NSNS>(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
+        mut system_domain_block_import_notifications: DomainImportNotifications<SBlock, PBlock>,
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         select_chain: &SC,
         params: EssentialExecutorParams<
@@ -202,6 +203,19 @@ where
                 params.executor_streams,
                 active_leaves,
             )
+            .boxed(),
+        );
+
+        spawn_essential.spawn_essential_blocking(
+            "core-domain-receipts-checker",
+            None,
+            async move {
+                while let Some(system_domain_block_import) =
+                    system_domain_block_import_notifications.next().await
+                {
+                    // TODO: check core domain receipts
+                }
+            }
             .boxed(),
         );
 
