@@ -18,13 +18,15 @@ pub struct NetworkWrapper {
     network: Mutex<Option<NetworkRequestService>>,
 }
 
-impl NetworkWrapper {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+impl Default for NetworkWrapper {
+    fn default() -> Self {
         Self {
             network: Mutex::new(None),
         }
     }
+}
+
+impl NetworkWrapper {
     pub fn set(&self, network: NetworkRequestService) {
         *self.network.lock() = Some(network);
     }
