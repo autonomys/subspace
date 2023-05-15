@@ -1362,7 +1362,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-primitives",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -1382,19 +1382,19 @@ dependencies = [
  "scale-info",
  "snowbridge-beacon-primitives",
  "snowbridge-ethereum-beacon-client",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -1407,7 +1407,7 @@ dependencies = [
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -1427,19 +1427,19 @@ dependencies = [
  "scale-info",
  "snowbridge-beacon-primitives",
  "snowbridge-ethereum-beacon-client",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -1456,7 +1456,7 @@ dependencies = [
  "fp-rpc",
  "fp-self-contained",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -1478,19 +1478,19 @@ dependencies = [
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -1519,7 +1519,7 @@ dependencies = [
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -1535,19 +1535,19 @@ dependencies = [
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -1561,7 +1561,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-primitives",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -1578,19 +1578,19 @@ dependencies = [
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -1800,9 +1800,9 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "tracing",
 ]
 
@@ -2315,13 +2315,13 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "sc-client-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
  "substrate-test-runtime-client",
  "tracing",
 ]
@@ -2337,14 +2337,14 @@ dependencies = [
  "sc-client-api",
  "sc-executor",
  "sc-executor-common",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
  "sp-keyring",
  "sp-messenger",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-state-machine",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
@@ -2363,8 +2363,8 @@ dependencies = [
  "sc-utils",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
 ]
 
@@ -2400,19 +2400,19 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domain-digests",
  "sp-domains",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-keystore",
  "sp-messenger",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
@@ -2440,9 +2440,9 @@ dependencies = [
  "sc-network-common",
  "sc-network-gossip",
  "sc-utils",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "tracing",
 ]
 
@@ -2461,13 +2461,13 @@ dependencies = [
  "sc-network",
  "sc-network-gossip",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
  "sp-messenger",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "system-runtime-primitives",
  "tracing",
 ]
@@ -2496,11 +2496,11 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "substrate-frame-rpc-system",
 ]
 
@@ -2509,20 +2509,20 @@ name = "domain-pallet-executive"
 version = "0.1.0"
 dependencies = [
  "frame-executive",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "hex-literal",
  "pallet-balances",
  "pallet-transaction-payment",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-tracing",
+ "sp-version",
 ]
 
 [[package]]
@@ -2531,10 +2531,10 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
  "subspace-runtime-primitives",
 ]
 
@@ -2573,19 +2573,19 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-keystore",
  "sp-messenger",
  "sp-offchain",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
  "sp-transaction-pool",
  "subspace-core-primitives",
@@ -2604,7 +2604,7 @@ name = "domain-test-primitives"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-domains",
  "sp-messenger",
  "subspace-runtime-primitives",
@@ -2622,7 +2622,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-service",
  "domain-test-primitives",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
  "futures",
@@ -2640,18 +2640,18 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-arithmetic",
  "sp-block-builder",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
  "sp-keyring",
  "sp-messenger",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
  "sp-timestamp",
  "sp-transaction-pool",
@@ -3080,10 +3080,10 @@ dependencies = [
  "fp-consensus",
  "fp-rpc",
  "sc-consensus",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-consensus",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "thiserror",
 ]
 
@@ -3100,9 +3100,9 @@ dependencies = [
  "sc-client-db",
  "smallvec",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-database",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -3118,9 +3118,9 @@ dependencies = [
  "futures-timer",
  "log",
  "sc-client-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -3157,15 +3157,15 @@ dependencies = [
  "sc-service",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-storage",
  "substrate-prometheus-endpoint",
  "tokio",
 ]
@@ -3194,11 +3194,11 @@ dependencies = [
  "fp-storage",
  "parity-scale-codec",
  "sc-client-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
+ "sp-runtime",
+ "sp-storage",
 ]
 
 [[package]]
@@ -3347,10 +3347,10 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -3360,9 +3360,9 @@ source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e19
 dependencies = [
  "ethereum",
  "parity-scale-codec",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -3373,10 +3373,10 @@ dependencies = [
  "ethereum",
  "ethereum-types",
  "fp-evm",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "num_enum",
  "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
 ]
 
 [[package]]
@@ -3385,13 +3385,13 @@ version = "3.0.0-dev"
 source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
 dependencies = [
  "evm",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -3404,11 +3404,11 @@ dependencies = [
  "fp-evm",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
 ]
 
 [[package]]
@@ -3416,11 +3416,11 @@ name = "fp-self-contained"
 version = "1.0.0-dev"
 source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -3443,8 +3443,8 @@ name = "frame-benchmarking"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "frame-support-procedural 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
+ "frame-support-procedural",
  "frame-system",
  "linregress",
  "log",
@@ -3452,14 +3452,14 @@ dependencies = [
  "paste",
  "scale-info",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
+ "sp-storage",
  "static_assertions",
 ]
 
@@ -3474,7 +3474,7 @@ dependencies = [
  "clap 4.2.2",
  "comfy-table",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "gethostname",
  "handlebars",
@@ -3494,18 +3494,18 @@ dependencies = [
  "sc-sysinfo",
  "serde",
  "serde_json",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-database",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-externalities",
+ "sp-inherents",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
+ "sp-storage",
+ "sp-trie",
  "thiserror",
  "thousands",
 ]
@@ -3515,15 +3515,15 @@ name = "frame-executive"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-tracing",
 ]
 
 [[package]]
@@ -3546,7 +3546,7 @@ dependencies = [
  "bitflags",
  "environmental",
  "frame-metadata",
- "frame-support-procedural 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support-procedural",
  "impl-trait-for-tuples",
  "k256",
  "log",
@@ -3556,51 +3556,18 @@ dependencies = [
  "scale-info",
  "serde",
  "smallvec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core-hashing-proc-macro 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-staking 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "tt-call",
-]
-
-[[package]]
-name = "frame-support"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "bitflags",
- "environmental",
- "frame-metadata",
- "frame-support-procedural 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "impl-trait-for-tuples",
- "k256",
- "log",
- "once_cell",
- "parity-scale-codec",
- "paste",
- "scale-info",
- "serde",
- "smallvec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-core-hashing-proc-macro 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-staking 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-api",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-core-hashing-proc-macro",
+ "sp-inherents",
+ "sp-io",
+ "sp-runtime",
+ "sp-staking",
+ "sp-state-machine",
+ "sp-std",
+ "sp-tracing",
+ "sp-weights",
  "tt-call",
 ]
 
@@ -3612,22 +3579,7 @@ dependencies = [
  "Inflector",
  "cfg-expr",
  "derive-syn-parse",
- "frame-support-procedural-tools 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "itertools",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "frame-support-procedural"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "Inflector",
- "cfg-expr",
- "derive-syn-parse",
- "frame-support-procedural-tools 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "frame-support-procedural-tools",
  "itertools",
  "proc-macro2",
  "quote",
@@ -3639,19 +3591,7 @@ name = "frame-support-procedural-tools"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "frame-support-procedural-tools-derive 3.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "frame-support-procedural-tools"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "frame-support-procedural-tools-derive 3.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "frame-support-procedural-tools-derive",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
@@ -3662,16 +3602,6 @@ dependencies = [
 name = "frame-support-procedural-tools-derive"
 version = "3.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "frame-support-procedural-tools-derive"
-version = "3.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3683,17 +3613,17 @@ name = "frame-system"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "log",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-version",
+ "sp-weights",
 ]
 
 [[package]]
@@ -3702,13 +3632,13 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -3717,7 +3647,7 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
 ]
 
 [[package]]
@@ -6582,16 +6512,16 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 name = "orml-vesting"
 version = "0.4.1-dev"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6644,13 +6574,13 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "parity-scale-codec",
  "scale-info",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6659,19 +6589,19 @@ version = "1.0.0"
 source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
 dependencies = [
  "fp-evm",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
 name = "pallet-domain-registry"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "pallet-balances",
@@ -6680,32 +6610,32 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domain-digests",
  "sp-domains",
  "sp-executor-registry",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "pallet-receipts",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
@@ -6721,14 +6651,14 @@ dependencies = [
  "fp-evm",
  "fp-rpc",
  "fp-storage",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "pallet-evm",
  "parity-scale-codec",
  "scale-info",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6741,7 +6671,7 @@ dependencies = [
  "fp-account",
  "fp-evm",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "hex",
  "impl-trait-for-tuples",
@@ -6749,10 +6679,10 @@ dependencies = [
  "parity-scale-codec",
  "rlp",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6760,7 +6690,7 @@ name = "pallet-evm-chain-id"
 version = "1.0.0-dev"
 source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b#e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
@@ -6791,25 +6721,25 @@ source = "git+https://github.com/subspace/frontier/?rev=e60f3f8617cabd3473bd5e19
 dependencies = [
  "fp-evm",
  "ripemd",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
 ]
 
 [[package]]
 name = "pallet-executor-registry"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
+ "sp-core",
  "sp-domains",
  "sp-executor-registry",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
  "subspace-core-primitives",
 ]
 
@@ -6817,16 +6747,16 @@ dependencies = [
 name = "pallet-feeds"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
  "subspace-core-primitives",
 ]
 
@@ -6836,20 +6766,20 @@ version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "finality-grandpa",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "num-traits",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-application-crypto",
  "sp-consensus-grandpa",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
@@ -6857,37 +6787,37 @@ name = "pallet-messenger"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "pallet-balances",
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
  "sp-messenger",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
 name = "pallet-object-store"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "hex",
  "log",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
  "subspace-core-primitives",
 ]
 
@@ -6895,43 +6825,43 @@ dependencies = [
 name = "pallet-offences-subspace"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
 name = "pallet-receipts"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "subspace-runtime-primitives",
 ]
 
@@ -6939,11 +6869,11 @@ dependencies = [
 name = "pallet-runtime-configs"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -6951,7 +6881,7 @@ name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
  "env_logger",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "futures",
  "log",
@@ -6965,10 +6895,10 @@ dependencies = [
  "serde",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
@@ -6984,13 +6914,13 @@ name = "pallet-sudo"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -6999,15 +6929,15 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "log",
  "parity-scale-codec",
  "scale-info",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
  "sp-timestamp",
 ]
 
@@ -7015,7 +6945,7 @@ dependencies = [
 name = "pallet-transaction-fees"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
@@ -7027,15 +6957,15 @@ name = "pallet-transaction-payment"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7046,12 +6976,12 @@ dependencies = [
  "jsonrpsee",
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-rpc",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-weights",
 ]
 
 [[package]]
@@ -7061,9 +6991,9 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "pallet-transaction-payment",
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-runtime",
+ "sp-weights",
 ]
 
 [[package]]
@@ -7071,17 +7001,17 @@ name = "pallet-transporter"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-io",
  "sp-messenger",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7090,14 +7020,14 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -8346,8 +8276,8 @@ version = "4.1.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "log",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-wasm-interface",
  "thiserror",
 ]
 
@@ -8365,12 +8295,12 @@ dependencies = [
  "sc-proposer-metrics",
  "sc-telemetry",
  "sc-transaction-pool-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
 ]
 
@@ -8381,12 +8311,12 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "parity-scale-codec",
  "sc-client-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -8403,9 +8333,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
 ]
 
 [[package]]
@@ -8448,12 +8378,12 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-keyring",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-panic-handler 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-keystore",
+ "sp-panic-handler",
+ "sp-runtime",
+ "sp-version",
  "thiserror",
  "tiny-bip39",
  "tokio",
@@ -8472,16 +8402,16 @@ dependencies = [
  "sc-executor",
  "sc-transaction-pool-api",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-database",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-externalities",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-storage",
  "substrate-prometheus-endpoint",
 ]
 
@@ -8501,13 +8431,13 @@ dependencies = [
  "sc-client-api",
  "sc-state-db",
  "schnellru",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-database",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
 ]
 
 [[package]]
@@ -8525,12 +8455,12 @@ dependencies = [
  "sc-client-api",
  "sc-utils",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
  "substrate-prometheus-endpoint",
  "thiserror",
 ]
@@ -8542,10 +8472,10 @@ dependencies = [
  "async-trait",
  "parity-scale-codec",
  "sc-consensus",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-consensus",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "subspace-fraud-proof",
 ]
 
@@ -8562,14 +8492,14 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-telemetry",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
 ]
 
 [[package]]
@@ -8597,20 +8527,20 @@ dependencies = [
  "sc-utils",
  "schnorrkel",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-io",
  "sp-objects",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-timestamp",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-tracing",
+ "sp-version",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
@@ -8637,12 +8567,12 @@ dependencies = [
  "sc-consensus-subspace",
  "sc-rpc",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-farmer-components",
@@ -8662,15 +8592,15 @@ dependencies = [
  "sc-executor-common",
  "sc-executor-wasmi",
  "sc-executor-wasmtime",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-panic-handler 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
+ "sp-externalities",
+ "sp-io",
+ "sp-panic-handler",
+ "sp-runtime-interface",
+ "sp-trie",
+ "sp-version",
+ "sp-wasm-interface",
  "tracing",
  "wasmi",
 ]
@@ -8682,7 +8612,7 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "sc-allocator",
  "sp-maybe-compressed-blob",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-wasm-interface",
  "thiserror",
  "wasm-instrument",
  "wasmi",
@@ -8696,8 +8626,8 @@ dependencies = [
  "log",
  "sc-allocator",
  "sc-executor-common",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime-interface",
+ "sp-wasm-interface",
  "wasmi",
 ]
 
@@ -8714,8 +8644,8 @@ dependencies = [
  "rustix 0.36.12",
  "sc-allocator",
  "sc-executor-common",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime-interface",
+ "sp-wasm-interface",
  "wasmtime",
 ]
 
@@ -8732,7 +8662,7 @@ dependencies = [
  "sc-network",
  "sc-network-common",
  "sp-blockchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -8744,9 +8674,9 @@ dependencies = [
  "async-trait",
  "parking_lot 0.12.1",
  "serde_json",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-keystore",
  "thiserror",
 ]
 
@@ -8783,11 +8713,11 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
  "thiserror",
  "unsigned-varint",
@@ -8809,7 +8739,7 @@ dependencies = [
  "sc-network",
  "sc-network-common",
  "sp-blockchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "thiserror",
  "unsigned-varint",
 ]
@@ -8836,7 +8766,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-grandpa",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
  "thiserror",
  "zeroize",
@@ -8856,7 +8786,7 @@ dependencies = [
  "sc-network",
  "sc-network-common",
  "sc-peerset",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
  "tracing",
 ]
@@ -8878,8 +8808,8 @@ dependencies = [
  "sc-network-common",
  "sc-peerset",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "thiserror",
 ]
 
@@ -8907,12 +8837,12 @@ dependencies = [
  "sc-peerset",
  "sc-utils",
  "smallvec",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-grandpa",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
  "thiserror",
 ]
@@ -8939,9 +8869,9 @@ dependencies = [
  "sc-utils",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-tracing",
  "substrate-test-runtime",
  "substrate-test-runtime-client",
  "tokio",
@@ -8963,7 +8893,7 @@ dependencies = [
  "sc-peerset",
  "sc-utils",
  "sp-consensus",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "substrate-prometheus-endpoint",
 ]
 
@@ -8990,10 +8920,10 @@ dependencies = [
  "sc-network-common",
  "sc-peerset",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "threadpool",
  "tracing",
 ]
@@ -9038,15 +8968,15 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "serde_json",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-keystore",
  "sp-offchain",
  "sp-rpc",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "tokio",
 ]
 
@@ -9062,10 +8992,10 @@ dependencies = [
  "scale-info",
  "serde",
  "serde_json",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-rpc",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-version",
  "thiserror",
 ]
 
@@ -9101,11 +9031,11 @@ dependencies = [
  "sc-client-api",
  "sc-transaction-pool-api",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-version",
  "thiserror",
  "tokio-stream",
 ]
@@ -9153,20 +9083,20 @@ dependencies = [
  "sc-utils",
  "serde",
  "serde_json",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-externalities",
+ "sp-keystore",
+ "sp-runtime",
  "sp-session",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-state-machine",
+ "sp-storage",
  "sp-transaction-pool",
  "sp-transaction-storage-proof",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-trie",
+ "sp-version",
  "static_init",
  "substrate-prometheus-endpoint",
  "tempfile",
@@ -9184,7 +9114,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "parking_lot 0.12.1",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
 ]
 
 [[package]]
@@ -9198,7 +9128,7 @@ dependencies = [
  "log",
  "sc-client-db",
  "sc-utils",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "thiserror",
  "tokio",
 ]
@@ -9211,8 +9141,8 @@ dependencies = [
  "sc-service",
  "sc-telemetry",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -9229,9 +9159,9 @@ dependencies = [
  "sc-telemetry",
  "serde",
  "serde_json",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-std",
 ]
 
 [[package]]
@@ -9272,12 +9202,12 @@ dependencies = [
  "sc-rpc-server",
  "sc-tracing-proc-macro",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-rpc",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-tracing",
  "thiserror",
  "tracing",
  "tracing-log",
@@ -9312,11 +9242,11 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-tracing",
  "sp-transaction-pool",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -9333,7 +9263,7 @@ dependencies = [
  "parity-scale-codec",
  "serde",
  "sp-blockchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "thiserror",
 ]
 
@@ -9349,7 +9279,7 @@ dependencies = [
  "log",
  "parking_lot 0.12.1",
  "prometheus",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
 ]
 
 [[package]]
@@ -9805,7 +9735,7 @@ name = "snowbridge-beacon-primitives"
 version = "0.0.1"
 source = "git+https://github.com/Snowfork/snowbridge?rev=cac98d860b8f24a9c3a3eabb5bcbee8dc2880960#cac98d860b8f24a9c3a3eabb5bcbee8dc2880960"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "hex",
  "parity-scale-codec",
@@ -9813,10 +9743,10 @@ dependencies = [
  "scale-info",
  "serde",
  "snowbridge-ethereum",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -9824,15 +9754,15 @@ name = "snowbridge-core"
 version = "0.1.1"
 source = "git+https://github.com/Snowfork/snowbridge?rev=cac98d860b8f24a9c3a3eabb5bcbee8dc2880960#cac98d860b8f24a9c3a3eabb5bcbee8dc2880960"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "snowbridge-ethereum",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -9851,10 +9781,10 @@ dependencies = [
  "scale-info",
  "serde",
  "serde-big-array",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -9864,7 +9794,7 @@ source = "git+https://github.com/Snowfork/snowbridge?rev=cac98d860b8f24a9c3a3eab
 dependencies = [
  "byte-slice-cast",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "hex-literal",
  "milagro_bls",
@@ -9875,10 +9805,10 @@ dependencies = [
  "snowbridge-beacon-primitives",
  "snowbridge-core",
  "snowbridge-ethereum",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
  "ssz-rs",
  "ssz-rs-derive",
 ]
@@ -9918,31 +9848,13 @@ dependencies = [
  "hash-db 0.16.0",
  "log",
  "parity-scale-codec",
- "sp-api-proc-macro 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "thiserror",
-]
-
-[[package]]
-name = "sp-api"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "hash-db 0.16.0",
- "log",
- "parity-scale-codec",
- "sp-api-proc-macro 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-api-proc-macro",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
+ "sp-trie",
+ "sp-version",
  "thiserror",
 ]
 
@@ -9961,20 +9873,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-api-proc-macro"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "Inflector",
- "blake2",
- "expander",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "sp-application-crypto"
 version = "7.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
@@ -9982,22 +9880,9 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
-]
-
-[[package]]
-name = "sp-application-crypto"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-io",
+ "sp-std",
 ]
 
 [[package]]
@@ -10010,21 +9895,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "static_assertions",
-]
-
-[[package]]
-name = "sp-arithmetic"
-version = "6.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "integer-sqrt",
- "num-traits",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-std",
  "static_assertions",
 ]
 
@@ -10034,10 +9905,10 @@ version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -10050,11 +9921,11 @@ dependencies = [
  "lru 0.8.1",
  "parity-scale-codec",
  "parking_lot 0.12.1",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-consensus",
  "sp-database",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-state-machine",
  "thiserror",
 ]
 
@@ -10066,10 +9937,10 @@ dependencies = [
  "async-trait",
  "futures",
  "log",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
  "thiserror",
 ]
 
@@ -10083,12 +9954,12 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-core",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -10099,7 +9970,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-timestamp",
 ]
 
@@ -10112,16 +9983,16 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
  "sp-consensus-slots",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-externalities",
+ "sp-inherents",
+ "sp-io",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
  "sp-timestamp",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -10161,55 +10032,12 @@ dependencies = [
  "secp256k1",
  "secrecy",
  "serde",
- "sp-core-hashing 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-debug-derive 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "ss58-registry",
- "substrate-bip39",
- "thiserror",
- "tiny-bip39",
- "zeroize",
-]
-
-[[package]]
-name = "sp-core"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "array-bytes",
- "bitflags",
- "blake2",
- "bounded-collections",
- "bs58",
- "dyn-clonable",
- "ed25519-zebra",
- "futures",
- "hash-db 0.16.0",
- "hash256-std-hasher",
- "impl-serde",
- "lazy_static",
- "libsecp256k1",
- "log",
- "merlin",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "primitive-types",
- "rand 0.8.5",
- "regex",
- "scale-info",
- "schnorrkel",
- "secp256k1",
- "secrecy",
- "serde",
- "sp-core-hashing 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-debug-derive 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core-hashing",
+ "sp-debug-derive",
+ "sp-externalities",
+ "sp-runtime-interface",
+ "sp-std",
+ "sp-storage",
  "ss58-registry",
  "substrate-bip39",
  "thiserror",
@@ -10227,21 +10055,7 @@ dependencies = [
  "digest 0.10.6",
  "sha2 0.10.6",
  "sha3",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "twox-hash",
-]
-
-[[package]]
-name = "sp-core-hashing"
-version = "5.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "blake2b_simd",
- "byteorder",
- "digest 0.10.6",
- "sha2 0.10.6",
- "sha3",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-std",
  "twox-hash",
 ]
 
@@ -10252,18 +10066,7 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "proc-macro2",
  "quote",
- "sp-core-hashing 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "sp-core-hashing-proc-macro"
-version = "5.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "proc-macro2",
- "quote",
- "sp-core-hashing 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core-hashing",
  "syn 1.0.109",
 ]
 
@@ -10287,24 +10090,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-debug-derive"
-version = "5.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "sp-domain-digests"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -10318,16 +10111,16 @@ dependencies = [
  "scale-info",
  "schnorrkel",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
  "sp-blockchain",
  "sp-consensus-slots",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
+ "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
@@ -10339,7 +10132,7 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "sp-domains",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
 ]
 
 [[package]]
@@ -10349,19 +10142,8 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "environmental",
  "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
-]
-
-[[package]]
-name = "sp-externalities"
-version = "0.13.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "environmental",
- "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-std",
+ "sp-storage",
 ]
 
 [[package]]
@@ -10373,24 +10155,9 @@ dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "thiserror",
-]
-
-[[package]]
-name = "sp-inherents"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "async-trait",
- "impl-trait-for-tuples",
- "parity-scale-codec",
- "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
  "thiserror",
 ]
 
@@ -10408,40 +10175,14 @@ dependencies = [
  "parity-scale-codec",
  "rustversion",
  "secp256k1",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "tracing",
- "tracing-core",
-]
-
-[[package]]
-name = "sp-io"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "bytes",
- "ed25519",
- "ed25519-dalek",
- "futures",
- "libsecp256k1",
- "log",
- "parity-scale-codec",
- "rustversion",
- "secp256k1",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-externalities",
+ "sp-keystore",
+ "sp-runtime-interface",
+ "sp-state-machine",
+ "sp-std",
+ "sp-tracing",
+ "sp-trie",
  "tracing",
  "tracing-core",
 ]
@@ -10452,8 +10193,8 @@ version = "7.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "lazy_static",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "strum",
 ]
 
@@ -10468,23 +10209,8 @@ dependencies = [
  "parking_lot 0.12.1",
  "schnorrkel",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "thiserror",
-]
-
-[[package]]
-name = "sp-keystore"
-version = "0.13.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "futures",
- "merlin",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "schnorrkel",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-externalities",
  "thiserror",
 ]
 
@@ -10492,17 +10218,17 @@ dependencies = [
 name = "sp-lightclient"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "futures",
  "parity-scale-codec",
  "rand 0.8.5",
  "scale-info",
  "schnorrkel",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
@@ -10525,24 +10251,24 @@ dependencies = [
 name = "sp-messenger"
 version = "0.1.0"
 dependencies = [
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "hash-db 0.16.0",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
 name = "sp-objects"
 version = "0.1.0"
 dependencies = [
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-std",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
 ]
@@ -10552,25 +10278,15 @@ name = "sp-offchain"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
 name = "sp-panic-handler"
 version = "5.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
-dependencies = [
- "backtrace",
- "lazy_static",
- "regex",
-]
-
-[[package]]
-name = "sp-panic-handler"
-version = "5.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -10582,11 +10298,11 @@ name = "sp-receipts"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -10596,7 +10312,7 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "rustc-hash",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
 ]
 
 [[package]]
@@ -10613,34 +10329,12 @@ dependencies = [
  "rand 0.8.5",
  "scale-info",
  "serde",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
-]
-
-[[package]]
-name = "sp-runtime"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "either",
- "hash256-std-hasher",
- "impl-trait-for-tuples",
- "log",
- "parity-scale-codec",
- "paste",
- "rand 0.8.5",
- "scale-info",
- "serde",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-weights 4.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-application-crypto",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-io",
+ "sp-std",
+ "sp-weights",
 ]
 
 [[package]]
@@ -10652,30 +10346,12 @@ dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
  "primitive-types",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface-proc-macro 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "static_assertions",
-]
-
-[[package]]
-name = "sp-runtime-interface"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "bytes",
- "impl-trait-for-tuples",
- "parity-scale-codec",
- "primitive-types",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime-interface-proc-macro 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-storage 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-tracing 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-wasm-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-externalities",
+ "sp-runtime-interface-proc-macro",
+ "sp-std",
+ "sp-storage",
+ "sp-tracing",
+ "sp-wasm-interface",
  "static_assertions",
 ]
 
@@ -10683,18 +10359,6 @@ dependencies = [
 name = "sp-runtime-interface-proc-macro"
 version = "6.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
-dependencies = [
- "Inflector",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "sp-runtime-interface-proc-macro"
-version = "6.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
 dependencies = [
  "Inflector",
  "proc-macro-crate",
@@ -10710,11 +10374,11 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-staking 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-staking",
+ "sp-std",
 ]
 
 [[package]]
@@ -10724,21 +10388,9 @@ source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f37086886
 dependencies = [
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
-]
-
-[[package]]
-name = "sp-staking"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -10752,31 +10404,11 @@ dependencies = [
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "smallvec",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-panic-handler 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "sp-state-machine"
-version = "0.13.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "hash-db 0.16.0",
- "log",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "rand 0.8.5",
- "smallvec",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-panic-handler 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-externalities",
+ "sp-panic-handler",
+ "sp-std",
+ "sp-trie",
  "thiserror",
  "tracing",
 ]
@@ -10787,11 +10419,6 @@ version = "5.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 
 [[package]]
-name = "sp-std"
-version = "5.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-
-[[package]]
 name = "sp-storage"
 version = "7.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
@@ -10800,21 +10427,8 @@ dependencies = [
  "parity-scale-codec",
  "ref-cast",
  "serde",
- "sp-debug-derive 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
-]
-
-[[package]]
-name = "sp-storage"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "impl-serde",
- "parity-scale-codec",
- "ref-cast",
- "serde",
- "sp-debug-derive 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-debug-derive",
+ "sp-std",
 ]
 
 [[package]]
@@ -10826,9 +10440,9 @@ dependencies = [
  "futures-timer",
  "log",
  "parity-scale-codec",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-std",
  "thiserror",
 ]
 
@@ -10838,19 +10452,7 @@ version = "6.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
  "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "tracing",
- "tracing-core",
- "tracing-subscriber 0.2.25",
-]
-
-[[package]]
-name = "sp-tracing"
-version = "6.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-std",
  "tracing",
  "tracing-core",
  "tracing-subscriber 0.2.25",
@@ -10861,8 +10463,8 @@ name = "sp-transaction-pool"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
 dependencies = [
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -10874,11 +10476,11 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "scale-info",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-std",
+ "sp-trie",
 ]
 
 [[package]]
@@ -10896,31 +10498,8 @@ dependencies = [
  "parking_lot 0.12.1",
  "scale-info",
  "schnellru",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "thiserror",
- "tracing",
- "trie-db",
- "trie-root",
-]
-
-[[package]]
-name = "sp-trie"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "ahash 0.8.3",
- "hash-db 0.16.0",
- "hashbrown 0.13.2",
- "lazy_static",
- "memory-db",
- "nohash-hasher",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "scale-info",
- "schnellru",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core",
+ "sp-std",
  "thiserror",
  "tracing",
  "trie-db",
@@ -10937,27 +10516,10 @@ dependencies = [
  "parity-wasm",
  "scale-info",
  "serde",
- "sp-core-hashing-proc-macro 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version-proc-macro 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "thiserror",
-]
-
-[[package]]
-name = "sp-version"
-version = "5.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "impl-serde",
- "parity-scale-codec",
- "parity-wasm",
- "scale-info",
- "serde",
- "sp-core-hashing-proc-macro 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-version-proc-macro 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-core-hashing-proc-macro",
+ "sp-runtime",
+ "sp-std",
+ "sp-version-proc-macro",
  "thiserror",
 ]
 
@@ -10965,17 +10527,6 @@ dependencies = [
 name = "sp-version-proc-macro"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
-dependencies = [
- "parity-scale-codec",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "sp-version-proc-macro"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
 dependencies = [
  "parity-scale-codec",
  "proc-macro2",
@@ -10992,21 +10543,7 @@ dependencies = [
  "impl-trait-for-tuples",
  "log",
  "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "wasmi",
- "wasmtime",
-]
-
-[[package]]
-name = "sp-wasm-interface"
-version = "7.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "anyhow",
- "impl-trait-for-tuples",
- "log",
- "parity-scale-codec",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-std",
  "wasmi",
  "wasmtime",
 ]
@@ -11020,25 +10557,10 @@ dependencies = [
  "scale-info",
  "serde",
  "smallvec",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-debug-derive 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
-]
-
-[[package]]
-name = "sp-weights"
-version = "4.0.0"
-source = "git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63#fdb68194ab6995447610b3dbdee70559711dbd63"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "serde",
- "smallvec",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-debug-derive 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-debug-derive",
+ "sp-std",
 ]
 
 [[package]]
@@ -11235,7 +10757,7 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-transaction-pool-api",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "thiserror",
  "tracing",
 ]
@@ -11376,7 +10898,7 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "domain-test-service",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=fdb68194ab6995447610b3dbdee70559711dbd63)",
+ "frame-support",
  "futures",
  "hash-db 0.16.0",
  "pallet-balances",
@@ -11385,17 +10907,17 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-service",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domain-digests",
  "sp-domains",
  "sp-keyring",
  "sp-messenger",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-trie",
  "subspace-runtime-primitives",
  "subspace-test-client",
  "subspace-test-runtime",
@@ -11463,7 +10985,7 @@ dependencies = [
  "fp-evm",
  "frame-benchmarking",
  "frame-benchmarking-cli",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "futures",
  "hex-literal",
  "log",
@@ -11485,9 +11007,9 @@ dependencies = [
  "serde_json",
  "sp-consensus",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-networking",
@@ -11528,7 +11050,7 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-executive",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -11552,21 +11074,21 @@ dependencies = [
  "pallet-utility",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
  "sp-objects",
  "sp-offchain",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-verification",
@@ -11581,9 +11103,9 @@ version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
  "serde",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
  "subspace-core-primitives",
 ]
 
@@ -11596,7 +11118,7 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "either",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system-rpc-runtime-api",
  "futures",
  "hex",
@@ -11624,23 +11146,23 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-externalities",
  "sp-objects",
  "sp-offchain",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
  "sp-timestamp",
  "sp-transaction-pool",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-trie",
  "subspace-archiving",
  "subspace-block-relay",
  "subspace-core-primitives",
@@ -11671,10 +11193,10 @@ dependencies = [
  "sc-executor",
  "sc-service",
  "schnorrkel",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-erasure-coding",
@@ -11694,7 +11216,7 @@ version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
  "frame-executive",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
  "hex-literal",
@@ -11716,20 +11238,20 @@ dependencies = [
  "pallet-utility",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
  "sp-objects",
  "sp-offchain",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-verification",
@@ -11763,17 +11285,17 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-slots",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
  "sp-keyring",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-timestamp",
  "subspace-core-primitives",
  "subspace-fraud-proof",
@@ -11801,12 +11323,12 @@ dependencies = [
  "sc-service",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-transaction-pool",
  "substrate-prometheus-endpoint",
  "tracing",
@@ -11820,8 +11342,8 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
- "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-arithmetic",
+ "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
@@ -11870,11 +11392,11 @@ dependencies = [
  "parity-scale-codec",
  "sc-rpc-api",
  "sc-transaction-pool-api",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
  "sp-blockchain",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -11908,11 +11430,11 @@ dependencies = [
  "serde_json",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-keyring",
- "sp-keystore 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-keystore",
+ "sp-runtime",
+ "sp-state-machine",
 ]
 
 [[package]]
@@ -11920,7 +11442,7 @@ name = "substrate-test-runtime"
 version = "2.0.0"
 dependencies = [
  "cfg-if",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-rpc-runtime-api",
  "futures",
@@ -11933,26 +11455,26 @@ dependencies = [
  "sc-service",
  "scale-info",
  "serde",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-application-crypto 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-application-crypto",
  "sp-block-builder",
  "sp-consensus",
  "sp-consensus-subspace",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-externalities 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-externalities",
+ "sp-inherents",
+ "sp-io",
  "sp-keyring",
  "sp-objects",
  "sp-offchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime-interface 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-runtime-interface",
  "sp-session",
- "sp-state-machine 0.13.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-state-machine",
+ "sp-std",
  "sp-transaction-pool",
- "sp-trie 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-trie",
+ "sp-version",
  "subspace-core-primitives",
  "substrate-test-runtime-client",
  "substrate-wasm-builder",
@@ -11968,11 +11490,11 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-service",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
+ "sp-runtime",
  "substrate-test-client",
  "substrate-test-runtime",
 ]
@@ -11987,7 +11509,7 @@ dependencies = [
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sp-blockchain",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "substrate-test-runtime-client",
  "thiserror",
 ]
@@ -12108,7 +11630,7 @@ dependencies = [
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -12123,20 +11645,20 @@ dependencies = [
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -12152,7 +11674,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-test-primitives",
  "frame-benchmarking",
- "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "frame-support",
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
@@ -12169,20 +11691,20 @@ dependencies = [
  "pallet-transporter",
  "parity-scale-codec",
  "scale-info",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
  "sp-block-builder",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-core",
  "sp-domains",
- "sp-inherents 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-io 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-inherents",
+ "sp-io",
  "sp-messenger",
  "sp-offchain",
  "sp-receipts",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
  "sp-session",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-std",
  "sp-transaction-pool",
- "sp-version 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-version",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
@@ -12194,11 +11716,11 @@ name = "system-runtime-primitives"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",
- "sp-api 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-api",
+ "sp-core",
  "sp-domains",
- "sp-runtime 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
- "sp-std 5.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
