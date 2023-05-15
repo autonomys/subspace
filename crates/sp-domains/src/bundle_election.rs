@@ -168,7 +168,7 @@ pub enum VrfProofError {
 }
 
 /// Verify the vrf proof generated in the bundle election.
-pub fn verify_vrf_proof(
+pub(crate) fn verify_vrf_proof(
     public_key: &ExecutorPublicKey,
     vrf_output: &[u8],
     vrf_proof: &[u8],

@@ -132,11 +132,11 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 3000;
+const SLOT_DURATION: u64 = 1000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
-const SLOT_PROBABILITY: (u64, u64) = (3, 6);
+const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
@@ -787,8 +787,8 @@ impl_runtime_apis! {
             crate::domains::extract_core_bundles(extrinsics, domain_id)
         }
 
-        fn extract_stored_bundle_hashes() -> Vec<H256> {
-            crate::domains::extract_stored_bundle_hashes()
+        fn successful_bundle_hashes() -> Vec<H256> {
+            Domains::successful_bundles()
         }
 
         fn extract_receipts(

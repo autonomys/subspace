@@ -25,6 +25,7 @@ use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::Get;
 pub use pallet::*;
+use sp_core::H256;
 use sp_domains::fraud_proof::{FraudProof, InvalidStateTransitionProof, InvalidTransactionProof};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
@@ -32,12 +33,14 @@ use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
-    use frame_support::pallet_prelude::{StorageMap, StorageNMap, *};
+    use frame_support::pallet_prelude::{StorageMap, StorageNMap, StorageValue, ValueQuery, *};
     use frame_support::PalletError;
+    use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::{DomainId, ExecutionReceipt};
     use sp_runtime::traits::{CheckEqual, MaybeDisplay, SimpleBitOps};
     use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -158,6 +161,18 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Fraud proof processed successfully in current block.
+    #[pallet::storage]
+    pub(super) type SuccessfulFraudProofs<T> = StorageValue<_, Vec<H256>, ValueQuery>;
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
+            SuccessfulFraudProofs::<T>::kill();
+            T::DbWeight::get().writes(1)
+        }
+    }
+
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -167,8 +182,8 @@ mod pallet {
             primary_number: T::BlockNumber,
             primary_hash: T::Hash,
         },
-        /// A fraud proof was processed.
-        FraudProofProcessed {
+        /// An invalid state transition proof was processed.
+        InvalidStateTransitionProofProcessed {
             domain_id: DomainId,
             new_best_number: T::BlockNumber,
             new_best_hash: T::Hash,
@@ -208,6 +223,10 @@ impl From<FraudProofError> for Error {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn successful_fraud_proofs() -> Vec<H256> {
+        SuccessfulFraudProofs::<T>::get()
+    }
+
     /// Returns the block number of the latest receipt.
     pub fn head_receipt_number(domain_id: DomainId) -> T::BlockNumber {
         <HeadReceiptNumber<T>>::get(domain_id)
@@ -297,16 +316,18 @@ impl<T: Config> Pallet<T> {
     pub fn process_fraud_proof(
         fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
     ) -> Result<(), Error> {
+        let proof_hash = fraud_proof.hash();
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => {
-                Self::process_invalid_state_transition_proof(proof)
+                Self::process_invalid_state_transition_proof(proof)?
             }
             FraudProof::InvalidTransaction(_proof) => {
                 // TODO: slash the executor accordingly.
-                Ok(())
             }
-            _ => Err(FraudProofError::Unimplemented.into()),
+            _ => return Err(FraudProofError::Unimplemented.into()),
         }
+        SuccessfulFraudProofs::<T>::append(proof_hash);
+        Ok(())
     }
 
     fn process_invalid_state_transition_proof(
@@ -333,7 +354,7 @@ impl<T: Config> Pallet<T> {
             to_remove -= One::one();
         }
         // TODO: slash the executor accordingly.
-        Self::deposit_event(Event::FraudProofProcessed {
+        Self::deposit_event(Event::InvalidStateTransitionProofProcessed {
             domain_id,
             new_best_number,
             new_best_hash,

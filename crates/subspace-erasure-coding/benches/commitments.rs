@@ -1,4 +1,4 @@
-use blst_from_scratch::types::g1::FsG1;
+use blst_rust::types::g1::FsG1;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use kzg::G1;
 use std::num::NonZeroUsize;
