@@ -1,7 +1,5 @@
 //! Common utils.
 
-use crate::NetworkInterface;
-use async_trait::async_trait;
 use codec::{self, Decode};
 use futures::channel::oneshot::{self, Canceled};
 use parking_lot::Mutex;
@@ -39,13 +37,13 @@ impl<Block: BlockT> NetworkWrapper<Block> {
 
 /// Helper for request response.
 #[derive(Clone)]
-pub(crate) struct NetworkInterfaceImpl<Block: BlockT> {
+pub(crate) struct RequestResponseWrapper<Block: BlockT> {
     protocol_name: ProtocolName,
     who: PeerId,
     network: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
 }
 
-impl<Block: BlockT> NetworkInterfaceImpl<Block> {
+impl<Block: BlockT> RequestResponseWrapper<Block> {
     pub(crate) fn new(
         protocol_name: ProtocolName,
         who: PeerId,
@@ -57,11 +55,9 @@ impl<Block: BlockT> NetworkInterfaceImpl<Block> {
             network,
         }
     }
-}
 
-#[async_trait]
-impl<Block: BlockT> NetworkInterface for NetworkInterfaceImpl<Block> {
-    async fn request_response(
+    /// Performs the request response
+    pub(crate) async fn request_response(
         &self,
         request: Vec<u8>,
     ) -> Result<Result<Vec<u8>, RequestFailure>, Canceled> {

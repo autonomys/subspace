@@ -1,10 +1,10 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::utils::{decode_response, NetworkInterfaceImpl, NetworkWrapper};
+use crate::utils::{decode_response, NetworkWrapper, RequestResponseWrapper};
 use crate::{
-    DownloadResult, NetworkInterface, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError,
-    LOG_TARGET,
+    DownloadResult, ProtocolBackend, ProtocolClient, ProtocolRequestResponse, ProtocolServer,
+    RelayError, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -123,7 +123,7 @@ impl<
                 return Err(RelayError::NetworkUninitialized);
             }
         };
-        let network = Arc::new(NetworkInterfaceImpl::new(
+        let req_rsp = Arc::new(RequestResponseWrapper::new(
             self.protocol_name.clone(),
             who,
             network,
@@ -140,7 +140,7 @@ impl<
         };
         let msg = ServerMessage::InitialRequest(initial_request).encode();
         let initial_response: InitialResponse<Block, ProtoClient::ProtocolRsp> =
-            match decode_response(network.request_response(msg).await) {
+            match decode_response(req_rsp.request_response(msg).await) {
                 Ok(response) => response,
                 Err(err) => return Err(err.into()),
             };
@@ -149,7 +149,7 @@ impl<
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics(protocol_response, network.clone())
+                .resolve_extrinsics(protocol_response, req_rsp.clone())
                 .await?;
             (Some(body), local_miss)
         } else {
@@ -180,16 +180,12 @@ impl<
     async fn resolve_extrinsics(
         &self,
         protocol_response: ProtoClient::ProtocolRsp,
-        network: Arc<dyn NetworkInterface>,
+        req_rsp: Arc<RequestResponseWrapper<Block>>,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
-        let encoder_fn = |request: ProtoClient::ProtocolReq| {
-            let msg: ServerMessage<Block, ProtoClient::ProtocolReq> =
-                ServerMessage::ProtocolReq(request);
-            msg.encode()
-        };
+        let protocol_req_rsp = Arc::new(ProtocolRequestResponseImpl { req_rsp });
         let (block_hash, resolved) = self
             .protocol_client
-            .resolve_initial_response(protocol_response, Box::new(encoder_fn), network)
+            .resolve_initial_response(protocol_response, protocol_req_rsp)
             .await?;
         let mut local_miss = 0;
         let extrinsics = resolved
@@ -572,6 +568,22 @@ where
         }
 
         Ok(None)
+    }
+}
+
+/// Protocol request/response implementation
+struct ProtocolRequestResponseImpl<Block: BlockT> {
+    req_rsp: Arc<RequestResponseWrapper<Block>>,
+}
+
+#[async_trait]
+impl<Block: BlockT, Req: Encode + Send + 'static, Rsp: Send + Decode + 'static>
+    ProtocolRequestResponse<Req, Rsp> for ProtocolRequestResponseImpl<Block>
+{
+    async fn request_response(&self, request: Req) -> Result<Rsp, RelayError> {
+        let msg: ServerMessage<Block, Req> = ServerMessage::ProtocolReq(request);
+        let msg = msg.encode();
+        decode_response::<Rsp>(self.req_rsp.request_response(msg).await).map_err(|err| err.into())
     }
 }
 

@@ -43,8 +43,6 @@
 use crate::utils::RelayError;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use futures::channel::oneshot::Canceled;
-use sc_network::RequestFailure;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -56,8 +54,6 @@ pub use crate::consensus::build_consensus_relay;
 pub use crate::utils::NetworkWrapper;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
-
-pub(crate) type EncoderFn<T> = Box<dyn Fn(T) -> Vec<u8> + Send>;
 
 /// The downloaded entry and meta info
 pub(crate) struct DownloadResult<DownloadUnitId, DownloadUnit: Encode> {
@@ -93,8 +89,8 @@ pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
 pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
     Send + Sync
 {
-    type ProtocolReq: Send + Sync + Encode + Decode;
-    type ProtocolRsp: Send + Sync + Encode + Decode;
+    type ProtocolReq: Send + Sync + Encode + Decode + 'static;
+    type ProtocolRsp: Send + Sync + Encode + Decode + 'static;
 
     /// Builds the protocol portion of the initial request
     fn build_initial_request(&self) -> Self::ProtocolReq;
@@ -105,8 +101,7 @@ pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
     async fn resolve_initial_response(
         &self,
         response: Self::ProtocolRsp,
-        encoder_fn: EncoderFn<Self::ProtocolReq>,
-        network: Arc<dyn NetworkInterface>,
+        network: Arc<dyn ProtocolRequestResponse<Self::ProtocolReq, Self::ProtocolRsp>>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
 }
 
@@ -142,12 +137,9 @@ pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     ) -> Result<Option<ProtocolUnit>, RelayError>;
 }
 
-/// Network interface helper
+/// Helper for protocol request/response
 #[async_trait]
-pub(crate) trait NetworkInterface: Send + Sync {
+pub(crate) trait ProtocolRequestResponse<Req, Rsp>: Send + Sync {
     /// Performs the request response and returns the result
-    async fn request_response(
-        &self,
-        request: Vec<u8>,
-    ) -> Result<Result<Vec<u8>, RequestFailure>, Canceled>;
+    async fn request_response(&self, request: Req) -> Result<Rsp, RelayError>;
 }
