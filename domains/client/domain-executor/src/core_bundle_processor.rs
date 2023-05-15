@@ -29,6 +29,7 @@ pub(crate) struct CoreBundleProcessor<
     BI,
 > where
     Block: BlockT,
+    PBlock: BlockT,
 {
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
@@ -52,6 +53,7 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI> Clone
     for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {

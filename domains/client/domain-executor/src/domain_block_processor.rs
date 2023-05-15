@@ -1,5 +1,8 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
-use crate::utils::{to_number_primitive, translate_number_type};
+use crate::utils::{
+    to_number_primitive, translate_number_type, DomainBlockImportNotification,
+    DomainImportNotificationSinks,
+};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -33,6 +36,7 @@ where
 pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
@@ -41,12 +45,14 @@ where
     pub(crate) receipts_checker: ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
     pub(crate) block_import: Arc<BI>,
+    pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, PBlock>,
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E, BI> Clone
     for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -57,6 +63,7 @@ where
             receipts_checker: self.receipts_checker.clone(),
             domain_confirmation_depth: self.domain_confirmation_depth,
             block_import: self.block_import.clone(),
+            import_notification_sinks: self.import_notification_sinks.clone(),
         }
     }
 }
@@ -385,6 +392,16 @@ where
             header_hash,
             primary_hash,
         )?;
+
+        // Notify the imported domain block when the receipt processing is done.
+        let domain_import_notification = DomainBlockImportNotification {
+            domain_block_hash: header_hash,
+            primary_block_hash: primary_hash,
+        };
+        self.import_notification_sinks.lock().retain(|sink| {
+            sink.unbounded_send(domain_import_notification.clone())
+                .is_ok()
+        });
 
         // Disable the fraud proof except for the system domain.
         if !self.domain_id.is_system() {

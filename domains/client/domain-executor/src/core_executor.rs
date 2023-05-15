@@ -176,6 +176,7 @@ where
             },
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
+            import_notification_sinks: Default::default(),
         };
 
         let bundle_processor = CoreBundleProcessor::new(

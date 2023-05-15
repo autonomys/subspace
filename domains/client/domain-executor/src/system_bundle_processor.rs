@@ -21,6 +21,7 @@ use system_runtime_primitives::SystemDomainApi;
 pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
@@ -36,6 +37,7 @@ impl<Block, PBlock, Client, PClient, Backend, E> Clone
     for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {

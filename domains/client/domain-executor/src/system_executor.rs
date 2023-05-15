@@ -28,6 +28,7 @@ use system_runtime_primitives::SystemDomainApi;
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
@@ -42,6 +43,7 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
     for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -161,6 +163,7 @@ where
             },
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
+            import_notification_sinks: Default::default(),
         };
 
         let bundle_processor = SystemBundleProcessor::new(
