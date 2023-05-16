@@ -36,7 +36,6 @@ pub trait WeightInfo {
 	fn submit_system_bundle(x: u32, ) -> Weight;
 	fn submit_core_bundle() -> Weight;
 	fn submit_system_domain_invalid_state_transition_proof() -> Weight;
-	fn submit_core_domain_invalid_state_transition_proof() -> Weight;
 }
 
 /// Weights for pallet_domains using the Substrate node and recommended hardware.
@@ -95,13 +94,6 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(1122_u64))
 			.saturating_add(T::DbWeight::get().writes(766_u64))
 	}
-	fn submit_core_domain_invalid_state_transition_proof() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 2_000_000 picoseconds.
-		Weight::from_parts(3_000_000, 0)
-	}
 }
 
 // For backwards compatibility and tests
@@ -158,12 +150,5 @@ impl WeightInfo for () {
 		Weight::from_parts(7_404_000_000, 3284195)
 			.saturating_add(RocksDbWeight::get().reads(1122_u64))
 			.saturating_add(RocksDbWeight::get().writes(766_u64))
-	}
-	fn submit_core_domain_invalid_state_transition_proof() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 2_000_000 picoseconds.
-		Weight::from_parts(3_000_000, 0)
 	}
 }

@@ -113,16 +113,6 @@ mod benchmarks {
         assert_eq!(Domains::<T>::head_receipt_number(), 0u32.into());
     }
 
-    #[benchmark]
-    fn submit_core_domain_invalid_state_transition_proof() {
-        let proof: FraudProof<T::BlockNumber, T::Hash> = FraudProof::InvalidStateTransition(
-            dummy_invalid_state_transition_proof(DomainId::CORE_PAYMENTS, 0),
-        );
-
-        #[extrinsic_call]
-        submit_fraud_proof(RawOrigin::None, proof);
-    }
-
     fn block_hash_n<T: Config>(n: u32) -> T::Hash {
         let mut h = T::Hash::default();
         h.as_mut()

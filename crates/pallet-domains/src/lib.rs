@@ -194,12 +194,8 @@ mod pallet {
         #[pallet::call_index(1)]
         #[pallet::weight(
             match fraud_proof {
-                FraudProof::InvalidStateTransition(proof) => (
-                    if proof.domain_id.is_system() {
-                        T::WeightInfo::submit_system_domain_invalid_state_transition_proof()
-                    } else {
-                        T::WeightInfo::submit_core_domain_invalid_state_transition_proof()
-                    },
+                FraudProof::InvalidStateTransition(..) => (
+                    T::WeightInfo::submit_system_domain_invalid_state_transition_proof(),
                     Pays::No
                 ),
                 // TODO: proper weight
@@ -267,7 +263,19 @@ mod pallet {
                 Call::submit_bundle {
                     signed_opaque_bundle,
                 } => Self::pre_dispatch_submit_bundle(signed_opaque_bundle),
-                Call::submit_fraud_proof { .. } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::FraudProof.into(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -299,6 +307,13 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(
