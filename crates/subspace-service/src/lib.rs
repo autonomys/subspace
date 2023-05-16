@@ -82,7 +82,6 @@ use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuild
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::utils::online_status_informer;
 use subspace_networking::{peer_id, Node};
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
@@ -634,18 +633,6 @@ where
                 }
             }))
             .detach();
-
-            let status_informer_fut = online_status_informer(&node);
-            task_manager.spawn_handle().spawn(
-                "status-observer",
-                Some("subspace-networking"),
-                Box::pin(
-                    async move {
-                        status_informer_fut.await;
-                    }
-                    .in_current_span(),
-                ),
-            );
 
             task_manager.spawn_essential_handle().spawn_essential(
                 "node-runner",

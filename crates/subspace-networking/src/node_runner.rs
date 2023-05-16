@@ -35,7 +35,6 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
-use tokio::sync::watch;
 use tokio::time::Sleep;
 use tracing::{debug, error, info, trace, warn};
 
@@ -108,8 +107,6 @@ where
     metrics: Option<Metrics>,
     /// Mapping from specific peer to number of established connections
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
-    /// DSN connection observer. Turns on/off DSN operations like piece retrieval.
-    online_status_observer_tx: watch::Sender<bool>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
 }
@@ -129,7 +126,6 @@ where
     pub(crate) target_connections: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
-    pub(crate) online_status_observer_tx: watch::Sender<bool>,
     pub(crate) protocol_version: String,
 }
 
@@ -149,7 +145,6 @@ where
             target_connections,
             temporary_bans,
             metrics,
-            online_status_observer_tx,
             protocol_version,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
@@ -172,7 +167,6 @@ where
             temporary_bans,
             metrics,
             established_connections: HashMap::new(),
-            online_status_observer_tx,
             protocol_version,
         }
     }
@@ -214,18 +208,6 @@ where
                     self.peer_dialing_timeout =
                         Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
                 },
-            }
-        }
-    }
-
-    // Handle DSN online status signaling
-    fn signal_online_status(&mut self) {
-        let current_online_status = self.swarm.connected_peers().next().is_some();
-        let previous_online_status = *self.online_status_observer_tx.borrow();
-
-        if previous_online_status != current_online_status {
-            if let Err(err) = self.online_status_observer_tx.send(current_online_status) {
-                error!("DSN connection observer channel failed: {err}")
             }
         }
     }
@@ -377,8 +359,6 @@ where
                 num_established,
                 ..
             } => {
-                self.signal_online_status();
-
                 // Save known addresses that were successfully dialed.
                 if let ConnectedPoint::Dialer { address, .. } = &endpoint {
                     // filter non-global addresses when non-globals addresses are disabled
@@ -438,8 +418,6 @@ where
                 num_established,
                 ..
             } => {
-                self.signal_online_status();
-
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
                     None => {
