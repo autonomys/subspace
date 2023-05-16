@@ -55,6 +55,7 @@ use sc_service::{
     Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
     TaskManager,
 };
+use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
@@ -204,6 +205,9 @@ pub struct SubspaceConfiguration {
     pub segment_publish_concurrency: NonZeroUsize,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
+    /// Use the block request handler implementation from subspace
+    /// instead of the default substrate handler.
+    pub enable_subspace_block_relay: bool,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -738,6 +742,17 @@ where
             })?;
     }
 
+    let network_wrapper = Arc::new(NetworkWrapper::default());
+    let block_relay = if config.enable_subspace_block_relay {
+        Some(build_consensus_relay(
+            network_wrapper.clone(),
+            client.clone(),
+            transaction_pool.clone(),
+            task_manager.spawn_handle(),
+        ))
+    } else {
+        None
+    };
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -747,8 +762,11 @@ where
             import_queue,
             block_announce_validator_builder: None,
             warp_sync_params: None,
-            block_relay: None,
+            block_relay,
         })?;
+    if config.enable_subspace_block_relay {
+        network_wrapper.set(network_service.clone());
+    }
 
     let sync_oracle = sync_service.clone();
     let best_hash = client.info().best_hash;
