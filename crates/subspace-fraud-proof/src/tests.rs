@@ -24,7 +24,7 @@ use sp_runtime::OpaqueExtrinsic;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
-use subspace_test_service::MockPrimaryNode;
+use subspace_test_service::{produce_blocks, MockPrimaryNode};
 use tempfile::TempDir;
 
 struct TestVerifierClient {
@@ -127,13 +127,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     .await;
 
     // Bob is able to sync blocks.
-    futures::join!(
-        alice.wait_for_blocks(1),
-        bob.wait_for_blocks(1),
-        ferdie.produce_blocks(1),
-    )
-    .2
-    .unwrap();
+    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
 
     let alice_nonce = alice.account_nonce();
     let transfer_to_charlie = alice.construct_extrinsic(
@@ -460,13 +454,7 @@ async fn invalid_execution_proof_should_not_work() {
     .await;
 
     // Bob is able to sync blocks.
-    futures::join!(
-        alice.wait_for_blocks(1),
-        bob.wait_for_blocks(1),
-        ferdie.produce_blocks(1),
-    )
-    .2
-    .unwrap();
+    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
 
     let alice_nonce = alice.account_nonce();
     let transfer_to_charlie = alice.construct_extrinsic(

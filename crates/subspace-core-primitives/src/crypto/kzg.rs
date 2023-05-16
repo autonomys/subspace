@@ -13,11 +13,11 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_from_scratch::types::fft_settings::FsFFTSettings;
-use blst_from_scratch::types::g1::FsG1;
-use blst_from_scratch::types::g2::FsG2;
-use blst_from_scratch::types::kzg_settings::FsKZGSettings;
-use blst_from_scratch::types::poly::FsPoly;
+use blst_rust::types::fft_settings::FsFFTSettings;
+use blst_rust::types::g1::FsG1;
+use blst_rust::types::g2::FsG2;
+use blst_rust::types::kzg_settings::FsKZGSettings;
+use blst_rust::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
@@ -92,7 +92,7 @@ pub fn embedded_kzg_settings() -> FsKZGSettings {
 }
 
 /// Commitment to polynomial
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From)]
 pub struct Polynomial(FsPoly);
 
 impl Polynomial {
@@ -107,7 +107,7 @@ impl Polynomial {
             .count();
         self.0
             .coeffs
-            .truncate(self.0.coeffs.len() - trailing_zeroes);
+            .truncate((self.0.coeffs.len() - trailing_zeroes).max(1));
     }
 }
 

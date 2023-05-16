@@ -23,6 +23,7 @@ pub mod merkle_tree;
 pub mod transaction;
 
 use crate::fraud_proof::FraudProof;
+use bundle_election::VrfProofError;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -215,6 +216,17 @@ pub struct ProofOfElection<DomainHash> {
     pub system_block_number: BlockNumber,
     /// Block hash corresponding to the `block_number` above.
     pub system_block_hash: DomainHash,
+}
+
+impl<DomainHash> ProofOfElection<DomainHash> {
+    pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
+        bundle_election::verify_vrf_proof(
+            &self.executor_public_key,
+            &self.vrf_output,
+            &self.vrf_proof,
+            &self.global_challenge,
+        )
+    }
 }
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
@@ -515,8 +527,8 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
         ) -> OpaqueBundles<Block, DomainHash>;
 
-        /// Extract the hashes of bundles stored in the block
-        fn extract_stored_bundle_hashes() -> Vec<H256>;
+        /// Returns the hash of successfully submitted bundles.
+        fn successful_bundle_hashes() -> Vec<H256>;
 
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(

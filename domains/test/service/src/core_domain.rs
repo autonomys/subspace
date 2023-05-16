@@ -1,4 +1,4 @@
-//! Utilities used for testing with the system domain.
+//! Utilities used for testing with the core domain.
 #![warn(missing_docs)]
 
 use crate::system_domain::SClient;
@@ -10,6 +10,7 @@ use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
+use domain_test_primitives::OnchainStateApi;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockchainEvents, HeaderBackend, StateBackendFor};
@@ -23,6 +24,7 @@ use sp_block_builder::BlockBuilder;
 use sp_core::H256;
 use sp_domains::DomainId;
 use sp_keyring::Sr25519Keyring;
+use sp_messenger::messages::ChannelId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::Dispatchable;
@@ -83,7 +85,7 @@ where
     pub addr: MultiaddrWithPeerId,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: RpcHandlers,
-    /// System domain executor.
+    /// Core domain executor.
     pub executor: CoreDomainExecutor<RuntimeApi, Executor>,
     _phantom_data: PhantomData<Runtime>,
 }
@@ -108,6 +110,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
+        + OnchainStateApi<Block, AccountId, Balance>
         + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
@@ -121,6 +124,7 @@ where
         base_path: BasePath,
         core_domain_nodes: Vec<MultiaddrWithPeerId>,
         core_domain_nodes_exclusive: bool,
+        run_relayer: bool,
         role: Role,
         mock_primary_node: &mut MockPrimaryNode,
         system_domain_node: &SystemDomainNode,
@@ -144,9 +148,10 @@ where
 
         let multiaddr = service_config.network.listen_addresses[0].clone();
 
+        let maybe_relayer_id = if run_relayer { Some(key.into()) } else { None };
         let core_domain_config = domain_service::DomainConfiguration {
             service_config,
-            maybe_relayer_id: None,
+            maybe_relayer_id,
         };
         let executor_streams = ExecutorStreams {
             // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
@@ -238,6 +243,22 @@ where
             .expect("Fail to get account nonce")
     }
 
+    /// Get the free balance of the given account
+    pub fn free_balance(&self, account_id: AccountId) -> Balance {
+        self.client
+            .runtime_api()
+            .free_balance(self.client.info().best_hash, account_id)
+            .expect("Fail to get account free balance")
+    }
+
+    /// Get the last open channel of the given domain
+    pub fn get_open_channel_for_domain(&self, dst_domain_id: DomainId) -> Option<ChannelId> {
+        self.client
+            .runtime_api()
+            .get_open_channel_for_domain(self.client.info().best_hash, dst_domain_id)
+            .expect("Fail to get open channel")
+    }
+
     /// Construct an extrinsic with the current nonce of the node account and send it to this node.
     pub async fn construct_and_send_extrinsic(
         &mut self,
@@ -271,13 +292,14 @@ where
     }
 }
 
-/// A builder to create a [`SystemDomainNode`].
+/// A builder to create a [`CoreDomainNode`].
 pub struct CoreDomainNodeBuilder {
     tokio_handle: tokio::runtime::Handle,
     key: Sr25519Keyring,
     core_domain_nodes: Vec<MultiaddrWithPeerId>,
     core_domain_nodes_exclusive: bool,
     base_path: BasePath,
+    run_relayer: bool,
 }
 
 impl CoreDomainNodeBuilder {
@@ -297,7 +319,14 @@ impl CoreDomainNodeBuilder {
             core_domain_nodes: Vec::new(),
             core_domain_nodes_exclusive: false,
             base_path,
+            run_relayer: false,
         }
+    }
+
+    /// Run relayer with the node account id as the relayer id
+    pub fn run_relayer(mut self) -> Self {
+        self.run_relayer = true;
+        self
     }
 
     /// Instruct the node to exclusively connect to registered parachain nodes.
@@ -312,8 +341,8 @@ impl CoreDomainNodeBuilder {
     ///
     /// By default the node will not be connected to any node or will be able to discover any other
     /// node.
-    pub fn connect_to_core_domain_node(mut self, node: &SystemDomainNode) -> Self {
-        self.core_domain_nodes.push(node.addr.clone());
+    pub fn connect_to_core_domain_node(mut self, addr: MultiaddrWithPeerId) -> Self {
+        self.core_domain_nodes.push(addr);
         self
     }
 
@@ -331,6 +360,29 @@ impl CoreDomainNodeBuilder {
             self.base_path,
             self.core_domain_nodes,
             self.core_domain_nodes_exclusive,
+            self.run_relayer,
+            role,
+            mock_primary_node,
+            system_domain_node,
+        )
+        .await
+    }
+
+    /// Build a core eth relay domain node
+    pub async fn build_core_eth_relay_node(
+        self,
+        role: Role,
+        mock_primary_node: &mut MockPrimaryNode,
+        system_domain_node: &SystemDomainNode,
+    ) -> CoreEthRelayDomainNode {
+        CoreDomainNode::build(
+            DomainId::CORE_ETH_RELAY,
+            self.tokio_handle,
+            self.key,
+            self.base_path,
+            self.core_domain_nodes,
+            self.core_domain_nodes_exclusive,
+            self.run_relayer,
             role,
             mock_primary_node,
             system_domain_node,
@@ -359,4 +411,26 @@ pub type CorePaymentsDomainNode = CoreDomainNode<
     core_payments_domain_test_runtime::Runtime,
     core_payments_domain_test_runtime::RuntimeApi,
     CorePaymentsDomainExecutorDispatch,
+>;
+
+/// Core eth reply domain executor instance.
+pub struct CoreEthRelayDomainExecutorDispatch;
+
+impl NativeExecutionDispatch for CoreEthRelayDomainExecutorDispatch {
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        core_eth_relay_domain_test_runtime::api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        core_eth_relay_domain_test_runtime::native_version()
+    }
+}
+
+/// The core paymants domain node
+pub type CoreEthRelayDomainNode = CoreDomainNode<
+    core_eth_relay_domain_test_runtime::Runtime,
+    core_eth_relay_domain_test_runtime::RuntimeApi,
+    CoreEthRelayDomainExecutorDispatch,
 >;

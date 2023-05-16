@@ -26,7 +26,7 @@ use alloc::vec::Vec;
 use blake2::digest::typenum::U32;
 use blake2::digest::{FixedOutput, Update};
 use blake2::{Blake2b, Blake2bMac, Digest};
-use blst_from_scratch::types::fr::FsFr;
+use blst_rust::types::fr::FsFr;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use core::mem;

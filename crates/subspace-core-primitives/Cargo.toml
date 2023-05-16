@@ -18,15 +18,15 @@ bench = false
 [dependencies]
 blake2 = { version = "0.10.6", default-features = false }
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-blst_from_scratch = { git = "https://github.com/subspace/rust-kzg", rev = "b71e7ace37420db889488cbd64d53eea38176111", default-features = false }
+blst_rust = { git = "https://github.com/subspace/rust-kzg", rev = "1058cc8c8af8461b490dc212c41d7d506a746577", default-features = false }
 derive_more = "0.99.17"
 hex = { version  = "0.4.3", default-features = false, features = ["alloc"] }
 # TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-kzg = { git = "https://github.com/subspace/rust-kzg", rev = "b71e7ace37420db889488cbd64d53eea38176111", default-features = false }
+kzg = { git = "https://github.com/subspace/rust-kzg", rev = "1058cc8c8af8461b490dc212c41d7d506a746577", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive", "max-encoded-len"] }
 parking_lot = { version = "0.12.1", optional = true }
-rayon = { version = "1.6.1", optional = true }
+rayon = { version = "1.7.0", optional = true }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
 serde = { version = "1.0.159", optional = true, features = ["alloc", "derive"] }
 serde_arrays = { version = "0.1.0", optional = true }
@@ -53,7 +53,7 @@ default = [
 embedded-kzg-settings = []
 # Enables some APIs and internal parallelism for KZG
 parallel = [
-    "blst_from_scratch/parallel",
+    "blst_rust/parallel",
     "dep:rayon",
 ]
 serde = [
@@ -64,7 +64,7 @@ serde = [
 ]
 std = [
     "blake2/std",
-    "blst_from_scratch/std",
+    "blst_rust/std",
     "hex/std",
     "kzg/std",
     "num-traits/std",

@@ -1,6 +1,6 @@
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::{
-    AccountId, Address, Balance, BlockNumber, Hash, Index, Signature,
+    AccountId, AccountIdConverter, Address, Balance, BlockNumber, Hash, Index, Signature,
 };
 use frame_support::dispatch::DispatchClass;
 use frame_support::traits::{ConstU16, ConstU32, Everything};
@@ -10,6 +10,7 @@ use frame_support::weights::constants::{
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{OpaqueMetadata, H256};
@@ -17,14 +18,16 @@ use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
-use sp_messenger::endpoint::{Endpoint, EndpointHandler};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+    ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
+    RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, NumberFor, StaticLookup};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult};
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -291,7 +294,7 @@ impl pallet_executor_registry::Config for Runtime {
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
-    type OnNewEpoch = ();
+    type OnNewEpoch = DomainRegistry;
 }
 
 parameter_types! {
@@ -321,7 +324,7 @@ impl pallet_receipts::Config for Runtime {
 
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 7;
+    pub const RelayConfirmationDepth: BlockNumber = 1;
 }
 
 parameter_types! {
@@ -330,20 +333,49 @@ parameter_types! {
     pub const SystemDomainId: DomainId = DomainId::SYSTEM;
 }
 
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfDomainId = SystemDomainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
+}
+
+pub struct DomainInfo;
+
+impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
+    fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
+        Some(Receipts::head_receipt_number(domain_id))
+    }
+
+    fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
+        Receipts::domain_state_root_at(domain_id, number, hash)
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfDomainId = SystemDomainId;
 
     fn get_endpoint_response_handler(
-        _endpoint: &Endpoint,
-    ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
-        None
+        endpoint: &Endpoint,
+    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>::default())))
+        } else {
+            None
+        }
     }
 
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
-    type DomainInfo = ();
+    type DomainInfo = DomainInfo;
     type ConfirmationDepth = RelayConfirmationDepth;
 }
 
@@ -353,6 +385,11 @@ where
 {
     type Extrinsic = UncheckedExtrinsic;
     type OverarchingCall = RuntimeCall;
+}
+
+impl pallet_sudo::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -378,7 +415,13 @@ construct_runtime!(
         ExecutorRegistry: pallet_executor_registry,
         Receipts: pallet_receipts,
         DomainRegistry: pallet_domain_registry,
-        Messenger: pallet_messenger,
+
+        // messenger stuff
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
+
+        // Sudo account
+        Sudo: pallet_sudo = 100,
     }
 );
 
@@ -668,12 +711,12 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
-        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
-            None
+        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
+            Some(Receipts::head_receipt_number(domain_id))
         }
 
-        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
-            None
+        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash>{
+            Receipts::domain_state_root_at(domain_id, number, hash)
         }
 
         fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
@@ -719,6 +762,16 @@ impl_runtime_apis! {
                 }
                 _ => PreValidationObject::Null,
             }
+        }
+    }
+
+    impl domain_test_primitives::OnchainStateApi<Block, AccountId, Balance> for Runtime {
+        fn free_balance(account_id: AccountId) -> Balance {
+            Balances::free_balance(account_id)
+        }
+
+        fn get_open_channel_for_domain(dst_domain_id: DomainId) -> Option<ChannelId> {
+            Messenger::get_open_channel_for_domain(dst_domain_id).map(|(c, _)| c)
         }
     }
 }

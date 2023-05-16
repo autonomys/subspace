@@ -1,8 +1,8 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_runtime_primitives::{AccountIdConverter, DomainCoreApi, Hash};
 use domain_test_primitives::TimestampApi;
 use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
-use domain_test_service::Keyring::{Alice, Bob, Ferdie};
+use domain_test_service::Keyring::{Alice, Bob, Charlie, Ferdie};
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
@@ -16,12 +16,15 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{DomainId, ExecutorApi, SignedBundle};
+use sp_messenger::messages::{ExecutionFee, FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
-use subspace_test_service::MockPrimaryNode;
+use subspace_test_service::{
+    produce_block_with, produce_blocks, produce_blocks_until, MockPrimaryNode,
+};
 use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
@@ -82,8 +85,8 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     .build_with_mock_primary_node(Role::Authority, &mut primary_node)
     .await;
 
-    futures::join!(alice.wait_for_blocks(3), primary_node.produce_blocks(3))
-        .1
+    produce_blocks!(primary_node, alice, 3)
+        .await
         .expect("3 primary blocks produced successfully");
 
     let best_primary_hash = primary_node.client.info().best_hash;
@@ -176,11 +179,11 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 
     // Produce a new tip at #4.
     let slot = primary_node.produce_slot();
-    futures::join!(
-        alice.wait_for_blocks(1),
+    produce_block_with!(
         primary_node.produce_block_with_slot_at(slot, fork_block_hash_3b, Some(vec![])),
+        alice
     )
-    .1
+    .await
     .expect("Produce a new block on top of the second fork block at height #3");
     let new_best_hash = primary_node.client.info().best_hash;
     let new_best_number = primary_node.client.info().best_number;
@@ -251,13 +254,7 @@ async fn test_executor_full_node_catching_up() {
     .await;
 
     // Bob is able to sync blocks.
-    futures::join!(
-        alice.wait_for_blocks(3),
-        bob.wait_for_blocks(3),
-        ferdie.produce_blocks(3),
-    )
-    .2
-    .unwrap();
+    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
 
     let alice_block_hash = alice
         .client
@@ -308,13 +305,7 @@ async fn test_executor_inherent_timestamp_is_set() {
     .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
     .await;
 
-    futures::join!(
-        alice.wait_for_blocks(1),
-        bob.wait_for_blocks(1),
-        ferdie.produce_blocks(1),
-    )
-    .2
-    .unwrap();
+    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
 
     let primary_api = ferdie.client.runtime_api();
     let primary_timestamp = primary_api
@@ -385,9 +376,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .into()
     };
 
-    futures::join!(alice.wait_for_blocks(5), ferdie.produce_blocks(5))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
 
     alice
         .construct_and_send_extrinsic(pallet_balances::Call::transfer {
@@ -401,12 +390,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let target_bundle = bundle.unwrap();
     assert_eq!(target_bundle.bundle.extrinsics.len(), 1);
-    futures::join!(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot),
-    )
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
     // Manually remove the target bundle from tx pool in case resubmit it by accident
     ferdie
         .remove_tx_from_tx_pool(&bundle_to_tx(target_bundle.clone()))
@@ -415,12 +401,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
     // to increase the `ProofOfElection::block_number` of the next bundle such that we can skip the runtime
     // `state_root` check for the modified `trace` when testing the `finalize_block` proof.
-    futures::join!(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot),
-    )
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
 
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -454,12 +437,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     // Produce a primary block that contains the `bad_submit_bundle_tx`
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
-    futures::join!(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot),
-    )
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
 
     // When the system domain node process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -530,9 +510,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
     // after https://github.com/subspace/subspace/issues/1301 is resolved.
-    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // Get a bundle from the txn pool and change its receipt to an invalid one
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -557,11 +535,11 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         }
         .into(),
     );
-    futures::join!(
-        alice.wait_for_blocks(1),
+    produce_block_with!(
         ferdie.produce_block_with_extrinsics(vec![submit_bundle_tx.into()]),
+        alice
     )
-    .1
+    .await
     .unwrap();
 
     let header = alice
@@ -711,9 +689,7 @@ async fn set_new_code_should_work() {
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
@@ -828,9 +804,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .build_with_mock_primary_node(Role::Full, &mut ferdie)
     .await;
 
-    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Get a bundle from alice's tx pool and used as bundle template.
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -841,9 +815,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // Wait for 5 blocks to make sure the execution receipts of block 2,3,4,5 are
     // able to be written to the database.
-    futures::join!(bob.wait_for_blocks(5), ferdie.produce_blocks(5))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, bob, 5).await.unwrap();
 
     let ferdie_client = ferdie.client.clone();
     let create_submit_bundle = |primary_number: BlockNumber| {
@@ -896,9 +868,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .submit_transaction(create_submit_bundle(2))
         .await
         .unwrap();
-    futures::join!(bob.wait_for_blocks(1), ferdie.produce_blocks(1),)
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, bob, 1).await.unwrap();
     assert_eq!(head_receipt_number(), 2);
 
     // max drift is 2, hence the max allowed receipt number is 2 + 2, 5 will be rejected as being
@@ -933,9 +903,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .submit_transaction(create_submit_bundle(4))
         .await
         .unwrap();
-    futures::join!(bob.wait_for_blocks(1), ferdie.produce_blocks(1),)
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, bob, 1).await.unwrap();
     assert_eq!(head_receipt_number(), 4);
 }
 
@@ -965,9 +933,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
@@ -979,12 +945,9 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     .into();
 
     // Wait one block to ensure the bundle is stored onchain and manually remove it from tx pool
-    futures::join!(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot)
-    )
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
     ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
 
     // Bundle is rejected due to it is duplicated
@@ -1005,9 +968,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     }
 
     // Wait for confirmation depth K blocks which is 100 in test
-    futures::join!(alice.wait_for_blocks(100), ferdie.produce_blocks(100))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 100).await.unwrap();
 
     // Bundle is now rejected due to it is stale
     match ferdie
@@ -1048,9 +1009,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     let mut parent_hash = ferdie.client.info().best_hash;
 
@@ -1064,23 +1023,20 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .into();
 
     // Wait one block to ensure the bundle is stored on this fork
-    futures::join!(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot)
-    )
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
 
     // Create fork and build one more blocks on it to make it the new best fork
     parent_hash = ferdie
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
         .unwrap();
-    futures::join!(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![]))
+    produce_block_with!(
+        ferdie.produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![])),
+        alice
     )
-    .1
+    .await
     .unwrap();
 
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
@@ -1094,4 +1050,186 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
         Ok(_) | Err(sc_transaction_pool::error::Error::Pool(TxPoolError::AlreadyImported(_))) => {}
         Err(err) => panic!("Unexpected error: {err}"),
     }
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_cross_domains_message_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .run_relayer()
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    // Run Bob (a core payments domain authority node)
+    let mut bob = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .run_relayer()
+    .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
+    .await;
+
+    // Run Charlie (a core eth relay domain authority node)
+    let mut charlie = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Charlie,
+        BasePath::new(directory.path().join("charlie")),
+    )
+    .run_relayer()
+    .build_core_eth_relay_node(Role::Authority, &mut ferdie, &alice)
+    .await;
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, bob, charlie, 3)
+        .await
+        .unwrap();
+
+    // Open channel between the system domain and the core payments domain
+    let fee_model = FeeModel {
+        outbox_fee: ExecutionFee {
+            relayer_pool_fee: 2,
+            compute_fee: 0,
+        },
+        inbox_fee: ExecutionFee {
+            relayer_pool_fee: 0,
+            compute_fee: 5,
+        },
+    };
+    bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+        call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_domain_id: DomainId::SYSTEM,
+                params: InitiateChannelParams {
+                    max_outgoing_messages: 100,
+                    fee_model,
+                },
+            },
+        )),
+    })
+    .await
+    .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, bob, {
+        alice
+            .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
+            .is_some()
+            && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance cross the system domain and the core payments domain
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+    let transfer_amount = 10;
+    alice
+        .construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+            dst_location: pallet_transporter::Location {
+                domain_id: DomainId::CORE_PAYMENTS,
+                account_id: AccountIdConverter::convert(Bob.into()),
+            },
+            amount: transfer_amount,
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until transfer succeed
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+
+        post_alice_free_balance
+            == pre_alice_free_balance
+                - transfer_amount
+                - fee_model.outbox_fee().unwrap()
+                - fee_model.inbox_fee().unwrap()
+            && post_bob_free_balance == pre_bob_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+
+    // Open channel between the core payments domain and the core eth relay domain
+    let fee_model = FeeModel {
+        outbox_fee: ExecutionFee {
+            relayer_pool_fee: 1,
+            compute_fee: 5,
+        },
+        inbox_fee: ExecutionFee {
+            relayer_pool_fee: 2,
+            compute_fee: 3,
+        },
+    };
+    charlie
+        .construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+            call: Box::new(core_eth_relay_domain_test_runtime::RuntimeCall::Messenger(
+                pallet_messenger::Call::initiate_channel {
+                    dst_domain_id: DomainId::CORE_PAYMENTS,
+                    params: InitiateChannelParams {
+                        max_outgoing_messages: 100,
+                        fee_model,
+                    },
+                },
+            )),
+        })
+        .await
+        .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
+        bob.get_open_channel_for_domain(DomainId::CORE_ETH_RELAY)
+            .is_some()
+            && charlie
+                .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
+                .is_some()
+    })
+    .await
+    .unwrap();
+
+    // Transfer balance cross the core payments domain and the core eth relay domain
+    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+    let pre_charlie_free_balance = charlie.free_balance(charlie.key.to_account_id());
+    let transfer_amount = 10;
+    bob.construct_and_send_extrinsic(pallet_transporter::Call::transfer {
+        dst_location: pallet_transporter::Location {
+            domain_id: DomainId::CORE_ETH_RELAY,
+            account_id: AccountIdConverter::convert(Charlie.into()),
+        },
+        amount: transfer_amount,
+    })
+    .await
+    .expect("Failed to construct and send extrinsic");
+    // Wait until transfer succeed
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
+        let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+        let post_charlie_free_balance = charlie.free_balance(charlie.key.to_account_id());
+
+        post_bob_free_balance
+            == pre_bob_free_balance
+                - transfer_amount
+                - fee_model.outbox_fee().unwrap()
+                - fee_model.inbox_fee().unwrap()
+            && post_charlie_free_balance == pre_charlie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
 }

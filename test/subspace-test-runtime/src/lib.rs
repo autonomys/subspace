@@ -845,21 +845,20 @@ fn extract_system_bundles(
     sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
     sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
 ) {
+    let successful_bundles = Domains::successful_bundles();
     let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
-        .filter_map(|uxt| {
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) = uxt.function
-            {
+            }) if successful_bundles.contains(&signed_opaque_bundle.hash()) => {
                 if signed_opaque_bundle.domain_id().is_system() {
                     Some((Some(signed_opaque_bundle.bundle), None))
                 } else {
                     Some((None, Some(signed_opaque_bundle)))
                 }
-            } else {
-                None
             }
+            _ => None,
         })
         .unzip();
     (
@@ -872,12 +871,15 @@ fn extract_core_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+    let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id => {
+            }) if signed_opaque_bundle.domain_id() == domain_id
+                && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+            {
                 Some(signed_opaque_bundle.bundle)
             }
             _ => None,
@@ -885,27 +887,19 @@ fn extract_core_bundles(
         .collect()
 }
 
-fn extract_stored_bundle_hashes() -> Vec<H256> {
-    System::read_events_no_consensus()
-        .filter_map(|e| match e.event {
-            RuntimeEvent::Domains(pallet_domains::Event::BundleStored { bundle_hash, .. }) => {
-                Some(bundle_hash)
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-}
-
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
+    let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
                 signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id => {
+            }) if signed_opaque_bundle.domain_id() == domain_id
+                && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+            {
                 Some(signed_opaque_bundle.bundle.receipts)
             }
             _ => None,
@@ -918,11 +912,13 @@ fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
+    let successful_fraud_proofs = Receipts::successful_fraud_proofs();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id =>
+                if fraud_proof.domain_id() == domain_id
+                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
             {
                 Some(fraud_proof)
             }
@@ -1203,8 +1199,8 @@ impl_runtime_apis! {
             extract_core_bundles(extrinsics, domain_id)
         }
 
-        fn extract_stored_bundle_hashes() -> Vec<H256> {
-            extract_stored_bundle_hashes()
+        fn successful_bundle_hashes() -> Vec<H256> {
+            Domains::successful_bundles()
         }
 
         fn extract_receipts(

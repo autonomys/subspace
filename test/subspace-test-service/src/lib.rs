@@ -239,6 +239,13 @@ impl MockPrimaryNode {
         // by `TemporarilyBanned`
         config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
+        config.network.node_name = format!("{} (MockPrimaryChain)", config.network.node_name);
+        let span = sc_tracing::tracing::info_span!(
+            sc_tracing::logging::PREFIX_LOG_SPAN,
+            name = config.network.node_name.as_str()
+        );
+        let _enter = span.enter();
+
         let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
             config.wasm_method,
             config.default_heap_pages,
@@ -877,4 +884,53 @@ where
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)
     }
+}
+
+/// Produce the given number of blocks for both the primary node and the domain nodes
+#[macro_export]
+macro_rules! produce_blocks {
+    ($primary_node:ident, $($domain_node:ident),+, $count: literal) => {
+        async {
+            let domain_fut = {
+                let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
+                $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )+
+                futures::future::join_all(futs)
+            };
+            $primary_node.produce_blocks($count).await?;
+            domain_fut.await;
+            Ok::<(), Box<dyn std::error::Error>>(())
+        }
+    };
+}
+
+/// Producing one block for both the primary node and the domain nodes, where the primary node can
+/// use the `produce_block_with_xxx` function (i.e. `produce_block_with_slot`) to produce block
+#[macro_export]
+macro_rules! produce_block_with {
+    ($primary_node_produce_block:expr, $($domain_node:ident),+) => {
+        async {
+            let domain_fut = {
+                let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
+                $( futs.push( Box::pin( $domain_node.wait_for_blocks(1) ) ); )+
+                futures::future::join_all(futs)
+            };
+            $primary_node_produce_block.await?;
+            domain_fut.await;
+            Ok::<(), Box<dyn std::error::Error>>(())
+        }
+    };
+}
+
+/// Keep producing block with a fixed interval until the given condition become `true`
+#[macro_export]
+macro_rules! produce_blocks_until {
+    ($primary_node:ident, $($domain_node:ident),+, $condition: block) => {
+        async {
+            while !$condition {
+                produce_blocks!($primary_node, $($domain_node),+, 1).await?;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            Ok::<(), Box<dyn std::error::Error>>(())
+        }
+    };
 }
