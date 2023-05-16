@@ -18,8 +18,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(array_windows)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod tests;
+
+pub mod weights;
 
 use codec::{Decode, Encode};
 use frame_support::traits::Get;
@@ -38,7 +43,9 @@ use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
+    use frame_support::weights::Weight;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use pallet_receipts::{Error as ReceiptError, FraudProofError};
@@ -56,6 +63,9 @@ mod pallet {
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -149,9 +159,16 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // TODO: proper weight
         #[pallet::call_index(0)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(
+            if signed_opaque_bundle.domain_id().is_system() {
+                T::WeightInfo::submit_system_bundle(
+                    signed_opaque_bundle.bundle.receipts.len() as u32
+                )
+            } else {
+                T::WeightInfo::submit_core_bundle()
+            }
+        )]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -184,9 +201,17 @@ mod pallet {
             Ok(())
         }
 
-        // TODO: proper weight
         #[pallet::call_index(1)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(
+            match fraud_proof {
+                FraudProof::InvalidStateTransition(..) => (
+                    T::WeightInfo::submit_system_domain_invalid_state_transition_proof(),
+                    Pays::No
+                ),
+                // TODO: proper weight
+                _ => (Weight::from_all(10_000), Pays::No),
+            }
+        )]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
@@ -250,7 +275,19 @@ mod pallet {
                 Call::submit_bundle {
                     signed_opaque_bundle,
                 } => Self::pre_dispatch_submit_bundle(signed_opaque_bundle),
-                Call::submit_fraud_proof { .. } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::FraudProof.into(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -282,6 +319,13 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(

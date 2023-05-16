@@ -405,6 +405,7 @@ parameter_types! {
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_receipts::Config for Runtime {
@@ -574,6 +575,7 @@ mod benches {
         [frame_benchmarking, BaselineBench::<Runtime>]
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
+        [pallet_domains, Domains]
         [pallet_timestamp, Timestamp]
     );
 }

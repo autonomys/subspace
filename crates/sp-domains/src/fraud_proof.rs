@@ -235,6 +235,22 @@ pub struct InvalidStateTransitionProof {
     pub execution_phase: ExecutionPhase,
 }
 
+pub fn dummy_invalid_state_transition_proof(
+    domain_id: DomainId,
+    parent_number: u32,
+) -> InvalidStateTransitionProof {
+    InvalidStateTransitionProof {
+        domain_id,
+        bad_receipt_hash: H256::default(),
+        parent_number,
+        primary_parent_hash: H256::default(),
+        pre_state_root: H256::default(),
+        post_state_root: H256::default(),
+        proof: StorageProof::empty(),
+        execution_phase: ExecutionPhase::ApplyExtrinsic(0),
+    }
+}
+
 /// Represents a bundle equivocation proof. An equivocation happens when an executor
 /// produces more than one bundle on the same slot. The proof of equivocation
 /// are the given distinct bundle headers that were signed by the validator and which
