@@ -154,25 +154,10 @@ where
                     let req = req.clone();
 
                     async move {
-                        let key = match req.piece_index_hash.clone().try_into() {
-                            Ok(key) => key,
-
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %peer_id,
-                                    ?req,
-                                    "Failed to convert received key to record:Key."
-                                );
-
-                                return None;
-                            }
-                        };
-
                         let provider_record = ProviderRecord {
                             provider: peer_id,
-                            key,
-                            addresses: req.converted_addresses(),
+                            key: req.piece_index_hash.into(),
+                            addresses: req.addresses.clone(),
                             expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
                         };
 

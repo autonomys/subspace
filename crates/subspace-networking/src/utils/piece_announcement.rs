@@ -125,11 +125,7 @@ async fn announce_key(
 
     let mut contacted_peers = HashSet::new();
     let mut acknowledged_peers = HashSet::new();
-    let external_addresses: Vec<Vec<u8>> = node
-        .external_addresses()
-        .iter()
-        .map(|addr| addr.to_vec())
-        .collect();
+    let external_addresses = node.external_addresses();
     while let Some(peer_id) = get_peers_stream.next().await {
         trace!(?key, %peer_id, "get_closest_peers returned an item");
 
@@ -143,7 +139,7 @@ async fn announce_key(
             .send_generic_request(
                 peer_id,
                 PieceAnnouncementRequest {
-                    piece_index_hash: key.to_bytes(),
+                    piece_index_hash: key,
                     addresses: external_addresses.clone(),
                 },
             )

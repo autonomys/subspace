@@ -64,7 +64,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
-    provider_record_announcer: ProviderRecordAnnouncer,
+    record_processor_helper: RecordProcessorAnnouncementHelper,
 ) -> Result<
     (
         Node,
@@ -176,29 +176,14 @@ pub(super) fn configure_dsn(
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
                     let mut provider_storage = farmer_provider_storage.clone();
-                    let provider_record_announcer = provider_record_announcer.clone();
+                    let record_processor_helper = record_processor_helper.clone();
                     let req = req.clone();
 
                     async move {
-                        let key = match req.piece_index_hash.clone().try_into() {
-                            Ok(key) => key,
-
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %peer_id,
-                                    ?req,
-                                    "Failed to convert received key to record:Key."
-                                );
-
-                                return None;
-                            }
-                        };
-
                         let provider_record = ProviderRecord {
                             provider: peer_id,
-                            key,
-                            addresses: req.converted_addresses(),
+                            key: req.piece_index_hash.into(),
+                            addresses: req.addresses.clone(),
                             expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
                         };
 
@@ -213,7 +198,7 @@ pub(super) fn configure_dsn(
                             return None;
                         }
 
-                        provider_record_announcer.announce(&provider_record);
+                        record_processor_helper.announce(&provider_record);
 
                         Some(PieceAnnouncementResponse::Success)
                     }
@@ -372,12 +357,12 @@ pub(crate) fn start_announcements_processor(
     node: Node,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-    provider_record_announcer: ProviderRecordAnnouncer,
+    record_processor_helper: RecordProcessorAnnouncementHelper,
 ) -> io::Result<HandlerId> {
     let (provider_records_sender, mut provider_records_receiver) =
         mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
 
-    let handler_id = provider_record_announcer.on_announcement(Arc::new({
+    let handler_id = record_processor_helper.on_announcement(Arc::new({
         let provider_records_sender = Mutex::new(provider_records_sender);
 
         move |record| {
@@ -431,13 +416,15 @@ pub(crate) fn start_announcements_processor(
     Ok(handler_id)
 }
 
-/// Provider record announcement helper.
+/// Provider record announcement helper. We need to pass the newly received records to the records
+/// processor (FarmerProviderRecordProcessor) to download piece, save to local piece, re-announce,
+/// and this object handles the re-announcement.
 #[derive(Default, Clone)]
-pub(crate) struct ProviderRecordAnnouncer {
+pub(crate) struct RecordProcessorAnnouncementHelper {
     pub(crate) announcement: Arc<ProviderRecordHandler>,
 }
 
-impl ProviderRecordAnnouncer {
+impl RecordProcessorAnnouncementHelper {
     /// Callback is called when we process a new provider record.
     pub fn on_announcement(&self, callback: ProviderRecordHandlerFn) -> HandlerId {
         self.announcement.add(callback)

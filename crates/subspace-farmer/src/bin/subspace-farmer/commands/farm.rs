@@ -1,7 +1,7 @@
 mod dsn;
 
 use crate::commands::farm::dsn::{
-    configure_dsn, start_announcements_processor, ProviderRecordAnnouncer,
+    configure_dsn, start_announcements_processor, RecordProcessorAnnouncementHelper,
 };
 use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
@@ -85,7 +85,7 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    let provider_record_announcer = ProviderRecordAnnouncer::default();
+    let provider_record_announcer = RecordProcessorAnnouncementHelper::default();
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
