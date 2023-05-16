@@ -17,13 +17,15 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(super) struct BundleElectionSolver<SBlock, PBlock, SClient> {
+pub(super) struct BundleElectionSolver<Block, SBlock, PBlock, SClient> {
     system_domain_client: Arc<SClient>,
     keystore: KeystorePtr,
-    _phantom_data: PhantomData<(SBlock, PBlock)>,
+    _phantom_data: PhantomData<(Block, SBlock, PBlock)>,
 }
 
-impl<SBlock, PBlock, SClient> Clone for BundleElectionSolver<SBlock, PBlock, SClient> {
+impl<Block, SBlock, PBlock, SClient> Clone
+    for BundleElectionSolver<Block, SBlock, PBlock, SClient>
+{
     fn clone(&self) -> Self {
         Self {
             system_domain_client: self.system_domain_client.clone(),
@@ -42,12 +44,13 @@ pub(super) enum PreliminaryBundleSolution<DomainHash> {
     Core(ProofOfElection<DomainHash>),
 }
 
-impl<SBlock, PBlock, SClient> BundleElectionSolver<SBlock, PBlock, SClient>
+impl<Block, SBlock, PBlock, SClient> BundleElectionSolver<Block, SBlock, PBlock, SClient>
 where
+    Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 {
     pub(super) fn new(system_domain_client: Arc<SClient>, keystore: KeystorePtr) -> Self {
         Self {
@@ -57,7 +60,7 @@ where
         }
     }
 
-    pub(super) fn solve_bundle_election_challenge<Block: BlockT>(
+    pub(super) fn solve_bundle_election_challenge(
         &self,
         best_hash: SBlock::Hash,
         best_number: NumberFor<SBlock>,

@@ -86,7 +86,7 @@ pub(super) async fn start_worker<
         + 'static,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<

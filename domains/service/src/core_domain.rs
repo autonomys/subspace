@@ -125,7 +125,7 @@ pub struct NewFullCore<
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -206,7 +206,7 @@ where
     PBlock: BlockT,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, Executor>>,
 {
     let telemetry = config
@@ -359,9 +359,13 @@ where
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     <Block as BlockT>::Header: Unpin,
     NumberFor<Block>: FullCodec + TypeInfo,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient: HeaderBackend<SBlock>
+        + BlockBackend<SBlock>
+        + ProvideRuntimeApi<SBlock>
+        + ProofProvider<SBlock>
+        + 'static,
     SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
         + RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
         + ReceiptsApi<SBlock, <Block as BlockT>::Hash>,

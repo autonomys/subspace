@@ -170,7 +170,7 @@ where
     }
 }
 
-impl<Executor, Block, PNumber, PHash> SystemDomainApi<Block, PNumber, PHash>
+impl<Executor, Block, PNumber, PHash> SystemDomainApi<Block, PNumber, PHash, Block::Hash>
     for RuntimeApiLight<Executor>
 where
     Block: BlockT,
@@ -218,7 +218,7 @@ where
             SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
         >,
     ) -> Result<Vec<Vec<u8>>, ApiError> {
-        <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>>::construct_submit_core_bundle_extrinsics(
+        <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>::construct_submit_core_bundle_extrinsics(
             self, at, signed_opaque_bundles,
         )
     }

@@ -84,7 +84,7 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     PClient: HeaderBackend<PBlock> + 'static,
@@ -191,7 +191,7 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     Backend: sc_client_api::Backend<Block> + 'static,

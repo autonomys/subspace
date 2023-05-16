@@ -93,7 +93,7 @@ where
         + SessionKeys<Block>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
@@ -215,7 +215,7 @@ where
         + Sync
         + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
         + ReceiptsApi<Block, Hash>
@@ -367,7 +367,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>

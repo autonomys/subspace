@@ -142,7 +142,7 @@ where
         + 'static,
     PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     Executor: CodeExecutor,
 {
@@ -195,7 +195,7 @@ where
         + 'static,
     PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     Executor: CodeExecutor,
 {

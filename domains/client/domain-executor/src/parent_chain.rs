@@ -1,3 +1,5 @@
+use crate::ExecutionReceiptFor;
+use sc_client_api::BlockBackend;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
@@ -7,6 +9,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
+type FraudProofFor<ParentChainBlock> =
+    FraudProof<NumberFor<ParentChainBlock>, <ParentChainBlock as BlockT>::Hash>;
+
 /// Trait for interacting between the domain and its corresponding parent chain, i.e. retrieving
 /// the necessary info from the parent chain or submit extrinsics to the parent chain.
 ///
@@ -14,6 +19,16 @@ use system_runtime_primitives::SystemDomainApi;
 /// - The parent chain of Core Domain => System Domain
 pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
     fn best_hash(&self) -> ParentChainBlock::Hash;
+
+    fn block_body(
+        &self,
+        at: ParentChainBlock::Hash,
+    ) -> sp_blockchain::Result<Vec<ParentChainBlock::Extrinsic>>;
+
+    fn oldest_receipt_number(
+        &self,
+        at: ParentChainBlock::Hash,
+    ) -> Result<NumberFor<Block>, sp_api::ApiError>;
 
     fn head_receipt_number(
         &self,
@@ -24,6 +39,18 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         &self,
         at: ParentChainBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError>;
+
+    fn extract_receipts(
+        &self,
+        extrinsics: Vec<ParentChainBlock::Extrinsic>,
+        at: ParentChainBlock::Hash,
+    ) -> Result<Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>, sp_api::ApiError>;
+
+    fn extract_fraud_proofs(
+        &self,
+        extrinsics: Vec<ParentChainBlock::Extrinsic>,
+        at: ParentChainBlock::Hash,
+    ) -> Result<Vec<FraudProofFor<ParentChainBlock>>, sp_api::ApiError>;
 
     fn submit_fraud_proof_unsigned(
         &self,
@@ -68,11 +95,28 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
     NumberFor<SBlock>: Into<NumberFor<Block>>,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient: HeaderBackend<SBlock> + BlockBackend<SBlock> + ProvideRuntimeApi<SBlock>,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 {
     fn best_hash(&self) -> SBlock::Hash {
         self.system_domain_client.info().best_hash
+    }
+
+    fn block_body(&self, at: SBlock::Hash) -> sp_blockchain::Result<Vec<SBlock::Extrinsic>> {
+        self.system_domain_client.block_body(at)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("System domain block body for {at} not found"))
+        })
+    }
+
+    fn oldest_receipt_number(
+        &self,
+        at: SBlock::Hash,
+    ) -> Result<NumberFor<Block>, sp_api::ApiError> {
+        let oldest_receipt_number = self
+            .system_domain_client
+            .runtime_api()
+            .oldest_receipt_number(at, self.domain_id)?;
+        Ok(oldest_receipt_number.into())
     }
 
     fn head_receipt_number(&self, at: SBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
@@ -92,6 +136,26 @@ where
             .runtime_api()
             .maximum_receipt_drift(at)?;
         Ok(max_drift.into())
+    }
+
+    fn extract_receipts(
+        &self,
+        extrinsics: Vec<SBlock::Extrinsic>,
+        at: SBlock::Hash,
+    ) -> Result<Vec<ExecutionReceiptFor<SBlock, Block::Hash>>, sp_api::ApiError> {
+        self.system_domain_client
+            .runtime_api()
+            .extract_receipts(at, extrinsics, self.domain_id)
+    }
+
+    fn extract_fraud_proofs(
+        &self,
+        extrinsics: Vec<SBlock::Extrinsic>,
+        at: SBlock::Hash,
+    ) -> Result<Vec<FraudProofFor<SBlock>>, sp_api::ApiError> {
+        self.system_domain_client
+            .runtime_api()
+            .extract_fraud_proofs(at, extrinsics, self.domain_id)
     }
 
     fn submit_fraud_proof_unsigned(
@@ -136,11 +200,28 @@ where
     Block: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: Into<NumberFor<Block>>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
+    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
 {
     fn best_hash(&self) -> PBlock::Hash {
         self.primary_chain_client.info().best_hash
+    }
+
+    fn block_body(&self, at: PBlock::Hash) -> sp_blockchain::Result<Vec<PBlock::Extrinsic>> {
+        self.primary_chain_client.block_body(at)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Primary block body for {at} not found"))
+        })
+    }
+
+    fn oldest_receipt_number(
+        &self,
+        at: PBlock::Hash,
+    ) -> Result<NumberFor<Block>, sp_api::ApiError> {
+        let oldest_receipt_number = self
+            .primary_chain_client
+            .runtime_api()
+            .oldest_receipt_number(at)?;
+        Ok(oldest_receipt_number.into())
     }
 
     fn head_receipt_number(&self, at: PBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
@@ -160,6 +241,26 @@ where
             .runtime_api()
             .maximum_receipt_drift(at)?;
         Ok(max_drift.into())
+    }
+
+    fn extract_receipts(
+        &self,
+        extrinsics: Vec<PBlock::Extrinsic>,
+        at: PBlock::Hash,
+    ) -> Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>, sp_api::ApiError> {
+        self.primary_chain_client
+            .runtime_api()
+            .extract_receipts(at, extrinsics, DomainId::SYSTEM)
+    }
+
+    fn extract_fraud_proofs(
+        &self,
+        extrinsics: Vec<PBlock::Extrinsic>,
+        at: PBlock::Hash,
+    ) -> Result<Vec<FraudProofFor<PBlock>>, sp_api::ApiError> {
+        self.primary_chain_client
+            .runtime_api()
+            .extract_fraud_proofs(at, extrinsics, DomainId::SYSTEM)
     }
 
     fn submit_fraud_proof_unsigned(

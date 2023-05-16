@@ -108,9 +108,13 @@ pub(super) async fn start_worker<
         Error = sp_consensus::Error,
     >,
     BI: Sync + Send + 'static,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient: HeaderBackend<SBlock>
+        + BlockBackend<SBlock>
+        + ProvideRuntimeApi<SBlock>
+        + ProofProvider<SBlock>
+        + 'static,
     SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>

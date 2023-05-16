@@ -613,7 +613,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash> for Runtime {
+    impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
             signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {

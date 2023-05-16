@@ -21,7 +21,7 @@ pub fn verify_xdm_with_system_domain_client<SClient, Block, SBlock, PBlock, SRE>
 where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     Block: BlockT,
     SBlock: BlockT,
     SBlock::Hash: From<Block::Hash>,

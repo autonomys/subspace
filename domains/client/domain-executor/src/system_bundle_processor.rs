@@ -67,7 +67,7 @@ where
     Client::Api: DomainCoreApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<Block, NumberFor<Block>>,
     for<'b> &'b Client: BlockImport<
         Block,
