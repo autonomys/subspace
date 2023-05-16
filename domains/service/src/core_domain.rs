@@ -353,8 +353,9 @@ where
     Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
     Block::Hash: From<H256> + Into<H256> + FullCodec + TypeInfo + Unpin,
+    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
+    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>>,
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     <Block as BlockT>::Header: Unpin,
     NumberFor<Block>: FullCodec + TypeInfo,
@@ -585,9 +586,9 @@ where
 
     let gossip_message_validator =
         CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, _, _, _, _, _>::new(
-            CoreDomainParentChain::<_, SBlock, PBlock>::new(
-                system_domain_client.clone(),
+            CoreDomainParentChain::<_, SBlock, PBlock, _>::new(
                 domain_id,
+                system_domain_client.clone(),
             ),
             client.clone(),
             Box::new(task_manager.spawn_handle()),

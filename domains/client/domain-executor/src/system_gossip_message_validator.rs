@@ -92,7 +92,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<PBlock> + Send + Sync + Clone + 'static,
+    ParentChain: ParentChainInterface<Block, PBlock> + Send + Sync + Clone + 'static,
 {
     pub fn new(
         parent_chain: ParentChain,
@@ -199,7 +199,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    ParentChain: ParentChainInterface<PBlock> + Send + Sync + Clone + 'static,
+    ParentChain: ParentChainInterface<Block, PBlock> + Send + Sync + Clone + 'static,
 {
     type Error = GossipMessageError;
 

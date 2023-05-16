@@ -66,7 +66,7 @@ pub(super) async fn start_worker<
         Client,
         Client,
         PClient,
-        SystemDomainParentChain<PClient, Block, PBlock>,
+        SystemDomainParentChain<Block, PBlock, PClient>,
         TransactionPool,
     >,
     bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
@@ -75,7 +75,7 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
+    NumberFor<PBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     PBlock::Hash: From<Block::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>

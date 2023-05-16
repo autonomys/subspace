@@ -1,6 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
 use crate::parent_chain::CoreDomainParentChain;
-use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::CoreDomainBlockPreprocessor;
@@ -24,7 +23,7 @@ where
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
-    parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
+    parent_chain: CoreDomainParentChain<Block, SBlock, PBlock, SClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: KeystorePtr,
@@ -65,7 +64,7 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
 where
     Block: BlockT,
     SBlock: BlockT,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
@@ -106,9 +105,9 @@ where
         keystore: KeystorePtr,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
     ) -> Self {
-        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
-            system_domain_client.clone(),
+        let parent_chain = CoreDomainParentChain::<Block, SBlock, PBlock, SClient>::new(
             domain_id,
+            system_domain_client.clone(),
         );
         let core_domain_block_preprocessor = CoreDomainBlockPreprocessor::new(
             domain_id,
@@ -199,8 +198,6 @@ where
             .system_domain_client
             .runtime_api()
             .head_receipt_number(system_domain_hash, self.domain_id)?;
-        let head_receipt_number =
-            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(head_receipt_number);
 
         // TODO: can be re-enabled once the TODO above is resolved
         // assert!(
@@ -216,7 +213,7 @@ where
         self.domain_block_processor.on_domain_block_processed(
             primary_hash,
             domain_block_result,
-            head_receipt_number,
+            head_receipt_number.into(),
         )?;
 
         // TODO: check core domain invalid state transition in another separate task.

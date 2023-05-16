@@ -152,7 +152,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
-    ParentChain: ParentChainInterface<ParentChainBlock> + Send + Sync + Clone + 'static,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock> + Send + Sync + Clone + 'static,
 {
     pub(crate) fn new(
         client: Arc<Client>,

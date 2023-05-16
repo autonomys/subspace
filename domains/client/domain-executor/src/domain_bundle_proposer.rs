@@ -1,5 +1,4 @@
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::Encode;
 use futures::{select, FutureExt};
@@ -40,6 +39,7 @@ impl<Block, Client, PBlock, PClient, TransactionPool>
 where
     Block: BlockT,
     PBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<PBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
     PClient: HeaderBackend<PBlock>,
@@ -66,7 +66,7 @@ where
     ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     where
         ParentChainBlock: BlockT,
-        ParentChain: ParentChainInterface<ParentChainBlock>,
+        ParentChain: ParentChainInterface<Block, ParentChainBlock>,
     {
         let parent_number = self.client.info().best_number;
         let parent_hash = self.client.info().best_hash;
@@ -145,7 +145,7 @@ where
     ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
     where
         ParentChainBlock: BlockT,
-        ParentChain: ParentChainInterface<ParentChainBlock>,
+        ParentChain: ParentChainInterface<Block, ParentChainBlock>,
     {
         let parent_chain_block_hash = parent_chain.best_hash();
         let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
@@ -173,7 +173,7 @@ where
         };
 
         let mut receipts = Vec::new();
-        let mut to_send = head_receipt_number + 1;
+        let mut to_send = head_receipt_number + One::one();
 
         let header_block_receipt_is_written =
             crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(&*self.client, header_hash)?
@@ -192,8 +192,7 @@ where
             header_number.saturating_sub(One::one())
         };
 
-        let max_allowed = (head_receipt_number + max_drift)
-            .min(to_number_primitive(available_best_receipt_number));
+        let max_allowed = (head_receipt_number + max_drift).min(available_best_receipt_number);
 
         loop {
             let primary_block_hash =
@@ -205,7 +204,7 @@ where
                         ))
                     })?;
             receipts.push(load_receipt(primary_block_hash, to_send)?);
-            to_send += 1;
+            to_send += One::one();
 
             if to_send > max_allowed {
                 break;

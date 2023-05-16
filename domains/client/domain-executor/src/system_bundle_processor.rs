@@ -1,5 +1,4 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, ReceiptsChecker};
-use crate::utils::translate_number_type;
 use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::SystemDomainBlockPreprocessor;
@@ -199,9 +198,8 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(primary_hash)?;
-        let head_receipt_number =
-            translate_number_type::<NumberFor<PBlock>, NumberFor<Block>>(head_receipt_number);
+            .head_receipt_number(primary_hash)?
+            .into();
 
         assert!(
             domain_block_result.header_number > head_receipt_number,

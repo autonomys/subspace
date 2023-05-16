@@ -68,9 +68,10 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
 where
     Block: BlockT,
     SBlock: BlockT,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
-    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
+    SBlock::Hash: From<Block::Hash>,
+    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>>,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -137,7 +138,7 @@ where
         let active_leaves =
             active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
 
-        let parent_chain = CoreDomainParentChain::new(system_domain_client.clone(), domain_id);
+        let parent_chain = CoreDomainParentChain::new(domain_id, system_domain_client.clone());
 
         let domain_bundle_proposer = DomainBundleProposer::new(
             params.client.clone(),

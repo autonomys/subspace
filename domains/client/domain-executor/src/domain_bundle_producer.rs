@@ -121,12 +121,14 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
     ParentChainBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<PBlock>>,
+    NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
     SClient::Api: DomainCoreApi<SBlock> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
     PClient: HeaderBackend<PBlock>,
-    ParentChain: ParentChainInterface<ParentChainBlock> + Clone,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(super) fn new(
@@ -201,8 +203,7 @@ where
         } else {
             let head_receipt_number = self
                 .parent_chain
-                .head_receipt_number(self.parent_chain.best_hash())?
-                .into();
+                .head_receipt_number(self.parent_chain.best_hash())?;
 
             // Executor is lagging behind the receipt chain on its parent chain as another executor
             // already processed a block higher than the local best and submitted the receipt to

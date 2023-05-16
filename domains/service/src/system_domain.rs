@@ -64,7 +64,7 @@ type SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>
         FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
         FullBackend<Block>,
         NativeElseWasmExecutor<ExecutorDispatch>,
-        SystemDomainParentChain<PClient, Block, PBlock>,
+        SystemDomainParentChain<Block, PBlock, PClient>,
     >;
 
 /// System domain full node along with some other components.
@@ -482,7 +482,7 @@ where
     .await?;
 
     let gossip_message_validator = SystemGossipMessageValidator::new(
-        SystemDomainParentChain::<_, Block, PBlock>::new(primary_chain_client),
+        SystemDomainParentChain::<Block, PBlock, _>::new(primary_chain_client),
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         transaction_pool.clone(),

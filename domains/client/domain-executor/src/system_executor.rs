@@ -66,7 +66,7 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
+    NumberFor<PBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     PBlock::Hash: From<Block::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
