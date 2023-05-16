@@ -58,14 +58,14 @@ impl Step for SegmentIndex {
     }
 }
 
-impl const From<u64> for SegmentIndex {
+impl From<u64> for SegmentIndex {
     #[inline]
     fn from(original: u64) -> Self {
         Self(original)
     }
 }
 
-impl const From<SegmentIndex> for u64 {
+impl From<SegmentIndex> for u64 {
     #[inline]
     fn from(original: SegmentIndex) -> Self {
         original.0
@@ -112,7 +112,7 @@ impl HistorySize {
     }
 
     /// Segment index that corresponds to this history size.
-    pub const fn segment_index(&self) -> SegmentIndex {
+    pub fn segment_index(&self) -> SegmentIndex {
         SegmentIndex::from(self.0.get() - 1)
     }
 }
@@ -124,7 +124,7 @@ impl SegmentIndex {
     pub const ONE: SegmentIndex = SegmentIndex(1);
 
     /// Get the first piece index in this segment.
-    pub const fn first_piece_index(&self) -> PieceIndex {
+    pub fn first_piece_index(&self) -> PieceIndex {
         PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
     }
 

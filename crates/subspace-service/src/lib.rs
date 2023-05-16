@@ -316,7 +316,7 @@ where
         .execution_extensions()
         .set_extensions_factory(SubspaceExtensionsFactory::<PosTable> {
             kzg: kzg.clone(),
-            _pos_table: PhantomData::default(),
+            _pos_table: PhantomData,
         });
 
     let client = Arc::new(client);

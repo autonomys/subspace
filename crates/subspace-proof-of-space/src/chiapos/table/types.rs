@@ -496,7 +496,7 @@ where
     /// Size in bytes
     const BYTES: usize = x_size_bytes(K);
     /// Size in bits
-    const BITS: usize = usize::from(K);
+    const BITS: usize = K as usize;
     /// Where do bits of useful data start
     const DATA_OFFSET: usize = Self::BYTES * u8::BITS as usize - Self::BITS;
 }

@@ -30,7 +30,7 @@ where
 }
 
 pub const fn quality_hashing_buffer_bytes(k: u8) -> usize {
-    mem::size_of::<Challenge>() + (usize::from(k) * 2).div_ceil(u8::BITS as usize)
+    mem::size_of::<Challenge>() + (k as usize * 2).div_ceil(u8::BITS as usize)
 }
 
 /// Collection of Chia tables

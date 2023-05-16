@@ -48,7 +48,7 @@ where
         BundleCollector {
             client,
             confirm_depth_k,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 

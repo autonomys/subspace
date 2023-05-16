@@ -85,14 +85,14 @@ fn find_quality(seed: &PosSeed, challenge_index: u32) -> Option<ShimQuality<'_>>
 mod tests {
     use super::*;
 
-    const SEED: PosSeed = PosSeed::from([
-        35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
-        198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
-    ]);
-
     #[test]
     fn basic() {
-        let table = ShimTable::generate(&SEED);
+        let seed = PosSeed::from([
+            35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
+            198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
+        ]);
+
+        let table = ShimTable::generate(&seed);
 
         assert!(table.find_quality(0).is_none());
 
@@ -100,7 +100,7 @@ mod tests {
             let challenge_index = 2;
             let quality = table.find_quality(challenge_index).unwrap();
             let proof = quality.create_proof();
-            let maybe_quality = ShimTable::is_proof_valid(&SEED, challenge_index, &proof);
+            let maybe_quality = ShimTable::is_proof_valid(&seed, challenge_index, &proof);
             assert_eq!(maybe_quality, Some(quality.to_bytes()));
         }
     }
