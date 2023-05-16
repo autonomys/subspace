@@ -28,7 +28,7 @@ where
 impl<R> Default for Precompiles<R> {
     #[inline]
     fn default() -> Self {
-        Self(PhantomData::default())
+        Self(PhantomData)
     }
 }
 

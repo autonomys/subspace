@@ -356,7 +356,7 @@ impl pallet_messenger::Config for Runtime {
         endpoint: &Endpoint,
     ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
-            Some(Box::new(EndpointHandler(PhantomData::<Runtime>::default())))
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
         } else {
             None
         }

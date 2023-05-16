@@ -411,7 +411,7 @@ where
             winning_chunks,
             count,
             chunk_cache: None,
-            _pos_table: PhantomData::default(),
+            _pos_table: PhantomData,
         })
     }
 }

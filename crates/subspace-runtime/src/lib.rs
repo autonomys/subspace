@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_num_from_num, const_option, const_trait_impl)]
+#![feature(const_option, const_trait_impl)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -150,7 +150,7 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 // chunk of every piece.
 const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
     // Account for number of pieces plotted initially (assuming 1 sector)
-    / SolutionRange::from(MAX_PIECES_IN_SECTOR)
+    / MAX_PIECES_IN_SECTOR as u64
     // Account for slot probability
     / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
     // Account for probability of hitting occupied s-bucket in sector (for one piece)

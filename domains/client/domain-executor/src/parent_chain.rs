@@ -47,7 +47,7 @@ impl<SBlock, PBlock, SClient> CoreDomainParentChain<SClient, SBlock, PBlock> {
         CoreDomainParentChain {
             system_domain_client,
             domain_id,
-            _phantom: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 }
@@ -111,7 +111,7 @@ impl<PClient, Block, PBlock> SystemDomainParentChain<PClient, Block, PBlock> {
     pub fn new(primary_chain_client: Arc<PClient>) -> Self {
         SystemDomainParentChain {
             primary_chain_client,
-            _phantom: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 }
