@@ -222,7 +222,7 @@ where
     type ProvidedIter<'a> = AuxStoreProviderRecordIterator<'a, AS> where Self:'a;
 
     fn add_provider(
-        &mut self,
+        &self,
         rec: ProviderRecord,
     ) -> subspace_networking::libp2p::kad::store::Result<()> {
         trace!(key=?rec.key, "Attempted to put a provider record to the aux piece record store.");
@@ -239,7 +239,7 @@ where
                     key: key.clone(),
                     provider: self.local_peer_id,
                     expires: None,
-                    addresses: vec![], // TODO: add address hints
+                    addresses: vec![], // Kademlia adds addresses for local providers
                 }]
             }),
             Err(err) => {
@@ -268,7 +268,7 @@ where
         AuxStoreProviderRecordIterator::new(pieces_indexes, self.clone())
     }
 
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
+    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
         trace!(
             ?key,
             %peer_id,
@@ -317,7 +317,7 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
                 key: key.clone(),
                 provider: peer_id,
                 expires: None,
-                addresses: vec![], // TODO: add address hints
+                addresses: vec![], // Kademlia adds addresses for local providers
             })
             .map(Cow::Owned);
 

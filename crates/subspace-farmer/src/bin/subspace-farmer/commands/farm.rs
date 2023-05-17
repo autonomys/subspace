@@ -5,6 +5,7 @@ use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::channel::mpsc;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -28,7 +29,7 @@ use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::utils::piece_announcement::announce_single_piece_index_with_backoff;
+use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
@@ -36,6 +37,9 @@ use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
+
+const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
+    NonZeroUsize::new(2000).expect("Not zero; qed");
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -82,6 +86,9 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    let (provider_records_sender, provider_records_receiver) =
+        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -105,15 +112,17 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
+            Mutex::new(provider_records_sender),
         )?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
 
-    let _announcements_processing_handler = start_announcements_processor(
+    start_announcements_processor(
         node.clone(),
         Arc::clone(&piece_cache),
         Arc::downgrade(&readers_and_pieces),
+        provider_records_receiver,
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
@@ -333,7 +342,10 @@ where
                             let mut pieces_publishing_futures = new_pieces
                                 .into_iter()
                                 .map(|piece_index| {
-                                    announce_single_piece_index_with_backoff(piece_index, &node)
+                                    announce_single_piece_index_hash_with_backoff(
+                                        piece_index.hash(),
+                                        &node,
+                                    )
                                 })
                                 .collect::<FuturesUnordered<_>>();
 

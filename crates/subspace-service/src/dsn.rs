@@ -14,15 +14,19 @@ use sp_core::traits::SpawnNamed;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
-use subspace_networking::utils::piece_announcement::announce_single_piece_index_with_backoff;
+use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
     NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbError, ParityDbProviderStorage, PieceByHashRequestHandler, PieceByHashResponse,
+    ParityDbError, ParityDbProviderStorage, PieceAnnouncementRequestHandler,
+    PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -129,8 +133,12 @@ where
     let provider_storage =
         NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
     let keypair = dsn_config.keypair.clone();
-    let default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_version, keypair, provider_storage);
+    let mut default_networking_config =
+        subspace_networking::Config::new(dsn_protocol_version, keypair, provider_storage.clone());
+
+    default_networking_config
+        .kademlia
+        .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
@@ -138,7 +146,35 @@ where
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry,
         request_response_protocols: vec![
-            PieceByHashRequestHandler::create(move |req| {
+            PieceAnnouncementRequestHandler::create({
+                move |peer_id, req| {
+                    trace!(?req, %peer_id, "Piece announcement request received.");
+
+                    let provider_record = ProviderRecord {
+                        provider: peer_id,
+                        key: req.piece_index_hash.into(),
+                        addresses: req.addresses.clone(),
+                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
+                    };
+
+                    let result = match provider_storage.add_provider(provider_record) {
+                        Ok(()) => Some(PieceAnnouncementResponse::Success),
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %peer_id,
+                                ?req,
+                                "Failed to add provider for received key."
+                            );
+
+                            None
+                        }
+                    };
+
+                    async move { result }
+                }
+            }),
+            PieceByHashRequestHandler::create(move |_, req| {
                 let result = match piece_cache.get_piece(req.piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
                     Err(error) => {
@@ -149,7 +185,7 @@ where
 
                 async { Some(PieceByHashResponse { piece: result }) }
             }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |req| {
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
                 let segment_indexes = match req {
                     SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
                         segment_indexes.clone()
@@ -285,7 +321,7 @@ pub(crate) async fn publish_pieces(
     let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.len());
 
     let mut pieces_publishing_futures = pieces_indexes
-        .map(|piece_index| announce_single_piece_index_with_backoff(piece_index, node))
+        .map(|piece_index| announce_single_piece_index_hash_with_backoff(piece_index.hash(), node))
         .collect::<FuturesUnordered<_>>();
 
     while pieces_publishing_futures.next().await.is_some() {

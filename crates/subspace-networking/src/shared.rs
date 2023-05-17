@@ -9,9 +9,8 @@ use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::error::{PublishError, SubscriptionError};
 use libp2p::gossipsub::Sha256Topic;
-use libp2p::kad::handler::InboundStreamEventGuard;
 use libp2p::kad::record::Key;
-use libp2p::kad::{PeerRecord, ProviderRecord};
+use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
@@ -65,14 +64,13 @@ pub(crate) enum Command {
     CheckConnectedPeers {
         result_sender: oneshot::Sender<bool>,
     },
-    StartAnnouncing {
+    StartLocalAnnouncing {
         key: Key,
-        result_sender: mpsc::UnboundedSender<()>,
-        permit: ResizableSemaphorePermit,
-    },
-    StopAnnouncing {
-        key: Multihash,
         result_sender: oneshot::Sender<bool>,
+    },
+    StopLocalAnnouncing {
+        key: Multihash,
+        result_sender: oneshot::Sender<()>,
     },
     GetProviders {
         key: Multihash,
@@ -88,14 +86,11 @@ pub(crate) enum Command {
 }
 
 pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
-pub(crate) type HandlerFn2<A, B> = Arc<dyn Fn(&A, &B) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
-type Handler2<A, B> = Bag<HandlerFn2<A, B>, A, B>;
 
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
-    pub(crate) announcement: Handler2<ProviderRecord, Arc<InboundStreamEventGuard>>,
 }
 
 #[derive(Debug)]
@@ -104,6 +99,7 @@ pub(crate) struct Shared {
     pub(crate) id: PeerId,
     /// Addresses on which node is listening for incoming requests.
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
+    pub(crate) external_addresses: Mutex<Vec<Multiaddr>>,
     pub(crate) connected_peers_count: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
@@ -122,6 +118,7 @@ impl Shared {
             handlers: Handlers::default(),
             id,
             listeners: Mutex::default(),
+            external_addresses: Mutex::default(),
             connected_peers_count: Arc::new(AtomicUsize::new(0)),
             command_sender,
             kademlia_tasks_semaphore,

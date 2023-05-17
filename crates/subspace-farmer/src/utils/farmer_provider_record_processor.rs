@@ -4,7 +4,6 @@ use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Weak};
 use subspace_core_primitives::{Blake2b256Hash, Piece, PieceIndexHash, BLAKE2B_256_HASH_SIZE};
-use subspace_networking::libp2p::kad::handler::InboundStreamEventGuard;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multihash::Multihash;
 use subspace_networking::libp2p::PeerId;
@@ -45,11 +44,7 @@ where
         }
     }
 
-    pub async fn process_provider_record(
-        &mut self,
-        provider_record: ProviderRecord,
-        guard: Arc<InboundStreamEventGuard>,
-    ) {
+    pub async fn process_provider_record(&mut self, provider_record: ProviderRecord) {
         trace!(?provider_record.key, "Starting processing provider record...");
 
         let multihash = match Multihash::from_bytes(provider_record.key.as_ref()) {
@@ -158,7 +153,6 @@ where
             }
 
             drop(permit);
-            drop(guard);
         });
     }
 }
