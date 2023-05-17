@@ -26,6 +26,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         .unwrap_or_else(|_error| MAX_PIECES_IN_SECTOR);
 
     let public_key = PublicKey::default();
+    let sector_offset = 0;
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
@@ -61,6 +62,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             block_on(plot_sector::<_, PosTable>(
                 black_box(&public_key),
+                black_box(sector_offset),
                 black_box(sector_index),
                 black_box(&archived_history_segment),
                 black_box(PieceGetterRetryPolicy::default()),

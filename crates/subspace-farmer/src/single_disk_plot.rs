@@ -772,6 +772,7 @@ impl SingleDiskPlot {
                                     Ok(plotting_permit) => plotting_permit,
                                     Err(error) => {
                                         warn!(
+                                            %sector_offset,
                                             %sector_index,
                                             %error,
                                             "Semaphore was closed, interrupting plotting"
@@ -789,6 +790,7 @@ impl SingleDiskPlot {
 
                             let plot_sector_fut = plot_sector::<_, PosTable>(
                                 &public_key,
+                                sector_offset,
                                 sector_index,
                                 &piece_getter,
                                 PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
@@ -810,6 +812,8 @@ impl SingleDiskPlot {
                             sectors_metadata
                                 .write()
                                 .push(plotted_sector.sector_metadata.clone());
+
+                            info!(%sector_offset, %sector_index, "Sector plotted successfully");
 
                             handlers.sector_plotted.call_simple(&(
                                 sector_offset,

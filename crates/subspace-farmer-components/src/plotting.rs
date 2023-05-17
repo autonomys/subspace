@@ -26,7 +26,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table};
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 fn default_backoff() -> ExponentialBackoff {
     ExponentialBackoff {
@@ -158,6 +158,7 @@ pub enum PlottingError {
 #[allow(clippy::too_many_arguments)]
 pub async fn plot_sector<PG, PosTable>(
     public_key: &PublicKey,
+    sector_offset: usize,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
@@ -214,6 +215,7 @@ where
 
         if let Err(error) = download_sector(
             &mut raw_sector,
+            sector_offset,
             sector_index,
             piece_getter,
             piece_getter_retry_policy,
@@ -223,7 +225,12 @@ where
         )
         .await
         {
-            warn!(%error, "Sector plotting attempt failed, will retry later");
+            warn!(
+                %sector_offset,
+                %sector_index,
+                %error,
+                "Sector plotting attempt failed, will retry later"
+            );
 
             return Err(BackoffError::transient(error));
         }
@@ -384,8 +391,10 @@ where
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_sector<PG: PieceGetter>(
     raw_sector: &mut RawSector,
+    sector_offset: usize,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
@@ -442,7 +451,7 @@ async fn download_sector<PG: PieceGetter>(
         piece_memory_cache.add_piece(piece_index.hash(), piece);
     }
 
-    info!(%sector_index, "Plotting was successful.");
+    debug!(%sector_offset, %sector_index, "Sector downloaded successfully");
 
     Ok(())
 }
