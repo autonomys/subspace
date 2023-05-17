@@ -1,6 +1,6 @@
 use crate::DsnArgs;
 use anyhow::Context;
-use futures::channel::mpsc::Receiver;
+use futures::channel::mpsc::{Receiver, Sender};
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
@@ -37,11 +37,6 @@ const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
-/// Provider record announcement helper. We need to pass the newly received records to the records
-/// processor (FarmerProviderRecordProcessor) to download piece, save to local piece, re-announce,
-/// and this object handles the re-announcement.
-type ProviderRecordHandlerFn = Arc<dyn Fn(&ProviderRecord) + Send + Sync + 'static>;
-
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
     protocol_prefix: String,
@@ -63,7 +58,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
-    provider_record_reannouncer: ProviderRecordHandlerFn,
+    provider_records_sender: Mutex<Sender<ProviderRecord>>,
 ) -> Result<
     (
         Node,
@@ -175,18 +170,35 @@ pub(super) fn configure_dsn(
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
                     let mut provider_storage = farmer_provider_storage.clone();
-                    let provider_record_reannouncer = provider_record_reannouncer.clone();
-                    let req = req.clone();
 
-                    async move {
-                        let provider_record = ProviderRecord {
-                            provider: peer_id,
-                            key: req.piece_index_hash.into(),
-                            addresses: req.addresses.clone(),
-                            expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                        };
+                    let provider_record = ProviderRecord {
+                        provider: peer_id,
+                        key: req.piece_index_hash.into(),
+                        addresses: req.addresses.clone(),
+                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
+                    };
 
-                        if let Err(error) = provider_storage.add_provider(provider_record.clone()) {
+                    let result = match provider_storage.add_provider(provider_record.clone()) {
+                        Ok(()) => {
+                            if let Err(error) =
+                                provider_records_sender.lock().try_send(provider_record)
+                            {
+                                if !error.is_disconnected() {
+                                    let record = error.into_inner();
+                                    // TODO: This should be made a warning, but due to
+                                    //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll
+                                    //  take us some time to resolve
+                                    debug!(
+                                        ?record.key,
+                                        ?record.provider,
+                                        "Failed to add provider record to the channel."
+                                    );
+                                }
+                            };
+
+                            Some(PieceAnnouncementResponse::Success)
+                        }
+                        Err(error) => {
                             error!(
                                 %error,
                                 %peer_id,
@@ -194,13 +206,11 @@ pub(super) fn configure_dsn(
                                 "Failed to add provider for received key."
                             );
 
-                            return None;
+                            None
                         }
+                    };
 
-                        provider_record_reannouncer(&provider_record);
-
-                        Some(PieceAnnouncementResponse::Success)
-                    }
+                    async move { result }
                 }
             }),
             PieceByHashRequestHandler::create(

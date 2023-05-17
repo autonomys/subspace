@@ -29,7 +29,6 @@ use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -90,28 +89,6 @@ where
     let (provider_records_sender, provider_records_receiver) =
         mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
 
-    let provider_record_reannouncer = Arc::new({
-        let provider_records_sender = Mutex::new(provider_records_sender);
-
-        move |record: &ProviderRecord| {
-            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
-                if error.is_disconnected() {
-                    // Receiver exited, nothing left to be done
-                    return;
-                }
-                let record = error.into_inner();
-                // TODO: This should be made a warning, but due to
-                //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
-                //  to resolve
-                debug!(
-                    ?record.key,
-                    ?record.provider,
-                    "Failed to add provider record to the channel."
-                );
-            };
-        }
-    });
-
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -135,7 +112,7 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
-            provider_record_reannouncer,
+            Mutex::new(provider_records_sender),
         )?
     };
 
