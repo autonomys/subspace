@@ -32,7 +32,7 @@ use subspace_networking::utils::piece_announcement::announce_single_piece_index_
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, info_span, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
@@ -350,7 +350,7 @@ where
                             // Release only after publishing is finished
                             drop(plotting_permit);
                         }
-                        .instrument(Span::current());
+                        .in_current_span();
 
                         tokio::spawn(async move {
                             let result =
