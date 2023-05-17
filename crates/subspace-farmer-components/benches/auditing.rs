@@ -24,7 +24,7 @@ use subspace_proof_of_space::chia::ChiaTable;
 
 type PosTable = ChiaTable;
 
-const MAX_PIECES_IN_SECTOR: u16 = 1300;
+const MAX_PIECES_IN_SECTOR: u16 = 1000;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Initializing...");
