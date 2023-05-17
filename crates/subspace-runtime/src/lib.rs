@@ -87,7 +87,7 @@ sp_runtime::impl_opaque_keys! {
 }
 
 /// How many pieces one sector is supposed to contain (max)
-const MAX_PIECES_IN_SECTOR: u16 = 32;
+const MAX_PIECES_IN_SECTOR: u16 = 1000;
 
 // To learn more about runtime versioning and what each of the following value means:
 //   https://substrate.dev/docs/en/knowledgebase/runtime/upgrades#runtime-versioning

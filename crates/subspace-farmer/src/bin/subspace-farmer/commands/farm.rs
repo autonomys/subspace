@@ -32,7 +32,7 @@ use subspace_networking::utils::piece_announcement::announce_single_piece_index_
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
@@ -221,7 +221,7 @@ where
     let plotted_pieces: HashMap<PieceIndexHash, PieceDetails> = single_disk_plots
         .iter()
         .enumerate()
-        .flat_map(|(plot_offset, single_disk_plot)| {
+        .flat_map(|(disk_farm_index, single_disk_plot)| {
             single_disk_plot
                 .plotted_sectors()
                 .enumerate()
@@ -231,7 +231,7 @@ where
                         Err(error) => {
                             error!(
                                 %error,
-                                %plot_offset,
+                                %disk_farm_index,
                                 %sector_offset,
                                 "Failed reading plotted sector on startup, skipping"
                             );
@@ -245,7 +245,7 @@ where
                             (
                                 piece_index.hash(),
                                 PieceDetails {
-                                    plot_offset,
+                                    disk_farm_index,
                                     sector_index: plotted_sector.sector_index,
                                     piece_offset,
                                 },
@@ -266,9 +266,10 @@ where
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
         .enumerate()
-        .map(|(plot_offset, single_disk_plot)| {
+        .map(|(disk_farm_index, single_disk_plot)| {
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
+            let span = info_span!("farm", %disk_farm_index);
 
             // We are not going to send anything here, but dropping of sender on dropping of
             // corresponding `SingleDiskPlot` will allow us to stop background tasks.
@@ -279,6 +280,7 @@ where
             single_disk_plot
                 .on_sector_plotted(Arc::new(
                     move |(sector_offset, plotted_sector, plotting_permit)| {
+                        let _span_guard = span.enter();
                         let plotting_permit = Arc::clone(plotting_permit);
                         let node = node.clone();
                         let sector_offset = *sector_offset;
@@ -310,7 +312,7 @@ where
                                         (
                                             piece_index.hash(),
                                             PieceDetails {
-                                                plot_offset,
+                                                disk_farm_index,
                                                 sector_index,
                                                 piece_offset,
                                             },
@@ -347,7 +349,8 @@ where
 
                             // Release only after publishing is finished
                             drop(plotting_permit);
-                        };
+                        }
+                        .in_current_span();
 
                         tokio::spawn(async move {
                             let result =
