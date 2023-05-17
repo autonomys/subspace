@@ -24,7 +24,7 @@ use subspace_proof_of_space::chia::ChiaTable;
 
 type PosTable = ChiaTable;
 
-const MAX_PIECES_IN_SECTOR: u16 = 1300;
+const MAX_PIECES_IN_SECTOR: u16 = 1000;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     println!("Initializing...");
@@ -42,6 +42,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .unwrap_or(10);
 
     let public_key = PublicKey::default();
+    let sector_offset = 0;
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
@@ -110,6 +111,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
+            sector_offset,
             sector_index,
             &archived_history_segment,
             PieceGetterRetryPolicy::default(),

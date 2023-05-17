@@ -258,7 +258,7 @@ pub(super) fn configure_dsn(
 
                                 readers_and_pieces
                                     .read_piece(&piece_index_hash)?
-                                    .instrument(Span::current())
+                                    .in_current_span()
                             };
 
                             let piece = read_piece_fut.await;
@@ -266,7 +266,7 @@ pub(super) fn configure_dsn(
                             Some(PieceByHashResponse { piece })
                         }
                     }
-                    .instrument(Span::current())
+                    .in_current_span()
                 },
             ),
             SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
@@ -329,7 +329,7 @@ pub(super) fn configure_dsn(
                         }
                     }
                 }
-                .instrument(Span::current())
+                .in_current_span()
             }),
         ],
         max_established_outgoing_connections: out_connections,
