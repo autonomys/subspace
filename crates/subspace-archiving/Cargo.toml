@@ -35,6 +35,10 @@ rayon = [
     "dep:rayon",
     "subspace-core-primitives/rayon",
 ]
+serde = [
+    "dep:serde",
+    "subspace-core-primitives/serde",
+]
 std = [
     "parity-scale-codec/std",
     "rayon",
