@@ -35,6 +35,10 @@ parallel = [
     "dep:rayon",
     "subspace-core-primitives/parallel",
 ]
+serde = [
+    "dep:serde",
+    "subspace-core-primitives/serde",
+]
 std = [
     "parity-scale-codec/std",
     "parallel",
