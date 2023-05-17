@@ -85,7 +85,8 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    let provider_record_announcer = RecordProcessorAnnouncementHelper::default();
+    let (provider_record_announcer, provider_record_receiver) =
+        RecordProcessorAnnouncementHelper::create();
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
@@ -110,17 +111,17 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
-            provider_record_announcer.clone(),
+            provider_record_announcer,
         )?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
 
-    let _announcements_processing_handler = start_announcements_processor(
+    start_announcements_processor(
         node.clone(),
         Arc::clone(&piece_cache),
         Arc::downgrade(&readers_and_pieces),
-        provider_record_announcer,
+        provider_record_receiver,
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());

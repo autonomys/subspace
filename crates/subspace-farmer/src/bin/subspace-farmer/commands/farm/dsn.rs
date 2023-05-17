@@ -2,6 +2,7 @@ use crate::DsnArgs;
 use anyhow::Context;
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::mpsc;
+use futures::channel::mpsc::Receiver;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
@@ -357,33 +358,8 @@ pub(crate) fn start_announcements_processor(
     node: Node,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-    record_processor_helper: RecordProcessorAnnouncementHelper,
-) -> io::Result<HandlerId> {
-    let (provider_records_sender, mut provider_records_receiver) =
-        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
-
-    let handler_id = record_processor_helper.on_announcement(Arc::new({
-        let provider_records_sender = Mutex::new(provider_records_sender);
-
-        move |record| {
-            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
-                if error.is_disconnected() {
-                    // Receiver exited, nothing left to be done
-                    return;
-                }
-                let record = error.into_inner();
-                // TODO: This should be made a warning, but due to
-                //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
-                //  to resolve
-                debug!(
-                    ?record.key,
-                    ?record.provider,
-                    "Failed to add provider record to the channel."
-                );
-            };
-        }
-    }));
-
+    mut provider_records_receiver: Receiver<ProviderRecord>,
+) -> io::Result<()> {
     let handle = Handle::current();
     let span = Span::current();
     let mut provider_record_processor = FarmerProviderRecordProcessor::new(
@@ -413,21 +389,54 @@ pub(crate) fn start_announcements_processor(
             handle.block_on(processor_fut.instrument(span));
         })?;
 
-    Ok(handler_id)
+    Ok(())
 }
 
 /// Provider record announcement helper. We need to pass the newly received records to the records
 /// processor (FarmerProviderRecordProcessor) to download piece, save to local piece, re-announce,
 /// and this object handles the re-announcement.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct RecordProcessorAnnouncementHelper {
     pub(crate) announcement: Arc<ProviderRecordHandler>,
+    #[allow(dead_code)] // we save handler_id for the future in case we want to access the handler
+    pub(crate) handler_id: HandlerId,
 }
 
 impl RecordProcessorAnnouncementHelper {
-    /// Callback is called when we process a new provider record.
-    pub fn on_announcement(&self, callback: ProviderRecordHandlerFn) -> HandlerId {
-        self.announcement.add(callback)
+    pub fn create() -> (Self, Receiver<ProviderRecord>) {
+        let (provider_records_sender, provider_records_receiver) =
+            mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
+
+        let announcement = ProviderRecordHandler::default();
+        let handler_id = announcement.add(Arc::new({
+            let provider_records_sender = Mutex::new(provider_records_sender);
+
+            move |record| {
+                if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
+                    if error.is_disconnected() {
+                        // Receiver exited, nothing left to be done
+                        return;
+                    }
+                    let record = error.into_inner();
+                    // TODO: This should be made a warning, but due to
+                    //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
+                    //  to resolve
+                    debug!(
+                        ?record.key,
+                        ?record.provider,
+                        "Failed to add provider record to the channel."
+                    );
+                };
+            }
+        }));
+
+        (
+            Self {
+                announcement: Arc::new(announcement),
+                handler_id,
+            },
+            provider_records_receiver,
+        )
     }
 
     /// Announce provider record.
