@@ -1,12 +1,11 @@
 mod dsn;
 
-use crate::commands::farm::dsn::{
-    configure_dsn, start_announcements_processor, RecordProcessorAnnouncementHelper,
-};
+use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
 use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::channel::mpsc;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -30,6 +29,7 @@ use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -38,6 +38,9 @@ use tracing::{debug, error, info, warn};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
+
+const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
+    NonZeroUsize::new(2000).expect("Not zero; qed");
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -84,8 +87,30 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    let (provider_record_announcer, provider_record_receiver) =
-        RecordProcessorAnnouncementHelper::create();
+    let (provider_records_sender, provider_records_receiver) =
+        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
+
+    let provider_record_reannouncer = Arc::new({
+        let provider_records_sender = Mutex::new(provider_records_sender);
+
+        move |record: &ProviderRecord| {
+            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
+                if error.is_disconnected() {
+                    // Receiver exited, nothing left to be done
+                    return;
+                }
+                let record = error.into_inner();
+                // TODO: This should be made a warning, but due to
+                //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
+                //  to resolve
+                debug!(
+                    ?record.key,
+                    ?record.provider,
+                    "Failed to add provider record to the channel."
+                );
+            };
+        }
+    });
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
@@ -110,7 +135,7 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
-            provider_record_announcer,
+            provider_record_reannouncer,
         )?
     };
 
@@ -120,7 +145,7 @@ where
         node.clone(),
         Arc::clone(&piece_cache),
         Arc::downgrade(&readers_and_pieces),
-        provider_record_receiver,
+        provider_records_receiver,
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());

@@ -1,7 +1,5 @@
 use crate::DsnArgs;
 use anyhow::Context;
-use event_listener_primitives::{Bag, HandlerId};
-use futures::channel::mpsc;
 use futures::channel::mpsc::Receiver;
 use futures::StreamExt;
 use parking_lot::Mutex;
@@ -33,16 +31,16 @@ use subspace_networking::{
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, trace, Instrument, Span};
 
-const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
-    NonZeroUsize::new(2000).expect("Not zero; qed");
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
+/// Provider record announcement helper. We need to pass the newly received records to the records
+/// processor (FarmerProviderRecordProcessor) to download piece, save to local piece, re-announce,
+/// and this object handles the re-announcement.
 type ProviderRecordHandlerFn = Arc<dyn Fn(&ProviderRecord) + Send + Sync + 'static>;
-type ProviderRecordHandler = Bag<ProviderRecordHandlerFn, ProviderRecord>;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -65,7 +63,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
-    record_processor_helper: RecordProcessorAnnouncementHelper,
+    provider_record_reannouncer: ProviderRecordHandlerFn,
 ) -> Result<
     (
         Node,
@@ -177,7 +175,7 @@ pub(super) fn configure_dsn(
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
                     let mut provider_storage = farmer_provider_storage.clone();
-                    let record_processor_helper = record_processor_helper.clone();
+                    let provider_record_reannouncer = provider_record_reannouncer.clone();
                     let req = req.clone();
 
                     async move {
@@ -199,7 +197,7 @@ pub(super) fn configure_dsn(
                             return None;
                         }
 
-                        record_processor_helper.announce(&provider_record);
+                        provider_record_reannouncer(&provider_record);
 
                         Some(PieceAnnouncementResponse::Success)
                     }
@@ -390,57 +388,4 @@ pub(crate) fn start_announcements_processor(
         })?;
 
     Ok(())
-}
-
-/// Provider record announcement helper. We need to pass the newly received records to the records
-/// processor (FarmerProviderRecordProcessor) to download piece, save to local piece, re-announce,
-/// and this object handles the re-announcement.
-#[derive(Clone)]
-pub(crate) struct RecordProcessorAnnouncementHelper {
-    pub(crate) announcement: Arc<ProviderRecordHandler>,
-    #[allow(dead_code)] // we save handler_id for the future in case we want to access the handler
-    pub(crate) handler_id: HandlerId,
-}
-
-impl RecordProcessorAnnouncementHelper {
-    pub fn create() -> (Self, Receiver<ProviderRecord>) {
-        let (provider_records_sender, provider_records_receiver) =
-            mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
-
-        let announcement = ProviderRecordHandler::default();
-        let handler_id = announcement.add(Arc::new({
-            let provider_records_sender = Mutex::new(provider_records_sender);
-
-            move |record| {
-                if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
-                    if error.is_disconnected() {
-                        // Receiver exited, nothing left to be done
-                        return;
-                    }
-                    let record = error.into_inner();
-                    // TODO: This should be made a warning, but due to
-                    //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
-                    //  to resolve
-                    debug!(
-                        ?record.key,
-                        ?record.provider,
-                        "Failed to add provider record to the channel."
-                    );
-                };
-            }
-        }));
-
-        (
-            Self {
-                announcement: Arc::new(announcement),
-                handler_id,
-            },
-            provider_records_receiver,
-        )
-    }
-
-    /// Announce provider record.
-    pub fn announce(&self, provider_record: &ProviderRecord) {
-        self.announcement.call_simple(provider_record);
-    }
 }
