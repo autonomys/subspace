@@ -20,7 +20,7 @@ fn main() -> anyhow::Result<()> {
     let keypair = Keypair::generate();
     let local_peer_id = peer_id(&libp2p::identity::Keypair::Ed25519(keypair));
 
-    let mut provider_storage =
+    let provider_storage =
         ParityDbProviderStorage::new(&db_path, NonZeroUsize::new(1000).unwrap(), local_peer_id)
             .expect("Provider storage DB path should be valid.");
 

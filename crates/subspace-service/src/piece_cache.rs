@@ -222,7 +222,7 @@ where
     type ProvidedIter<'a> = AuxStoreProviderRecordIterator<'a, AS> where Self:'a;
 
     fn add_provider(
-        &mut self,
+        &self,
         rec: ProviderRecord,
     ) -> subspace_networking::libp2p::kad::store::Result<()> {
         trace!(key=?rec.key, "Attempted to put a provider record to the aux piece record store.");
@@ -268,7 +268,7 @@ where
         AuxStoreProviderRecordIterator::new(pieces_indexes, self.clone())
     }
 
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
+    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
         trace!(
             ?key,
             %peer_id,

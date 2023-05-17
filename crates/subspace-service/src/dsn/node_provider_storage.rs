@@ -50,7 +50,7 @@ where
     type ProvidedIter<'a> = ImplicitProviderStorage::ProvidedIter<'a> where Self:'a;
 
     fn add_provider(
-        &mut self,
+        &self,
         record: ProviderRecord,
     ) -> subspace_networking::libp2p::kad::store::Result<()> {
         // Local providers are implicit and should not be put into persistent storage
@@ -75,7 +75,7 @@ where
         self.implicit_provider_storage.provided()
     }
 
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
+    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
         self.persistent_provider_storage
             .remove_provider(key, peer_id);
     }

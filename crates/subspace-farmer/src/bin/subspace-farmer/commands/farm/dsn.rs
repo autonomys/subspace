@@ -169,8 +169,6 @@ pub(super) fn configure_dsn(
                 move |peer_id, req| {
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
-                    let mut provider_storage = farmer_provider_storage.clone();
-
                     let provider_record = ProviderRecord {
                         provider: peer_id,
                         key: req.piece_index_hash.into(),
@@ -178,7 +176,8 @@ pub(super) fn configure_dsn(
                         expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
                     };
 
-                    let result = match provider_storage.add_provider(provider_record.clone()) {
+                    let result = match farmer_provider_storage.add_provider(provider_record.clone())
+                    {
                         Ok(()) => {
                             if let Err(error) =
                                 provider_records_sender.lock().try_send(provider_record)

@@ -34,7 +34,7 @@ pub struct VoidProviderStorage;
 impl ProviderStorage for VoidProviderStorage {
     type ProvidedIter<'a> = iter::Empty<Cow<'a, ProviderRecord>>;
 
-    fn add_provider(&mut self, _: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&self, _: ProviderRecord) -> store::Result<()> {
         Ok(())
     }
 
@@ -46,7 +46,7 @@ impl ProviderStorage for VoidProviderStorage {
         iter::empty()
     }
 
-    fn remove_provider(&mut self, _: &Key, _: &PeerId) {}
+    fn remove_provider(&self, _: &Key, _: &PeerId) {}
 }
 
 /// Memory based provider records storage.
@@ -77,7 +77,7 @@ impl ProviderStorage for MemoryProviderStorage {
         fn(ProviderRecord) -> Cow<'a, ProviderRecord>,
     > where Self:'a;
 
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&self, record: ProviderRecord) -> store::Result<()> {
         trace!("New provider record added: {:?}", record);
 
         self.inner.lock().add_provider(record)
@@ -100,7 +100,7 @@ impl ProviderStorage for MemoryProviderStorage {
         records.into_iter().map(Cow::Owned)
     }
 
-    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&self, key: &Key, provider: &PeerId) {
         trace!(?key, ?provider, "Provider record removed.");
 
         self.inner.lock().remove_provider(key, provider)
@@ -404,7 +404,7 @@ impl ParityDbProviderStorage {
 impl ProviderStorage for ParityDbProviderStorage {
     type ProvidedIter<'a> = ParityDbProviderRecordIterator<'a> where Self:'a;
 
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&self, record: ProviderRecord) -> store::Result<()> {
         let record_key = record.key.clone();
         let provider_peer_id = record.provider;
 
@@ -430,7 +430,7 @@ impl ProviderStorage for ParityDbProviderStorage {
         Ok(())
     }
 
-    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
+    fn remove_provider(&self, key: &Key, provider: &PeerId) {
         debug!(?key, %provider, "Removing a provider from DB");
 
         if *provider == self.local_peer_id {
@@ -532,7 +532,7 @@ where
 {
     type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>> where Self:'a;
 
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
+    fn add_provider(&self, record: ProviderRecord) -> store::Result<()> {
         match self {
             Either::Left(inner) => inner.add_provider(record),
             Either::Right(inner) => inner.add_provider(record),
@@ -555,7 +555,7 @@ where
         EitherProviderStorageIterator::new(iterator)
     }
 
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
+    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
         match self {
             Either::Left(inner) => inner.remove_provider(key, peer_id),
             Either::Right(inner) => inner.remove_provider(key, peer_id),
