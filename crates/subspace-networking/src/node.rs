@@ -19,7 +19,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::watch;
 use tokio::time::sleep;
 use tracing::{error, trace};
 
@@ -283,10 +282,6 @@ impl Node {
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id
-    }
-
-    pub fn online_status_observer(&self) -> &watch::Receiver<bool> {
-        &self.shared.online_status_observer_rx
     }
 
     pub async fn get_value(

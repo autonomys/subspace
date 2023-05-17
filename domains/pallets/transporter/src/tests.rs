@@ -119,7 +119,7 @@ fn submit_response(
     req_payload: Vec<u8>,
     resp: EndpointResponse,
 ) -> DispatchResult {
-    let handler = EndpointHandler(PhantomData::<MockRuntime>::default());
+    let handler = EndpointHandler(PhantomData::<MockRuntime>);
     handler.message_response(
         dst_domain_id,
         0,
@@ -133,7 +133,7 @@ fn submit_response(
 }
 
 fn submit_transfer(src_domain_id: DomainId, req_payload: Vec<u8>) -> EndpointResponse {
-    let handler = EndpointHandler(PhantomData::<MockRuntime>::default());
+    let handler = EndpointHandler(PhantomData::<MockRuntime>);
     handler.message(
         src_domain_id,
         0,

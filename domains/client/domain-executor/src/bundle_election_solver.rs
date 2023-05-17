@@ -53,7 +53,7 @@ where
         Self {
             system_domain_client,
             keystore,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 

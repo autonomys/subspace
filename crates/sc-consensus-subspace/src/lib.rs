@@ -442,7 +442,7 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-        _pos_table: PhantomData::<PosTable>::default(),
+        _pos_table: PhantomData::<PosTable>,
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
@@ -817,7 +817,7 @@ where
             block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
-            _pos_table: PhantomData::default(),
+            _pos_table: PhantomData,
         }
     }
 }
@@ -845,7 +845,7 @@ where
             block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
-            _pos_table: PhantomData::default(),
+            _pos_table: PhantomData,
         }
     }
 
@@ -1363,8 +1363,8 @@ where
         telemetry,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         is_authoring_blocks,
-        _pos_table: PhantomData::<PosTable>::default(),
-        _block: PhantomData::default(),
+        _pos_table: PhantomData::<PosTable>,
+        _block: PhantomData,
     };
 
     Ok(BasicQueue::new(

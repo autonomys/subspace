@@ -15,7 +15,6 @@ use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use tokio::sync::watch;
 
 #[derive(Debug)]
 pub(crate) struct CreatedSubscription {
@@ -106,7 +105,6 @@ pub(crate) struct Shared {
     pub(crate) command_sender: mpsc::Sender<Command>,
     pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
     pub(crate) regular_tasks_semaphore: ResizableSemaphore,
-    pub(crate) online_status_observer_rx: watch::Receiver<bool>,
 }
 
 impl Shared {
@@ -115,7 +113,6 @@ impl Shared {
         command_sender: mpsc::Sender<Command>,
         kademlia_tasks_semaphore: ResizableSemaphore,
         regular_tasks_semaphore: ResizableSemaphore,
-        online_status_observer_rx: watch::Receiver<bool>,
     ) -> Self {
         Self {
             handlers: Handlers::default(),
@@ -126,7 +123,6 @@ impl Shared {
             command_sender,
             kademlia_tasks_semaphore,
             regular_tasks_semaphore,
-            online_status_observer_rx,
         }
     }
 }

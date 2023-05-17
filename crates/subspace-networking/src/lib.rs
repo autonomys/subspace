@@ -15,13 +15,7 @@
 
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
-#![feature(
-    binary_heap_retain,
-    const_option,
-    ip,
-    try_blocks,
-    type_alias_impl_trait
-)]
+#![feature(const_option, impl_trait_in_assoc_type, ip, try_blocks)]
 
 mod behavior;
 mod create;

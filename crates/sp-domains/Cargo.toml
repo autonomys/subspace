@@ -57,3 +57,4 @@ std = [
 	"subspace-runtime-primitives/std",
 	"thiserror",
 ]
+runtime-benchmarks = []

@@ -11,12 +11,6 @@ use subspace_core_primitives::PosSeed;
 use subspace_proof_of_space::{Quality, Table};
 
 #[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
-const SEED: PosSeed = PosSeed::from([
-    35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92, 198,
-    204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
-]);
-
-#[cfg(any(feature = "chia-legacy", feature = "chia", feature = "shim"))]
 fn pos_bench<PosTable>(
     c: &mut Criterion,
     name: &'static str,
@@ -25,6 +19,11 @@ fn pos_bench<PosTable>(
 ) where
     PosTable: Table,
 {
+    let seed = PosSeed::from([
+        35, 2, 52, 4, 51, 55, 23, 84, 91, 10, 111, 12, 13, 222, 151, 16, 228, 211, 254, 45, 92,
+        198, 204, 10, 9, 10, 11, 129, 139, 171, 15, 23,
+    ]);
+
     #[cfg(feature = "parallel")]
     {
         // Repeated initialization is not supported, we just ignore errors here because of it
@@ -38,7 +37,7 @@ fn pos_bench<PosTable>(
 
     group.bench_function("table/single", |b| {
         b.iter(|| {
-            PosTable::generate(black_box(&SEED));
+            PosTable::generate(black_box(&seed));
         });
     });
 
@@ -46,12 +45,12 @@ fn pos_bench<PosTable>(
     {
         group.bench_function("table/parallel", |b| {
             b.iter(|| {
-                PosTable::generate_parallel(black_box(&SEED));
+                PosTable::generate_parallel(black_box(&seed));
             });
         });
     }
 
-    let table = PosTable::generate(&SEED);
+    let table = PosTable::generate(&seed);
 
     group.bench_function("quality/no-solution", |b| {
         b.iter(|| {
@@ -82,7 +81,7 @@ fn pos_bench<PosTable>(
     group.bench_function("verification", |b| {
         b.iter(|| {
             assert!(
-                PosTable::is_proof_valid(&SEED, challenge_index_with_solution, &proof).is_some()
+                PosTable::is_proof_valid(&seed, challenge_index_with_solution, &proof).is_some()
             );
         });
     });

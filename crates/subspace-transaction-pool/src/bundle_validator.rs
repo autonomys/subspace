@@ -48,18 +48,18 @@ where
         BundleCollector {
             client,
             confirm_depth_k,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 
-    fn extract_stored_bundles_at(
+    fn successfully_submitted_bundles_at(
         &self,
         block_hash: Block::Hash,
     ) -> sp_blockchain::Result<HashSet<Hash>> {
         let bundle_hashes: HashSet<_> = self
             .client
             .runtime_api()
-            .extract_stored_bundle_hashes(block_hash)?
+            .successful_bundle_hashes(block_hash)?
             .into_iter()
             .collect();
         Ok(bundle_hashes)
@@ -96,7 +96,7 @@ where
             }
         }
         for (hash, number) in blocks {
-            let bundles = self.extract_stored_bundles_at(hash)?;
+            let bundles = self.successfully_submitted_bundles_at(hash)?;
             bundle_stored_in_last_k.push_front(BlockBundle::new(hash, number, bundles));
         }
         Ok(())
@@ -142,7 +142,7 @@ where
 
         // Add bundles from the new block of the best fork
         for enacted_block in enacted {
-            let bundles = self.extract_stored_bundles_at(enacted_block.hash)?;
+            let bundles = self.successfully_submitted_bundles_at(enacted_block.hash)?;
             bundle_stored_in_last_k.push_front(BlockBundle::new(
                 enacted_block.hash,
                 enacted_block.number,

@@ -157,7 +157,7 @@ where
             keystore,
             bundle_election_solver,
             domain_bundle_proposer,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 

@@ -18,12 +18,12 @@ use rayon::prelude::*;
 
 /// Compute the size of `x` in bytes
 pub const fn x_size_bytes(k: u8) -> usize {
-    usize::from(k).div_ceil(u8::BITS as usize)
+    (k as usize).div_ceil(u8::BITS as usize)
 }
 
 /// Compute the size of `y` in bits
 pub(super) const fn y_size_bits(k: u8) -> usize {
-    usize::from(k) + usize::from(PARAM_EXT)
+    k as usize + PARAM_EXT as usize
 }
 
 /// Compute the size of `y` in bytes
@@ -33,7 +33,7 @@ pub const fn y_size_bytes(k: u8) -> usize {
 
 /// Metadata size in bits
 pub const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
-    usize::from(k)
+    k as usize
         * match table_number {
             1 => 1,
             2 => 2,
@@ -47,13 +47,32 @@ pub const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
 
 /// Max size in bits for any table
 pub(crate) const fn max_metadata_size_bits(k: u8) -> usize {
-    metadata_size_bits(k, 1)
-        .max(metadata_size_bits(k, 2))
-        .max(metadata_size_bits(k, 3))
-        .max(metadata_size_bits(k, 4))
-        .max(metadata_size_bits(k, 5))
-        .max(metadata_size_bits(k, 6))
-        .max(metadata_size_bits(k, 7))
+    let mut max = metadata_size_bits(k, 1);
+    let new = metadata_size_bits(k, 2);
+    if new > max {
+        max = new;
+    }
+    let new = metadata_size_bits(k, 3);
+    if new > max {
+        max = new;
+    }
+    let new = metadata_size_bits(k, 4);
+    if new > max {
+        max = new;
+    }
+    let new = metadata_size_bits(k, 5);
+    if new > max {
+        max = new;
+    }
+    let new = metadata_size_bits(k, 6);
+    if new > max {
+        max = new;
+    }
+    let new = metadata_size_bits(k, 7);
+    if new > max {
+        max = new;
+    }
+    max
 }
 
 /// Metadata size in bytes rounded up

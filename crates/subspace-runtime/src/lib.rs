@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_num_from_num, const_option, const_trait_impl)]
+#![feature(const_option, const_trait_impl)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -132,11 +132,11 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 3000;
+const SLOT_DURATION: u64 = 1000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
-const SLOT_PROBABILITY: (u64, u64) = (3, 6);
+const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
@@ -150,7 +150,7 @@ const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 // chunk of every piece.
 const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
     // Account for number of pieces plotted initially (assuming 1 sector)
-    / SolutionRange::from(MAX_PIECES_IN_SECTOR)
+    / MAX_PIECES_IN_SECTOR as u64
     // Account for slot probability
     / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
     // Account for probability of hitting occupied s-bucket in sector (for one piece)
@@ -405,6 +405,7 @@ parameter_types! {
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_receipts::Config for Runtime {
@@ -574,6 +575,7 @@ mod benches {
         [frame_benchmarking, BaselineBench::<Runtime>]
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
+        [pallet_domains, Domains]
         [pallet_timestamp, Timestamp]
     );
 }
@@ -787,8 +789,8 @@ impl_runtime_apis! {
             crate::domains::extract_core_bundles(extrinsics, domain_id)
         }
 
-        fn extract_stored_bundle_hashes() -> Vec<H256> {
-            crate::domains::extract_stored_bundle_hashes()
+        fn successful_bundle_hashes() -> Vec<H256> {
+            Domains::successful_bundles()
         }
 
         fn extract_receipts(

@@ -14,7 +14,7 @@ use tracing::{debug, error, trace, warn};
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(3);
 /// Defines max duration between get_piece calls.
-const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(10);
+const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
@@ -134,27 +134,6 @@ where
 
         retry(backoff, || async {
             let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
-
-            // Wait until we connect to DSN.
-            let mut online_status_observer = self.node.online_status_observer().clone();
-            // We have a loop because we can be notified about the offline status multiple times
-            // and it will "emit the changed event".
-            loop {
-                let online = *online_status_observer.borrow();
-
-                if !online {
-                    debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. No DSN connection...");
-
-                    // Wait until we get the updates.
-                    if let Err(err) = online_status_observer.changed().await {
-                        return Err(backoff::Error::permanent(
-                            format!("DSN status observer closed the channel's sender: {err}", ).into(),
-                        ))
-                    }
-                } else {
-                    break;
-                }
-            }
 
             if let Some(piece) = self.get_piece_from_storage(piece_index).await {
                 trace!(%piece_index, current_attempt, "Got piece");

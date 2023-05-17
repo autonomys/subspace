@@ -409,8 +409,8 @@ impl TestNetFactory for SubspaceTestNet {
                     REWARD_SIGNING_CONTEXT,
                 ),
                 is_authoring_blocks: true,
-                _pos_table: PhantomData::<PosTable>::default(),
-                _block: PhantomData::default(),
+                _pos_table: PhantomData::<PosTable>,
+                _block: PhantomData,
             },
             mutator: MUTATOR.with(|m| m.borrow().clone()),
         }
