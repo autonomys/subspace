@@ -361,8 +361,6 @@ where
         Ok((header_hash, header_number, state_root))
     }
 
-    // TODO: remove once fraud-proof is enabled again.
-    #[allow(unreachable_code, unused_variables)]
     pub(crate) fn on_domain_block_processed(
         &self,
         primary_hash: PBlock::Hash,
@@ -371,7 +369,7 @@ where
     ) -> sp_blockchain::Result<()> {
         let DomainBlockResult {
             header_hash,
-            header_number,
+            header_number: _,
             execution_receipt,
         } = domain_block_result;
 

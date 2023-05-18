@@ -178,20 +178,20 @@ where
             import_notification_sinks: Default::default(),
         };
 
-        // let receipts_checker = ReceiptsChecker {
-        // domain_id,
-        // client: params.client.clone(),
-        // primary_chain_client: params.primary_chain_client.clone(),
-        // fraud_proof_generator: fraud_proof_generator.clone(),
-        // parent_chain,
-        // primary_network_sync_oracle: params.primary_network_sync_oracle,
-        // _phantom: std::marker::PhantomData,
-        // };
+        let core_domain_receipts_checker = ReceiptsChecker {
+            domain_id,
+            client: params.client.clone(),
+            primary_chain_client: params.primary_chain_client.clone(),
+            fraud_proof_generator: fraud_proof_generator.clone(),
+            parent_chain,
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            _phantom: std::marker::PhantomData,
+        };
 
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
             params.primary_chain_client.clone(),
-            system_domain_client,
+            system_domain_client.clone(),
             params.client.clone(),
             params.backend.clone(),
             params.keystore,
@@ -218,10 +218,36 @@ where
             "core-domain-receipts-checker",
             None,
             async move {
-                while let Some(system_domain_block_import) =
-                    system_domain_block_import_notifications.next().await
-                {
-                    // TODO: check core domain receipts
+                let check_core_domain_state_transition = async {
+                    while let Some(system_domain_block_import) =
+                        system_domain_block_import_notifications.next().await
+                    {
+                        tracing::debug!(
+                            ?system_domain_block_import,
+                            "Checking core domain invalid state transition"
+                        );
+
+                        if let Some(fraud_proof) = core_domain_receipts_checker
+                            .check_invalid_state_transition(
+                                system_domain_block_import.domain_block_hash,
+                            )?
+                        {
+                            system_domain_client
+                                .runtime_api()
+                                .submit_fraud_proof_unsigned(
+                                    system_domain_client.info().best_hash,
+                                    fraud_proof,
+                                )?;
+                        }
+                    }
+                    Ok::<(), sp_blockchain::Error>(())
+                };
+
+                if let Err(err) = check_core_domain_state_transition.await {
+                    tracing::error!(
+                        ?err,
+                        "Error occurred at checking core domain state transition"
+                    );
                 }
             }
             .boxed(),

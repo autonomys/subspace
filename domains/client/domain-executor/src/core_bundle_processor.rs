@@ -216,8 +216,6 @@ where
             head_receipt_number.into(),
         )?;
 
-        // TODO: check core domain invalid state transition in another separate task.
-
         Ok(built_block_info)
     }
 }

@@ -355,10 +355,9 @@ where
     SBlock: BlockT,
     Block::Hash: From<H256> + Into<H256> + FullCodec + TypeInfo + Unpin,
     SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
-    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>>,
+    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>> + FullCodec + TypeInfo,
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     <Block as BlockT>::Header: Unpin,
-    NumberFor<Block>: FullCodec + TypeInfo,
     SClient: HeaderBackend<SBlock>
         + BlockBackend<SBlock>
         + ProvideRuntimeApi<SBlock>
