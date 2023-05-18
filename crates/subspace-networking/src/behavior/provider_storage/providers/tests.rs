@@ -9,7 +9,7 @@ use std::collections::HashSet;
 #[test]
 fn memory_storage_provider() {
     let local_peer_id = PeerId::random();
-    let mut store = MemoryProviderStorage::new(local_peer_id);
+    let store = MemoryProviderStorage::new(local_peer_id);
 
     let key1: Key = b"key1".to_vec().into();
     let provider1 = PeerId::random();

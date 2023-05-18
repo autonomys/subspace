@@ -26,14 +26,14 @@ lru = "0.10.0"
 parity-scale-codec = "3.4.0"
 parking_lot = "0.12.1"
 rand = "0.8.5"
-rayon = "1.6.1"
+rayon = "1.7.0"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.159", features = ["derive"] }
 static_assertions = "1.1.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["parallel"] }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.38"
 tokio = { version = "1.27.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal", "sync"] }

@@ -53,7 +53,7 @@ where
         Self:'a;
 
     fn add_provider(
-        &mut self,
+        &self,
         record: ProviderRecord,
     ) -> subspace_networking::libp2p::kad::store::Result<()> {
         // Local providers are implicit and should not be put into persistent storage
@@ -105,11 +105,14 @@ where
             .contains_piece(&piece_index_hash)
             || self.piece_cache.get_piece(key).is_some()
         {
+            // Note: We store our own provider records locally without local addresses
+            // to avoid redundant storage and outdated addresses. Instead these are
+            // acquired on demand when returning a `ProviderRecord` for the local node.
             provider_records.push(ProviderRecord {
                 key: piece_index_hash.to_multihash().into(),
                 provider: self.local_peer_id,
                 expires: None,
-                addresses: Vec::new(), // Kademlia adds addresses for local providers
+                addresses: Vec::new(),
             });
         }
 
@@ -140,22 +143,23 @@ where
             })
             .unwrap_or_default();
 
+        // Note: We store our own provider records locally without local addresses
+        // to avoid redundant storage and outdated addresses. Instead these are
+        // acquired on demand when returning a `ProviderRecord` for the local node.
         provided_by_cache
             .into_iter()
             .chain(provided_by_plots)
-            .map(|key| {
-                ProviderRecord {
-                    key,
-                    provider: self.local_peer_id,
-                    expires: None,
-                    addresses: Vec::new(), // Kademlia adds addresses for local providers
-                }
+            .map(|key| ProviderRecord {
+                key,
+                provider: self.local_peer_id,
+                expires: None,
+                addresses: Vec::new(),
             })
             .map(Cow::Owned)
             .chain(self.persistent_provider_storage.provided())
     }
 
-    fn remove_provider(&mut self, key: &Key, peer_id: &PeerId) {
+    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
         self.persistent_provider_storage
             .remove_provider(key, peer_id);
     }

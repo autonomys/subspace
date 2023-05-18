@@ -18,15 +18,20 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(array_windows)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 #[cfg(test)]
 mod tests;
+
+pub mod weights;
 
 use codec::{Decode, Encode};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
-use sp_domains::bundle_election::{verify_system_bundle_solution, verify_vrf_proof};
+use sp_domains::bundle_election::verify_system_bundle_solution;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::Witness;
 use sp_domains::transaction::InvalidTransactionCode;
@@ -34,10 +39,13 @@ use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, ProofOfElection, Si
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
+use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
+    use frame_support::weights::Weight;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
     use pallet_receipts::{Error as ReceiptError, FraudProofError};
@@ -47,6 +55,7 @@ mod pallet {
     use sp_domains::{DomainId, ExecutorPublicKey, SignedOpaqueBundle};
     use sp_runtime::traits::{One, Zero};
     use sp_std::fmt::Debug;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_receipts::Config {
@@ -54,11 +63,18 @@ mod pallet {
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
+
+    /// Bundles submitted successfully in current block.
+    #[pallet::storage]
+    pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -143,9 +159,16 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // TODO: proper weight
         #[pallet::call_index(0)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(
+            if signed_opaque_bundle.domain_id().is_system() {
+                T::WeightInfo::submit_system_bundle(
+                    signed_opaque_bundle.bundle.receipts.len() as u32
+                )
+            } else {
+                T::WeightInfo::submit_core_bundle()
+            }
+        )]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -165,18 +188,30 @@ mod pallet {
                 .map_err(Error::<T>::from)?;
             }
 
+            let bundle_hash = signed_opaque_bundle.hash();
+
+            SuccessfulBundles::<T>::append(bundle_hash);
+
             Self::deposit_event(Event::BundleStored {
                 domain_id,
-                bundle_hash: signed_opaque_bundle.hash(),
+                bundle_hash,
                 bundle_author: signed_opaque_bundle.into_executor_public_key(),
             });
 
             Ok(())
         }
 
-        // TODO: proper weight
         #[pallet::call_index(1)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(
+            match fraud_proof {
+                FraudProof::InvalidStateTransition(..) => (
+                    T::WeightInfo::submit_system_domain_invalid_state_transition_proof(),
+                    Pays::No
+                ),
+                // TODO: proper weight
+                _ => (Weight::from_all(10_000), Pays::No),
+            }
+        )]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
@@ -215,7 +250,9 @@ mod pallet {
                 );
             }
 
-            T::DbWeight::get().writes(1)
+            SuccessfulBundles::<T>::kill();
+
+            T::DbWeight::get().writes(2)
         }
     }
 
@@ -238,7 +275,19 @@ mod pallet {
                 Call::submit_bundle {
                     signed_opaque_bundle,
                 } => Self::pre_dispatch_submit_bundle(signed_opaque_bundle),
-                Call::submit_fraud_proof { .. } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::FraudProof.into(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -270,6 +319,13 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(
@@ -290,6 +346,10 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
+    pub fn successful_bundles() -> Vec<H256> {
+        SuccessfulBundles::<T>::get()
+    }
+
     /// Returns the block number of the latest receipt.
     pub fn head_receipt_number() -> T::BlockNumber {
         pallet_receipts::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
@@ -523,13 +583,9 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadSignature);
         }
 
-        verify_vrf_proof(
-            &proof_of_election.executor_public_key,
-            &proof_of_election.vrf_output,
-            &proof_of_election.vrf_proof,
-            &proof_of_election.global_challenge,
-        )
-        .map_err(|_| BundleError::BadVrfProof)?;
+        proof_of_election
+            .verify_vrf_proof()
+            .map_err(|_| BundleError::BadVrfProof)?;
 
         Self::validate_execution_receipts(&bundle.receipts).map_err(BundleError::Receipt)?;
 

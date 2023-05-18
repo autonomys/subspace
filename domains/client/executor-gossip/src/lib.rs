@@ -122,7 +122,7 @@ where
             executor,
             next_rebroadcast: Mutex::new(Instant::now() + REBROADCAST_AFTER),
             known_rebroadcasted: RwLock::new(HashSet::new()),
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 

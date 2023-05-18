@@ -150,33 +150,16 @@ where
                 move |peer_id, req| {
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
-                    let mut provider_storage = provider_storage.clone();
-                    let req = req.clone();
+                    let provider_record = ProviderRecord {
+                        provider: peer_id,
+                        key: req.piece_index_hash.into(),
+                        addresses: req.addresses.clone(),
+                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
+                    };
 
-                    async move {
-                        let key = match req.piece_key.clone().try_into() {
-                            Ok(key) => key,
-
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %peer_id,
-                                    ?req,
-                                    "Failed to convert received key to record:Key."
-                                );
-
-                                return None;
-                            }
-                        };
-
-                        let provider_record = ProviderRecord {
-                            provider: peer_id,
-                            key,
-                            addresses: req.converted_addresses(),
-                            expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                        };
-
-                        if let Err(error) = provider_storage.add_provider(provider_record) {
+                    let result = match provider_storage.add_provider(provider_record) {
+                        Ok(()) => Some(PieceAnnouncementResponse::Success),
+                        Err(error) => {
                             error!(
                                 %error,
                                 %peer_id,
@@ -184,11 +167,11 @@ where
                                 "Failed to add provider for received key."
                             );
 
-                            return None;
+                            None
                         }
+                    };
 
-                        Some(PieceAnnouncementResponse)
-                    }
+                    async move { result }
                 }
             }),
             PieceByHashRequestHandler::create(move |_, req| {

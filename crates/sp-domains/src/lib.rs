@@ -23,13 +23,14 @@ pub mod merkle_tree;
 pub mod transaction;
 
 use crate::fraud_proof::FraudProof;
+use bundle_election::VrfProofError;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
-use sp_core::crypto::KeyTypeId;
+use sp_core::crypto::{KeyTypeId, UncheckedFrom};
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
@@ -217,8 +218,19 @@ pub struct ProofOfElection<DomainHash> {
     pub system_block_hash: DomainHash,
 }
 
+impl<DomainHash> ProofOfElection<DomainHash> {
+    pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
+        bundle_election::verify_vrf_proof(
+            &self.executor_public_key,
+            &self.vrf_output,
+            &self.vrf_proof,
+            &self.global_challenge,
+        )
+    }
+}
+
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
-    #[cfg(feature = "std")]
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
         Self {
             domain_id,
@@ -412,6 +424,27 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, 
     }
 }
 
+impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(
+        primary_number: Number,
+        primary_hash: Hash,
+    ) -> ExecutionReceipt<Number, Hash, DomainHash> {
+        let trace = if primary_number.is_zero() {
+            Vec::new()
+        } else {
+            vec![Default::default(), Default::default()]
+        };
+        ExecutionReceipt {
+            primary_number,
+            primary_hash,
+            domain_hash: Default::default(),
+            trace,
+            trace_root: Default::default(),
+        }
+    }
+}
+
 /// List of [`OpaqueBundle`].
 pub type OpaqueBundles<Block, DomainHash> =
     Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
@@ -419,6 +452,60 @@ pub type OpaqueBundles<Block, DomainHash> =
 /// List of [`SignedOpaqueBundle`].
 pub type SignedOpaqueBundles<Block, DomainHash> =
     Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
+
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
+    domain_id: DomainId,
+    primary_number: BlockNumber,
+    primary_hash: Hash,
+    receipts: Vec<ExecutionReceipt<BlockNumber, Hash, DomainHash>>,
+) -> SignedOpaqueBundle<BlockNumber, Hash, DomainHash>
+where
+    BlockNumber: Encode + Default,
+    Hash: Encode + Default,
+    DomainHash: Encode + Default,
+{
+    let header = BundleHeader {
+        primary_number,
+        primary_hash,
+        slot_number: 0u64,
+        extrinsics_root: Default::default(),
+    };
+
+    let bundle = Bundle {
+        header,
+        receipts,
+        extrinsics: Vec::new(),
+    };
+
+    let signature = ExecutorSignature::unchecked_from([0u8; 64]);
+
+    let proof_of_election =
+        ProofOfElection::dummy(domain_id, ExecutorPublicKey::unchecked_from([0u8; 32]));
+
+    let bundle_solution = if domain_id.is_system() {
+        BundleSolution::System {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
+        }
+    } else if domain_id.is_core() {
+        BundleSolution::Core {
+            proof_of_election,
+            core_block_number: Default::default(),
+            core_block_hash: Default::default(),
+            core_state_root: Default::default(),
+        }
+    } else {
+        panic!("Open domain unsupported");
+    };
+
+    SignedOpaqueBundle {
+        bundle,
+        bundle_solution,
+        signature,
+    }
+}
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
@@ -440,8 +527,8 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
         ) -> OpaqueBundles<Block, DomainHash>;
 
-        /// Extract the hashes of bundles stored in the block
-        fn extract_stored_bundle_hashes() -> Vec<H256>;
+        /// Returns the hash of successfully submitted bundles.
+        fn successful_bundle_hashes() -> Vec<H256>;
 
         /// Extract the receipts from the given extrinsics.
         fn extract_receipts(

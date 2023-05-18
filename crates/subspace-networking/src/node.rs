@@ -10,7 +10,7 @@ use futures::{SinkExt, Stream};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
-use libp2p::kad::{PeerRecord, ProviderRecord};
+use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
@@ -18,7 +18,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::watch;
 use tokio::time::sleep;
 use tracing::{error, trace};
 
@@ -282,10 +281,6 @@ impl Node {
     /// Node's own local ID.
     pub fn id(&self) -> PeerId {
         self.shared.id
-    }
-
-    pub fn online_status_observer(&self) -> &watch::Receiver<bool> {
-        &self.shared.online_status_observer_rx
     }
 
     pub async fn get_value(
@@ -553,19 +548,5 @@ impl Node {
     /// Callback is called when node starts listening on new address.
     pub fn on_new_listener(&self, callback: HandlerFn<Multiaddr>) -> HandlerId {
         self.shared.handlers.new_listener.add(callback)
-    }
-
-    /// Callback is called when node starts listening on new address.
-    pub fn on_announcement(&self, callback: HandlerFn<ProviderRecord>) -> HandlerId {
-        self.shared.handlers.announcement.add(callback)
-    }
-
-    // TODO: Remove provider announcing from Node.
-    /// Announce provider record.
-    pub fn announce(&self, provider_record: &ProviderRecord) {
-        self.shared
-            .handlers
-            .announcement
-            .call_simple(provider_record);
     }
 }

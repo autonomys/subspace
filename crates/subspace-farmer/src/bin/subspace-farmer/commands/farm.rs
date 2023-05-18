@@ -5,6 +5,7 @@ use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::channel::mpsc;
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -28,15 +29,17 @@ use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
-use subspace_networking::utils::online_status_informer;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
+
+const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
+    NonZeroUsize::new(2000).expect("Not zero; qed");
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -83,6 +86,9 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    let (provider_records_sender, provider_records_receiver) =
+        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -106,15 +112,17 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
+            Mutex::new(provider_records_sender),
         )?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
 
-    let _announcements_processing_handler = start_announcements_processor(
+    start_announcements_processor(
         node.clone(),
         Arc::clone(&piece_cache),
         Arc::downgrade(&readers_and_pieces),
+        provider_records_receiver,
     )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
@@ -222,7 +230,7 @@ where
     let plotted_pieces: HashMap<PieceIndexHash, PieceDetails> = single_disk_plots
         .iter()
         .enumerate()
-        .flat_map(|(plot_offset, single_disk_plot)| {
+        .flat_map(|(disk_farm_index, single_disk_plot)| {
             single_disk_plot
                 .plotted_sectors()
                 .enumerate()
@@ -232,7 +240,7 @@ where
                         Err(error) => {
                             error!(
                                 %error,
-                                %plot_offset,
+                                %disk_farm_index,
                                 %sector_offset,
                                 "Failed reading plotted sector on startup, skipping"
                             );
@@ -246,7 +254,7 @@ where
                             (
                                 piece_index.hash(),
                                 PieceDetails {
-                                    plot_offset,
+                                    disk_farm_index,
                                     sector_index: plotted_sector.sector_index,
                                     piece_offset,
                                 },
@@ -267,9 +275,10 @@ where
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
         .enumerate()
-        .map(|(plot_offset, single_disk_plot)| {
+        .map(|(disk_farm_index, single_disk_plot)| {
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
+            let span = info_span!("farm", %disk_farm_index);
 
             // We are not going to send anything here, but dropping of sender on dropping of
             // corresponding `SingleDiskPlot` will allow us to stop background tasks.
@@ -280,6 +289,7 @@ where
             single_disk_plot
                 .on_sector_plotted(Arc::new(
                     move |(sector_offset, plotted_sector, plotting_permit)| {
+                        let _span_guard = span.enter();
                         let plotting_permit = Arc::clone(plotting_permit);
                         let node = node.clone();
                         let sector_offset = *sector_offset;
@@ -311,7 +321,7 @@ where
                                         (
                                             piece_index.hash(),
                                             PieceDetails {
-                                                plot_offset,
+                                                disk_farm_index,
                                                 sector_index,
                                                 piece_offset,
                                             },
@@ -351,7 +361,8 @@ where
 
                             // Release only after publishing is finished
                             drop(plotting_permit);
-                        };
+                        }
+                        .in_current_span();
 
                         tokio::spawn(async move {
                             let result =
@@ -391,7 +402,6 @@ where
         "farmer-networking".to_string(),
     )?;
     let mut networking_fut = Box::pin(networking_fut).fuse();
-    let status_informer_fut = online_status_informer(&node);
 
     futures::select!(
         // Signal future
@@ -405,11 +415,6 @@ where
         // Node runner future
         _ = networking_fut => {
             info!("Node runner exited.")
-        },
-
-        // Status informer future
-        _ = status_informer_fut.fuse() => {
-            info!("DSN online status observer exited.");
         },
     );
 

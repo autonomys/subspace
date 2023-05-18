@@ -1,11 +1,11 @@
 use crate::crypto::kzg::{embedded_kzg_settings, Kzg};
 use crate::crypto::Scalar;
-use blst_from_scratch::consts::{G1_GENERATOR, G2_GENERATOR};
-use blst_from_scratch::types::fft_settings::FsFFTSettings;
-use blst_from_scratch::types::fr::FsFr;
-use blst_from_scratch::types::g1::FsG1;
-use blst_from_scratch::types::g2::FsG2;
-use blst_from_scratch::types::kzg_settings::FsKZGSettings;
+use blst_rust::consts::{G1_GENERATOR, G2_GENERATOR};
+use blst_rust::types::fft_settings::FsFFTSettings;
+use blst_rust::types::fr::FsFr;
+use blst_rust::types::g1::FsG1;
+use blst_rust::types::g2::FsG2;
+use blst_rust::types::kzg_settings::FsKZGSettings;
 use kzg::{FFTSettings, Fr, G1Mul, G2Mul};
 use rand::Rng;
 use rand_core::SeedableRng;

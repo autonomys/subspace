@@ -9,12 +9,11 @@ use futures::channel::{mpsc, oneshot};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
-use libp2p::kad::{PeerRecord, ProviderRecord};
+use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use tokio::sync::watch;
 
 #[derive(Debug)]
 pub(crate) struct CreatedSubscription {
@@ -91,7 +90,6 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
-    pub(crate) announcement: Handler<ProviderRecord>,
 }
 
 #[derive(Debug)]
@@ -106,7 +104,6 @@ pub(crate) struct Shared {
     pub(crate) command_sender: mpsc::Sender<Command>,
     pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
     pub(crate) regular_tasks_semaphore: ResizableSemaphore,
-    pub(crate) online_status_observer_rx: watch::Receiver<bool>,
 }
 
 impl Shared {
@@ -115,7 +112,6 @@ impl Shared {
         command_sender: mpsc::Sender<Command>,
         kademlia_tasks_semaphore: ResizableSemaphore,
         regular_tasks_semaphore: ResizableSemaphore,
-        online_status_observer_rx: watch::Receiver<bool>,
     ) -> Self {
         Self {
             handlers: Handlers::default(),
@@ -126,7 +122,6 @@ impl Shared {
             command_sender,
             kademlia_tasks_semaphore,
             regular_tasks_semaphore,
-            online_status_observer_rx,
         }
     }
 }

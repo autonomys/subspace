@@ -201,6 +201,16 @@ impl<Number, Hash> FraudProof<Number, Hash> {
     }
 }
 
+impl<Number, Hash> FraudProof<Number, Hash>
+where
+    Number: Encode,
+    Hash: Encode,
+{
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash(&self.encode())
+    }
+}
+
 /// Proves an invalid state transition by challenging the trace at specific index in a bad receipt.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InvalidStateTransitionProof {
@@ -223,6 +233,22 @@ pub struct InvalidStateTransitionProof {
     pub proof: StorageProof,
     /// Execution phase.
     pub execution_phase: ExecutionPhase,
+}
+
+pub fn dummy_invalid_state_transition_proof(
+    domain_id: DomainId,
+    parent_number: u32,
+) -> InvalidStateTransitionProof {
+    InvalidStateTransitionProof {
+        domain_id,
+        bad_receipt_hash: H256::default(),
+        parent_number,
+        primary_parent_hash: H256::default(),
+        pre_state_root: H256::default(),
+        post_state_root: H256::default(),
+        proof: StorageProof::empty(),
+        execution_phase: ExecutionPhase::ApplyExtrinsic(0),
+    }
 }
 
 /// Represents a bundle equivocation proof. An equivocation happens when an executor

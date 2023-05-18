@@ -251,6 +251,11 @@ pub struct Cli {
     /// Parameters used to create the storage monitor.
     #[clap(flatten)]
     pub storage_monitor: StorageMonitorParams,
+
+    /// Use the block request handler implementation from subspace
+    /// instead of the default substrate handler.
+    #[arg(long)]
+    pub enable_subspace_block_relay: bool,
 }
 
 impl SubstrateCli for Cli {

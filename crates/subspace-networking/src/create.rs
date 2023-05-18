@@ -41,7 +41,6 @@ use std::time::{Duration, Instant};
 use std::{fmt, io, iter};
 use subspace_core_primitives::{crypto, Piece};
 use thiserror::Error;
-use tokio::sync::watch;
 use tracing::{debug, error, info};
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
@@ -457,15 +456,12 @@ where
 
     let kademlia_tasks_semaphore = ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS);
     let regular_tasks_semaphore = ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS);
-    // DSN is not connected from the start.
-    let (online_status_observer_tx, online_status_observer_rx) = watch::channel(false);
 
     let shared = Arc::new(Shared::new(
         local_peer_id,
         command_sender,
         kademlia_tasks_semaphore,
         regular_tasks_semaphore,
-        online_status_observer_rx,
     ));
     let shared_weak = Arc::downgrade(&shared);
 
@@ -481,7 +477,6 @@ where
         target_connections,
         temporary_bans,
         metrics,
-        online_status_observer_tx,
         protocol_version,
     });
 

@@ -123,7 +123,7 @@ where
         Self {
             client,
             gossip_message_validator,
-            _phantom_data: PhantomData::default(),
+            _phantom_data: PhantomData,
         }
     }
 }
@@ -190,16 +190,18 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            let executor_public_key = &bundle_solution.proof_of_election().executor_public_key;
+            let proof_of_election = bundle_solution.proof_of_election();
 
-            if !executor_public_key.verify(&bundle.hash(), signature) {
+            if !proof_of_election
+                .executor_public_key
+                .verify(&bundle.hash(), signature)
+            {
                 return Err(Self::Error::BadBundleSignature);
             }
 
             // TODO: validate the bundle election.
 
-            // TODO: Validate the receipts correctly when the bundle gossip is re-enabled.
-            let domain_id = bundle_solution.proof_of_election().domain_id;
+            let domain_id = proof_of_election.domain_id;
 
             self.gossip_message_validator
                 .validate_bundle_receipts(&bundle.receipts, domain_id)?;

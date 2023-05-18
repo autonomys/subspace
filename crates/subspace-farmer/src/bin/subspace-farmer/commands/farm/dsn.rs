@@ -1,9 +1,8 @@
 use crate::DsnArgs;
 use anyhow::Context;
-use event_listener_primitives::HandlerId;
-use futures::channel::mpsc;
+use futures::channel::mpsc::{Receiver, Sender};
 use futures::StreamExt;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,15 +31,13 @@ use subspace_networking::{
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, trace, Instrument, Span};
 
-const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
-    NonZeroUsize::new(2000).expect("Not zero; qed");
 const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(20).expect("Not zero; qed");
 const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
     NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
     protocol_prefix: String,
     base_path: PathBuf,
@@ -61,6 +58,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
+    provider_records_sender: Mutex<Sender<ProviderRecord>>,
 ) -> Result<
     (
         Node,
@@ -160,8 +158,6 @@ pub(super) fn configure_dsn(
         }
     });
 
-    let provider_record_announcer: Arc<RwLock<Option<NodeProviderRecordAnnouncer>>> =
-        Arc::new(RwLock::new(None));
     let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage.clone());
     let config = Config {
         reserved_peers,
@@ -170,39 +166,38 @@ pub(super) fn configure_dsn(
         networking_parameters_registry,
         request_response_protocols: vec![
             PieceAnnouncementRequestHandler::create({
-                let provider_record_announcer = provider_record_announcer.clone();
-
                 move |peer_id, req| {
                     trace!(?req, %peer_id, "Piece announcement request received.");
 
-                    let mut provider_storage = farmer_provider_storage.clone();
-                    let provider_record_announcer = provider_record_announcer.clone();
-                    let req = req.clone();
+                    let provider_record = ProviderRecord {
+                        provider: peer_id,
+                        key: req.piece_index_hash.into(),
+                        addresses: req.addresses.clone(),
+                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
+                    };
 
-                    async move {
-                        let key = match req.piece_key.clone().try_into() {
-                            Ok(key) => key,
+                    let result = match farmer_provider_storage.add_provider(provider_record.clone())
+                    {
+                        Ok(()) => {
+                            if let Err(error) =
+                                provider_records_sender.lock().try_send(provider_record)
+                            {
+                                if !error.is_disconnected() {
+                                    let record = error.into_inner();
+                                    // TODO: This should be made a warning, but due to
+                                    //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll
+                                    //  take us some time to resolve
+                                    debug!(
+                                        ?record.key,
+                                        ?record.provider,
+                                        "Failed to add provider record to the channel."
+                                    );
+                                }
+                            };
 
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %peer_id,
-                                    ?req,
-                                    "Failed to convert received key to record:Key."
-                                );
-
-                                return None;
-                            }
-                        };
-
-                        let provider_record = ProviderRecord {
-                            provider: peer_id,
-                            key,
-                            addresses: req.converted_addresses(),
-                            expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                        };
-
-                        if let Err(error) = provider_storage.add_provider(provider_record.clone()) {
+                            Some(PieceAnnouncementResponse::Success)
+                        }
+                        Err(error) => {
                             error!(
                                 %error,
                                 %peer_id,
@@ -210,17 +205,11 @@ pub(super) fn configure_dsn(
                                 "Failed to add provider for received key."
                             );
 
-                            return None;
+                            None
                         }
+                    };
 
-                        if let Some(provider_record_announcer) =
-                            provider_record_announcer.read().as_ref()
-                        {
-                            provider_record_announcer.announce(&provider_record);
-                        }
-
-                        Some(PieceAnnouncementResponse)
-                    }
+                    async move { result }
                 }
             }),
             PieceByHashRequestHandler::create(
@@ -269,7 +258,7 @@ pub(super) fn configure_dsn(
 
                                 readers_and_pieces
                                     .read_piece(&piece_index_hash)?
-                                    .instrument(Span::current())
+                                    .in_current_span()
                             };
 
                             let piece = read_piece_fut.await;
@@ -277,7 +266,7 @@ pub(super) fn configure_dsn(
                             Some(PieceByHashResponse { piece })
                         }
                     }
-                    .instrument(Span::current())
+                    .in_current_span()
                 },
             ),
             SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
@@ -340,7 +329,7 @@ pub(super) fn configure_dsn(
                         }
                     }
                 }
-                .instrument(Span::current())
+                .in_current_span()
             }),
         ],
         max_established_outgoing_connections: out_connections,
@@ -353,7 +342,6 @@ pub(super) fn configure_dsn(
 
     create(config)
         .map(|(node, node_runner)| {
-            let provider_record_announcer = provider_record_announcer.clone();
             node.on_new_listener(Arc::new({
                 let node = node.clone();
 
@@ -366,10 +354,6 @@ pub(super) fn configure_dsn(
             }))
             .detach();
 
-            provider_record_announcer
-                .write()
-                .replace(NodeProviderRecordAnnouncer::new(node.clone()));
-
             (node, node_runner, piece_cache)
         })
         .map_err(Into::into)
@@ -381,32 +365,8 @@ pub(crate) fn start_announcements_processor(
     node: Node,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-) -> io::Result<HandlerId> {
-    let (provider_records_sender, mut provider_records_receiver) =
-        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
-
-    let handler_id = node.on_announcement(Arc::new({
-        let provider_records_sender = Mutex::new(provider_records_sender);
-
-        move |record| {
-            if let Err(error) = provider_records_sender.lock().try_send(record.clone()) {
-                if error.is_disconnected() {
-                    // Receiver exited, nothing left to be done
-                    return;
-                }
-                let record = error.into_inner();
-                // TODO: This should be made a warning, but due to
-                //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll take us some time
-                //  to resolve
-                debug!(
-                    ?record.key,
-                    ?record.provider,
-                    "Failed to add provider record to the channel."
-                );
-            };
-        }
-    }));
-
+    mut provider_records_receiver: Receiver<ProviderRecord>,
+) -> io::Result<()> {
     let handle = Handle::current();
     let span = Span::current();
     let mut provider_record_processor = FarmerProviderRecordProcessor::new(
@@ -436,21 +396,5 @@ pub(crate) fn start_announcements_processor(
             handle.block_on(processor_fut.instrument(span));
         })?;
 
-    Ok(handler_id)
-}
-
-// TODO: Remove provider record announcement from Node
-/// Provider record announcement helper.
-struct NodeProviderRecordAnnouncer {
-    node: Node,
-}
-
-impl NodeProviderRecordAnnouncer {
-    fn new(node: Node) -> Self {
-        Self { node }
-    }
-
-    pub(crate) fn announce(&self, provider_record: &ProviderRecord) {
-        self.node.announce(provider_record);
-    }
+    Ok(())
 }
