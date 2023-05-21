@@ -913,13 +913,6 @@ impl<T: Config> Pallet<T> {
         let offender = equivocation_proof.offender.clone();
         let slot = equivocation_proof.slot;
 
-        // validate the equivocation proof
-        if !sp_consensus_subspace::is_equivocation_proof_valid::<_, T::AccountId>(
-            equivocation_proof,
-        ) {
-            return Err(Error::<T>::InvalidEquivocationProof.into());
-        }
-
         let offence = SubspaceEquivocationOffence { slot, offender };
 
         T::HandleEquivocation::report_offence(offence)

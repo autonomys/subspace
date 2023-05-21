@@ -88,5 +88,5 @@ fn test_is_equivocation_proof_valid() {
         second_header,
     };
 
-    assert!(is_equivocation_proof_valid::<_, ()>(equivocation_proof));
+    assert!(is_equivocation_proof_valid::<_, ()>(&equivocation_proof));
 }
