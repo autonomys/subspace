@@ -51,3 +51,6 @@ std = [
 	"sp-trie/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
+runtime-benchmarks = [
+	"sp-executor-registry/runtime-benchmarks",
+]

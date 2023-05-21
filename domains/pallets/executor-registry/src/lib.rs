@@ -824,6 +824,16 @@ impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>, T::StakeWeight> for
                 })
         })
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn unchecked_register(
+        executor: T::AccountId,
+        public_key: ExecutorPublicKey,
+        stake: BalanceOf<T>,
+    ) {
+        Self::apply_register(&executor.clone(), public_key, executor, true, stake)
+            .expect("executor register should succeed");
+    }
 }
 
 impl<T: Config> Pallet<T> {
