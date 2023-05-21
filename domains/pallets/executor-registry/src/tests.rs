@@ -102,6 +102,7 @@ impl pallet_executor_registry::Config for Test {
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
     type OnNewEpoch = ();
+    type WeightInfo = ();
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

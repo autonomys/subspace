@@ -295,6 +295,7 @@ impl pallet_executor_registry::Config for Runtime {
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
     type OnNewEpoch = DomainRegistry;
+    type WeightInfo = pallet_executor_registry::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {

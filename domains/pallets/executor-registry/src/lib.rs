@@ -44,6 +44,7 @@ const MIN_ACTIVE_EXECUTORS_FACTOR: Percent = Percent::from_percent(75);
 #[frame_support::pallet]
 mod pallet {
     use super::{BalanceOf, MIN_ACTIVE_EXECUTORS_FACTOR};
+    use crate::weights::WeightInfo;
     use codec::Codec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, LockableCurrency};
@@ -135,6 +136,9 @@ mod pallet {
 
         /// What to do on epoch changes.
         type OnNewEpoch: OnNewEpoch<Self::AccountId, Self::StakeWeight>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -178,9 +182,8 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Register the origin account as an executor.
-        // TODO: proper weight
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::register())]
         pub fn register(
             origin: OriginFor<T>,
             public_key: ExecutorPublicKey,
@@ -244,9 +247,8 @@ mod pallet {
         }
 
         /// Increase the executor's stake by locking some more balance.
-        // TODO: proper weight
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::increase_stake())]
         pub fn increase_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -291,9 +293,8 @@ mod pallet {
         ///
         /// The reduced stake will be held locked for a while until it
         /// can be withdrawn to be transferrable.
-        // TODO: proper weight
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::decrease_stake())]
         pub fn decrease_stake(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -344,9 +345,8 @@ mod pallet {
         /// Remove the item at given index which is due in the unlocking queue.
         ///
         /// The balance being locked will become free on success.
-        // TODO: proper weight
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::withdraw_stake())]
         pub fn withdraw_stake(origin: OriginFor<T>, withdrawal_index: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -391,9 +391,8 @@ mod pallet {
         }
 
         /// Stop participating in the bundle election temporarily.
-        // TODO: proper weight
         #[pallet::call_index(5)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::pause_execution())]
         pub fn pause_execution(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -425,9 +424,8 @@ mod pallet {
         }
 
         /// Participate in the bundle election again.
-        // TODO: proper weight
         #[pallet::call_index(6)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::resume_execution())]
         pub fn resume_execution(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -454,9 +452,8 @@ mod pallet {
         /// Set a new executor public key.
         ///
         /// It won't take effect until next epoch.
-        // TODO: proper weight
         #[pallet::call_index(7)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::update_public_key())]
         pub fn update_public_key(
             origin: OriginFor<T>,
             next_key: ExecutorPublicKey,
@@ -479,9 +476,8 @@ mod pallet {
         }
 
         /// Set a new reward address.
-        // TODO: proper weight
         #[pallet::call_index(8)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::update_reward_address())]
         pub fn update_reward_address(origin: OriginFor<T>, new: T::AccountId) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
