@@ -576,6 +576,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_domains, Domains]
+        [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
     );
 }

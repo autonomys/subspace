@@ -6904,6 +6904,7 @@ name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "futures",

@@ -127,6 +127,7 @@ runtime-benchmarks = [
 	"orml-vesting/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
 	"pallet-domains/runtime-benchmarks",
+	"pallet-subspace/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-utility/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
