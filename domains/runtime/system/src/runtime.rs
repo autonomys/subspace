@@ -291,6 +291,7 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type WeightInfo = pallet_domain_registry::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_receipts::Config for Runtime {
