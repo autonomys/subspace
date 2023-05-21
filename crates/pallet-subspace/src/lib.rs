@@ -31,6 +31,8 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+pub mod weights;
+
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
