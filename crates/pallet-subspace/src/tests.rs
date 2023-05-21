@@ -24,12 +24,11 @@ use crate::mock::{
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
-    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, Error, ParentBlockAuthorInfo,
-    ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence, WeightInfo,
+    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, ParentBlockAuthorInfo,
+    ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence,
 };
 use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
-use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
@@ -470,14 +469,6 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
             InvalidTransaction::Stale,
         );
     });
-}
-
-#[test]
-fn report_equivocation_has_valid_weight() {
-    // the weight is always the same.
-    assert!((1..=1000)
-        .map(|_| { <Test as Config>::WeightInfo::report_equivocation() })
-        .all(|w| w == Weight::from_parts(10_000, 0)));
 }
 
 #[test]

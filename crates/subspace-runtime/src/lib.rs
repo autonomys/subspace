@@ -24,7 +24,6 @@ mod feed_processor;
 mod fees;
 mod object_mapping;
 mod signed_extensions;
-mod weights;
 
 // Make system domain WASM runtime available.
 include!(concat!(env!("OUT_DIR"), "/system_domain_wasm_bundle.rs"));
@@ -274,7 +273,7 @@ impl pallet_subspace::Config for Runtime {
         ConstU64<{ EQUIVOCATION_REPORT_LONGEVITY as u64 }>,
     >;
 
-    type WeightInfo = weights::subspace::WeightInfo;
+    type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_timestamp::Config for Runtime {

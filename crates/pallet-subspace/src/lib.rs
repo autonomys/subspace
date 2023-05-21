@@ -20,7 +20,6 @@
 
 extern crate alloc;
 
-mod default_weights;
 pub mod equivocation;
 
 #[cfg(test)]
@@ -39,7 +38,6 @@ use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo, Pays};
 use frame_support::traits::{Get, OnTimestampSet};
-use frame_support::weights::Weight;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -71,12 +69,6 @@ use subspace_verification::{
     check_reward_signature, derive_next_solution_range, derive_randomness, PieceCheckParams,
     VerifySolutionParams,
 };
-
-pub trait WeightInfo {
-    fn report_equivocation() -> Weight;
-    fn store_segment_headers(segment_headers_count: usize) -> Weight;
-    fn vote() -> Weight;
-}
 
 /// Trigger global randomness every interval.
 pub trait GlobalRandomnessIntervalTrigger {
@@ -133,9 +125,9 @@ struct AuditChunkOffset(u8);
 mod pallet {
     use super::{
         AuditChunkOffset, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
-        WeightInfo,
     };
     use crate::equivocation::HandleEquivocation;
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_consensus_slots::Slot;
@@ -501,7 +493,7 @@ mod pallet {
         /// the Subspace consensus logic.
         /// TODO: constraint the number of `SegmentHeader` within a single extrinsic
         #[pallet::call_index(1)]
-        #[pallet::weight((<T as Config>::WeightInfo::store_segment_headers(segment_headers.len()), DispatchClass::Mandatory, Pays::No))]
+        #[pallet::weight((<T as Config>::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory, Pays::No))]
         pub fn store_segment_headers(
             origin: OriginFor<T>,
             segment_headers: Vec<SegmentHeader>,
@@ -513,7 +505,7 @@ mod pallet {
         /// Enable solution range adjustment after every era.
         /// Note: No effect on the solution range for the current era
         #[pallet::call_index(2)]
-        #[pallet::weight(T::DbWeight::get().writes(1))]
+        #[pallet::weight(<T as Config>::WeightInfo::enable_solution_range_adjustment())]
         pub fn enable_solution_range_adjustment(
             origin: OriginFor<T>,
             solution_range_override: Option<u64>,
@@ -551,7 +543,7 @@ mod pallet {
 
         /// Enable rewards for blocks and votes at specified block height.
         #[pallet::call_index(4)]
-        #[pallet::weight(T::DbWeight::get().writes(1))]
+        #[pallet::weight(<T as Config>::WeightInfo::enable_rewards())]
         pub fn enable_rewards(
             origin: OriginFor<T>,
             height: Option<T::BlockNumber>,
@@ -563,7 +555,7 @@ mod pallet {
 
         /// Enable storage access for all users.
         #[pallet::call_index(5)]
-        #[pallet::weight(T::DbWeight::get().writes(1))]
+        #[pallet::weight(<T as Config>::WeightInfo::enable_storage_access())]
         pub fn enable_storage_access(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
 
@@ -574,7 +566,7 @@ mod pallet {
 
         /// Enable storage access for all users.
         #[pallet::call_index(6)]
-        #[pallet::weight(T::DbWeight::get().writes(1))]
+        #[pallet::weight(<T as Config>::WeightInfo::enable_authoring_by_anyone())]
         pub fn enable_authoring_by_anyone(origin: OriginFor<T>) -> DispatchResult {
             ensure_root(origin)?;
 
