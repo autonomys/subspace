@@ -105,6 +105,7 @@ runtime-benchmarks = [
 	"frame-system/runtime-benchmarks",
 	"frame-system-benchmarking/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
+	"pallet-domain-registry/runtime-benchmarks",
 	"pallet-executor-registry/runtime-benchmarks",
 	"sp-domains/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",

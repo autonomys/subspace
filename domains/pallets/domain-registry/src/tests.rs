@@ -139,7 +139,7 @@ impl pallet_receipts::Config for Test {
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
-fn new_test_ext() -> sp_io::TestExternalities {
+pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
