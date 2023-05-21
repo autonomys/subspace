@@ -569,7 +569,19 @@ mod pallet {
                     log::error!(target: "runtime::domain-registry", "Bad core bundle, error: {e:?}");
                     TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
                 }),
-                Call::submit_fraud_proof { .. } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_core() {
+                        log::debug!(
+                            target: "runtime::domain-registry",
+                            "Wrong fraud proof, expected core domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::FraudProof.into(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -577,6 +589,13 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_fraud_proof { fraud_proof } => {
+                    if !fraud_proof.domain_id().is_core() {
+                        log::debug!(
+                            target: "runtime::domain-registry",
+                            "Wrong fraud proof, expected core domain fraud proof but got: {fraud_proof:?}",
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(
