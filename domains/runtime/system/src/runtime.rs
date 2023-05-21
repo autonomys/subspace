@@ -408,6 +408,7 @@ frame_benchmarking::define_benchmarks!(
     [frame_benchmarking, BaselineBench::<Runtime>]
     [frame_system, SystemBench::<Runtime>]
     [pallet_balances, Balances]
+    [pallet_executor_registry, ExecutorRegistry]
 );
 
 impl_runtime_apis! {

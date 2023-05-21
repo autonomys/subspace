@@ -13,10 +13,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", optional = true }
 frame-support = { git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false }
 frame-system = { git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
 sp-arithmetic = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false, optional = true }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-executor-registry = { version = "0.1.0", path = "../../primitives/executor-registry", default-features = false }
 sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false }
@@ -32,10 +34,12 @@ sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", re
 default = ["std"]
 std = [
 	"codec/std",
+	"frame-benchmarking?/std",
 	"frame-support/std",
 	"frame-system/std",
 	"scale-info/std",
 	"sp-arithmetic/std",
+	"sp-core?/std",
 	"sp-domains/std",
 	"sp-executor-registry/std",
 	"sp-io/std",
@@ -44,3 +48,9 @@ std = [
 	"subspace-core-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
+runtime-benchmarks = [
+	"frame-benchmarking/runtime-benchmarks",
+	"frame-support/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"sp-core",
+]

@@ -20,6 +20,9 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 pub use pallet::*;
 use sp_arithmetic::Percent;
