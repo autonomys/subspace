@@ -24,7 +24,9 @@ use sc_service::{
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
-use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
+use sp_api::{
+    ApiExt, BlockT, CallApiAt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi,
+};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
@@ -67,6 +69,7 @@ where
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + CallApiAt<PBlock>
         + Send
         + Sync
         + 'static,
@@ -176,6 +179,7 @@ where
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + CallApiAt<PBlock>
         + Send
         + Sync
         + 'static,
@@ -305,6 +309,7 @@ where
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + BlockchainEvents<PBlock>
+        + CallApiAt<PBlock>
         + Send
         + Sync
         + 'static,

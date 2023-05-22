@@ -5,7 +5,7 @@ use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use domain_block_preprocessor::{CoreDomainBlockPreprocessor, SystemDomainBlockPreprocessor};
 use domain_runtime_primitives::opaque::Block;
 use sc_client_api::{BlockBackend, HeaderBackend};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::{DomainId, ExecutorApi};
@@ -114,6 +114,7 @@ where
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + CallApiAt<PBlock>
         + Send
         + Sync
         + 'static,
@@ -167,6 +168,7 @@ where
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + CallApiAt<PBlock>
         + Send
         + Sync
         + 'static,

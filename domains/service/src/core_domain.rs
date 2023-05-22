@@ -31,7 +31,9 @@ use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
 use serde::de::DeserializeOwned;
-use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Decode, Metadata, NumberFor, ProvideRuntimeApi};
+use sp_api::{
+    ApiExt, BlockT, CallApiAt, ConstructRuntimeApi, Decode, Metadata, NumberFor, ProvideRuntimeApi,
+};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
@@ -367,6 +369,7 @@ where
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
+        + CallApiAt<PBlock>
         + BlockchainEvents<PBlock>
         + Send
         + Sync

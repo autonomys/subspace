@@ -7,7 +7,7 @@ use domain_block_preprocessor::CoreDomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{CallApiAt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
@@ -99,6 +99,7 @@ where
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
+        + CallApiAt<PBlock>
         + ProvideRuntimeApi<PBlock>
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
