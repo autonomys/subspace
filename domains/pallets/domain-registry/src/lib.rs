@@ -573,10 +573,10 @@ mod pallet {
                     TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
                 }),
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_core() {
+                    if fraud_proof.domain_id().is_system() {
                         log::debug!(
                             target: "runtime::domain-registry",
-                            "Wrong fraud proof, expected core domain fraud proof but got: {fraud_proof:?}",
+                            "Unexpected system domain fraud proof: {fraud_proof:?}",
                         );
                         Err(TransactionValidityError::Invalid(
                             InvalidTransactionCode::FraudProof.into(),
@@ -592,10 +592,10 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_core() {
+                    if fraud_proof.domain_id().is_system() {
                         log::debug!(
                             target: "runtime::domain-registry",
-                            "Wrong fraud proof, expected core domain fraud proof but got: {fraud_proof:?}",
+                            "Unexpected system domain fraud proof: {fraud_proof:?}",
                         );
                         return InvalidTransactionCode::FraudProof.into();
                     }
