@@ -1435,8 +1435,6 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
  "pallet-feeds",
  "pallet-messenger",
  "pallet-sudo",
@@ -1547,8 +1545,6 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
  "pallet-messenger",
  "pallet-sudo",
  "pallet-transaction-payment",
@@ -6623,6 +6619,7 @@ dependencies = [
 name = "pallet-domain-registry"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -6751,6 +6748,7 @@ dependencies = [
 name = "pallet-executor-registry"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",

@@ -102,9 +102,10 @@ impl pallet_executor_registry::Config for Test {
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
     type OnNewEpoch = ();
+    type WeightInfo = ();
 }
 
-fn new_test_ext() -> sp_io::TestExternalities {
+pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();

@@ -23,8 +23,6 @@ frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false
 hex-literal = { version = '0.4.0', optional = true }
 log = { version = "0.4.17", default-features = false }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-pallet-domain-registry = { version = "0.1.0", path = "../../pallets/domain-registry", default-features = false }
-pallet-executor-registry = { version = "0.1.0", path = "../../pallets/executor-registry", default-features = false }
 pallet-feeds = { version = "0.1.0", path = "../../../crates/pallet-feeds", default-features = false }
 pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger", default-features = false }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
@@ -63,13 +61,12 @@ std = [
 	"codec/std",
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
+	"frame-benchmarking?/std",
 	"frame-support/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
 	"log/std",
 	"pallet-balances/std",
-	"pallet-domain-registry/std",
-	"pallet-executor-registry/std",
 	"pallet-feeds/std",
 	"pallet-messenger/std",
 	"pallet-sudo/std",
@@ -101,11 +98,11 @@ wasm-builder = []
 runtime-benchmarks = [
 	'hex-literal',
 	"sp-runtime/runtime-benchmarks",
-	"frame-benchmarking",
-	"frame-system-benchmarking",
+	"frame-benchmarking/runtime-benchmarks",
 	"frame-system-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
+	"pallet-timestamp/runtime-benchmarks",
 	"snowbridge-ethereum-beacon-client/runtime-benchmarks"
 ]
