@@ -134,7 +134,7 @@ where
         let primary_hash_for_best_domain_hash =
             crate::aux_schema::primary_hash_for(&*self.backend, best_hash)?.ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
-                    "Primary hash for domain hash #{best_hash} not found"
+                    "Primary hash for domain hash #{best_number},{best_hash} not found"
                 ))
             })?;
 
@@ -230,7 +230,7 @@ where
 
         tracing::debug!(
             "Built new domain block #{header_number},{header_hash} from primary block #{primary_number},{primary_hash} \
-            on top of parent block #{header_number},{header_hash}"
+            on top of parent block #{parent_number},{parent_hash}"
         );
 
         if let Some(to_finalize_block_number) =
@@ -457,12 +457,10 @@ where
     E: CodeExecutor,
     ParentChain: ParentChainInterface<Block, ParentChainBlock>,
 {
-    pub(crate) fn check_invalid_state_transition(
+    pub(crate) fn check_state_transition(
         &self,
         parent_chain_block_hash: ParentChainBlock::Hash,
-    ) -> sp_blockchain::Result<
-        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
-    > {
+    ) -> sp_blockchain::Result<()> {
         let extrinsics = self.parent_chain.block_body(parent_chain_block_hash)?;
 
         let receipts = self
@@ -477,9 +475,9 @@ where
 
         if self.primary_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
-                "Skip checking the receipts as the primary node is still major syncing..."
+                "Skip reporting unconfirmed bad receipt as the primary node is still major syncing..."
             );
-            return Ok(None);
+            return Ok(());
         }
 
         // Submit fraud proof for the first unconfirmed incorrent ER.
@@ -488,7 +486,11 @@ where
             .oldest_receipt_number(parent_chain_block_hash)?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        self.create_fraud_proof_for_first_unconfirmed_bad_receipt()
+        if let Some(fraud_proof) = self.create_fraud_proof_for_first_unconfirmed_bad_receipt()? {
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
+        }
+
+        Ok(())
     }
 
     fn check_receipts(

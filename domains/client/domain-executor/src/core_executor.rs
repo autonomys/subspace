@@ -218,36 +218,23 @@ where
             "core-domain-receipts-checker",
             None,
             async move {
-                let check_core_domain_state_transition = async {
-                    while let Some(system_domain_block_import) =
-                        system_domain_block_import_notifications.next().await
-                    {
-                        tracing::debug!(
-                            ?system_domain_block_import,
-                            "Checking core domain invalid state transition"
-                        );
-
-                        if let Some(fraud_proof) = core_domain_receipts_checker
-                            .check_invalid_state_transition(
-                                system_domain_block_import.domain_block_hash,
-                            )?
-                        {
-                            system_domain_client
-                                .runtime_api()
-                                .submit_fraud_proof_unsigned(
-                                    system_domain_client.info().best_hash,
-                                    fraud_proof,
-                                )?;
-                        }
-                    }
-                    Ok::<(), sp_blockchain::Error>(())
-                };
-
-                if let Err(err) = check_core_domain_state_transition.await {
-                    tracing::error!(
-                        ?err,
-                        "Error occurred at checking core domain state transition"
+                while let Some(system_domain_block_import) =
+                    system_domain_block_import_notifications.next().await
+                {
+                    tracing::debug!(
+                        ?system_domain_block_import,
+                        "Checking core domain state transition"
                     );
+
+                    if let Err(err) = core_domain_receipts_checker
+                        .check_state_transition(system_domain_block_import.domain_block_hash)
+                    {
+                        tracing::error!(
+                            ?err,
+                            "Error occurred at checking core domain state transition"
+                        );
+                        return;
+                    }
                 }
             }
             .boxed(),

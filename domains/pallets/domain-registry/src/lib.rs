@@ -367,6 +367,9 @@ mod pallet {
                 }
             }
 
+            SuccessfulBundles::<T>::kill();
+            consumed_weight += T::DbWeight::get().writes(1);
+
             consumed_weight
         }
     }

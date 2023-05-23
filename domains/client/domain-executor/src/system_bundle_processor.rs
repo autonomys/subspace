@@ -236,19 +236,8 @@ where
             head_receipt_number,
         )?;
 
-        // TODO: The applied txs can be fully removed from the transaction pool
-
-        if let Some(fraud_proof) = self
-            .system_domain_receipts_checker
-            .check_invalid_state_transition(primary_hash)?
-        {
-            self.primary_chain_client
-                .runtime_api()
-                .submit_fraud_proof_unsigned(
-                    self.primary_chain_client.info().best_hash,
-                    fraud_proof,
-                )?;
-        }
+        self.system_domain_receipts_checker
+            .check_state_transition(primary_hash)?;
 
         Ok(built_block_info)
     }
