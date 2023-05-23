@@ -13,7 +13,7 @@
 //! verification environment will have access to primary chain.
 
 use crate::runtime_api::InherentExtrinsicConstructor;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_domains::ExecutorApi;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
@@ -29,12 +29,20 @@ pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, PBlock, PClient>(
 where
     Block: BlockT,
     PBlock: BlockT,
-    PClient: ProvideRuntimeApi<PBlock>,
+    PClient: ProvideRuntimeApi<PBlock> + CallApiAt<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     DomainRuntimeApi: InherentExtrinsicConstructor<Block>,
 {
     let primary_api = primary_client.runtime_api();
-    let moment = primary_api.timestamp(primary_block_hash)?;
+    let runtime_version = primary_client.runtime_version_at(primary_block_hash)?;
+
+    // we introduced timestamp at spec version 2
+    // But since EVM will be expecting timestamp to be updated in each block.
+    // We are just feeding it 0 if spec version is less than 2
+    let mut moment = 0;
+    if runtime_version.spec_version >= 2 {
+        moment = primary_api.timestamp(primary_block_hash)?;
+    }
 
     let mut inherent_exts = vec![];
     if let Some(inherent_timestamp) =

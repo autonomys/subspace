@@ -28,7 +28,7 @@ use sc_client_api::{
     StateBackendFor,
 };
 use sc_consensus::BlockImport;
-use sp_api::{BlockT, ProvideRuntimeApi};
+use sp_api::{BlockT, CallApiAt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus_slots::Slot;
@@ -116,6 +116,7 @@ pub(super) async fn start_worker<
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
+        + CallApiAt<PBlock>
         + ProvideRuntimeApi<PBlock>
         + BlockchainEvents<PBlock>
         + 'static,
