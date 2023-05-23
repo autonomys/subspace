@@ -18,7 +18,7 @@ use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
-use void::Void as ConnectionLimitsEvent;
+use void::Void as VoidEvent;
 
 type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
 
@@ -98,5 +98,6 @@ pub(crate) enum Event {
     Gossipsub(GossipsubEvent),
     Ping(PingEvent),
     RequestResponse(RequestResponseEvent),
-    ConnectionLimits(ConnectionLimitsEvent),
+    /// Event stub for connection limits and block list behaviours. We won't receive such events.
+    VoidEventStub(VoidEvent),
 }

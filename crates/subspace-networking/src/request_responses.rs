@@ -435,7 +435,11 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                     local_addr,
                     remote_addr,
                 )
-                .expect("Connection handling can't be denied by inner behaviour."),
+                .expect(
+                    "Behaviours return handlers in these methods with the exception of \
+                    'connection management' behaviours like connection-limits or allow-black list. \
+                    So, inner request-response behaviour always returns Ok(handler).",
+                ),
             )
         });
 
@@ -458,7 +462,11 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
             (
                 p.to_string(),
                 r.handle_established_outbound_connection(connection_id, peer, addr, role_override)
-                    .expect("Connection handling can't be denied by inner behaviour."),
+                    .expect(
+                        "Behaviours return handlers in these methods with the exception of \
+                        'connection management' behaviours like connection-limits or allow-black list. \
+                         So, inner request-response behaviour always returns Ok(handler).",
+                    ),
             )
         });
 
