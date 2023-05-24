@@ -33,6 +33,7 @@ use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
     /// Export the state of a given block into a chain spec.
     ExportState(sc_cli::ExportStateCmd),
@@ -42,7 +43,7 @@ pub enum Subcommand {
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
-    Benchmark(Box<frame_benchmarking_cli::BenchmarkCmd>),
+    Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
 #[derive(Debug, Parser)]

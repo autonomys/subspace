@@ -42,6 +42,7 @@ use sp_runtime::traits::Identity;
 use std::any::TypeId;
 use subspace_node::{
     AccountId32ToAccountId20Converter, Cli, ExecutorDispatch, Subcommand, SystemDomainCli,
+    SystemDomainSubcommand,
 };
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
@@ -428,9 +429,51 @@ fn main() -> Result<(), Error> {
                 }
             })?;
         }
-        Some(Subcommand::Executor(_cmd)) => {
-            unimplemented!("Executor subcommand");
-        }
+        Some(Subcommand::Executor(executor_cmd)) => match executor_cmd {
+            SystemDomainSubcommand::Benchmark(cmd) => {
+                let runner = cli.create_runner(cmd)?;
+                runner.sync_run(|primary_chain_config| {
+                    let maybe_system_domain_chain_spec = primary_chain_config
+                        .chain_spec
+                        .extensions()
+                        .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
+                        .downcast_ref()
+                        .cloned();
+                    let (system_domain_cli, _) = SystemDomainCli::new(
+                        cli.run
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        maybe_system_domain_chain_spec.ok_or_else(|| {
+                            "Primary chain spec must contain system domain chain spec".to_string()
+                        })?,
+                        cli.domain_args.into_iter(),
+                    );
+                    let system_domain_config = system_domain_cli
+                        .create_domain_configuration(primary_chain_config.tokio_handle)
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create system domain configuration: {error:?}"
+                            ))
+                        })?;
+                    match cmd {
+                        BenchmarkCmd::Pallet(cmd) => {
+                            if !cfg!(feature = "runtime-benchmarks") {
+                                return Err(
+                                    "Runtime benchmarking wasn't enabled when building the node. \
+                                    You can enable it with `--features runtime-benchmarks`."
+                                        .into(),
+                                );
+                            }
+                            cmd.run::<DomainBlock, SystemDomainExecutorDispatch>(
+                                system_domain_config.service_config,
+                            )
+                        }
+                        _ => todo!("Not implemented"),
+                    }
+                })?;
+            }
+            _ => unimplemented!("Executor subcommand"),
+        },
         None => {
             let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);

@@ -23,7 +23,7 @@ mod import_blocks_from_dsn;
 mod system_domain;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::system_domain::cli::SystemDomainCli;
+pub use crate::system_domain::cli::{Subcommand as SystemDomainSubcommand, SystemDomainCli};
 use bytesize::ByteSize;
 use clap::Parser;
 pub use core_domain::cli::AccountId32ToAccountId20Converter;

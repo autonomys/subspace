@@ -20,6 +20,11 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+pub mod weights;
+
 use codec::Decode;
 use frame_support::traits::{Currency, Get, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
@@ -50,6 +55,7 @@ const DOMAIN_LOCK_ID: LockIdentifier = *b"_domains";
 #[frame_support::pallet]
 mod pallet {
     use super::{BalanceOf, DomainConfig};
+    use crate::weights::WeightInfo;
     use codec::Codec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::LockableCurrency;
@@ -106,6 +112,9 @@ mod pallet {
         // the new stake amount still meets the operator stake threshold on all domains he stakes.
         #[pallet::constant]
         type MinDomainOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -170,9 +179,8 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a new domain with some deposit locked.
-        // TODO: proper weight
         #[pallet::call_index(0)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::create_domain())]
         pub fn create_domain(
             origin: OriginFor<T>,
             deposit: BalanceOf<T>,
@@ -219,9 +227,8 @@ mod pallet {
         }
 
         /// Register a new domain operator.
-        // TODO: proper weight
         #[pallet::call_index(2)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::register_domain_operator())]
         pub fn register_domain_operator(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -244,9 +251,8 @@ mod pallet {
         /// which is intentional, otherwise, it can be confusing when an operator wants to update
         /// the domain stake but has to call a API named `register_domain_operator` that usually
         /// implies the caller is not yet an operator.
-        // TODO: proper weight
         #[pallet::call_index(3)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::register_domain_operator())]
         pub fn update_domain_stake(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -264,9 +270,8 @@ mod pallet {
         }
 
         /// Deregister a domain operator.
-        // TODO: proper weight
         #[pallet::call_index(4)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight(T::WeightInfo::deregister_domain_operator())]
         pub fn deregister_domain_operator(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -296,9 +301,8 @@ mod pallet {
 
         // TODO: Rename this extrinsic since the core bundle is not submit to the transaction pool but crafted and injected
         // on fly when building the system domain block.
-        // TODO: proper weight
         #[pallet::call_index(5)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(T::WeightInfo::submit_core_bundle(signed_opaque_bundle.bundle.receipts.len() as u32))]
         pub fn submit_core_bundle(
             origin: OriginFor<T>,
             signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -314,9 +318,8 @@ mod pallet {
             Ok(())
         }
 
-        // TODO: proper weight
         #[pallet::call_index(6)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(T::WeightInfo::submit_fraud_proof())]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
@@ -569,7 +572,19 @@ mod pallet {
                     log::error!(target: "runtime::domain-registry", "Bad core bundle, error: {e:?}");
                     TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
                 }),
-                Call::submit_fraud_proof { .. } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => {
+                    if fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domain-registry",
+                            "Unexpected system domain fraud proof: {fraud_proof:?}",
+                        );
+                        Err(TransactionValidityError::Invalid(
+                            InvalidTransactionCode::FraudProof.into(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -577,6 +592,13 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_fraud_proof { fraud_proof } => {
+                    if fraud_proof.domain_id().is_system() {
+                        log::debug!(
+                            target: "runtime::domain-registry",
+                            "Unexpected system domain fraud proof: {fraud_proof:?}",
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
                     if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(
