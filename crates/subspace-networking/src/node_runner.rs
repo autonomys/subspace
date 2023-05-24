@@ -36,7 +36,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::time::Sleep;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -548,11 +548,7 @@ where
                     "Peer has different protocol version. Peer was banned.",
                 );
 
-                self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                self.networking_parameters_registry
-                    .remove_all_known_peer_addresses(peer_id)
-                    .await;
-                self.swarm.ban_peer_id(peer_id);
+                self.ban_peer(peer_id).await;
             }
 
             if info.listen_addrs.len() > 30 {
@@ -1115,20 +1111,25 @@ where
                 );
             }
             Command::BanPeer { peer_id } => {
-                // Remove temporary ban if there is any before creating a permanent one
-                self.temporary_bans.lock().remove(&peer_id);
-
-                info!(?peer_id, "Banning peer on network level");
-                self.swarm.ban_peer_id(peer_id);
-                self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                self.networking_parameters_registry
-                    .remove_all_known_peer_addresses(peer_id)
-                    .await;
+                self.ban_peer(peer_id).await;
             }
             Command::Dial { address } => {
                 let _ = self.swarm.dial(address);
             }
         }
+    }
+
+    async fn ban_peer(&mut self, peer_id: PeerId) {
+        // Remove temporary ban if there is any before creating a permanent one
+        self.temporary_bans.lock().remove(&peer_id);
+
+        debug!(?peer_id, "Banning peer on network level");
+
+        self.swarm.behaviour_mut().block_list.block_peer(peer_id);
+        self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+        self.networking_parameters_registry
+            .remove_all_known_peer_addresses(peer_id)
+            .await;
     }
 
     fn register_event_metrics<E: Debug>(&mut self, swarm_event: &SwarmEvent<Event, E>) {
