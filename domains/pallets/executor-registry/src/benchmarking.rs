@@ -1,8 +1,5 @@
 //! Benchmarking for `pallet-executor-registry`.
 
-// Only enable this module for benchmarking.
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use crate::Pallet as ExecutorRegistry;
 use frame_benchmarking::v2::*;

@@ -1,8 +1,5 @@
 //! Benchmarking for `pallet-subspace`.
 
-// Only enable this module for benchmarking.
-#![cfg(feature = "runtime-benchmarks")]
-
 use super::*;
 use crate::Pallet as Subspace;
 use frame_benchmarking::v2::*;

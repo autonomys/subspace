@@ -61,6 +61,7 @@ std = [
 	"serde/std",
 	"sp-consensus-subspace/std",
 	"sp-consensus-slots/std",
+	"sp-core?/std",
 	"sp-io/std",
 	"sp-runtime/std",
 	"sp-std/std",
@@ -70,6 +71,7 @@ std = [
 ]
 try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [
+	"frame-benchmarking",
 	"frame-benchmarking/runtime-benchmarks",
 	"sp-core",
 ]

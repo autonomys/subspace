@@ -323,8 +323,6 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// An equivocation proof provided as part of an equivocation report is invalid.
-        InvalidEquivocationProof,
         /// A given equivocation report is valid but already previously reported.
         DuplicateOffenceReport,
         /// Solution range adjustment already enabled.
