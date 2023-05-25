@@ -10,7 +10,7 @@ use futures::{FutureExt, StreamExt};
 use libp2p::core::transport::{MemoryTransport, Transport};
 use libp2p::core::upgrade;
 use libp2p::identity::Keypair;
-use libp2p::swarm::{Swarm, SwarmEvent};
+use libp2p::swarm::{Swarm, SwarmBuilder, SwarmEvent};
 use libp2p::{noise, Multiaddr};
 use std::iter;
 use std::time::Duration;
@@ -56,7 +56,9 @@ fn build_swarm(
         .collect::<Vec<_>>();
     let behaviour = RequestResponsesBehaviour::new(configs).unwrap();
 
-    let mut swarm = Swarm::with_tokio_executor(transport, behaviour, keypair.public().to_peer_id());
+    let mut swarm =
+        SwarmBuilder::with_tokio_executor(transport, behaviour, keypair.public().to_peer_id())
+            .build();
     let listen_addr: Multiaddr = format!("/memory/{}", rand::random::<u64>())
         .parse()
         .unwrap();

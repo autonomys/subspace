@@ -749,12 +749,6 @@ checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
 name = "base64"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ea22880d78093b0cbe17c89f64a7d457941e65759157ec6cb31a31d652b05e5"
-
-[[package]]
-name = "base64"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4a4ddaa51a5bc52a6948f74c06d20aaaddb71924eab79b8c97a8c556e942d6a"
@@ -1435,8 +1429,6 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
  "pallet-feeds",
  "pallet-messenger",
  "pallet-sudo",
@@ -1547,8 +1539,6 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
  "pallet-messenger",
  "pallet-sudo",
  "pallet-transaction-payment",
@@ -4295,7 +4285,7 @@ dependencies = [
  "rustls-native-certs",
  "tokio",
  "tokio-rustls",
- "webpki-roots",
+ "webpki-roots 0.22.6",
 ]
 
 [[package]]
@@ -4619,7 +4609,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "tracing",
- "webpki-roots",
+ "webpki-roots 0.22.6",
 ]
 
 [[package]]
@@ -4858,34 +4848,57 @@ dependencies = [
 
 [[package]]
 name = "libp2p"
-version = "0.51.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.51.3"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "bytes",
  "futures",
  "futures-timer",
  "getrandom 0.2.9",
  "instant",
- "libp2p-core 0.39.0",
+ "libp2p-allow-block-list",
+ "libp2p-connection-limits",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "libp2p-dns 0.39.0",
  "libp2p-gossipsub",
- "libp2p-identify 0.42.0",
- "libp2p-kad 0.43.0",
- "libp2p-mdns 0.43.0",
+ "libp2p-identify 0.42.1",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-kad 0.43.2",
+ "libp2p-mdns 0.43.1",
  "libp2p-metrics 0.12.0",
- "libp2p-noise 0.42.0",
+ "libp2p-noise 0.42.1",
  "libp2p-ping 0.42.0",
- "libp2p-quic 0.7.0-alpha.2",
+ "libp2p-quic 0.7.0-alpha.3",
  "libp2p-request-response 0.24.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-swarm 0.42.1",
  "libp2p-tcp 0.39.0",
- "libp2p-webrtc 0.4.0-alpha.2",
+ "libp2p-webrtc 0.4.0-alpha.4",
  "libp2p-websocket 0.41.0",
  "libp2p-yamux 0.43.0",
  "multiaddr 0.17.1",
- "parking_lot 0.12.1",
  "pin-project",
- "smallvec",
+]
+
+[[package]]
+name = "libp2p-allow-block-list"
+version = "0.1.0"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
+dependencies = [
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
+ "void",
+]
+
+[[package]]
+name = "libp2p-connection-limits"
+version = "0.1.0"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
+dependencies = [
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
+ "void",
 ]
 
 [[package]]
@@ -4924,40 +4937,6 @@ dependencies = [
 
 [[package]]
 name = "libp2p-core"
-version = "0.39.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
-dependencies = [
- "asn1_der",
- "bs58",
- "ed25519-dalek",
- "either",
- "fnv",
- "futures",
- "futures-timer",
- "instant",
- "log",
- "multiaddr 0.17.1",
- "multihash 0.17.0",
- "multistream-select 0.12.1 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
- "once_cell",
- "parking_lot 0.12.1",
- "pin-project",
- "prost",
- "prost-build",
- "rand 0.8.5",
- "rw-stream-sink 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
- "sec1 0.3.0",
- "serde",
- "sha2 0.10.6",
- "smallvec",
- "thiserror",
- "unsigned-varint",
- "void",
- "zeroize",
-]
-
-[[package]]
-name = "libp2p-core"
 version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b7f8b7d65c070a5a1b5f8f0510648189da08f787b8963f8e21219e0710733af"
@@ -4967,7 +4946,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "instant",
- "libp2p-identity",
+ "libp2p-identity 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log",
  "multiaddr 0.17.1",
  "multihash 0.17.0",
@@ -4978,6 +4957,34 @@ dependencies = [
  "quick-protobuf",
  "rand 0.8.5",
  "rw-stream-sink 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smallvec",
+ "thiserror",
+ "unsigned-varint",
+ "void",
+]
+
+[[package]]
+name = "libp2p-core"
+version = "0.39.1"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
+dependencies = [
+ "either",
+ "fnv",
+ "futures",
+ "futures-timer",
+ "instant",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "log",
+ "multiaddr 0.17.1",
+ "multihash 0.17.0",
+ "multistream-select 0.12.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "pin-project",
+ "quick-protobuf",
+ "rand 0.8.5",
+ "rw-stream-sink 0.3.0 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "serde",
  "smallvec",
  "thiserror",
  "unsigned-varint",
@@ -5001,10 +5008,11 @@ dependencies = [
 [[package]]
 name = "libp2p-dns"
 version = "0.39.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "futures",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "log",
  "parking_lot 0.12.1",
  "smallvec",
@@ -5013,24 +5021,24 @@ dependencies = [
 
 [[package]]
 name = "libp2p-gossipsub"
-version = "0.44.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.44.3"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "asynchronous-codec",
- "base64 0.20.0",
+ "base64 0.21.0",
  "byteorder",
  "bytes",
  "fnv",
  "futures",
  "hex_fmt",
  "instant",
- "libp2p-core 0.39.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
  "log",
  "prometheus-client 0.19.0",
- "prost",
- "prost-build",
- "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
+ "quick-protobuf",
+ "quick-protobuf-codec",
  "rand 0.8.5",
  "regex",
  "serde",
@@ -5056,7 +5064,7 @@ dependencies = [
  "lru 0.8.1",
  "prost",
  "prost-build",
- "prost-codec 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "prost-codec",
  "smallvec",
  "thiserror",
  "void",
@@ -5064,20 +5072,20 @@ dependencies = [
 
 [[package]]
 name = "libp2p-identify"
-version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.42.1"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "asynchronous-codec",
  "either",
  "futures",
  "futures-timer",
- "libp2p-core 0.39.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
  "log",
- "lru 0.9.0",
- "prost",
- "prost-build",
- "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
+ "lru 0.10.0",
+ "quick-protobuf",
+ "quick-protobuf-codec",
  "smallvec",
  "thiserror",
  "void",
@@ -5097,6 +5105,24 @@ dependencies = [
  "prost",
  "quick-protobuf",
  "rand 0.8.5",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
+name = "libp2p-identity"
+version = "0.1.1"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
+dependencies = [
+ "bs58",
+ "ed25519-dalek",
+ "log",
+ "multiaddr 0.17.1",
+ "multihash 0.17.0",
+ "quick-protobuf",
+ "rand 0.8.5",
+ "serde",
+ "sha2 0.10.6",
  "thiserror",
  "zeroize",
 ]
@@ -5131,8 +5157,8 @@ dependencies = [
 
 [[package]]
 name = "libp2p-kad"
-version = "0.43.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.43.2"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "arrayvec 0.7.2",
  "asynchronous-codec",
@@ -5142,12 +5168,11 @@ dependencies = [
  "futures",
  "futures-timer",
  "instant",
- "libp2p-core 0.39.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
  "log",
- "parking_lot 0.12.1",
- "prost",
- "prost-build",
+ "quick-protobuf",
  "rand 0.8.5",
  "serde",
  "sha2 0.10.6",
@@ -5180,14 +5205,15 @@ dependencies = [
 
 [[package]]
 name = "libp2p-mdns"
-version = "0.43.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.43.1"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "data-encoding",
  "futures",
  "if-watch",
- "libp2p-core 0.39.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
  "log",
  "rand 0.8.5",
  "smallvec",
@@ -5214,14 +5240,15 @@ dependencies = [
 [[package]]
 name = "libp2p-metrics"
 version = "0.12.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "libp2p-gossipsub",
- "libp2p-identify 0.42.0",
- "libp2p-kad 0.43.0",
+ "libp2p-identify 0.42.1",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-kad 0.43.2",
  "libp2p-ping 0.42.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-swarm 0.42.1",
  "prometheus-client 0.19.0",
 ]
 
@@ -5268,17 +5295,17 @@ dependencies = [
 
 [[package]]
 name = "libp2p-noise"
-version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.42.1"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "bytes",
  "curve25519-dalek 3.2.0",
  "futures",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "log",
  "once_cell",
- "prost",
- "prost-build",
+ "quick-protobuf",
  "rand 0.8.5",
  "sha2 0.10.6",
  "snow",
@@ -5307,14 +5334,15 @@ dependencies = [
 [[package]]
 name = "libp2p-ping"
 version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "either",
  "futures",
  "futures-timer",
  "instant",
- "libp2p-core 0.39.0",
- "libp2p-swarm 0.42.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
  "log",
  "rand 0.8.5",
  "void",
@@ -5331,7 +5359,7 @@ dependencies = [
  "futures-timer",
  "if-watch",
  "libp2p-core 0.38.0",
- "libp2p-tls 0.1.0",
+ "libp2p-tls 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log",
  "parking_lot 0.12.1",
  "quinn-proto",
@@ -5343,15 +5371,16 @@ dependencies = [
 
 [[package]]
 name = "libp2p-quic"
-version = "0.7.0-alpha.2"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.7.0-alpha.3"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "bytes",
  "futures",
  "futures-timer",
  "if-watch",
- "libp2p-core 0.39.0",
- "libp2p-tls 0.1.0-alpha.2",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-tls 0.1.0 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "log",
  "parking_lot 0.12.1",
  "quinn-proto",
@@ -5382,18 +5411,16 @@ dependencies = [
 [[package]]
 name = "libp2p-request-response"
 version = "0.24.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "async-trait",
- "bytes",
  "futures",
  "instant",
- "libp2p-core 0.39.0",
- "libp2p-swarm 0.42.0",
- "log",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-swarm 0.42.1",
  "rand 0.8.5",
  "smallvec",
- "unsigned-varint",
 ]
 
 [[package]]
@@ -5420,21 +5447,20 @@ dependencies = [
 
 [[package]]
 name = "libp2p-swarm"
-version = "0.42.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.42.1"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "either",
  "fnv",
  "futures",
  "futures-timer",
  "instant",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "libp2p-swarm-derive 0.32.0",
  "log",
- "pin-project",
  "rand 0.8.5",
  "smallvec",
- "thiserror",
  "tokio",
  "void",
 ]
@@ -5453,11 +5479,11 @@ dependencies = [
 [[package]]
 name = "libp2p-swarm-derive"
 version = "0.32.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "heck",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -5479,13 +5505,14 @@ dependencies = [
 [[package]]
 name = "libp2p-tcp"
 version = "0.39.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "futures",
  "futures-timer",
  "if-watch",
  "libc",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "log",
  "socket2",
  "tokio",
@@ -5493,12 +5520,14 @@ dependencies = [
 
 [[package]]
 name = "libp2p-tls"
-version = "0.1.0-alpha.2"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff08d13d0dc66e5e9ba6279c1de417b84fa0d0adc3b03e5732928c180ec02781"
 dependencies = [
  "futures",
  "futures-rustls",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libp2p-identity 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rcgen 0.10.0",
  "ring",
  "rustls 0.20.8",
@@ -5511,19 +5540,18 @@ dependencies = [
 [[package]]
 name = "libp2p-tls"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff08d13d0dc66e5e9ba6279c1de417b84fa0d0adc3b03e5732928c180ec02781"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "futures",
  "futures-rustls",
- "libp2p-core 0.39.1",
- "libp2p-identity",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "rcgen 0.10.0",
  "ring",
  "rustls 0.20.8",
  "thiserror",
  "webpki 0.22.0",
- "x509-parser 0.14.0",
+ "x509-parser 0.15.0",
  "yasna",
 ]
 
@@ -5560,7 +5588,7 @@ dependencies = [
  "multihash 0.16.3",
  "prost",
  "prost-build",
- "prost-codec 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "prost-codec",
  "rand 0.8.5",
  "rcgen 0.9.3",
  "serde",
@@ -5574,8 +5602,8 @@ dependencies = [
 
 [[package]]
 name = "libp2p-webrtc"
-version = "0.4.0-alpha.2"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+version = "0.4.0-alpha.4"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "async-trait",
  "asynchronous-codec",
@@ -5584,16 +5612,17 @@ dependencies = [
  "futures-timer",
  "hex",
  "if-watch",
- "libp2p-core 0.39.0",
- "libp2p-noise 0.42.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-noise 0.42.1",
  "log",
  "multihash 0.17.0",
- "prost",
- "prost-build",
- "prost-codec 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
+ "quick-protobuf",
+ "quick-protobuf-codec",
  "rand 0.8.5",
  "rcgen 0.9.3",
  "serde",
+ "sha2 0.10.6",
  "stun",
  "thiserror",
  "tinytemplate",
@@ -5618,25 +5647,26 @@ dependencies = [
  "rw-stream-sink 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "soketto",
  "url",
- "webpki-roots",
+ "webpki-roots 0.22.6",
 ]
 
 [[package]]
 name = "libp2p-websocket"
 version = "0.41.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "either",
  "futures",
  "futures-rustls",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
+ "libp2p-identity 0.1.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "log",
  "parking_lot 0.12.1",
  "quicksink",
- "rw-stream-sink 0.3.0 (git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad)",
+ "rw-stream-sink 0.3.0 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "soketto",
  "url",
- "webpki-roots",
+ "webpki-roots 0.23.0",
 ]
 
 [[package]]
@@ -5656,12 +5686,11 @@ dependencies = [
 [[package]]
 name = "libp2p-yamux"
 version = "0.43.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "futures",
- "libp2p-core 0.39.0",
+ "libp2p-core 0.39.1 (git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d)",
  "log",
- "parking_lot 0.12.1",
  "thiserror",
  "yamux",
 ]
@@ -5820,15 +5849,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6e8aaa3f231bb4bd57b84b2d5dc3ae7f350265df8aa96492e0bc394a1571909"
 dependencies = [
  "hashbrown 0.12.3",
-]
-
-[[package]]
-name = "lru"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e7d46de488603ffdd5f30afbc64fbba2378214a2c3a2fb83abf3d33126df17"
-dependencies = [
- "hashbrown 0.13.2",
 ]
 
 [[package]]
@@ -6184,7 +6204,7 @@ dependencies = [
 [[package]]
 name = "multistream-select"
 version = "0.12.1"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "bytes",
  "futures",
@@ -6623,6 +6643,7 @@ dependencies = [
 name = "pallet-domain-registry"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -6751,6 +6772,7 @@ dependencies = [
 name = "pallet-executor-registry"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",
@@ -7639,18 +7661,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost-codec"
-version = "0.3.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
-dependencies = [
- "asynchronous-codec",
- "bytes",
- "prost",
- "thiserror",
- "unsigned-varint",
-]
-
-[[package]]
 name = "prost-derive"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7694,6 +7704,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d6da84cc204722a989e01ba2f6e1e276e190f22263d0cb6ce8526fcdb0d2e1f"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "quick-protobuf-codec"
+version = "0.1.0"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
+dependencies = [
+ "asynchronous-codec",
+ "bytes",
+ "quick-protobuf",
+ "thiserror",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -8244,6 +8266,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls-webpki"
+version = "0.100.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6207cd5ed3d8dca7816f8f3725513a34609c0c765bf652b8c3cb4cfd87db46b"
+dependencies = [
+ "ring",
+ "untrusted",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8263,7 +8295,7 @@ dependencies = [
 [[package]]
 name = "rw-stream-sink"
 version = "0.3.0"
-source = "git+https://github.com/subspace/rust-libp2p?rev=917b388b0549810903946664a61c9b313b2e9fad#917b388b0549810903946664a61c9b313b2e9fad"
+source = "git+https://github.com/libp2p/rust-libp2p?rev=3c5940aeadb9ed8527b6f7aa158797359085293d#3c5940aeadb9ed8527b6f7aa158797359085293d"
 dependencies = [
  "futures",
  "pin-project",
@@ -10981,7 +11013,7 @@ dependencies = [
  "event-listener-primitives",
  "futures",
  "hex",
- "libp2p 0.51.0",
+ "libp2p 0.51.3",
  "lru 0.10.0",
  "nohash-hasher",
  "parity-db",
@@ -10999,6 +11031,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.16",
  "unsigned-varint",
+ "void",
 ]
 
 [[package]]
@@ -12901,6 +12934,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "webpki-roots"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa54963694b65584e170cf5dc46aeb4dcaa5584e652ff5f3952e56d66aff0125"
+dependencies = [
+ "rustls-webpki",
+]
+
+[[package]]
 name = "webrtc"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13436,6 +13478,23 @@ checksum = "e0ecbeb7b67ce215e40e3cc7f2ff902f94a223acf44995934763467e7b1febc8"
 dependencies = [
  "asn1-rs 0.5.2",
  "base64 0.13.1",
+ "data-encoding",
+ "der-parser 8.2.0",
+ "lazy_static",
+ "nom",
+ "oid-registry 0.6.1",
+ "rusticata-macros",
+ "thiserror",
+ "time 0.3.20",
+]
+
+[[package]]
+name = "x509-parser"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bab0c2f54ae1d92f4fcb99c0b7ccf0b1e3451cbd395e5f115ccbdbcb18d4f634"
+dependencies = [
+ "asn1-rs 0.5.2",
  "data-encoding",
  "der-parser 8.2.0",
  "lazy_static",

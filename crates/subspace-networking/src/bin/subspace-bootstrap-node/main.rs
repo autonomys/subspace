@@ -140,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
 
             let decoded_keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
             let local_peer_id = peer_id_from_keypair(decoded_keypair.clone());
-            let keypair = identity::Keypair::Ed25519(decoded_keypair);
+            let keypair = identity::Keypair::from(decoded_keypair);
 
             let provider_storage = if let Some(path) = &db_path {
                 let db_path = path.join("subspace_storage_providers_db");
@@ -217,5 +217,5 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn peer_id_from_keypair(keypair: Keypair) -> PeerId {
-    peer_id(&libp2p::identity::Keypair::Ed25519(keypair))
+    peer_id(&libp2p::identity::Keypair::from(keypair))
 }

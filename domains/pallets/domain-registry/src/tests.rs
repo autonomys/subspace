@@ -112,6 +112,7 @@ impl pallet_executor_registry::Config for Test {
     type MaxWithdrawals = MaxWithdrawals;
     type WithdrawalDuration = WithdrawalDuration;
     type OnNewEpoch = DomainRegistry;
+    type WeightInfo = ();
 }
 
 parameter_types! {
@@ -130,6 +131,7 @@ impl pallet_domain_registry::Config for Test {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type WeightInfo = ();
 }
 
 impl pallet_receipts::Config for Test {
@@ -139,7 +141,7 @@ impl pallet_receipts::Config for Test {
     type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
-fn new_test_ext() -> sp_io::TestExternalities {
+pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();

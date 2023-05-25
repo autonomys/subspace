@@ -7,6 +7,8 @@ use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
 };
 use derive_more::From;
+use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
+use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
 use libp2p::gossipsub::{
     Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
 };
@@ -16,6 +18,9 @@ use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
+use void::Void as VoidEvent;
+
+type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
 
 pub(crate) struct BehaviorConfig<RecordStore> {
     /// Identity keypair of a node used for authenticated connections.
@@ -30,6 +35,8 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) record_store: RecordStore,
     /// The configuration for the [`RequestResponsesBehaviour`] protocol.
     pub(crate) request_response_protocols: Vec<Box<dyn RequestHandler>>,
+    /// Connection limits for the swarm.
+    pub(crate) connection_limits: ConnectionLimits,
 }
 
 #[derive(NetworkBehaviour)]
@@ -41,6 +48,8 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponsesBehaviour,
+    pub(crate) connection_limits: ConnectionLimitsBehaviour,
+    pub(crate) block_list: BlockListBehaviour,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -76,6 +85,8 @@ where
             )
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
+            connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
+            block_list: BlockListBehaviour::default(),
         }
     }
 }
@@ -87,4 +98,6 @@ pub(crate) enum Event {
     Gossipsub(GossipsubEvent),
     Ping(PingEvent),
     RequestResponse(RequestResponseEvent),
+    /// Event stub for connection limits and block list behaviours. We won't receive such events.
+    VoidEventStub(VoidEvent),
 }

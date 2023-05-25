@@ -15,6 +15,7 @@ use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
+use libp2p::connection_limits::ConnectionLimits;
 use libp2p::gossipsub::{
     Config as GossipsubConfig, ConfigBuilder as GossipsubConfigBuilder,
     Message as GossipsubMessage, MessageId, ValidationMode,
@@ -27,7 +28,7 @@ use libp2p::kad::{
 };
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::{ConnectionLimits, SwarmBuilder};
+use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, TransportError};
 use parking_lot::Mutex;
@@ -238,9 +239,9 @@ impl Default for Config<MemoryProviderStorage> {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
+        let keypair = identity::Keypair::from(ed25519_keypair);
+        let peer_id = keypair.public().to_peer_id();
 
-        let peer_id = identity::PublicKey::Ed25519(ed25519_keypair.public()).to_peer_id();
-        let keypair = identity::Keypair::Ed25519(ed25519_keypair);
         Self::new(
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
@@ -410,15 +411,6 @@ where
         "DSN instance configured."
     );
 
-    let behaviour = Behavior::new(BehaviorConfig {
-        peer_id: local_peer_id,
-        identify,
-        kademlia,
-        gossipsub,
-        record_store: ProviderOnlyRecordStore::new(provider_storage),
-        request_response_protocols,
-    });
-
     let connection_limits = ConnectionLimits::default()
         .with_max_established_per_peer(SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER)
         .with_max_pending_incoming(Some(max_pending_incoming_connections))
@@ -428,9 +420,18 @@ where
 
     debug!(?connection_limits, "DSN connection limits set.");
 
+    let behaviour = Behavior::new(BehaviorConfig {
+        peer_id: local_peer_id,
+        identify,
+        kademlia,
+        gossipsub,
+        record_store: ProviderOnlyRecordStore::new(provider_storage),
+        request_response_protocols,
+        connection_limits,
+    });
+
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
         .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
-        .connection_limits(connection_limits)
         .build();
 
     // Setup listen_on addresses

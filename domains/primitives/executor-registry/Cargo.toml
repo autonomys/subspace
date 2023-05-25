@@ -23,3 +23,4 @@ std = [
 	"sp-domains/std",
 	"sp-std/std",
 ]
+runtime-benchmarks = []

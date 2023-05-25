@@ -31,7 +31,7 @@ async fn main() {
             allow_non_global_addresses_in_dht: true,
             ..Config::default()
         };
-        let libp2p::identity::Keypair::Ed25519(keypair) = config.keypair.clone();
+        let keypair = config.keypair.clone().into_ed25519().unwrap();
 
         let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
