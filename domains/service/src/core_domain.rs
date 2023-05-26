@@ -4,8 +4,8 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
-    CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
-    ExecutorStreams,
+    CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, DomainImportNotifications,
+    EssentialExecutorParams, ExecutorStreams,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -125,7 +125,7 @@ pub struct NewFullCore<
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -206,7 +206,7 @@ where
     PBlock: BlockT,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, Executor>>,
 {
     let telemetry = config
@@ -294,6 +294,7 @@ pub struct CoreDomainParams<
     pub core_domain_config: DomainConfiguration<AccountId>,
     pub system_domain_client: Arc<SClient>,
     pub system_domain_sync_service: Arc<SyncingService<SBlock>>,
+    pub system_domain_block_import_notifications: DomainImportNotifications<SBlock, PBlock>,
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
@@ -352,14 +353,18 @@ where
     Block: BlockT,
     PBlock: BlockT,
     SBlock: BlockT,
-    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
     Block::Hash: From<H256> + Into<H256> + FullCodec + TypeInfo + Unpin,
+    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
+    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>> + FullCodec + TypeInfo,
     NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     <Block as BlockT>::Header: Unpin,
-    NumberFor<Block>: FullCodec + TypeInfo,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient: HeaderBackend<SBlock>
+        + BlockBackend<SBlock>
+        + ProvideRuntimeApi<SBlock>
+        + ProofProvider<SBlock>
+        + 'static,
     SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
         + RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
         + ReceiptsApi<SBlock, <Block as BlockT>::Hash>,
@@ -438,6 +443,7 @@ where
         mut core_domain_config,
         system_domain_client,
         system_domain_sync_service,
+        system_domain_block_import_notifications,
         primary_chain_client,
         primary_network_sync_oracle,
         select_chain,
@@ -548,6 +554,7 @@ where
     let executor = CoreExecutor::new(
         domain_id,
         system_domain_client.clone(),
+        system_domain_block_import_notifications,
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         EssentialExecutorParams::<
@@ -582,9 +589,9 @@ where
 
     let gossip_message_validator =
         CoreGossipMessageValidator::<_, SBlock, PBlock, _, SClient, _, _, _, _, _>::new(
-            CoreDomainParentChain::<_, SBlock, PBlock>::new(
-                system_domain_client.clone(),
+            CoreDomainParentChain::<_, SBlock, PBlock, _>::new(
                 domain_id,
+                system_domain_client.clone(),
             ),
             client.clone(),
             Box::new(task_manager.spawn_handle()),

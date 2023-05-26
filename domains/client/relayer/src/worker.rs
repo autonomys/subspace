@@ -88,7 +88,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, C
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
     SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
     RelayerId: Encode + Decode + Clone,

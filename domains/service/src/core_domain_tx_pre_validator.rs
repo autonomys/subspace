@@ -55,7 +55,7 @@ where
     Client::Api: MessengerApi<Block, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + Send + Sync + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 {
     type Block = Block;
     async fn pre_validate_transaction(

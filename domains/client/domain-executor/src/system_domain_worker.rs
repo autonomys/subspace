@@ -66,7 +66,7 @@ pub(super) async fn start_worker<
         Client,
         Client,
         PClient,
-        SystemDomainParentChain<PClient, Block, PBlock>,
+        SystemDomainParentChain<Block, PBlock, PClient>,
         TransactionPool,
     >,
     bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
@@ -75,7 +75,7 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
+    NumberFor<PBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     PBlock::Hash: From<Block::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -86,7 +86,7 @@ pub(super) async fn start_worker<
         + 'static,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     for<'b> &'b Client: BlockImport<

@@ -72,7 +72,7 @@ type SystemGossipMessageValidator = domain_client_executor::SystemGossipMessageV
     >,
     Backend,
     SystemCodeExecutor,
-    domain_client_executor::SystemDomainParentChain<subspace_test_client::Client, Block, PBlock>,
+    domain_client_executor::SystemDomainParentChain<Block, PBlock, subspace_test_client::Client>,
 >;
 
 /// The System domain native executor instance.

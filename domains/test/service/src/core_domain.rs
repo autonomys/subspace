@@ -173,6 +173,9 @@ where
             core_domain_config,
             system_domain_client: system_domain_node.client.clone(),
             system_domain_sync_service: system_domain_node.sync_service.clone(),
+            system_domain_block_import_notifications: system_domain_node
+                .executor
+                .import_notification_stream(),
             primary_chain_client: mock_primary_node.client.clone(),
             primary_network_sync_oracle: mock_primary_node.sync_service.clone(),
             select_chain: mock_primary_node.select_chain.clone(),

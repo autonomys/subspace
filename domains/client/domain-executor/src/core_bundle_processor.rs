@@ -1,6 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks};
-use crate::parent_chain::{CoreDomainParentChain, ParentChainInterface};
-use crate::utils::translate_number_type;
+use crate::parent_chain::CoreDomainParentChain;
 use crate::TransactionFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::CoreDomainBlockPreprocessor;
@@ -9,7 +8,6 @@ use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
@@ -17,23 +15,15 @@ use sp_runtime::traits::{Block as BlockT, HashFor};
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-pub(crate) struct CoreBundleProcessor<
-    Block,
-    SBlock,
-    PBlock,
-    Client,
-    SClient,
-    PClient,
-    Backend,
-    E,
-    BI,
-> where
+pub(crate) struct CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
+where
     Block: BlockT,
+    PBlock: BlockT,
 {
     domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     system_domain_client: Arc<SClient>,
-    parent_chain: CoreDomainParentChain<SClient, SBlock, PBlock>,
+    parent_chain: CoreDomainParentChain<Block, SBlock, PBlock, SClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: KeystorePtr,
@@ -45,13 +35,14 @@ pub(crate) struct CoreBundleProcessor<
         SClient,
         RuntimeApiFull<Client>,
     >,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI> Clone
-    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, E, BI>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI> Clone
+    for CoreBundleProcessor<Block, SBlock, PBlock, SClient, Client, PClient, Backend, BI>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -68,12 +59,12 @@ where
     }
 }
 
-impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI>
-    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, E, BI>
+impl<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
+    CoreBundleProcessor<Block, SBlock, PBlock, Client, SClient, PClient, Backend, BI>
 where
     Block: BlockT,
     SBlock: BlockT,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
     Client: HeaderBackend<Block>
@@ -94,7 +85,7 @@ where
     >,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -104,7 +95,6 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    E: CodeExecutor,
 {
     pub(crate) fn new(
         domain_id: DomainId,
@@ -113,19 +103,11 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
-        domain_block_processor: DomainBlockProcessor<
-            Block,
-            PBlock,
-            Client,
-            PClient,
-            Backend,
-            E,
-            BI,
-        >,
+        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
     ) -> Self {
-        let parent_chain = CoreDomainParentChain::<SClient, SBlock, PBlock>::new(
-            system_domain_client.clone(),
+        let parent_chain = CoreDomainParentChain::<Block, SBlock, PBlock, SClient>::new(
             domain_id,
+            system_domain_client.clone(),
         );
         let core_domain_block_preprocessor = CoreDomainBlockPreprocessor::new(
             domain_id,
@@ -216,8 +198,6 @@ where
             .system_domain_client
             .runtime_api()
             .head_receipt_number(system_domain_hash, self.domain_id)?;
-        let head_receipt_number =
-            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(head_receipt_number);
 
         // TODO: can be re-enabled once the TODO above is resolved
         // assert!(
@@ -225,29 +205,16 @@ where
         // "Consensus chain number must larger than execution chain number by at least 1"
         // );
 
-        let oldest_receipt_number = self
-            .system_domain_client
-            .runtime_api()
-            .oldest_receipt_number(system_domain_hash, self.domain_id)?;
-        let oldest_receipt_number =
-            translate_number_type::<NumberFor<SBlock>, NumberFor<Block>>(oldest_receipt_number);
-
         let built_block_info = (
             domain_block_result.header_hash,
             domain_block_result.header_number,
         );
 
-        if let Some(fraud_proof) = self
-            .domain_block_processor
-            .on_domain_block_processed::<SBlock>(
-                primary_hash,
-                domain_block_result,
-                head_receipt_number,
-                oldest_receipt_number,
-            )?
-        {
-            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-        }
+        self.domain_block_processor.on_domain_block_processed(
+            primary_hash,
+            domain_block_result,
+            head_receipt_number.into(),
+        )?;
 
         Ok(built_block_info)
     }
