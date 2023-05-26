@@ -2402,6 +2402,7 @@ dependencies = [
  "pallet-sudo",
  "pallet-transporter",
  "parity-scale-codec",
+ "parking_lot 0.12.1",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",

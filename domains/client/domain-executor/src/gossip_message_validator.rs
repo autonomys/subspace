@@ -152,7 +152,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
-    ParentChain: ParentChainInterface<ParentChainBlock> + Send + Sync + Clone + 'static,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock> + Send + Sync + Clone + 'static,
 {
     pub(crate) fn new(
         client: Arc<Client>,
@@ -372,7 +372,9 @@ where
         // TODO: What happens for this obvious error?
         if local_receipt.trace.len() != execution_receipt.trace.len() {}
 
-        if let Some(trace_mismatch_index) = find_trace_mismatch(&local_receipt, execution_receipt) {
+        if let Some(trace_mismatch_index) =
+            find_trace_mismatch(&local_receipt.trace, &execution_receipt.trace)
+        {
             let fraud_proof = self
                 .fraud_proof_generator
                 .generate_invalid_state_transition_proof::<ParentChainBlock>(

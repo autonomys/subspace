@@ -1,13 +1,13 @@
 use crate::core_bundle_processor::CoreBundleProcessor;
-use crate::domain_block_processor::DomainBlockProcessor;
+use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::CoreDomainParentChain;
-use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
+use crate::{active_leaves, DomainImportNotifications, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
-use futures::{FutureExt, Stream};
+use futures::{FutureExt, Stream, StreamExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
@@ -68,9 +68,10 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
 where
     Block: BlockT,
     SBlock: BlockT,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
-    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
+    SBlock::Hash: From<Block::Hash>,
+    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>>,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -89,9 +90,13 @@ where
         Error = sp_consensus::Error,
     >,
     BI: Sync + Send + 'static,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient: HeaderBackend<SBlock>
+        + BlockBackend<SBlock>
+        + ProvideRuntimeApi<SBlock>
+        + ProofProvider<SBlock>
+        + 'static,
     SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -111,6 +116,7 @@ where
     pub async fn new<SC, IBNS, CIBNS, NSNS>(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
+        mut system_domain_block_import_notifications: DomainImportNotifications<SBlock, PBlock>,
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         select_chain: &SC,
         params: EssentialExecutorParams<
@@ -136,7 +142,7 @@ where
         let active_leaves =
             active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
 
-        let parent_chain = CoreDomainParentChain::new(system_domain_client.clone(), domain_id);
+        let parent_chain = CoreDomainParentChain::new(domain_id, system_domain_client.clone());
 
         let domain_bundle_proposer = DomainBundleProposer::new(
             params.client.clone(),
@@ -148,7 +154,7 @@ where
             domain_id,
             system_domain_client.clone(),
             params.client.clone(),
-            parent_chain,
+            parent_chain.clone(),
             domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
@@ -166,17 +172,26 @@ where
             domain_id,
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
-            primary_network_sync_oracle: params.primary_network_sync_oracle,
             backend: params.backend.clone(),
-            fraud_proof_generator: fraud_proof_generator.clone(),
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
+            import_notification_sinks: Default::default(),
+        };
+
+        let core_domain_receipts_checker = ReceiptsChecker {
+            domain_id,
+            client: params.client.clone(),
+            primary_chain_client: params.primary_chain_client.clone(),
+            fraud_proof_generator: fraud_proof_generator.clone(),
+            parent_chain,
+            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            _phantom: std::marker::PhantomData,
         };
 
         let bundle_processor = CoreBundleProcessor::new(
             domain_id,
             params.primary_chain_client.clone(),
-            system_domain_client,
+            system_domain_client.clone(),
             params.client.clone(),
             params.backend.clone(),
             params.keystore,
@@ -196,6 +211,32 @@ where
                 params.executor_streams,
                 active_leaves,
             )
+            .boxed(),
+        );
+
+        spawn_essential.spawn_essential_blocking(
+            "core-domain-receipts-checker",
+            None,
+            async move {
+                while let Some(system_domain_block_import) =
+                    system_domain_block_import_notifications.next().await
+                {
+                    tracing::debug!(
+                        ?system_domain_block_import,
+                        "Checking core domain state transition"
+                    );
+
+                    if let Err(err) = core_domain_receipts_checker
+                        .check_state_transition(system_domain_block_import.domain_block_hash)
+                    {
+                        tracing::error!(
+                            ?err,
+                            "Error occurred at checking core domain state transition"
+                        );
+                        return;
+                    }
+                }
+            }
             .boxed(),
         );
 

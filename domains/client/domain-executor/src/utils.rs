@@ -1,7 +1,10 @@
 use codec::{Decode, Encode};
+use parking_lot::Mutex;
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::convert::TryInto;
+use std::sync::Arc;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 
 /// Data required to produce bundles on executor node.
@@ -54,4 +57,16 @@ where
     B2: BlockT,
 {
     B2::Hash::decode(&mut block_hash.encode().as_slice()).unwrap()
+}
+
+pub type DomainImportNotificationSinks<Block, PBlock> =
+    Arc<Mutex<Vec<TracingUnboundedSender<DomainBlockImportNotification<Block, PBlock>>>>>;
+
+pub type DomainImportNotifications<Block, PBlock> =
+    TracingUnboundedReceiver<DomainBlockImportNotification<Block, PBlock>>;
+
+#[derive(Clone, Debug)]
+pub struct DomainBlockImportNotification<Block: BlockT, PBlock: BlockT> {
+    pub domain_block_hash: Block::Hash,
+    pub primary_block_hash: PBlock::Hash,
 }

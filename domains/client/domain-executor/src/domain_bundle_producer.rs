@@ -46,7 +46,7 @@ pub(super) struct DomainBundleProducer<
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     keystore: KeystorePtr,
-    bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
+    bundle_election_solver: BundleElectionSolver<Block, SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
@@ -121,12 +121,18 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
     ParentChainBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<PBlock>>,
+    NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SClient::Api: DomainCoreApi<SBlock> + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>,
+    SClient: HeaderBackend<SBlock>
+        + BlockBackend<SBlock>
+        + ProvideRuntimeApi<SBlock>
+        + ProofProvider<SBlock>,
+    SClient::Api: DomainCoreApi<SBlock>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     PClient: HeaderBackend<PBlock>,
-    ParentChain: ParentChainInterface<ParentChainBlock> + Clone,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(super) fn new(
@@ -144,7 +150,7 @@ where
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
+        let bundle_election_solver = BundleElectionSolver::<Block, SBlock, PBlock, SClient>::new(
             system_domain_client.clone(),
             keystore.clone(),
         );
@@ -201,8 +207,7 @@ where
         } else {
             let head_receipt_number = self
                 .parent_chain
-                .head_receipt_number(self.parent_chain.best_hash())?
-                .into();
+                .head_receipt_number(self.parent_chain.best_hash())?;
 
             // Executor is lagging behind the receipt chain on its parent chain as another executor
             // already processed a block higher than the local best and submitted the receipt to
@@ -221,7 +226,7 @@ where
 
         if let Some(preliminary_bundle_solution) = self
             .bundle_election_solver
-            .solve_bundle_election_challenge::<Block>(
+            .solve_bundle_election_challenge(
                 best_hash,
                 best_number,
                 self.domain_id,

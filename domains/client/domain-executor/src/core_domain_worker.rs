@@ -32,7 +32,7 @@ use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus_slots::Slot;
-use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
@@ -54,7 +54,6 @@ pub(super) async fn start_worker<
     IBNS,
     CIBNS,
     NSNS,
-    E,
     BI,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
@@ -69,7 +68,7 @@ pub(super) async fn start_worker<
         Client,
         SClient,
         PClient,
-        CoreDomainParentChain<SClient, SBlock, PBlock>,
+        CoreDomainParentChain<Block, SBlock, PBlock, SClient>,
         TransactionPool,
     >,
     bundle_processor: CoreBundleProcessor<
@@ -80,7 +79,6 @@ pub(super) async fn start_worker<
         SClient,
         PClient,
         Backend,
-        E,
         BI,
     >,
     executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
@@ -88,9 +86,10 @@ pub(super) async fn start_worker<
 ) where
     Block: BlockT,
     SBlock: BlockT,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
-    SBlock::Hash: From<Block::Hash>,
     PBlock: BlockT,
+    SBlock::Hash: From<Block::Hash>,
+    NumberFor<Block>: From<NumberFor<PBlock>> + Into<NumberFor<PBlock>>,
+    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -109,9 +108,13 @@ pub(super) async fn start_worker<
         Error = sp_consensus::Error,
     >,
     BI: Sync + Send + 'static,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock> + 'static,
+    SClient: HeaderBackend<SBlock>
+        + BlockBackend<SBlock>
+        + ProvideRuntimeApi<SBlock>
+        + ProofProvider<SBlock>
+        + 'static,
     SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
@@ -126,7 +129,6 @@ pub(super) async fn start_worker<
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    E: CodeExecutor,
 {
     let span = tracing::Span::current();
 

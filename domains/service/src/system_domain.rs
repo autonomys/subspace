@@ -64,7 +64,7 @@ type SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>
         FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
         FullBackend<Block>,
         NativeElseWasmExecutor<ExecutorDispatch>,
-        SystemDomainParentChain<PClient, Block, PBlock>,
+        SystemDomainParentChain<Block, PBlock, PClient>,
     >;
 
 /// System domain full node along with some other components.
@@ -93,7 +93,7 @@ where
         + SessionKeys<Block>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
@@ -215,7 +215,7 @@ where
         + Sync
         + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
         + ReceiptsApi<Block, Hash>
@@ -367,7 +367,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + DomainCoreApi<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>
+        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
@@ -482,7 +482,7 @@ where
     .await?;
 
     let gossip_message_validator = SystemGossipMessageValidator::new(
-        SystemDomainParentChain::<_, Block, PBlock>::new(primary_chain_client),
+        SystemDomainParentChain::<Block, PBlock, _>::new(primary_chain_client),
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         transaction_pool.clone(),

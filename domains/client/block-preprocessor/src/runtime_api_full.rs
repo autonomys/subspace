@@ -55,7 +55,7 @@ where
     PBlock: BlockT,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>,
-    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash>,
+    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 {
     fn construct_submit_core_bundle_extrinsics(
         &self,
