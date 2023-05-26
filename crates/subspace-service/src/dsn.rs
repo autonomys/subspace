@@ -240,6 +240,7 @@ where
         max_pending_incoming_connections: dsn_config.max_pending_in_connections,
         max_pending_outgoing_connections: dsn_config.max_pending_out_connections,
         target_connections: dsn_config.target_connections,
+        reserved_peers: dsn_config.reserved_peers,
 
         ..default_networking_config
     };

@@ -23,6 +23,7 @@ mod node;
 mod node_runner;
 mod request_handlers;
 mod request_responses;
+mod reserved_peers;
 mod shared;
 pub mod utils;
 
