@@ -489,7 +489,6 @@ mod pallet {
 
         /// Submit new segment header to the blockchain. This is an inherent extrinsic and part of
         /// the Subspace consensus logic.
-        /// TODO: constraint the number of `SegmentHeader` within a single extrinsic
         #[pallet::call_index(1)]
         #[pallet::weight((<T as Config>::WeightInfo::store_segment_headers(segment_headers.len() as u32), DispatchClass::Mandatory, Pays::No))]
         pub fn store_segment_headers(

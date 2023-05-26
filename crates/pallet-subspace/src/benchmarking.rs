@@ -40,9 +40,8 @@ mod benchmarks {
         _(RawOrigin::None, Box::new(proof));
     }
 
-    // TODO: 1024 just a placeholder here replace it with a concrete value once we have one
     #[benchmark]
-    fn store_segment_headers(x: Linear<1, 1024>) {
+    fn store_segment_headers(x: Linear<1, 20>) {
         let segment_headers: Vec<SegmentHeader> = (0..x as u64)
             .map(|i| create_segment_header(i.into()))
             .collect();

@@ -61,21 +61,21 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(3_u64))
 			.saturating_add(T::DbWeight::get().writes(4_u64))
 	}
-	/// Storage: Subspace SegmentCommitment (r:1023 w:1023)
+	/// Storage: Subspace SegmentCommitment (r:20 w:20)
 	/// Proof Skipped: Subspace SegmentCommitment (max_values: None, max_size: None, mode: Measured)
 	/// Storage: Subspace CounterForSegmentCommitment (r:1 w:1)
 	/// Proof: Subspace CounterForSegmentCommitment (max_values: Some(1), max_size: Some(4), added: 499, mode: MaxEncodedLen)
 	/// Storage: System Digest (r:1 w:1)
 	/// Proof Skipped: System Digest (max_values: Some(1), max_size: None, mode: Measured)
-	/// The range of component `x` is `[1, 1024]`.
+	/// The range of component `x` is `[1, 20]`.
 	fn store_segment_headers(x: u32, ) -> Weight {
 		// Proof Size summary in bytes:
 		//  Measured:  `48`
 		//  Estimated: `4060 + x * (2475 ±0)`
 		// Minimum execution time: 440_000_000 picoseconds.
-		Weight::from_parts(432_662_004, 4060)
-			// Standard Error: 158_785
-			.saturating_add(Weight::from_parts(436_196_449, 0).saturating_mul(x.into()))
+		Weight::from_parts(20_123_871, 4060)
+			// Standard Error: 1_226_571
+			.saturating_add(Weight::from_parts(446_050_711, 0).saturating_mul(x.into()))
 			.saturating_add(T::DbWeight::get().reads(2_u64))
 			.saturating_add(T::DbWeight::get().reads((1_u64).saturating_mul(x.into())))
 			.saturating_add(T::DbWeight::get().writes(2_u64))
@@ -166,21 +166,21 @@ impl WeightInfo for () {
 			.saturating_add(RocksDbWeight::get().reads(3_u64))
 			.saturating_add(RocksDbWeight::get().writes(4_u64))
 	}
-	/// Storage: Subspace SegmentCommitment (r:1023 w:1023)
+	/// Storage: Subspace SegmentCommitment (r:20 w:20)
 	/// Proof Skipped: Subspace SegmentCommitment (max_values: None, max_size: None, mode: Measured)
 	/// Storage: Subspace CounterForSegmentCommitment (r:1 w:1)
 	/// Proof: Subspace CounterForSegmentCommitment (max_values: Some(1), max_size: Some(4), added: 499, mode: MaxEncodedLen)
 	/// Storage: System Digest (r:1 w:1)
 	/// Proof Skipped: System Digest (max_values: Some(1), max_size: None, mode: Measured)
-	/// The range of component `x` is `[1, 1024]`.
+	/// The range of component `x` is `[1, 20]`.
 	fn store_segment_headers(x: u32, ) -> Weight {
 		// Proof Size summary in bytes:
 		//  Measured:  `48`
 		//  Estimated: `4060 + x * (2475 ±0)`
 		// Minimum execution time: 440_000_000 picoseconds.
-		Weight::from_parts(432_662_004, 4060)
-			// Standard Error: 158_785
-			.saturating_add(Weight::from_parts(436_196_449, 0).saturating_mul(x.into()))
+		Weight::from_parts(20_123_871, 4060)
+			// Standard Error: 1_226_571
+			.saturating_add(Weight::from_parts(446_050_711, 0).saturating_mul(x.into()))
 			.saturating_add(RocksDbWeight::get().reads(2_u64))
 			.saturating_add(RocksDbWeight::get().reads((1_u64).saturating_mul(x.into())))
 			.saturating_add(RocksDbWeight::get().writes(2_u64))
