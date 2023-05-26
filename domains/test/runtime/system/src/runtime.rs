@@ -295,6 +295,7 @@ impl pallet_executor_registry::Config for Runtime {
     type WithdrawalDuration = WithdrawalDuration;
     type EpochDuration = EpochDuration;
     type OnNewEpoch = DomainRegistry;
+    type WeightInfo = pallet_executor_registry::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {
@@ -313,6 +314,7 @@ impl pallet_domain_registry::Config for Runtime {
     type MinDomainDeposit = MinDomainDeposit;
     type MaxDomainDeposit = MaxDomainDeposit;
     type MinDomainOperatorStake = MinDomainOperatorStake;
+    type WeightInfo = pallet_domain_registry::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_receipts::Config for Runtime {

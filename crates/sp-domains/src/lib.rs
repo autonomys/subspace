@@ -28,7 +28,7 @@ use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
-use sp_core::crypto::{KeyTypeId, UncheckedFrom};
+use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
 use sp_runtime::OpaqueExtrinsic;
@@ -433,7 +433,7 @@ impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, Dom
         let trace = if primary_number.is_zero() {
             Vec::new()
         } else {
-            vec![Default::default(), Default::default()]
+            sp_std::vec![Default::default(), Default::default()]
         };
         ExecutionReceipt {
             primary_number,
@@ -465,6 +465,8 @@ where
     Hash: Encode + Default,
     DomainHash: Encode + Default,
 {
+    use sp_core::crypto::UncheckedFrom;
+
     let header = BundleHeader {
         primary_number,
         primary_hash,

@@ -424,9 +424,10 @@ where
 fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
     let mut secret_bytes = Zeroizing::new(schnorrkel_sk.to_ed25519_bytes());
 
-    Keypair::Ed25519(
+    let keypair = ed25519::Keypair::from(
         ed25519::SecretKey::from_bytes(&mut secret_bytes.as_mut()[..32])
-            .expect("Secret key is exactly 32 bytes in size; qed")
-            .into(),
-    )
+            .expect("Secret key is exactly 32 bytes in size; qed"),
+    );
+
+    Keypair::from(keypair)
 }

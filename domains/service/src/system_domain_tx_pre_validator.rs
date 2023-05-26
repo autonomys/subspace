@@ -106,6 +106,13 @@ where
                 // No pre-validation is required.
             }
             PreValidationObject::FraudProof(fraud_proof) => {
+                if fraud_proof.domain_id().is_system() {
+                    tracing::debug!(target: "txpool", "Unexpected system domain fraud proof: {fraud_proof:?}");
+                    return Err(TxPoolError::InvalidTransaction(
+                        InvalidTransactionCode::FraudProof.into(),
+                    )
+                    .into());
+                }
                 subspace_fraud_proof::validate_fraud_proof_in_tx_pool(
                     &self.spawner,
                     self.fraud_proof_verifier.clone(),
