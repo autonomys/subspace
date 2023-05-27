@@ -224,7 +224,7 @@ where
 /// Verifies the equivocation proof by making sure that: both headers have
 /// different hashes, are targeting the same slot, and have valid signatures by
 /// the same authority.
-pub fn is_equivocation_proof_valid<Header, RewardAddress>(proof: EquivocationProof<Header>) -> bool
+pub fn is_equivocation_proof_valid<Header, RewardAddress>(proof: &EquivocationProof<Header>) -> bool
 where
     Header: HeaderT,
     RewardAddress: Decode,
@@ -265,8 +265,8 @@ where
 
     // we finally verify that the expected farmer has signed both headers and
     // that the signature is valid.
-    is_seal_signature_valid(proof.first_header, &proof.offender)
-        && is_seal_signature_valid(proof.second_header, &proof.offender)
+    is_seal_signature_valid(proof.first_header.clone(), &proof.offender)
+        && is_seal_signature_valid(proof.second_header.clone(), &proof.offender)
 }
 
 /// Subspace global randomnesses used for deriving global challenges.

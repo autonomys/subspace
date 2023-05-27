@@ -24,12 +24,11 @@ use crate::mock::{
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
-    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, Error, ParentBlockAuthorInfo,
-    ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence, WeightInfo,
+    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, ParentBlockAuthorInfo,
+    ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence,
 };
 use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
-use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
@@ -348,8 +347,13 @@ fn report_equivocation_invalid_equivocation_proof() {
 
         let assert_invalid_equivocation = |equivocation_proof| {
             assert_err!(
-                Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof),),
-                Error::<Test>::InvalidEquivocationProof,
+                <Subspace as sp_runtime::traits::ValidateUnsigned>::validate_unsigned(
+                    TransactionSource::Local,
+                    &Call::report_equivocation {
+                        equivocation_proof: Box::new(equivocation_proof),
+                    },
+                ),
+                InvalidTransaction::BadProof,
             )
         };
 
@@ -468,14 +472,6 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 }
 
 #[test]
-fn report_equivocation_has_valid_weight() {
-    // the weight is always the same.
-    assert!((1..=1000)
-        .map(|_| { <Test as Config>::WeightInfo::report_equivocation() })
-        .all(|w| w == Weight::from_parts(10_000, 0)));
-}
-
-#[test]
 fn valid_equivocation_reports_dont_pay_fees() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
@@ -509,15 +505,14 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
         // report the equivocation again which is invalid now since it is
         // duplicate.
-        let post_info =
-            Subspace::report_equivocation(RuntimeOrigin::none(), Box::new(equivocation_proof))
-                .err()
-                .unwrap()
-                .post_info;
-
-        // the fee is not waived and the original weight is kept.
-        assert!(post_info.actual_weight.is_none());
-        assert_eq!(post_info.pays_fee, Pays::Yes);
+        assert_err!(
+            <Subspace as sp_runtime::traits::ValidateUnsigned>::pre_dispatch(
+                &Call::report_equivocation {
+                    equivocation_proof: Box::new(equivocation_proof),
+                }
+            ),
+            InvalidTransaction::Stale,
+        );
     })
 }
 

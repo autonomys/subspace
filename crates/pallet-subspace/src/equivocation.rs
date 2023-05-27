@@ -175,6 +175,13 @@ impl<T: Config> Pallet<T> {
         // check report staleness
         is_known_offence::<T>(equivocation_proof)?;
 
+        // validate the equivocation proof
+        if !sp_consensus_subspace::is_equivocation_proof_valid::<_, T::AccountId>(
+            equivocation_proof,
+        ) {
+            return InvalidTransaction::BadProof.into();
+        }
+
         let longevity = <T::HandleEquivocation as HandleEquivocation<T>>::ReportLongevity::get();
 
         ValidTransaction::with_tag_prefix("SubspaceEquivocation")
@@ -194,7 +201,17 @@ impl<T: Config> Pallet<T> {
     pub fn pre_dispatch_equivocation_report(
         equivocation_proof: &EquivocationProof<T::Header>,
     ) -> Result<(), TransactionValidityError> {
-        is_known_offence::<T>(equivocation_proof)
+        // check report staleness
+        is_known_offence::<T>(equivocation_proof)?;
+
+        // validate the equivocation proof
+        if !sp_consensus_subspace::is_equivocation_proof_valid::<_, T::AccountId>(
+            equivocation_proof,
+        ) {
+            return Err(InvalidTransaction::BadProof.into());
+        }
+
+        Ok(())
     }
 }
 
