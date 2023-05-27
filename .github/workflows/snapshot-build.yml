@@ -138,7 +138,7 @@ jobs:
         if: runner.os == 'Windows'
 
       - name: AArch64 cross-compile packages
-        run: sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
       - name: Build farmer
