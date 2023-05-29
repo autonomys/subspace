@@ -317,7 +317,7 @@ impl pallet_domain_registry::Config for Runtime {
     type WeightInfo = pallet_domain_registry::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_receipts::Config for Runtime {
+impl pallet_settlement::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
@@ -352,11 +352,11 @@ pub struct DomainInfo;
 
 impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
     fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-        Some(Receipts::head_receipt_number(domain_id))
+        Some(Settlement::head_receipt_number(domain_id))
     }
 
     fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
-        Receipts::domain_state_root_at(domain_id, number, hash)
+        Settlement::domain_state_root_at(domain_id, number, hash)
     }
 }
 
@@ -415,7 +415,7 @@ construct_runtime!(
         // Must be after Balances pallet so that its genesis is built after the Balances genesis is
         // built.
         ExecutorRegistry: pallet_executor_registry,
-        Receipts: pallet_receipts,
+        Settlement: pallet_settlement,
         DomainRegistry: pallet_domain_registry,
 
         // messenger stuff
@@ -611,7 +611,7 @@ impl_runtime_apis! {
 
     impl sp_receipts::ReceiptsApi<Block, Hash> for Runtime {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<Hash> {
-            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
+            Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }
 
         fn state_root(
@@ -619,11 +619,11 @@ impl_runtime_apis! {
             domain_block_number: BlockNumber,
             domain_block_hash: Hash,
         ) -> Option<Hash> {
-            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
+            Settlement::state_root((domain_id, domain_block_number, domain_block_hash))
         }
 
         fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Receipts::primary_hash(domain_id, domain_block_number)
+            Settlement::primary_hash(domain_id, domain_block_number)
         }
 
         fn receipts_pruning_depth() -> BlockNumber {
@@ -720,7 +720,7 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
             domain_id: DomainId,
         ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
-            let successful_fraud_proofs = Receipts::successful_fraud_proofs();
+            let successful_fraud_proofs = Settlement::successful_fraud_proofs();
             extrinsics
                 .into_iter()
                 .filter_map(|uxt| match uxt.function {
@@ -740,7 +740,7 @@ impl_runtime_apis! {
         }
 
         fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
-            Receipts::domain_state_root_at(domain_id, number, domain_hash)
+            Settlement::domain_state_root_at(domain_id, number, domain_hash)
         }
     }
 
@@ -754,11 +754,11 @@ impl_runtime_apis! {
         }
 
         fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-            Some(Receipts::head_receipt_number(domain_id))
+            Some(Settlement::head_receipt_number(domain_id))
         }
 
         fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash>{
-            Receipts::domain_state_root_at(domain_id, number, hash)
+            Settlement::domain_state_root_at(domain_id, number, hash)
         }
 
         fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {

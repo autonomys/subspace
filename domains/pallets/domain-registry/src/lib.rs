@@ -62,7 +62,7 @@ mod pallet {
     use frame_support::traits::LockableCurrency;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
-    use pallet_receipts::{Error as PalletReceiptError, FraudProofError};
+    use pallet_settlement::{Error as PalletSettlementError, FraudProofError};
     use sp_core::H256;
     use sp_domain_digests::AsPredigest;
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
@@ -76,7 +76,7 @@ mod pallet {
     use sp_std::vec::Vec;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_receipts::Config {
+    pub trait Config: frame_system::Config + pallet_settlement::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
@@ -315,7 +315,7 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            pallet_receipts::Pallet::<T>::track_receipts(
+            pallet_settlement::Pallet::<T>::track_receipts(
                 signed_opaque_bundle.domain_id(),
                 signed_opaque_bundle.bundle.receipts.as_slice(),
             )
@@ -339,7 +339,7 @@ mod pallet {
             log::trace!(target: "runtime::domain-registry", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id().is_core() {
-                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
+                pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
                     .map_err(Error::<T>::from)?;
             }
 
@@ -361,7 +361,7 @@ mod pallet {
             let mut consumed_weight = Weight::zero();
             for domain_id in Domains::<T>::iter_keys() {
                 for (primary_number, primary_hash) in &primary_block_info {
-                    pallet_receipts::PrimaryBlockHash::<T>::insert(
+                    pallet_settlement::PrimaryBlockHash::<T>::insert(
                         domain_id,
                         primary_number,
                         primary_hash,
@@ -453,13 +453,13 @@ mod pallet {
         BeforeDomainCreation,
     }
 
-    impl<T> From<PalletReceiptError> for Error<T> {
+    impl<T> From<PalletSettlementError> for Error<T> {
         #[inline]
-        fn from(error: PalletReceiptError) -> Self {
+        fn from(error: PalletSettlementError) -> Self {
             match error {
-                PalletReceiptError::MissingParent => Self::Receipt(ReceiptError::MissingParent),
-                PalletReceiptError::FraudProof(err) => Self::FraudProof(err),
-                PalletReceiptError::UnavailablePrimaryBlockHash => {
+                PalletSettlementError::MissingParent => Self::Receipt(ReceiptError::MissingParent),
+                PalletSettlementError::FraudProof(err) => Self::FraudProof(err),
+                PalletSettlementError::UnavailablePrimaryBlockHash => {
                     Self::UnavailablePrimaryBlockHash
                 }
             }
@@ -612,7 +612,8 @@ mod pallet {
                         );
                         return InvalidTransactionCode::FraudProof.into();
                     }
-                    if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
+                    if let Err(e) =
+                        pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(
                             target: "runtime::domain-registry",
@@ -684,12 +685,12 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn head_receipt_number(domain_id: DomainId) -> T::BlockNumber {
-        pallet_receipts::Pallet::<T>::head_receipt_number(domain_id)
+        pallet_settlement::Pallet::<T>::head_receipt_number(domain_id)
     }
 
     /// Returns the block number of the oldest receipt still being tracked in the state.
     pub fn oldest_receipt_number(domain_id: DomainId) -> T::BlockNumber {
-        pallet_receipts::Pallet::<T>::oldest_receipt_number(domain_id)
+        pallet_settlement::Pallet::<T>::oldest_receipt_number(domain_id)
     }
 
     pub fn domain_authorities(domain_id: DomainId) -> Vec<(ExecutorPublicKey, T::StakeWeight)> {
@@ -741,7 +742,7 @@ impl<T: Config> Pallet<T> {
         let bundle = &signed_opaque_bundle.bundle;
 
         let bundle_created_on_valid_primary_block =
-            pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number)
+            pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number)
                 .map(|block_hash| block_hash == bundle.header.primary_hash)
                 .unwrap_or(false);
 
@@ -750,7 +751,7 @@ impl<T: Config> Pallet<T> {
                 target: "runtime::domain-registry",
                 "Bundle of {domain_id:?} is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
                 bundle.header.primary_number,
-                pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number),
+                pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number),
                 bundle.header.primary_hash,
             );
             return Err(Error::BundleCreatedOnUnknownBlock);
@@ -791,13 +792,13 @@ impl<T: Config> Pallet<T> {
                 return Err(Error::<T>::Receipt(ReceiptError::BeforeDomainCreation));
             }
 
-            if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt) {
+            if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt) {
                 log::debug!(
                     target: "runtime::domain-registry",
                     "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
                     expected: #{primary_number:?},{:?}",
                     receipt.primary_hash,
-                    pallet_receipts::PrimaryBlockHash::<T>::get(domain_id, primary_number),
+                    pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, primary_number),
                 );
                 return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
             }
@@ -853,7 +854,7 @@ impl<T: Config> Pallet<T> {
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
-                None => pallet_receipts::Pallet::<T>::state_root((
+                None => pallet_settlement::Pallet::<T>::state_root((
                     domain_id,
                     core_block_number,
                     core_block_hash,
@@ -864,7 +865,7 @@ impl<T: Config> Pallet<T> {
                             target: "runtime::domain-registry",
                             "State root for {domain_id:?} #{core_block_number:?},{core_block_hash:?} not found, \
                             current head receipt: {:?}",
-                            pallet_receipts::Pallet::<T>::receipt_head(domain_id),
+                            pallet_settlement::Pallet::<T>::receipt_head(domain_id),
                         );
                         err
                     })?,
@@ -968,7 +969,7 @@ impl<T: Config> Pallet<T> {
 
         let current_block_number = frame_system::Pallet::<T>::block_number();
         CreatedAt::<T>::insert(domain_id, current_block_number);
-        pallet_receipts::Pallet::<T>::initialize_head_receipt_number(
+        pallet_settlement::Pallet::<T>::initialize_head_receipt_number(
             domain_id,
             current_block_number,
         );

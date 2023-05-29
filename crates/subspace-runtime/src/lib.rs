@@ -407,7 +407,7 @@ impl pallet_domains::Config for Runtime {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_receipts::Config for Runtime {
+impl pallet_settlement::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
@@ -495,7 +495,7 @@ construct_runtime!(
         Feeds: pallet_feeds = 9,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
-        Receipts: pallet_receipts = 15,
+        Settlement: pallet_settlement = 15,
         Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
 
@@ -734,7 +734,7 @@ impl_runtime_apis! {
 
     impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
-            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
+            Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }
 
         fn state_root(
@@ -742,11 +742,11 @@ impl_runtime_apis! {
             domain_block_number: NumberFor<Block>,
             domain_block_hash: Hash,
         ) -> Option<domain_runtime_primitives::Hash> {
-            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
+            Settlement::state_root((domain_id, domain_block_number, domain_block_hash))
         }
 
         fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Receipts::primary_hash(domain_id, domain_block_number)
+            Settlement::primary_hash(domain_id, domain_block_number)
         }
 
         fn receipts_pruning_depth() -> BlockNumber {
@@ -831,7 +831,7 @@ impl_runtime_apis! {
             number: NumberFor<Block>,
             domain_hash: domain_runtime_primitives::Hash
         ) -> Option<domain_runtime_primitives::Hash>{
-            Receipts::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
+            Settlement::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
 
         fn timestamp() -> Moment{

@@ -17,7 +17,7 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
         use crate::mock::{
-            mock_pallet_receipts, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
+            mock_pallet_settlement, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
         };
         use crate::relayer::RelayerId;
         use codec::{Encode, Decode};
@@ -42,7 +42,7 @@ macro_rules! impl_runtime {
                 UncheckedExtrinsic = UncheckedExtrinsic,
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                Receipts: mock_pallet_receipts::{Pallet, Storage},
+                Settlement: mock_pallet_settlement::{Pallet, Storage},
                 Messenger: crate::{Pallet, Call, Event<T>},
                 Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
                 Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
@@ -86,7 +86,7 @@ macro_rules! impl_runtime {
             pub const RelayerConfirmationDepth: u64 = 2;
         }
 
-        impl mock_pallet_receipts::Config for $runtime {}
+        impl mock_pallet_settlement::Config for $runtime {}
 
         parameter_types! {
             pub const SelfDomainId: DomainId = DomainId::new($domain_id);
@@ -227,7 +227,7 @@ impl EndpointHandler<MessageId> for MockEndpoint {
 
 #[frame_support::pallet]
 #[allow(dead_code)]
-pub(crate) mod mock_pallet_receipts {
+pub(crate) mod mock_pallet_settlement {
     use crate::mock::DomainId;
     use frame_support::pallet_prelude::*;
 

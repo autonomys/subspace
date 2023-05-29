@@ -6650,7 +6650,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-executor-registry",
- "pallet-receipts",
+ "pallet-settlement",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -6672,7 +6672,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
- "pallet-receipts",
+ "pallet-settlement",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -6885,21 +6885,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-receipts"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
@@ -6920,6 +6905,21 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-settlement"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -11136,9 +11136,9 @@ dependencies = [
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
- "pallet-receipts",
  "pallet-rewards",
  "pallet-runtime-configs",
+ "pallet-settlement",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
@@ -11301,8 +11301,8 @@ dependencies = [
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
- "pallet-receipts",
  "pallet-rewards",
+ "pallet-settlement",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
@@ -11712,7 +11712,7 @@ dependencies = [
  "pallet-domain-registry",
  "pallet-executor-registry",
  "pallet-messenger",
- "pallet-receipts",
+ "pallet-settlement",
  "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -11758,7 +11758,7 @@ dependencies = [
  "pallet-domain-registry",
  "pallet-executor-registry",
  "pallet-messenger",
- "pallet-receipts",
+ "pallet-settlement",
  "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
