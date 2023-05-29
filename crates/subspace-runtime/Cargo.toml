@@ -51,9 +51,9 @@ sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domain
 sp-inherents = { git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false, version = "4.0.0-dev"}
 sp-objects = { version = "0.1.0", default-features = false, path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-receipts = { version = "0.1.0", default-features = false, path = "../sp-receipts" }
 sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sp-settlement = { version = "0.1.0", default-features = false, path = "../sp-settlement" }
 sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 sp-version = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
@@ -107,9 +107,9 @@ std = [
 	"sp-inherents/std",
 	"sp-objects/std",
 	"sp-offchain/std",
-	"sp-receipts/std",
 	"sp-runtime/std",
 	"sp-session/std",
+	"sp-settlement/std",
 	"sp-std/std",
 	"sp-transaction-pool/std",
 	"sp-version/std",

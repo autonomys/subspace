@@ -595,7 +595,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_settlement::SettlementApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
             Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }

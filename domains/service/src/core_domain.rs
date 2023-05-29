@@ -41,8 +41,8 @@ use sp_core::{Encode, H256};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
+use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
@@ -367,7 +367,7 @@ where
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + MessengerApi<SBlock, NumberFor<SBlock>>
         + RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
-        + ReceiptsApi<SBlock, <Block as BlockT>::Hash>,
+        + SettlementApi<SBlock, <Block as BlockT>::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
