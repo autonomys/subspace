@@ -91,6 +91,24 @@ enum ServerMessage<Block: BlockT, ProtocolRequest> {
     ProtocolRequest(ProtocolRequest),
 }
 
+impl<Block: BlockT, ProtocolRequest> From<InitialRequest<Block, ProtocolRequest>>
+    for ServerMessage<Block, ProtocolRequest>
+{
+    fn from(
+        inner: InitialRequest<Block, ProtocolRequest>,
+    ) -> ServerMessage<Block, ProtocolRequest> {
+        ServerMessage::InitialRequest(inner)
+    }
+}
+
+impl<Block: BlockT, ProtocolRequest> From<ProtocolRequest>
+    for ServerMessage<Block, ProtocolRequest>
+{
+    fn from(inner: ProtocolRequest) -> ServerMessage<Block, ProtocolRequest> {
+        ServerMessage::ProtocolRequest(inner)
+    }
+}
+
 /// The client side of the consensus block relay
 struct ConsensusRelayClient<Block, Pool, ProtoClient>
 where
@@ -117,9 +135,9 @@ where
         request: BlockRequest<Block>,
     ) -> Result<DownloadResult<BlockHash<Block>, BlockData<Block>>, RelayError> {
         let start_ts = Instant::now();
-        let network_peer_handle = self
-            .network
-            .network_peer_handle(self.protocol_name.clone(), who)?;
+        let network_peer_handle: NetworkPeerHandle<ServerMessage<Block, ProtoClient::Request>> =
+            self.network
+                .network_peer_handle(self.protocol_name.clone(), who)?;
 
         // Perform the initial request/response
         let initial_request = InitialRequest {
@@ -131,9 +149,7 @@ where
             protocol_request: self.protocol_client.build_initial_request(),
         };
         let initial_response = network_peer_handle
-            .request::<_, InitialResponse<Block, ProtoClient::Response>>(
-                ServerMessage::InitialRequest(initial_request),
-            )
+            .request::<_, InitialResponse<Block, ProtoClient::Response>>(initial_request)
             .await?;
 
         // Resolve the protocol response to get the extrinsics
@@ -171,7 +187,7 @@ where
     async fn resolve_extrinsics(
         &self,
         protocol_response: ProtoClient::Response,
-        network_peer_handle: &NetworkPeerHandle,
+        network_peer_handle: &NetworkPeerHandle<ServerMessage<Block, ProtoClient::Request>>,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
         let (block_hash, resolved) = self
             .protocol_client

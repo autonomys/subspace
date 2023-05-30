@@ -146,12 +146,16 @@ where
     }
 
     /// Fetches the missing entries from the server
-    async fn resolve_misses(
+    async fn resolve_misses<RequestMsg>(
         &self,
         compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
-        network_peer_handle: &NetworkPeerHandle,
-    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError> {
+        network_peer_handle: &NetworkPeerHandle<RequestMsg>,
+    ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError>
+    where
+        RequestMsg:
+            From<CompactBlockRequest<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
+    {
         let ResolveContext {
             mut resolved,
             local_miss,
@@ -214,10 +218,10 @@ where
         CompactBlockRequest::Initial
     }
 
-    async fn resolve_initial_response(
+    async fn resolve_initial_response<RequestMsg: From<Self::Request> + Encode + Send + Sync>(
         &self,
         response: Self::Response,
-        network_peer_handle: &NetworkPeerHandle,
+        network_peer_handle: &NetworkPeerHandle<RequestMsg>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError> {
         let compact_response = match response {
             CompactBlockResponse::Initial(compact_response) => compact_response,

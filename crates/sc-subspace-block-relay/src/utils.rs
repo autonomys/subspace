@@ -31,11 +31,11 @@ impl NetworkWrapper {
         *self.network.lock() = Some(network);
     }
 
-    pub(crate) fn network_peer_handle(
+    pub(crate) fn network_peer_handle<RequestMsg: Encode>(
         &self,
         protocol_name: ProtocolName,
         who: PeerId,
-    ) -> Result<NetworkPeerHandle, RequestResponseErr> {
+    ) -> Result<NetworkPeerHandle<RequestMsg>, RequestResponseErr> {
         match self.network.lock().as_ref().cloned() {
             Some(network) => Ok(NetworkPeerHandle::new(protocol_name, who, network)),
             None => Err(RequestResponseErr::NetworkUninitialized),
@@ -44,36 +44,40 @@ impl NetworkWrapper {
 }
 
 /// Network handle that allows making requests to specific peer and protocol.
+/// `RequestMsg` is the format of the request message sent on the wire.
 #[derive(Clone)]
-pub(crate) struct NetworkPeerHandle {
+pub(crate) struct NetworkPeerHandle<RequestMsg: Encode> {
     protocol_name: ProtocolName,
     who: PeerId,
     network: NetworkRequestService,
+    _p: std::marker::PhantomData<RequestMsg>,
 }
 
-impl NetworkPeerHandle {
+impl<RequestMsg: Encode> NetworkPeerHandle<RequestMsg> {
     fn new(protocol_name: ProtocolName, who: PeerId, network: NetworkRequestService) -> Self {
         Self {
             protocol_name,
             who,
             network,
+            _p: Default::default(),
         }
     }
 
-    /// Performs the request
+    /// Performs the request, where the request can be transformed into
+    /// the network format `RequestMsg`.
     pub(crate) async fn request<Request, Response>(
         &self,
         request: Request,
     ) -> Result<Response, RequestResponseErr>
     where
-        Request: Encode,
+        Request: Into<RequestMsg>,
         Response: Decode,
     {
         let (tx, rx) = oneshot::channel();
         self.network.start_request(
             self.who,
             self.protocol_name.clone(),
-            request.encode(),
+            Request::into(request).encode(),
             tx,
             IfDisconnected::ImmediateError,
         );
