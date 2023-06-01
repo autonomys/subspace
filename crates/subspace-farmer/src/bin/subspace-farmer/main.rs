@@ -77,7 +77,7 @@ struct DsnArgs {
     #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
     /// Piece cache size in pieces.
-    #[arg(long, default_value = "65536")]
+    #[arg(long, default_value = "1000")]
     piece_cache_size: NonZeroUsize,
     /// Number of provided keys (by other peers) that will be stored.
     #[arg(long, default_value = "655360")]

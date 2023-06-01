@@ -4,6 +4,7 @@ mod tests;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
+use sc_consensus_subspace_rpc::PieceProvider;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -106,7 +107,7 @@ where
     pub fn get_piece(
         &self,
         piece_index_hash: PieceIndexHash,
-    ) -> Result<Option<Piece>, Box<dyn Error>> {
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         self.get_piece_by_index_multihash(&piece_index_hash.to_multihash().to_bytes())
     }
 
@@ -184,7 +185,7 @@ where
     fn get_piece_by_index_multihash(
         &self,
         piece_index_multihash: &[u8],
-    ) -> Result<Option<Piece>, Box<dyn Error>> {
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         Ok(self
             .aux_store
             .get_aux(Self::key_from_bytes(piece_index_multihash).as_slice())?
@@ -325,5 +326,14 @@ impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
         self.piece_indexes_cursor += 1;
 
         result
+    }
+}
+
+impl<AS: AuxStore> PieceProvider for PieceCache<AS> {
+    fn get_piece_by_index(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
+        self.get_piece(piece_index.hash())
     }
 }

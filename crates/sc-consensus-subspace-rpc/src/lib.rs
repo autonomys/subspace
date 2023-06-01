@@ -42,8 +42,9 @@ use sp_runtime::traits::{Block as BlockT, Zero};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_archiving::archiver::NewArchivedSegment;
-use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex, Solution};
+use subspace_core_primitives::{
+    Piece, PieceIndex, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
+};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -84,13 +85,13 @@ pub trait SubspaceRpcApi {
     #[method(name = "subspace_submitRewardSignature")]
     fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()>;
 
-    /// Archived segment subscription
+    /// Archived segment header subscription
     #[subscription(
-        name = "subspace_subscribeArchivedSegment" => "subspace_archived_segment",
-        unsubscribe = "subspace_unsubscribeArchivedSegment",
-        item = NewArchivedSegment,
+        name = "subspace_subscribeArchivedSegmentHeader" => "subspace_archived_segment_header",
+        unsubscribe = "subspace_unsubscribeArchivedSegmentHeader",
+        item = SegmentHeader,
     )]
-    fn subscribe_archived_segment(&self);
+    fn subscribe_archived_segment_header(&self);
 
     #[method(name = "subspace_recordsRoots")]
     async fn segment_commitments(
@@ -103,6 +104,9 @@ pub trait SubspaceRpcApi {
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<SegmentHeader>>>;
+
+    #[method(name = "subspace_Piece")]
+    async fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>>;
 }
 
 #[derive(Default)]
@@ -124,8 +128,15 @@ pub trait SegmentHeaderProvider {
     ) -> Result<Option<SegmentHeader>, Box<dyn Error>>;
 }
 
+pub trait PieceProvider {
+    fn get_piece_by_index(
+        &self,
+        piece_index: PieceIndex,
+    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
+}
+
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider> {
+pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider> {
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -136,6 +147,7 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider> {
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     subspace_link: SubspaceLink<Block>,
     segment_header_provider: RBP,
+    piece_provider: Option<PP>,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -145,7 +157,9 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider> {
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block: BlockT, Client, RBP: SegmentHeaderProvider> SubspaceRpc<Block, Client, RBP> {
+impl<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider>
+    SubspaceRpc<Block, Client, RBP, PP>
+{
     #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
     pub fn new(
@@ -159,6 +173,7 @@ impl<Block: BlockT, Client, RBP: SegmentHeaderProvider> SubspaceRpc<Block, Clien
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         subspace_link: SubspaceLink<Block>,
         segment_header_provider: RBP,
+        piece_provider: Option<PP>,
     ) -> Self {
         Self {
             client,
@@ -171,12 +186,13 @@ impl<Block: BlockT, Client, RBP: SegmentHeaderProvider> SubspaceRpc<Block, Clien
             dsn_bootstrap_nodes,
             subspace_link,
             segment_header_provider,
+            piece_provider,
         }
     }
 }
 
 #[async_trait]
-impl<Block, Client, RBP> SubspaceRpcApiServer for SubspaceRpc<Block, Client, RBP>
+impl<Block, Client, RBP, PP> SubspaceRpcApiServer for SubspaceRpc<Block, Client, RBP, PP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -187,6 +203,7 @@ where
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
     RBP: SegmentHeaderProvider + Send + Sync + 'static,
+    PP: PieceProvider + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_hash = self.client.info().best_hash;
@@ -431,13 +448,12 @@ where
         Ok(())
     }
 
-    fn subscribe_archived_segment(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
+    fn subscribe_archived_segment_header(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
         let stream = self.archived_segment_notification_stream.subscribe().map(
             |archived_segment_notification| {
                 archived_segment_notification
                     .archived_segment
-                    .as_ref()
-                    .clone()
+                    .segment_header
             },
         );
 
@@ -446,7 +462,7 @@ where
         };
 
         self.executor.spawn(
-            "subspace-archived-segment-subscription",
+            "subspace-archived-segment-header-subscription",
             Some("rpc"),
             fut.boxed(),
         );
@@ -543,5 +559,23 @@ where
         }
 
         segment_commitment_result
+    }
+
+    async fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
+        if let Some(piece_provider) = self.piece_provider.as_ref() {
+            let result = piece_provider.get_piece_by_index(piece_index).map_err(|_| {
+                JsonRpseeError::Custom("Internal error during `piece` call".to_string())
+            });
+
+            if let Err(err) = &result {
+                error!(?err, %piece_index, "Failed to get a piece.");
+            }
+
+            result.map(|piece| piece.map(|piece| piece.to_vec()))
+        } else {
+            Err(JsonRpseeError::Custom(
+                "Piece provider is not set.".to_string(),
+            ))
+        }
     }
 }

@@ -6,8 +6,8 @@ use subspace_core_primitives::{Piece, PieceIndexHash};
 use tracing::trace;
 
 // TODO: Re-think this number
-const CACHE_ITEMS_LIMIT: NonZeroUsize = NonZeroUsize::new(2000)
-    .expect("Archived history segment contains at very least one piece; qed");
+const CACHE_ITEMS_LIMIT: NonZeroUsize =
+    NonZeroUsize::new(100).expect("Archived history segment contains at very least one piece; qed");
 
 #[derive(Clone)]
 pub struct PieceMemoryCache {
