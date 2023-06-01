@@ -103,6 +103,7 @@ macro_rules! impl_runtime {
             type RelayerDeposit = RelayerDeposit;
             type ConfirmationDepth = RelayerConfirmationDepth;
             type DomainInfo = ();
+            type WeightInfo = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,
@@ -168,6 +169,7 @@ macro_rules! impl_runtime {
             type Currency = Balances;
             type Sender = Messenger;
             type AccountIdConverter = MockAccountIdConverter;
+            type WeightInfo = ();
         }
 
         pub const USER_ACCOUNT: AccountId = 1;

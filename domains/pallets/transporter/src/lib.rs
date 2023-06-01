@@ -66,10 +66,12 @@ type MessageIdOf<T> = <<T as Config>::Sender as sp_messenger::endpoint::Sender<
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::weights::WeightInfo;
     use crate::{BalanceOf, Location, MessageIdOf, MultiAccountId, Transfer, TryConvertBack};
     use codec::{Decode, Encode};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
+    use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{
@@ -98,6 +100,9 @@ mod pallet {
 
         /// MultiAccountID <> T::AccountId converter.
         type AccountIdConverter: TryConvertBack<Self::AccountId, MultiAccountId>;
+
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     /// Pallet transporter to move funds between domains.
@@ -179,7 +184,7 @@ mod pallet {
         /// Initiates transfer of funds from account on src_domain to account on dst_domain.
         /// Funds are burned on src_domain first and are minted on dst_domain using Messenger.
         #[pallet::call_index(0)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::transfer(), Pays::No))]
         pub fn transfer(
             origin: OriginFor<T>,
             dst_location: Location,
@@ -272,7 +277,7 @@ mod pallet {
         }
 
         fn message_weight(&self) -> Weight {
-            Weight::zero()
+            T::WeightInfo::message()
         }
 
         fn message_response(
@@ -326,7 +331,7 @@ mod pallet {
         }
 
         fn message_response_weight(&self) -> Weight {
-            Weight::zero()
+            T::WeightInfo::message_response()
         }
     }
 }

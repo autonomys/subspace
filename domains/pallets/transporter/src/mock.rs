@@ -126,6 +126,7 @@ impl Config for MockRuntime {
     type Currency = Balances;
     type Sender = MockMessenger;
     type AccountIdConverter = MockAccountIdConverter;
+    type WeightInfo = ();
 }
 
 pub const USER_ACCOUNT: AccountId = 1;

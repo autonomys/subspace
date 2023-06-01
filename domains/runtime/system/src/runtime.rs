@@ -349,6 +349,7 @@ impl pallet_messenger::Config for Runtime {
     type RelayerDeposit = RelayerDeposit;
     type DomainInfo = DomainInfo;
     type ConfirmationDepth = RelayConfirmationDepth;
+    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -370,6 +371,7 @@ impl pallet_transporter::Config for Runtime {
     type Currency = Balances;
     type Sender = Messenger;
     type AccountIdConverter = AccountIdConverter;
+    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {

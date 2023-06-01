@@ -95,6 +95,7 @@ pub(crate) struct ValidatedRelayMessage<Balance> {
 #[frame_support::pallet]
 mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
+    use crate::weights::WeightInfo;
     use crate::{
         relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
@@ -106,7 +107,7 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
+        CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag, Payload,
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
@@ -133,6 +134,8 @@ mod pallet {
         type DomainInfo: DomainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
         /// Confirmation depth for XDM coming from core domains.
         type ConfirmationDepth: Get<Self::BlockNumber>;
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -510,7 +513,7 @@ mod pallet {
         /// Channel is set to initiated and do not accept or receive any messages.
         /// Only a root user can create the channel.
         #[pallet::call_index(0)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::initiate_channel(), Pays::No))]
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_domain_id: DomainId,
@@ -539,7 +542,7 @@ mod pallet {
         /// Channel is set to Closed and do not accept or receive any messages.
         /// Only a root user can close an open channel.
         #[pallet::call_index(1)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::close_channel(), Pays::No))]
         pub fn close_channel(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -561,7 +564,7 @@ mod pallet {
 
         /// Receives an Inbox message that needs to be validated and processed.
         #[pallet::call_index(2)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::<T>::message_weight(&msg.weight_tag)), Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
@@ -578,7 +581,7 @@ mod pallet {
 
         /// Receives a response from the dst_domain for a message in Outbox.
         #[pallet::call_index(3)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::<T>::message_weight(&msg.weight_tag)), Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
@@ -595,7 +598,7 @@ mod pallet {
 
         /// Declare the desire to become a relayer for this domain by reserving the relayer deposit.
         #[pallet::call_index(4)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(T::WeightInfo::join_relayer_set())]
         pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::do_join_relayer_set(who, relayer_id)?;
@@ -604,7 +607,7 @@ mod pallet {
 
         /// Declare the desire to exit relaying for this domain.
         #[pallet::call_index(5)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(T::WeightInfo::exit_relayer_set())]
         pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::do_exit_relayer_set(who, relayer_id)?;
@@ -654,6 +657,27 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        // Get the weight according the given weight tag
+        fn message_weight(weight_tag: &MessageWeightTag) -> Weight {
+            match weight_tag {
+                MessageWeightTag::ProtocolChannelOpen => T::WeightInfo::do_open_channel(),
+                MessageWeightTag::ProtocolChannelClose => T::WeightInfo::do_close_channel(),
+                MessageWeightTag::EndpointRequest(endpoint) => {
+                    T::get_endpoint_response_handler(endpoint)
+                        .map(|endpoint_handler| endpoint_handler.message_weight())
+                        // If there is no endpoint handler the request won't be handled thus reture zero weight
+                        .unwrap_or(Weight::zero())
+                }
+                MessageWeightTag::EndpointResponse(endpoint) => {
+                    T::get_endpoint_response_handler(endpoint)
+                        .map(|endpoint_handler| endpoint_handler.message_response_weight())
+                        // If there is no endpoint handler the request won't be handled thus reture zero weight
+                        .unwrap_or(Weight::zero())
+                }
+                MessageWeightTag::None => Weight::zero(),
+            }
+        }
+
         // Return whether the decoded message match the original message
         fn message_match(
             xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
