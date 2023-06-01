@@ -266,6 +266,10 @@ mod pallet {
             Ok(vec![])
         }
 
+        fn message_weight(&self) -> Weight {
+            Weight::zero()
+        }
+
         fn message_response(
             &self,
             dst_domain_id: DomainId,
@@ -314,6 +318,10 @@ mod pallet {
             }
 
             Ok(())
+        }
+
+        fn message_response_weight(&self) -> Weight {
+            Weight::zero()
         }
     }
 }

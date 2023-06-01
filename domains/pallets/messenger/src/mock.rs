@@ -1,5 +1,6 @@
 use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRootOf};
 use frame_support::storage::generator::StorageDoubleMap;
+use frame_support::weights::Weight;
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
@@ -212,6 +213,10 @@ impl EndpointHandler<MessageId> for MockEndpoint {
         Ok(vec![5, 6, 7, 8])
     }
 
+    fn message_weight(&self) -> Weight {
+        Weight::zero()
+    }
+
     fn message_response(
         &self,
         _dst_domain_id: DomainId,
@@ -222,6 +227,10 @@ impl EndpointHandler<MessageId> for MockEndpoint {
         let resp = resp.unwrap();
         assert_eq!(resp, vec![5, 6, 7, 8]);
         Ok(())
+    }
+
+    fn message_response_weight(&self) -> Weight {
+        Weight::zero()
     }
 }
 

@@ -1,4 +1,5 @@
 use codec::{Decode, Encode};
+use frame_support::weights::Weight;
 use frame_support::Parameter;
 use scale_info::TypeInfo;
 use sp_domains::DomainId;
@@ -55,6 +56,9 @@ pub trait EndpointHandler<MessageId> {
         req: EndpointRequest,
     ) -> EndpointResponse;
 
+    /// Return the maximal possible consume weight of `message`
+    fn message_weight(&self) -> Weight;
+
     /// Triggered by pallet-messenger when a response for a request is received from dst_domain_id.
     fn message_response(
         &self,
@@ -63,6 +67,38 @@ pub trait EndpointHandler<MessageId> {
         req: EndpointRequest,
         resp: EndpointResponse,
     ) -> DispatchResult;
+
+    /// Return the maximal possible consume weight of `message_response`
+    fn message_response_weight(&self) -> Weight;
+}
+
+impl<MessageId> EndpointHandler<MessageId> for () {
+    fn message(
+        &self,
+        _src_domain_id: DomainId,
+        _message_id: MessageId,
+        _req: EndpointRequest,
+    ) -> EndpointResponse {
+        Ok(Vec::new())
+    }
+
+    fn message_weight(&self) -> Weight {
+        Weight::zero()
+    }
+
+    fn message_response(
+        &self,
+        _dst_domain_id: DomainId,
+        _message_id: MessageId,
+        _req: EndpointRequest,
+        _resp: EndpointResponse,
+    ) -> DispatchResult {
+        Ok(())
+    }
+
+    fn message_response_weight(&self) -> Weight {
+        Weight::zero()
+    }
 }
 
 /// Trait that can provide info for a given domain.
