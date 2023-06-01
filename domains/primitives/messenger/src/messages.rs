@@ -48,6 +48,9 @@ pub struct FeeModel<Balance> {
     pub inbox_fee: ExecutionFee<Balance>,
 }
 
+// TODO: `compute_fee` and `relayer_pool_fee` should be distributed separately, where
+// `compute_fee` should be distributed to executor and `relayer_pool_fee` should be
+// distributed to relayer.
 impl<Balance: CheckedAdd> FeeModel<Balance> {
     pub fn outbox_fee(&self) -> Option<Balance> {
         self.outbox_fee

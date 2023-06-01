@@ -824,12 +824,6 @@ mod pallet {
                         channel.state == ChannelState::Open,
                         InvalidTransaction::Call
                     );
-
-                    // ensure the fees are deposited to the messenger account to pay
-                    // for relayer set.
-                    Self::ensure_fees_for_inbox_message(&channel.fee).map_err(|_| {
-                        TransactionValidityError::Invalid(InvalidTransaction::Payment)
-                    })?;
                     channel.next_inbox_nonce
                 }
             };
@@ -843,6 +837,20 @@ mod pallet {
 
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+
+            // if there is no channel config, this must be the Channel open request
+            if should_init_channel {
+                match msg.payload {
+                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                        ProtocolMessageRequest::ChannelOpen(_),
+                    ))) => {}
+                    _ => {
+                        log::error!("Unexpected call instead of channel open request: {:?}", msg,);
+                        return Err(InvalidTransaction::Call.into());
+                    }
+                }
+            }
+
             Ok(ValidatedRelayMessage {
                 msg,
                 next_nonce,
@@ -873,6 +881,14 @@ mod pallet {
                     return Err(InvalidTransaction::Call.into());
                 }
             }
+
+            let channel = Channels::<T>::get(msg.src_domain_id, msg.channel_id)
+                .ok_or(InvalidTransaction::Call)?;
+
+            // ensure the fees are deposited to the messenger account to pay
+            // for relayer set.
+            Self::ensure_fees_for_inbox_message(&channel.fee)
+                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
 
             Self::deposit_event(Event::InboxMessage {
                 domain_id: msg.src_domain_id,
