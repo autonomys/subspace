@@ -102,104 +102,104 @@ impl<T: Config> Pallet<T> {
 
     /// Process the incoming messages from given domain_id and channel_id.
     pub(crate) fn process_inbox_messages(
-        dst_domain_id: DomainId,
-        channel_id: ChannelId,
+        msg: Message<BalanceOf<T>>,
     ) -> DispatchResult {
+        let (dst_domain_id, channel_id, nonce) = (msg.src_domain_id, msg.channel_id, msg.nonce);
         let channel =
             Channels::<T>::get(dst_domain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
-        let mut next_inbox_nonce = channel.next_inbox_nonce;
 
-        // TODO(ved): maybe a bound of number of messages to process in a single call?
-        let mut messages_processed = 0;
-        while let Some(msg) = Inbox::<T>::take((dst_domain_id, channel_id, next_inbox_nonce)) {
-            let response = match msg.payload {
-                // process incoming protocol message.
-                VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(req))) => {
-                    Payload::Protocol(RequestResponse::Response(
-                        Self::process_incoming_protocol_message_req(dst_domain_id, channel_id, req),
-                    ))
-                }
+        assert_eq!(
+            nonce,
+            channel.next_inbox_nonce,
+            "The message nonce and the channel next inbox nonce must be the same as checked in pre_dispatch; qed"
+        );
 
-                // process incoming endpoint message.
-                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))) => {
-                    let response = if let Some(endpoint_handler) =
-                        T::get_endpoint_response_handler(&req.dst_endpoint)
-                    {
-                        endpoint_handler.message(dst_domain_id, (channel_id, next_inbox_nonce), req)
-                    } else {
-                        Err(Error::<T>::NoMessageHandler.into())
-                    };
+        let response = match msg.payload {
+            // process incoming protocol message.
+            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(req))) => {
+                Payload::Protocol(RequestResponse::Response(
+                    Self::process_incoming_protocol_message_req(
+                        dst_domain_id,
+                        channel_id,
+                        req,
+                    ),
+                ))
+            }
 
-                    Payload::Endpoint(RequestResponse::Response(response))
-                }
+            // process incoming endpoint message.
+            VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))) => {
+                let response = if let Some(endpoint_handler) =
+                    T::get_endpoint_response_handler(&req.dst_endpoint)
+                {
+                    endpoint_handler.message(dst_domain_id, (channel_id, nonce), req)
+                } else {
+                    Err(Error::<T>::NoMessageHandler.into())
+                };
 
-                // return error for all the remaining branches
-                VersionedPayload::V0(payload) => match payload {
-                    Payload::Protocol(_) => Payload::Protocol(RequestResponse::Response(Err(
-                        Error::<T>::InvalidMessagePayload.into(),
-                    ))),
-                    Payload::Endpoint(_) => Payload::Endpoint(RequestResponse::Response(Err(
-                        Error::<T>::InvalidMessagePayload.into(),
-                    ))),
-                },
-            };
+                Payload::Endpoint(RequestResponse::Response(response))
+            }
 
-            InboxResponses::<T>::insert(
-                (dst_domain_id, channel_id, next_inbox_nonce),
-                Message {
-                    src_domain_id: T::SelfDomainId::get(),
-                    dst_domain_id,
-                    channel_id,
-                    nonce: next_inbox_nonce,
-                    payload: VersionedPayload::V0(response),
-                    // this nonce is not considered in response context.
-                    last_delivered_message_response_nonce: None,
-                },
-            );
+            // return error for all the remaining branches
+            VersionedPayload::V0(payload) => match payload {
+                Payload::Protocol(_) => Payload::Protocol(RequestResponse::Response(Err(
+                    Error::<T>::InvalidMessagePayload.into(),
+                ))),
+                Payload::Endpoint(_) => Payload::Endpoint(RequestResponse::Response(Err(
+                    Error::<T>::InvalidMessagePayload.into(),
+                ))),
+            },
+        };
 
-            // get the next relayer
-            let relayer_id = Self::next_relayer()?;
-            RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
-                let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
-                messages
-                    .inbox_responses
-                    .push((dst_domain_id, (channel_id, next_inbox_nonce)));
-                *maybe_messages = Some(messages)
-            });
-
-            Self::deposit_event(Event::InboxMessageResponse {
-                domain_id: dst_domain_id,
-                channel_id,
-                nonce: next_inbox_nonce,
-                relayer_id,
-            });
-
-            next_inbox_nonce = next_inbox_nonce
-                .checked_add(Nonce::one())
-                .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
-            messages_processed += 1;
-
-            // reward relayers for relaying message responses to src_domain.
-            // clean any delivered inbox responses
-            Self::distribute_rewards_for_delivered_message_responses(
+        InboxResponses::<T>::insert(
+            (dst_domain_id, channel_id, nonce),
+            Message {
+                src_domain_id: T::SelfDomainId::get(),
                 dst_domain_id,
                 channel_id,
-                msg.last_delivered_message_response_nonce,
-                &channel.fee,
-            )?;
-        }
+                nonce,
+                payload: VersionedPayload::V0(response),
+                // this nonce is not considered in response context.
+                last_delivered_message_response_nonce: None,
+            },
+        );
 
-        if messages_processed > 0 {
-            Channels::<T>::mutate(
-                dst_domain_id,
-                channel_id,
-                |maybe_channel| -> DispatchResult {
-                    let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
-                    channel.next_inbox_nonce = next_inbox_nonce;
-                    Ok(())
-                },
-            )?;
-        }
+        // get the next relayer
+        let relayer_id = Self::next_relayer()?;
+        RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
+            let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
+            messages
+                .inbox_responses
+                .push((dst_domain_id, (channel_id, nonce)));
+            *maybe_messages = Some(messages)
+        });
+
+        Channels::<T>::mutate(
+            dst_domain_id,
+            channel_id,
+            |maybe_channel| -> DispatchResult {
+                let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+                channel.next_inbox_nonce = nonce
+                    .checked_add(Nonce::one())
+                    .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
+                Ok(())
+            },
+        )?;
+
+        // reward relayers for relaying message responses to src_domain.
+        // clean any delivered inbox responses
+        Self::distribute_rewards_for_delivered_message_responses(
+            dst_domain_id,
+            channel_id,
+            msg.last_delivered_message_response_nonce,
+            &channel.fee,
+        )?;
+
+        Self::deposit_event(Event::InboxMessageResponse {
+            domain_id: dst_domain_id,
+            channel_id,
+            nonce,
+            relayer_id,
+        });
 
         Ok(())
     }
@@ -210,8 +210,12 @@ impl<T: Config> Pallet<T> {
         req: ProtocolMessageRequest<BalanceOf<T>>,
     ) -> Result<(), DispatchError> {
         match req {
-            ProtocolMessageRequest::ChannelOpen(_) => Self::do_open_channel(domain_id, channel_id),
-            ProtocolMessageRequest::ChannelClose => Self::do_close_channel(domain_id, channel_id),
+            ProtocolMessageRequest::ChannelOpen(_) => {
+                Self::do_open_channel(domain_id, channel_id)
+            }
+            ProtocolMessageRequest::ChannelClose => {
+                Self::do_close_channel(domain_id, channel_id)
+            }
         }
     }
 
@@ -236,103 +240,80 @@ impl<T: Config> Pallet<T> {
     }
 
     pub(crate) fn process_outbox_message_responses(
-        dst_domain_id: DomainId,
-        channel_id: ChannelId,
+        resp_msg: Message<BalanceOf<T>>,
     ) -> DispatchResult {
-        // fetch the next message response nonce to process
-        // starts with nonce 0
+        let (dst_domain_id, channel_id, nonce) =
+            (resp_msg.src_domain_id, resp_msg.channel_id, resp_msg.nonce);
         let channel =
             Channels::<T>::get(dst_domain_id, channel_id).ok_or(Error::<T>::MissingChannel)?;
-        let mut last_message_response_nonce = channel.latest_response_received_message_nonce;
 
-        let mut next_message_response_nonce = last_message_response_nonce
-            .and_then(|nonce| nonce.checked_add(Nonce::one()))
-            .unwrap_or(Nonce::zero());
+        assert_eq!(
+            nonce,
+            channel.latest_response_received_message_nonce
+                .and_then(|nonce| nonce.checked_add(Nonce::one()))
+                .unwrap_or(Nonce::zero()),
+            "The message nonce and the channel last msg response nonce must be the same as checked in pre_dispatch; qed"
+        );
 
-        // TODO(ved): maybe a bound of number of message responses to process in a single call?
-        let mut messages_processed = 0u32;
-        while let Some(resp_msg) =
-            OutboxResponses::<T>::take((dst_domain_id, channel_id, next_message_response_nonce))
-        {
-            // fetch original request
-            let req_msg =
-                Outbox::<T>::take((dst_domain_id, channel_id, next_message_response_nonce))
-                    .ok_or(Error::<T>::MissingMessage)?;
+        // fetch original request
+        let req_msg = Outbox::<T>::take((dst_domain_id, channel_id, nonce))
+            .ok_or(Error::<T>::MissingMessage)?;
 
-            let resp = match (req_msg.payload, resp_msg.payload) {
-                // process incoming protocol outbox message response.
-                (
-                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(req))),
-                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(resp))),
-                ) => Self::process_incoming_protocol_message_response(
-                    dst_domain_id,
-                    channel_id,
-                    req,
-                    resp,
-                ),
-
-                // process incoming endpoint outbox message response.
-                (
-                    VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
-                    VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(resp))),
-                ) => {
-                    if let Some(endpoint_handler) =
-                        T::get_endpoint_response_handler(&req.dst_endpoint)
-                    {
-                        endpoint_handler.message_response(
-                            dst_domain_id,
-                            (channel_id, next_message_response_nonce),
-                            req,
-                            resp,
-                        )
-                    } else {
-                        Err(Error::<T>::NoMessageHandler.into())
-                    }
-                }
-
-                (_, _) => Err(Error::<T>::InvalidMessagePayload.into()),
-            };
-
-            // deposit event notifying the message status.
-            match resp {
-                Ok(_) => Self::deposit_event(Event::OutboxMessageResult {
-                    domain_id: dst_domain_id,
-                    channel_id,
-                    nonce: next_message_response_nonce,
-                    result: OutboxMessageResult::Ok,
-                }),
-                Err(err) => Self::deposit_event(Event::OutboxMessageResult {
-                    domain_id: dst_domain_id,
-                    channel_id,
-                    nonce: next_message_response_nonce,
-                    result: OutboxMessageResult::Err(err),
-                }),
-            }
-
-            last_message_response_nonce = Some(next_message_response_nonce);
-            next_message_response_nonce = next_message_response_nonce
-                .checked_add(Nonce::one())
-                .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
-            messages_processed += 1;
-        }
-
-        if messages_processed > 0 {
-            // distribute rewards to relayers for relaying the outbox messages.
-            let reward = BalanceOf::<T>::from(messages_processed)
-                .checked_mul(&channel.fee.outbox_fee.relayer_pool_fee)
-                .ok_or(ArithmeticError::Overflow)?;
-
-            Self::distribute_reward_to_relayers(reward)?;
-
-            Channels::<T>::mutate(
+        let resp = match (req_msg.payload, resp_msg.payload) {
+            // process incoming protocol outbox message response.
+            (
+                VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(req))),
+                VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(resp))),
+            ) => Self::process_incoming_protocol_message_response(
                 dst_domain_id,
                 channel_id,
-                |maybe_channel| -> DispatchResult {
-                    let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
-                    channel.latest_response_received_message_nonce = last_message_response_nonce;
-                    Ok(())
-                },
-            )?;
+                req,
+                resp,
+            ),
+
+            // process incoming endpoint outbox message response.
+            (
+                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
+                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(resp))),
+            ) => {
+                if let Some(endpoint_handler) = T::get_endpoint_response_handler(&req.dst_endpoint)
+                {
+                    endpoint_handler.message_response(dst_domain_id, (channel_id, nonce), req, resp)
+                } else {
+                    Err(Error::<T>::NoMessageHandler.into())
+                }
+            }
+
+            (_, _) => Err(Error::<T>::InvalidMessagePayload.into()),
+        };
+
+        // distribute rewards to relayers for relaying the outbox messages.
+        Self::distribute_reward_to_relayers(channel.fee.outbox_fee.relayer_pool_fee)?;
+
+        Channels::<T>::mutate(
+            dst_domain_id,
+            channel_id,
+            |maybe_channel| -> DispatchResult {
+                let channel = maybe_channel.as_mut().ok_or(Error::<T>::MissingChannel)?;
+                channel.latest_response_received_message_nonce = Some(nonce);
+                Ok(())
+            },
+        )?;
+
+        // deposit event notifying the message status.
+        match resp {
+            Ok(_) => Self::deposit_event(Event::OutboxMessageResult {
+                domain_id: dst_domain_id,
+                channel_id,
+                nonce,
+                result: OutboxMessageResult::Ok,
+            }),
+            Err(err) => Self::deposit_event(Event::OutboxMessageResult {
+                domain_id: dst_domain_id,
+                channel_id,
+                nonce,
+                result: OutboxMessageResult::Err(err),
+            }),
         }
 
         Ok(())

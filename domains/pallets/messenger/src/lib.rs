@@ -155,17 +155,11 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// Stores the incoming messages that are yet to be processed.
-    /// Messages are processed in the inbox nonce order of domain channel.
+    /// A temporary storage for storing decoded inbox message between `pre_dispatch_relay_message`
+    /// and `relay_message`.
     #[pallet::storage]
     #[pallet::getter(fn inbox)]
-    pub(super) type Inbox<T: Config> = CountedStorageMap<
-        _,
-        Identity,
-        (DomainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type Inbox<T: Config> = StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
     /// Stores the message responses of the incoming processed responses.
     /// Used by the dst_domain to verify the message response.
@@ -191,15 +185,12 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// A temporary storage for storing decoded outbox response message between `pre_dispatch_relay_message_response`
+    /// and `relay_message_response`.
     #[pallet::storage]
     #[pallet::getter(fn outbox_responses)]
-    pub(super) type OutboxResponses<T: Config> = CountedStorageMap<
-        _,
-        Identity,
-        (DomainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type OutboxResponses<T: Config> =
+        StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn relayers_info)]
@@ -487,6 +478,9 @@ mod pallet {
 
         /// Emits when there are no relayers to relay messages between domains.
         NoRelayersToAssign,
+
+        /// Emits when there is mismatch between the decoded message and the original message
+        MessageNotMatch,
     }
 
     #[pallet::hooks]
@@ -634,6 +628,17 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
+        // Return whether the decoded message match the original message
+        fn message_match(
+            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
+            decoded_msg: &Message<BalanceOf<T>>,
+        ) -> bool {
+            xdm.src_domain_id == decoded_msg.src_domain_id
+                && xdm.dst_domain_id == decoded_msg.dst_domain_id
+                && xdm.channel_id == decoded_msg.channel_id
+                && xdm.nonce == decoded_msg.nonce
+        }
+
         /// Returns the last open channel for a given domain.
         pub fn get_open_channel_for_domain(
             dst_domain_id: DomainId,
@@ -824,7 +829,7 @@ mod pallet {
                 channel_id: msg.channel_id,
                 nonce: msg.nonce,
             });
-            Inbox::<T>::insert((msg.src_domain_id, msg.channel_id, msg.nonce), msg);
+            Inbox::<T>::put(msg);
             Ok(())
         }
 
@@ -867,7 +872,7 @@ mod pallet {
                 nonce: msg.nonce,
             });
 
-            OutboxResponses::<T>::insert((msg.src_domain_id, msg.channel_id, msg.nonce), msg);
+            OutboxResponses::<T>::put(msg);
             Ok(())
         }
 
