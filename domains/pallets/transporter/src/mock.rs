@@ -94,6 +94,11 @@ impl Sender<AccountId> for MockMessenger {
     ) -> Result<Self::MessageId, DispatchError> {
         Ok(0)
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn prepare_message(_dst_domain_id: DomainId) -> Result<(), DispatchError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]

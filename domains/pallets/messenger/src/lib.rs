@@ -632,6 +632,23 @@ mod pallet {
             )?;
             Ok((channel_id, nonce))
         }
+
+        /// Only used in benchmark to prepare for a upcoming `send_message` call to
+        /// ensure it will succeed.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn prepare_message(dst_domain_id: DomainId) -> Result<(), DispatchError> {
+            let fee_model = FeeModel {
+                outbox_fee: Default::default(),
+                inbox_fee: Default::default(),
+            };
+            let init_params = InitiateChannelParams {
+                max_outgoing_messages: 100,
+                fee_model,
+            };
+            let channel_id = Self::do_init_channel(dst_domain_id, init_params)?;
+            Self::do_open_channel(dst_domain_id, channel_id)?;
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {

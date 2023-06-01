@@ -39,3 +39,5 @@ std = [
 	"sp-std/std",
 	"sp-trie/std"
 ]
+
+runtime-benchmarks = []

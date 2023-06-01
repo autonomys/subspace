@@ -35,13 +35,18 @@ pub type EndpointResponse = Result<EndpointPayload, DispatchError>;
 /// Sender provides abstraction on sending messages to other domains.
 pub trait Sender<AccountId> {
     /// Unique Id of the message between dst_domain and src_domain.
-    type MessageId: Parameter + Member + Copy;
+    type MessageId: Parameter + Member + Copy + Default;
     /// Sends a message to dst_domain_id.
     fn send_message(
         sender: &AccountId,
         dst_domain_id: DomainId,
         req: EndpointRequest,
     ) -> Result<Self::MessageId, DispatchError>;
+
+    /// Only used in benchmark to prepare for a upcoming `send_message` call to
+    /// ensure it will succeed.
+    #[cfg(feature = "runtime-benchmarks")]
+    fn prepare_message(dst_domain_id: DomainId) -> Result<(), DispatchError>;
 }
 
 /// Handler to
