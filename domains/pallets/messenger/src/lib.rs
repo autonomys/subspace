@@ -83,6 +83,7 @@ pub(crate) type BalanceOf<T> =
 
 pub(crate) struct ValidatedRelayMessage<Balance> {
     msg: Message<Balance>,
+    next_nonce: Nonce,
     should_init_channel: bool,
 }
 
@@ -340,18 +341,6 @@ mod pallet {
         }
     }
 
-    type Tag = (DomainId, ChannelId, Nonce);
-
-    fn unsigned_validity(prefix: &'static str, provides: Tag) -> TransactionValidity {
-        ValidTransaction::with_tag_prefix(prefix)
-            .priority(TransactionPriority::MAX)
-            .and_provides(provides)
-            .longevity(TransactionLongevity::MAX)
-            // We need this extrinsic to be propagated to the farmer nodes.
-            .propagate(true)
-            .build()
-    }
-
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -361,12 +350,39 @@ mod pallet {
                 Call::relay_message { msg: xdm } => {
                     let ValidatedRelayMessage {
                         msg,
+                        next_nonce,
                         should_init_channel,
                     } = Self::do_validate_relay_message(xdm)?;
+                    if msg.nonce != next_nonce {
+                        log::error!(
+                            "Unexpected message nonce, channel next nonce {:?}, msg nonce {:?}",
+                            next_nonce,
+                            msg.nonce,
+                        );
+                        return Err(if msg.nonce < next_nonce {
+                            InvalidTransaction::Stale
+                        } else {
+                            InvalidTransaction::Future
+                        }
+                        .into());
+                    }
                     Self::pre_dispatch_relay_message(msg, should_init_channel)
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let msg = Self::do_validate_relay_message_response(xdm)?;
+                    let (msg, next_nonce) = Self::do_validate_relay_message_response(xdm)?;
+                    if msg.nonce != next_nonce {
+                        log::error!(
+                            "Unexpected message response nonce, channel next nonce {:?}, msg nonce {:?}",
+                            next_nonce,
+                            msg.nonce,
+                        );
+                        return Err(if msg.nonce < next_nonce {
+                            InvalidTransaction::Stale
+                        } else {
+                            InvalidTransaction::Future
+                        }
+                        .into());
+                    }
                     Self::pre_dispatch_relay_message_response(msg)
                 }
                 _ => Err(InvalidTransaction::Call.into()),
@@ -379,15 +395,45 @@ mod pallet {
                 Call::relay_message { msg: xdm } => {
                     let ValidatedRelayMessage {
                         msg,
+                        next_nonce,
                         should_init_channel: _,
                     } = Self::do_validate_relay_message(xdm)?;
-                    let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
-                    unsigned_validity("MessengerInbox", provides_tag)
+
+                    let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
+                    // Only add the requires tag if the msg nonce is in future
+                    if msg.nonce > next_nonce {
+                        valid_tx_builder = valid_tx_builder.and_requires((
+                            msg.dst_domain_id,
+                            msg.channel_id,
+                            msg.nonce - Nonce::one(),
+                        ));
+                    };
+                    valid_tx_builder
+                        .priority(TransactionPriority::MAX)
+                        .longevity(TransactionLongevity::MAX)
+                        .and_provides((msg.dst_domain_id, msg.channel_id, msg.nonce))
+                        .propagate(true)
+                        .build()
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let msg = Self::do_validate_relay_message_response(xdm)?;
-                    let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
-                    unsigned_validity("MessengerOutboxResponse", provides_tag)
+                    let (msg, next_nonce) = Self::do_validate_relay_message_response(xdm)?;
+
+                    let mut valid_tx_builder =
+                        ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
+                    // Only add the requires tag if the msg nonce is in future
+                    if msg.nonce > next_nonce {
+                        valid_tx_builder = valid_tx_builder.and_requires((
+                            msg.dst_domain_id,
+                            msg.channel_id,
+                            msg.nonce - Nonce::one(),
+                        ));
+                    };
+                    valid_tx_builder
+                        .priority(TransactionPriority::MAX)
+                        .longevity(TransactionLongevity::MAX)
+                        .and_provides((msg.dst_domain_id, msg.channel_id, msg.nonce))
+                        .propagate(true)
+                        .build()
                 }
                 _ => InvalidTransaction::Call.into(),
             }
@@ -518,7 +564,12 @@ mod pallet {
             msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::process_inbox_messages(msg.src_domain_id, msg.channel_id)?;
+            let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
+            ensure!(
+                Self::message_match(&msg, &inbox_msg),
+                Error::<T>::MessageNotMatch
+            );
+            Self::process_inbox_messages(inbox_msg)?;
             Ok(())
         }
 
@@ -530,7 +581,12 @@ mod pallet {
             msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::process_outbox_message_responses(msg.src_domain_id, msg.channel_id)?;
+            let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
+            ensure!(
+                Self::message_match(&msg, &outbox_resp_msg),
+                Error::<T>::MessageNotMatch
+            );
+            Self::process_outbox_message_responses(outbox_resp_msg)?;
             Ok(())
         }
 
@@ -734,6 +790,7 @@ mod pallet {
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
             Ok(ValidatedRelayMessage {
                 msg,
+                next_nonce,
                 should_init_channel,
             })
         }
@@ -773,7 +830,7 @@ mod pallet {
 
         pub(crate) fn do_validate_relay_message_response(
             xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
-        ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
+        ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
@@ -796,7 +853,9 @@ mod pallet {
             )));
 
             // verify, decode, and store the message
-            Self::do_verify_xdm(next_nonce, key, xdm)
+            let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+
+            Ok((msg, next_nonce))
         }
 
         pub(crate) fn pre_dispatch_relay_message_response(
