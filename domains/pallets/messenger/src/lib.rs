@@ -481,6 +481,10 @@ mod pallet {
 
         /// Emits when there is mismatch between the decoded message and the original message
         MessageNotMatch,
+
+        /// Emits when there is mismatch between the message's weight tag and the message's
+        /// actual processing path
+        WeightTagNotMatch,
     }
 
     #[pallet::hooks]
@@ -563,7 +567,7 @@ mod pallet {
                 Self::message_match(&msg, &inbox_msg),
                 Error::<T>::MessageNotMatch
             );
-            Self::process_inbox_messages(inbox_msg)?;
+            Self::process_inbox_messages(inbox_msg, msg.weight_tag)?;
             Ok(())
         }
 
@@ -580,7 +584,7 @@ mod pallet {
                 Self::message_match(&msg, &outbox_resp_msg),
                 Error::<T>::MessageNotMatch
             );
-            Self::process_outbox_message_responses(outbox_resp_msg)?;
+            Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
         }
 

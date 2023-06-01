@@ -1,4 +1,4 @@
-use crate::endpoint::{EndpointRequest, EndpointResponse};
+use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
 use crate::verification::StorageProofVerifier;
 use codec::{Decode, Encode, FullCodec};
 use frame_support::pallet_prelude::NMapKey;
@@ -103,6 +103,54 @@ pub enum VersionedPayload<Balance> {
     V0(Payload<Balance>),
 }
 
+/// Message weight tag used to indicate the consumed weight when handling the message
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Default)]
+pub enum MessageWeightTag {
+    ProtocolChannelOpen,
+    ProtocolChannelClose,
+    EndpointRequest(Endpoint),
+    EndpointResponse(Endpoint),
+    #[default]
+    None,
+}
+
+impl MessageWeightTag {
+    // Cnstruct the weight tag for outbox message based on the outbox payload
+    pub fn outbox<Balance>(outbox_payload: &VersionedPayload<Balance>) -> Self {
+        match outbox_payload {
+            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                ProtocolMessageRequest::ChannelOpen(_),
+            ))) => MessageWeightTag::ProtocolChannelOpen,
+            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                ProtocolMessageRequest::ChannelClose,
+            ))) => MessageWeightTag::ProtocolChannelClose,
+            VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(endpoint_req))) => {
+                MessageWeightTag::EndpointRequest(endpoint_req.dst_endpoint.clone())
+            }
+            _ => MessageWeightTag::None,
+        }
+    }
+
+    // Cnstruct the weight tag for inbox response based on the weight tag of the request
+    // message and the response payload
+    pub fn inbox_response<Balance>(
+        req_tyep: MessageWeightTag,
+        resp_payload: &VersionedPayload<Balance>,
+    ) -> Self {
+        match (req_tyep, resp_payload) {
+            (
+                MessageWeightTag::ProtocolChannelOpen,
+                VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(Ok(_)))),
+            ) => MessageWeightTag::ProtocolChannelOpen,
+            (
+                MessageWeightTag::EndpointRequest(endpoint),
+                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(_))),
+            ) => MessageWeightTag::EndpointResponse(endpoint),
+            _ => MessageWeightTag::None,
+        }
+    }
+}
+
 /// Message contains information to be sent to or received from another domain
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Message<Balance> {
@@ -171,6 +219,8 @@ pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
     pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
+    /// The message weight tag
+    pub weight_tag: MessageWeightTag,
 }
 
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
@@ -249,6 +299,8 @@ pub struct RelayerMessageWithStorageKey {
     pub nonce: Nonce,
     /// Storage key to generate proof for using proof backend.
     pub storage_key: Vec<u8>,
+    /// The message weight tag
+    pub weight_tag: MessageWeightTag,
 }
 
 /// Set of messages with storage keys to be relayed by a given relayer.
@@ -269,6 +321,7 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
             channel_id: r_msg.channel_id,
             nonce: r_msg.nonce,
             proof,
+            weight_tag: r_msg.weight_tag,
         }
     }
 }

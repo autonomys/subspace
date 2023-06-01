@@ -1,14 +1,14 @@
 use crate::{
-    BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, Inbox, InboxResponses, Nonce,
-    Outbox, OutboxMessageResult, OutboxResponses, Pallet, RelayerMessages,
+    BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, InboxResponses, Nonce, Outbox,
+    OutboxMessageResult, Pallet, RelayerMessages,
 };
 use frame_support::ensure;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
-    Message, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
-    VersionedPayload,
+    Message, MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse,
+    RequestResponse, VersionedPayload,
 };
-use sp_runtime::traits::{CheckedMul, Get};
+use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
 
 impl<T: Config> Pallet<T> {
@@ -37,6 +37,8 @@ impl<T: Config> Pallet<T> {
                     Error::<T>::OutboxFull
                 );
 
+                let weight_tag = MessageWeightTag::outbox(&payload);
+
                 let next_outbox_nonce = channel.next_outbox_nonce;
                 // add message to outbox
                 let msg = Message {
@@ -59,9 +61,11 @@ impl<T: Config> Pallet<T> {
                 let relayer_id = Self::next_relayer()?;
                 RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
                     let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
-                    messages
-                        .outbox
-                        .push((dst_domain_id, (channel_id, next_outbox_nonce)));
+                    messages.outbox.push((
+                        dst_domain_id,
+                        (channel_id, next_outbox_nonce),
+                        weight_tag,
+                    ));
                     *maybe_messages = Some(messages)
                 });
 
@@ -103,6 +107,7 @@ impl<T: Config> Pallet<T> {
     /// Process the incoming messages from given domain_id and channel_id.
     pub(crate) fn process_inbox_messages(
         msg: Message<BalanceOf<T>>,
+        msg_weight_tag: MessageWeightTag,
     ) -> DispatchResult {
         let (dst_domain_id, channel_id, nonce) = (msg.src_domain_id, msg.channel_id, msg.nonce);
         let channel =
@@ -122,6 +127,7 @@ impl<T: Config> Pallet<T> {
                         dst_domain_id,
                         channel_id,
                         req,
+                        &msg_weight_tag,
                     ),
                 ))
             }
@@ -131,6 +137,10 @@ impl<T: Config> Pallet<T> {
                 let response = if let Some(endpoint_handler) =
                     T::get_endpoint_response_handler(&req.dst_endpoint)
                 {
+                    if msg_weight_tag != MessageWeightTag::EndpointRequest(req.dst_endpoint.clone())
+                    {
+                        return Err(Error::<T>::WeightTagNotMatch.into());
+                    }
                     endpoint_handler.message(dst_domain_id, (channel_id, nonce), req)
                 } else {
                     Err(Error::<T>::NoMessageHandler.into())
@@ -150,6 +160,9 @@ impl<T: Config> Pallet<T> {
             },
         };
 
+        let resp_payload = VersionedPayload::V0(response);
+        let weight_tag = MessageWeightTag::inbox_response(msg_weight_tag, &resp_payload);
+
         InboxResponses::<T>::insert(
             (dst_domain_id, channel_id, nonce),
             Message {
@@ -157,7 +170,7 @@ impl<T: Config> Pallet<T> {
                 dst_domain_id,
                 channel_id,
                 nonce,
-                payload: VersionedPayload::V0(response),
+                payload: resp_payload,
                 // this nonce is not considered in response context.
                 last_delivered_message_response_nonce: None,
             },
@@ -169,7 +182,7 @@ impl<T: Config> Pallet<T> {
             let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
             messages
                 .inbox_responses
-                .push((dst_domain_id, (channel_id, nonce)));
+                .push((dst_domain_id, (channel_id, nonce), weight_tag));
             *maybe_messages = Some(messages)
         });
 
@@ -208,12 +221,19 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
         channel_id: ChannelId,
         req: ProtocolMessageRequest<BalanceOf<T>>,
+        weight_tag: &MessageWeightTag,
     ) -> Result<(), DispatchError> {
         match req {
             ProtocolMessageRequest::ChannelOpen(_) => {
+                if weight_tag != &MessageWeightTag::ProtocolChannelOpen {
+                    return Err(Error::<T>::WeightTagNotMatch.into());
+                }
                 Self::do_open_channel(domain_id, channel_id)
             }
             ProtocolMessageRequest::ChannelClose => {
+                if weight_tag != &MessageWeightTag::ProtocolChannelClose {
+                    return Err(Error::<T>::WeightTagNotMatch.into());
+                }
                 Self::do_close_channel(domain_id, channel_id)
             }
         }
@@ -224,11 +244,15 @@ impl<T: Config> Pallet<T> {
         channel_id: ChannelId,
         req: ProtocolMessageRequest<BalanceOf<T>>,
         resp: ProtocolMessageResponse,
+        weight_tag: &MessageWeightTag,
     ) -> DispatchResult {
         match (req, resp) {
             // channel open request is accepted by dst_domain.
             // open channel on our end.
             (ProtocolMessageRequest::ChannelOpen(_), Ok(_)) => {
+                if weight_tag != &MessageWeightTag::ProtocolChannelOpen {
+                    return Err(Error::<T>::WeightTagNotMatch.into());
+                }
                 Self::do_open_channel(domain_id, channel_id)
             }
 
@@ -241,6 +265,7 @@ impl<T: Config> Pallet<T> {
 
     pub(crate) fn process_outbox_message_responses(
         resp_msg: Message<BalanceOf<T>>,
+        resp_msg_weight_tag: MessageWeightTag,
     ) -> DispatchResult {
         let (dst_domain_id, channel_id, nonce) =
             (resp_msg.src_domain_id, resp_msg.channel_id, resp_msg.nonce);
@@ -269,6 +294,7 @@ impl<T: Config> Pallet<T> {
                 channel_id,
                 req,
                 resp,
+                &resp_msg_weight_tag,
             ),
 
             // process incoming endpoint outbox message response.
@@ -278,6 +304,11 @@ impl<T: Config> Pallet<T> {
             ) => {
                 if let Some(endpoint_handler) = T::get_endpoint_response_handler(&req.dst_endpoint)
                 {
+                    if resp_msg_weight_tag
+                        != MessageWeightTag::EndpointResponse(req.dst_endpoint.clone())
+                    {
+                        return Err(Error::<T>::WeightTagNotMatch.into());
+                    }
                     endpoint_handler.message_response(dst_domain_id, (channel_id, nonce), req, resp)
                 } else {
                     Err(Error::<T>::NoMessageHandler.into())

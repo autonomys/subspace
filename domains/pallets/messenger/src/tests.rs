@@ -507,6 +507,7 @@ fn channel_relay_request_and_response(
             core_domain_proof: None,
             message_proof,
         },
+        weight_tag: Default::default(),
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
@@ -574,6 +575,7 @@ fn channel_relay_request_and_response(
             core_domain_proof: None,
             message_proof,
         },
+        weight_tag: Default::default(),
     };
     domain_a_test_ext.execute_with(|| {
         domain_a::Settlement::set_state_root(
