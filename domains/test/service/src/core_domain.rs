@@ -19,6 +19,7 @@ use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_core::H256;
@@ -87,6 +88,8 @@ where
     pub rpc_handlers: RpcHandlers,
     /// Core domain executor.
     pub executor: CoreDomainExecutor<RuntimeApi, Executor>,
+    /// Sink to the node's tx pool
+    pub tx_pool_sink: TracingUnboundedSender<Vec<u8>>,
     _phantom_data: PhantomData<Runtime>,
 }
 
@@ -135,7 +138,7 @@ where
             key,
             core_domain_nodes,
             core_domain_nodes_exclusive,
-            role,
+            role.clone(),
             BasePath::new(base_path.path().join(format!("core-{domain_id:?}"))),
         )
         .expect("could not generate core domain node Configuration");
@@ -204,9 +207,11 @@ where
             ..
         } = core_domain_node;
 
-        mock_primary_node
-            .xdm_gossip_worker_builder()
-            .push_domain_tx_pool_sink(domain_id, tx_pool_sink);
+        if role.is_authority() {
+            mock_primary_node
+                .xdm_gossip_worker_builder()
+                .push_domain_tx_pool_sink(domain_id, tx_pool_sink.clone());
+        }
 
         let addr = MultiaddrWithPeerId {
             multiaddr,
@@ -227,6 +232,7 @@ where
             addr,
             rpc_handlers,
             executor,
+            tx_pool_sink,
             _phantom_data: Default::default(),
         }
     }
