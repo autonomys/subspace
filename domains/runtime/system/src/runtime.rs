@@ -418,6 +418,8 @@ frame_benchmarking::define_benchmarks!(
     [pallet_balances, Balances]
     [pallet_executor_registry, ExecutorRegistry]
     [pallet_domain_registry, DomainRegistry]
+    [pallet_messenger, Messenger]
+    [pallet_transporter, Transporter]
 );
 
 impl_runtime_apis! {

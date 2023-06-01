@@ -27,6 +27,8 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+pub mod weights;
+
 mod fees;
 mod messages;
 mod relayer;
