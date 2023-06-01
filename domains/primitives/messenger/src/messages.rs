@@ -193,6 +193,22 @@ pub struct Proof<BlockNumber, BlockHash, StateRoot> {
     pub message_proof: StorageProof,
 }
 
+impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
+    Proof<BlockNumber, BlockHash, StateRoot>
+{
+    pub fn dummy() -> Self {
+        Proof {
+            system_domain_block_info: DomainBlockInfo {
+                block_number: Default::default(),
+                block_hash: Default::default(),
+            },
+            system_domain_state_root: Default::default(),
+            core_domain_proof: None,
+            message_proof: StorageProof::empty(),
+        }
+    }
+}
+
 /// Holds the Block info and state roots from which a proof was constructed.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {

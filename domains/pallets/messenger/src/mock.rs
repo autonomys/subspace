@@ -107,6 +107,12 @@ macro_rules! impl_runtime {
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,
             ) -> Option<Box<dyn EndpointHandler<MessageId>>>{
+                // Return a dummy handler for benchmark to observe the outer weight when processing cross domain
+                // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
+                #[cfg(feature = "runtime-benchmarks")]
+                {
+                    return Some(Box::new(()));
+                }
                 match endpoint {
                     Endpoint::Id(id) => match id {
                         100 => Some(Box::new(pallet_transporter::EndpointHandler(PhantomData::<$runtime>))),
