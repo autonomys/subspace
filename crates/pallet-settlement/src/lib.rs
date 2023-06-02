@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # Receipts Pallet
+//! # Settlement Pallet
 //!
 //! This pallet provides the general common settlement functions needed by the consensus chain
 //! and system domain, which mainly includes tracking the receipts and handling the fraud proofs

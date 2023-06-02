@@ -536,10 +536,12 @@ impl MockPrimaryNode {
             .await
     }
 
-    /// Remove tx from tx pool
-    pub fn remove_tx_from_tx_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
-        self.transaction_pool
-            .remove_invalid(&[self.transaction_pool.hash_of(tx)]);
+    /// Remove a ready transaction from transaction pool.
+    pub fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
+        self.transaction_pool.pool().prune_known(
+            &BlockId::Hash(self.client.info().best_hash),
+            &[self.transaction_pool.hash_of(tx)],
+        )?;
         self.transaction_pool
             .pool()
             .validated_pool()

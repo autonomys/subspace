@@ -48,7 +48,7 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_support::PalletError;
     use frame_system::pallet_prelude::*;
-    use pallet_receipts::{Error as ReceiptError, FraudProofError};
+    use pallet_settlement::{Error as SettlementError, FraudProofError};
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
@@ -58,7 +58,7 @@ mod pallet {
     use sp_std::vec::Vec;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_receipts::Config {
+    pub trait Config: frame_system::Config + pallet_settlement::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
@@ -123,15 +123,15 @@ mod pallet {
         Empty,
     }
 
-    impl<T> From<ReceiptError> for Error<T> {
+    impl<T> From<SettlementError> for Error<T> {
         #[inline]
-        fn from(error: ReceiptError) -> Self {
+        fn from(error: SettlementError) -> Self {
             match error {
-                ReceiptError::MissingParent => {
+                SettlementError::MissingParent => {
                     Self::Bundle(BundleError::Receipt(ExecutionReceiptError::MissingParent))
                 }
-                ReceiptError::FraudProof(err) => Self::FraudProof(err),
-                ReceiptError::UnavailablePrimaryBlockHash => Self::UnavailablePrimaryBlockHash,
+                SettlementError::FraudProof(err) => Self::FraudProof(err),
+                SettlementError::UnavailablePrimaryBlockHash => Self::UnavailablePrimaryBlockHash,
             }
         }
     }
@@ -181,7 +181,7 @@ mod pallet {
 
             // Only process the system domain receipts.
             if domain_id.is_system() {
-                pallet_receipts::Pallet::<T>::track_receipts(
+                pallet_settlement::Pallet::<T>::track_receipts(
                     domain_id,
                     signed_opaque_bundle.bundle.receipts.as_slice(),
                 )
@@ -221,7 +221,7 @@ mod pallet {
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             if fraud_proof.domain_id().is_system() {
-                pallet_receipts::Pallet::<T>::process_fraud_proof(fraud_proof)
+                pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
                     .map_err(Error::<T>::from)?;
             }
 
@@ -235,7 +235,7 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
 
-            pallet_receipts::PrimaryBlockHash::<T>::insert(
+            pallet_settlement::PrimaryBlockHash::<T>::insert(
                 DomainId::SYSTEM,
                 parent_number,
                 parent_hash,
@@ -244,7 +244,7 @@ mod pallet {
             // The genesis block hash is not finalized until the genesis block building is done,
             // hence the genesis receipt is initialized after the genesis building.
             if parent_number.is_zero() {
-                pallet_receipts::Pallet::<T>::initialize_genesis_receipt(
+                pallet_settlement::Pallet::<T>::initialize_genesis_receipt(
                     DomainId::SYSTEM,
                     parent_hash,
                 );
@@ -326,7 +326,8 @@ mod pallet {
                         );
                         return InvalidTransactionCode::FraudProof.into();
                     }
-                    if let Err(e) = pallet_receipts::Pallet::<T>::validate_fraud_proof(fraud_proof)
+                    if let Err(e) =
+                        pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
                         log::debug!(
                             target: "runtime::domains",
@@ -352,12 +353,12 @@ impl<T: Config> Pallet<T> {
 
     /// Returns the block number of the latest receipt.
     pub fn head_receipt_number() -> T::BlockNumber {
-        pallet_receipts::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
+        pallet_settlement::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
     }
 
     /// Returns the block number of the oldest receipt still being tracked in the state.
     pub fn oldest_receipt_number() -> T::BlockNumber {
-        pallet_receipts::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
+        pallet_settlement::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
     }
 
     fn receipts_are_consecutive(
@@ -393,7 +394,7 @@ impl<T: Config> Pallet<T> {
 
                 // Non-best receipt
                 if primary_number <= best_number {
-                    if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
+                    if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
                         receipt,
                     ) {
@@ -401,7 +402,7 @@ impl<T: Config> Pallet<T> {
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
                             expected: {:?}, got: {:?}",
-                            pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                            pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                             receipt.primary_hash,
                         );
                         return Err(TransactionValidityError::Invalid(
@@ -410,7 +411,7 @@ impl<T: Config> Pallet<T> {
                     }
                     // New best receipt.
                 } else if primary_number == best_number + One::one() {
-                    if !pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
+                    if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
                         receipt,
                     ) {
@@ -418,7 +419,7 @@ impl<T: Config> Pallet<T> {
                             target: "runtime::domains",
                             "Invalid primary hash for #{primary_number:?} in receipt, \
                             expected: {:?}, got: {:?}",
-                            pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                            pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                             receipt.primary_hash,
                         );
                         return Err(TransactionValidityError::Invalid(
@@ -477,7 +478,7 @@ impl<T: Config> Pallet<T> {
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,
-                None => pallet_receipts::Pallet::<T>::state_root((
+                None => pallet_settlement::Pallet::<T>::state_root((
                     DomainId::SYSTEM,
                     block_number,
                     block_hash,
@@ -488,7 +489,7 @@ impl<T: Config> Pallet<T> {
                         target: "runtime::domains",
                         "State root for #{block_number:?},{block_hash:?} not found, \
                         current head receipt: {:?}",
-                        pallet_receipts::Pallet::<T>::receipt_head(DomainId::SYSTEM),
+                        pallet_settlement::Pallet::<T>::receipt_head(DomainId::SYSTEM),
                     );
                     err
                 })?,
@@ -604,7 +605,7 @@ impl<T: Config> Pallet<T> {
             // within this pallet, which may be solved if the `submit_bundle` extrinsic is no longer
             // free in the future.
             let bundle_created_on_valid_primary_block =
-                match pallet_receipts::PrimaryBlockHash::<T>::get(
+                match pallet_settlement::PrimaryBlockHash::<T>::get(
                     DomainId::SYSTEM,
                     bundle.header.primary_number,
                 ) {
@@ -620,7 +621,7 @@ impl<T: Config> Pallet<T> {
                     target: "runtime::domains",
                     "Bundle is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
                     bundle.header.primary_number,
-                    pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, bundle.header.primary_number),
+                    pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, bundle.header.primary_number),
                     bundle.header.primary_hash,
                 );
                 return Err(BundleError::UnknownBlock);
@@ -654,7 +655,7 @@ impl<T: Config> Pallet<T> {
                     && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
 
                 let point_to_valid_primary_block =
-                    pallet_receipts::Pallet::<T>::point_to_valid_primary_block(
+                    pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
                         DomainId::SYSTEM,
                         execution_receipt,
                     );
@@ -665,7 +666,7 @@ impl<T: Config> Pallet<T> {
                         "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
                         expected: #{primary_number:?},{:?}",
                         execution_receipt.primary_hash,
-                        pallet_receipts::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                        pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
                     );
                     return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
                 }

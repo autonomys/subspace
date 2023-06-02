@@ -295,7 +295,7 @@ where
     type Query = Option<StateRoot>;
 
     fn module_prefix() -> &'static [u8] {
-        "Receipts".as_ref()
+        "Settlement".as_ref()
     }
 
     fn storage_prefix() -> &'static [u8] {

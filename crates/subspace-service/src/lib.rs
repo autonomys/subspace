@@ -70,9 +70,9 @@ use sp_domains::ExecutorApi;
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
-use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
+use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -280,7 +280,7 @@ where
         + TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + ReceiptsApi<Block, domain_runtime_primitives::Hash>
+        + SettlementApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -534,7 +534,7 @@ where
         + TransactionPaymentApi<Block, Balance>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + ReceiptsApi<Block, domain_runtime_primitives::Hash>
+        + SettlementApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,

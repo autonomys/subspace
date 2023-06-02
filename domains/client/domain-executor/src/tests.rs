@@ -395,7 +395,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .unwrap();
     // Manually remove the target bundle from tx pool in case resubmit it by accident
     ferdie
-        .remove_tx_from_tx_pool(&bundle_to_tx(target_bundle.clone()))
+        .prune_tx_from_pool(&bundle_to_tx(target_bundle.clone()))
         .unwrap();
 
     // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
@@ -426,7 +426,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
     ferdie
-        .remove_tx_from_tx_pool(&original_submit_bundle_tx)
+        .prune_tx_from_pool(&original_submit_bundle_tx)
         .unwrap();
     assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
 
@@ -884,7 +884,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         e => panic!("Unexpected error while submitting execution receipt: {e}"),
     }
 
-    // The 4 is able to submit to tx pool but will fail to execute due to the receipt of 3 is missing.
+    // The 4 is able to be submitted to tx pool but the execution will fail as the receipt of 3 is missing.
     let submit_bundle_4 = create_submit_bundle(4);
     ferdie
         .submit_transaction(submit_bundle_4.clone())
@@ -893,8 +893,9 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     assert!(ferdie.produce_blocks(1).await.is_err());
     assert_eq!(head_receipt_number(), 2);
 
-    // Re-submit 4 after 3, this time it will successfully execute and update the head receipt number.
-    ferdie.remove_tx_from_tx_pool(&submit_bundle_4).unwrap();
+    // Re-submit 4 after 3, this time the execution will succeed and the head receipt number will
+    // be updated.
+    ferdie.prune_tx_from_pool(&submit_bundle_4).unwrap();
     ferdie
         .submit_transaction(create_submit_bundle(3))
         .await
@@ -944,13 +945,13 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     )
     .into();
 
-    // Wait one block to ensure the bundle is stored onchain and manually remove it from tx pool
+    // Wait for one block to ensure the bundle is stored onchain and then manually remove it from tx pool.
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_tx).unwrap();
 
-    // Bundle is rejected due to it is duplicated
+    // Bundle is rejected because it is duplicated.
     match ferdie
         .submit_transaction(submit_bundle_tx.clone())
         .await
@@ -970,7 +971,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     // Wait for confirmation depth K blocks which is 100 in test
     produce_blocks!(ferdie, alice, 100).await.unwrap();
 
-    // Bundle is now rejected due to it is stale
+    // Bundle is now rejected because it is stale.
     match ferdie
         .submit_transaction(submit_bundle_tx)
         .await
@@ -1040,12 +1041,12 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .unwrap();
 
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
-    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_tx).unwrap();
 
     // Bundle can be successfully submitted to the new fork, or it is also possible
-    // that the retracted block's `submit_bundle_tx` have resubmitted to the tx pool
-    // in the background by the `txpool-notifications` worker just after the above
-    // `remove_tx_from_tx_pool` call
+    // that the `submit_bundle_tx` in the retracted block has been resubmitted to the
+    // tx pool in the background by the `txpool-notifications` worker just after the above
+    // `prune_tx_from_pool` call.
     match ferdie.submit_transaction(submit_bundle_tx).await {
         Ok(_) | Err(sc_transaction_pool::error::Error::Pool(TxPoolError::AlreadyImported(_))) => {}
         Err(err) => panic!("Unexpected error: {err}"),

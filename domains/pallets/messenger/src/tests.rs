@@ -510,7 +510,7 @@ fn channel_relay_request_and_response(
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
-        domain_b::Receipts::set_state_root(
+        domain_b::Settlement::set_state_root(
             xdm.src_domain_id,
             xdm.proof.system_domain_block_info.block_number,
             xdm.proof.system_domain_block_info.block_hash,
@@ -579,7 +579,7 @@ fn channel_relay_request_and_response(
         },
     };
     domain_a_test_ext.execute_with(|| {
-        domain_a::Receipts::set_state_root(
+        domain_a::Settlement::set_state_root(
             xdm.src_domain_id,
             xdm.proof.system_domain_block_info.block_number,
             xdm.proof.system_domain_block_info.block_hash,

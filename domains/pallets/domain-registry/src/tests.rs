@@ -28,7 +28,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Balances: pallet_balances,
         ExecutorRegistry: pallet_executor_registry,
-        Receipts: pallet_receipts,
+        Settlement: pallet_settlement,
         DomainRegistry: pallet_domain_registry,
     }
 );
@@ -134,7 +134,7 @@ impl pallet_domain_registry::Config for Test {
     type WeightInfo = ();
 }
 
-impl pallet_receipts::Config for Test {
+impl pallet_settlement::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
