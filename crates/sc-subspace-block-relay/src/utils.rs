@@ -1,6 +1,6 @@
 //! Common utils.
 
-use codec::{self, Decode, Encode};
+use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
@@ -44,6 +44,7 @@ impl NetworkWrapper {
 }
 
 /// Network handle that allows making requests to specific peer and protocol.
+/// `Request` is the format of the request message sent on the wire.
 #[derive(Clone)]
 pub(crate) struct NetworkPeerHandle {
     protocol_name: ProtocolName,

@@ -96,13 +96,13 @@ where
     fn build_initial_request(&self) -> Self::Request;
 
     /// Resolves the initial response to produce the protocol units.
-    /// `encoder_fn` needs to be called to generate the request payload
-    /// as part of request/response sequences initiated by the protocol.
-    async fn resolve_initial_response(
+    async fn resolve_initial_response<Request>(
         &self,
         response: Self::Response,
         network_peer_handle: &NetworkPeerHandle,
-    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
+    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
+    where
+        Request: From<Self::Request> + Encode + Send + Sync;
 }
 
 /// The server side of the relay protocol
