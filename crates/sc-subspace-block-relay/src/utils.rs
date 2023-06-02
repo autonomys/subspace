@@ -1,6 +1,6 @@
 //! Common utils.
 
-use codec::{self, Decode, Encode};
+use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
@@ -31,11 +31,11 @@ impl NetworkWrapper {
         *self.network.lock() = Some(network);
     }
 
-    pub(crate) fn network_peer_handle<RequestMsg: Encode>(
+    pub(crate) fn network_peer_handle(
         &self,
         protocol_name: ProtocolName,
         who: PeerId,
-    ) -> Result<NetworkPeerHandle<RequestMsg>, RequestResponseErr> {
+    ) -> Result<NetworkPeerHandle, RequestResponseErr> {
         match self.network.lock().as_ref().cloned() {
             Some(network) => Ok(NetworkPeerHandle::new(protocol_name, who, network)),
             None => Err(RequestResponseErr::NetworkUninitialized),
@@ -44,40 +44,37 @@ impl NetworkWrapper {
 }
 
 /// Network handle that allows making requests to specific peer and protocol.
-/// `RequestMsg` is the format of the request message sent on the wire.
+/// `Request` is the format of the request message sent on the wire.
 #[derive(Clone)]
-pub(crate) struct NetworkPeerHandle<RequestMsg: Encode> {
+pub(crate) struct NetworkPeerHandle {
     protocol_name: ProtocolName,
     who: PeerId,
     network: NetworkRequestService,
-    _p: std::marker::PhantomData<RequestMsg>,
 }
 
-impl<RequestMsg: Encode> NetworkPeerHandle<RequestMsg> {
+impl NetworkPeerHandle {
     fn new(protocol_name: ProtocolName, who: PeerId, network: NetworkRequestService) -> Self {
         Self {
             protocol_name,
             who,
             network,
-            _p: Default::default(),
         }
     }
 
-    /// Performs the request, where the request can be transformed into
-    /// the network format `RequestMsg`.
+    /// Performs the request
     pub(crate) async fn request<Request, Response>(
         &self,
         request: Request,
     ) -> Result<Response, RequestResponseErr>
     where
-        Request: Into<RequestMsg>,
+        Request: Encode,
         Response: Decode,
     {
         let (tx, rx) = oneshot::channel();
         self.network.start_request(
             self.who,
             self.protocol_name.clone(),
-            Request::into(request).encode(),
+            request.encode(),
             tx,
             IfDisconnected::ImmediateError,
         );

@@ -91,16 +91,6 @@ enum ServerMessage<Block: BlockT, ProtocolRequest> {
     ProtocolRequest(ProtocolRequest),
 }
 
-impl<Block: BlockT, ProtocolRequest> From<InitialRequest<Block, ProtocolRequest>>
-    for ServerMessage<Block, ProtocolRequest>
-{
-    fn from(
-        inner: InitialRequest<Block, ProtocolRequest>,
-    ) -> ServerMessage<Block, ProtocolRequest> {
-        ServerMessage::InitialRequest(inner)
-    }
-}
-
 impl<Block: BlockT, ProtocolRequest> From<ProtocolRequest>
     for ServerMessage<Block, ProtocolRequest>
 {
@@ -135,9 +125,9 @@ where
         request: BlockRequest<Block>,
     ) -> Result<DownloadResult<BlockHash<Block>, BlockData<Block>>, RelayError> {
         let start_ts = Instant::now();
-        let network_peer_handle: NetworkPeerHandle<ServerMessage<Block, ProtoClient::Request>> =
-            self.network
-                .network_peer_handle(self.protocol_name.clone(), who)?;
+        let network_peer_handle = self
+            .network
+            .network_peer_handle(self.protocol_name.clone(), who)?;
 
         // Perform the initial request/response
         let initial_request = InitialRequest {
@@ -149,14 +139,19 @@ where
             protocol_request: self.protocol_client.build_initial_request(),
         };
         let initial_response = network_peer_handle
-            .request::<_, InitialResponse<Block, ProtoClient::Response>>(initial_request)
+            .request::<_, InitialResponse<Block, ProtoClient::Response>>(
+                ServerMessage::InitialRequest(initial_request),
+            )
             .await?;
 
         // Resolve the protocol response to get the extrinsics
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics(protocol_response, &network_peer_handle)
+                .resolve_extrinsics::<ServerMessage<Block, ProtoClient::Request>>(
+                    protocol_response,
+                    &network_peer_handle,
+                )
                 .await?;
             (Some(body), local_miss)
         } else {
@@ -184,14 +179,17 @@ where
     }
 
     /// Resolves the extrinsics from the initial response
-    async fn resolve_extrinsics(
+    async fn resolve_extrinsics<Request>(
         &self,
         protocol_response: ProtoClient::Response,
-        network_peer_handle: &NetworkPeerHandle<ServerMessage<Block, ProtoClient::Request>>,
-    ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
+        network_peer_handle: &NetworkPeerHandle,
+    ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError>
+    where
+        Request: From<ProtoClient::Request> + Encode + Send + Sync,
+    {
         let (block_hash, resolved) = self
             .protocol_client
-            .resolve_initial_response(protocol_response, network_peer_handle)
+            .resolve_initial_response::<Request>(protocol_response, network_peer_handle)
             .await?;
         let mut local_miss = 0;
         let extrinsics = resolved
