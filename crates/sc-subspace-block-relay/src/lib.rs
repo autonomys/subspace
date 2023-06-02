@@ -96,11 +96,13 @@ where
     fn build_initial_request(&self) -> Self::Request;
 
     /// Resolves the initial response to produce the protocol units.
-    async fn resolve_initial_response<RequestMsg: From<Self::Request> + Encode + Send + Sync>(
+    async fn resolve_initial_response<Request>(
         &self,
         response: Self::Response,
-        network_peer_handle: &NetworkPeerHandle<RequestMsg>,
-    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>;
+        network_peer_handle: &NetworkPeerHandle,
+    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
+    where
+        Request: From<Self::Request> + Encode + Send + Sync;
 }
 
 /// The server side of the relay protocol

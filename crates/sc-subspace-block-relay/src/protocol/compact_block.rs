@@ -146,15 +146,14 @@ where
     }
 
     /// Fetches the missing entries from the server
-    async fn resolve_misses<RequestMsg>(
+    async fn resolve_misses<Request>(
         &self,
         compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
-        network_peer_handle: &NetworkPeerHandle<RequestMsg>,
+        network_peer_handle: &NetworkPeerHandle,
     ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError>
     where
-        RequestMsg:
-            From<CompactBlockRequest<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
+        Request: From<CompactBlockRequest<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
     {
         let ResolveContext {
             mut resolved,
@@ -167,7 +166,7 @@ where
             protocol_unit_ids: local_miss.clone(),
         });
         let response: CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
-            network_peer_handle.request(request).await?;
+            network_peer_handle.request(Request::from(request)).await?;
         let missing_entries_response =
             if let CompactBlockResponse::MissingEntries(response) = response {
                 response
@@ -218,11 +217,14 @@ where
         CompactBlockRequest::Initial
     }
 
-    async fn resolve_initial_response<RequestMsg: From<Self::Request> + Encode + Send + Sync>(
+    async fn resolve_initial_response<Request>(
         &self,
         response: Self::Response,
-        network_peer_handle: &NetworkPeerHandle<RequestMsg>,
-    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError> {
+        network_peer_handle: &NetworkPeerHandle,
+    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
+    where
+        Request: From<Self::Request> + Encode + Send + Sync,
+    {
         let compact_response = match response {
             CompactBlockResponse::Initial(compact_response) => compact_response,
             _ => return Err(RelayError::UnexpectedInitialResponse),
@@ -247,7 +249,7 @@ where
         let misses = context.local_miss.len();
         let download_unit_id = compact_response.download_unit_id.clone();
         let resolved = self
-            .resolve_misses(compact_response, context, network_peer_handle)
+            .resolve_misses::<Request>(compact_response, context, network_peer_handle)
             .await?;
         trace!(
             target: LOG_TARGET,
