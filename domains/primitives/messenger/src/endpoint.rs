@@ -46,7 +46,7 @@ pub trait Sender<AccountId> {
     /// Only used in benchmark to prepare for a upcoming `send_message` call to
     /// ensure it will succeed.
     #[cfg(feature = "runtime-benchmarks")]
-    fn prepare_message(dst_domain_id: DomainId) -> Result<(), DispatchError>;
+    fn unchecked_open_channel(dst_domain_id: DomainId) -> Result<(), DispatchError>;
 }
 
 /// Handler to
@@ -77,7 +77,11 @@ pub trait EndpointHandler<MessageId> {
     fn message_response_weight(&self) -> Weight;
 }
 
-impl<MessageId> EndpointHandler<MessageId> for () {
+#[cfg(feature = "runtime-benchmarks")]
+pub struct BenchmarkEndpointHandler;
+
+#[cfg(feature = "runtime-benchmarks")]
+impl<MessageId> EndpointHandler<MessageId> for BenchmarkEndpointHandler {
     fn message(
         &self,
         _src_domain_id: DomainId,

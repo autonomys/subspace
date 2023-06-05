@@ -112,7 +112,7 @@ macro_rules! impl_runtime {
                 // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
                 #[cfg(feature = "runtime-benchmarks")]
                 {
-                    return Some(Box::new(()));
+                    return Some(Box::new(sp_messenger::endpoint::BenchmarkEndpointHandler));
                 }
                 match endpoint {
                     Endpoint::Id(id) => match id {

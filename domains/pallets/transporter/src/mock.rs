@@ -96,7 +96,7 @@ impl Sender<AccountId> for MockMessenger {
     }
 
     #[cfg(feature = "runtime-benchmarks")]
-    fn prepare_message(_dst_domain_id: DomainId) -> Result<(), DispatchError> {
+    fn unchecked_open_channel(_dst_domain_id: DomainId) -> Result<(), DispatchError> {
         Ok(())
     }
 }

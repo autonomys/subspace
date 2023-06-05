@@ -34,7 +34,7 @@ mod benchmarks {
         };
 
         T::Currency::make_free_balance_be(&sender, amount + T::Currency::minimum_balance());
-        assert_ok!(T::Sender::prepare_message(dst_domain_id));
+        assert_ok!(T::Sender::unchecked_open_channel(dst_domain_id));
 
         #[extrinsic_call]
         _(RawOrigin::Signed(sender.clone()), location, amount);

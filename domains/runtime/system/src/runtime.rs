@@ -335,7 +335,7 @@ impl pallet_messenger::Config for Runtime {
         // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
         #[cfg(feature = "runtime-benchmarks")]
         {
-            return Some(Box::new(()));
+            return Some(Box::new(sp_messenger::endpoint::BenchmarkEndpointHandler));
         }
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
             Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))

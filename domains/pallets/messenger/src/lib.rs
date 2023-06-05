@@ -487,9 +487,6 @@ mod pallet {
         /// Emits when there are no relayers to relay messages between domains.
         NoRelayersToAssign,
 
-        /// Emits when there is mismatch between the decoded message and the original message
-        MessageNotMatch,
-
         /// Emits when there is mismatch between the message's weight tag and the message's
         /// actual processing path
         WeightTagNotMatch,
@@ -571,10 +568,6 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
             let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
-            ensure!(
-                Self::message_match(&msg, &inbox_msg),
-                Error::<T>::MessageNotMatch
-            );
             Self::process_inbox_messages(inbox_msg, msg.weight_tag)?;
             Ok(())
         }
@@ -588,10 +581,6 @@ mod pallet {
         ) -> DispatchResult {
             ensure_none(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
-            ensure!(
-                Self::message_match(&msg, &outbox_resp_msg),
-                Error::<T>::MessageNotMatch
-            );
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
         }
@@ -641,7 +630,7 @@ mod pallet {
         /// Only used in benchmark to prepare for a upcoming `send_message` call to
         /// ensure it will succeed.
         #[cfg(feature = "runtime-benchmarks")]
-        fn prepare_message(dst_domain_id: DomainId) -> Result<(), DispatchError> {
+        fn unchecked_open_channel(dst_domain_id: DomainId) -> Result<(), DispatchError> {
             let fee_model = FeeModel {
                 outbox_fee: Default::default(),
                 inbox_fee: Default::default(),
@@ -676,17 +665,6 @@ mod pallet {
                 }
                 MessageWeightTag::None => Weight::zero(),
             }
-        }
-
-        // Return whether the decoded message match the original message
-        fn message_match(
-            xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
-            decoded_msg: &Message<BalanceOf<T>>,
-        ) -> bool {
-            xdm.src_domain_id == decoded_msg.src_domain_id
-                && xdm.dst_domain_id == decoded_msg.dst_domain_id
-                && xdm.channel_id == decoded_msg.channel_id
-                && xdm.nonce == decoded_msg.nonce
         }
 
         /// Returns the last open channel for a given domain.

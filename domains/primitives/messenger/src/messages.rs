@@ -199,6 +199,7 @@ pub struct Proof<BlockNumber, BlockHash, StateRoot> {
 impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
     Proof<BlockNumber, BlockHash, StateRoot>
 {
+    #[cfg(feature = "runtime-benchmarks")]
     pub fn dummy() -> Self {
         Proof {
             system_domain_block_info: DomainBlockInfo {
