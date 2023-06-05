@@ -178,7 +178,7 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
 /// Header of bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleHeader<Number, Hash> {
+pub struct PreliminaryBundleHeader<Number, Hash> {
     /// The block number of primary block at which the bundle was created.
     pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
@@ -189,7 +189,7 @@ pub struct BundleHeader<Number, Hash> {
     pub extrinsics_root: H256,
 }
 
-impl<Number: Encode, Hash: Encode> BundleHeader<Number, Hash> {
+impl<Number: Encode, Hash: Encode> PreliminaryBundleHeader<Number, Hash> {
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -300,7 +300,7 @@ impl<DomainHash> BundleSolution<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
-    pub header: BundleHeader<Number, Hash>,
+    pub header: PreliminaryBundleHeader<Number, Hash>,
     /// Expected receipts by the primay chain when the bundle was created.
     ///
     /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
@@ -467,7 +467,7 @@ where
 {
     use sp_core::crypto::UncheckedFrom;
 
-    let header = BundleHeader {
+    let header = PreliminaryBundleHeader {
         primary_number,
         primary_hash,
         slot_number: 0u64,

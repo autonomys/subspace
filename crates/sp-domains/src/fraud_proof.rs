@@ -1,4 +1,4 @@
-use crate::{BundleHeader, DomainId};
+use crate::{DomainId, PreliminaryBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -264,9 +264,9 @@ pub struct BundleEquivocationProof<Number, Hash> {
     /// The slot at which the equivocation happened.
     pub slot: Slot,
     /// The first header involved in the equivocation.
-    pub first_header: BundleHeader<Number, Hash>,
+    pub first_header: PreliminaryBundleHeader<Number, Hash>,
     /// The second header involved in the equivocation.
-    pub second_header: BundleHeader<Number, Hash>,
+    pub second_header: PreliminaryBundleHeader<Number, Hash>,
 }
 
 impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
@@ -280,7 +280,7 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
     // TODO: remove this later.
     /// Constructs a dummy bundle equivocation proof.
     pub fn dummy_at(slot_number: u64) -> Self {
-        let dummy_header = BundleHeader {
+        let dummy_header = PreliminaryBundleHeader {
             primary_number: Number::from(0u32),
             primary_hash: Hash::default(),
             slot_number,

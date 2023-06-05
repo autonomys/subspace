@@ -7,8 +7,8 @@ use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, Bundle, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, ProofOfElection, SignedOpaqueBundle,
+    create_dummy_bundle_with_receipts_generic, Bundle, BundleSolution, DomainId, ExecutionReceipt,
+    ExecutorPair, PreliminaryBundleHeader, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -135,7 +135,7 @@ fn create_dummy_bundle(
     let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
 
     let bundle = Bundle {
-        header: BundleHeader {
+        header: PreliminaryBundleHeader {
             primary_number,
             primary_hash,
             slot_number: 0u64,
