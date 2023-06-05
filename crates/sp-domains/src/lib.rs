@@ -422,62 +422,6 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
     }
 }
 
-/// Signed version of [`Bundle`].
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SignedBundle<Extrinsic, Number, Hash, DomainHash> {
-    /// The bundle header.
-    pub bundle: Bundle<Extrinsic, Number, Hash, DomainHash>,
-    /// Solution of the bundle election.
-    pub bundle_solution: BundleSolution<DomainHash>,
-    /// Signature of the bundle.
-    pub signature: ExecutorSignature,
-}
-
-/// [`SignedBundle`] with opaque extrinsic.
-pub type SignedOpaqueBundle<Number, Hash, DomainHash> =
-    SignedBundle<OpaqueExtrinsic, Number, Hash, DomainHash>;
-
-impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
-    SignedBundle<Extrinsic, Number, Hash, DomainHash>
-{
-    /// Returns the hash of signed bundle.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
-
-    /// Returns the domain_id of this bundle.
-    pub fn domain_id(&self) -> DomainId {
-        self.bundle_solution.proof_of_election().domain_id
-    }
-}
-
-impl<Extrinsic: Encode, Number, Hash, DomainHash>
-    SignedBundle<Extrinsic, Number, Hash, DomainHash>
-{
-    /// Convert a signed bundle with generic extrinsic to a signed bundle with opaque extrinsic.
-    pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, DomainHash> {
-        SignedOpaqueBundle {
-            bundle: self.bundle.into_opaque_bundle(),
-            bundle_solution: self.bundle_solution,
-            signature: self.signature,
-        }
-    }
-}
-
-impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, DomainHash> {
-    /// Consumes [`SignedBundle`] to extract the inner executor public key.
-    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
-        match self.bundle_solution {
-            BundleSolution::System {
-                proof_of_election, ..
-            }
-            | BundleSolution::Core {
-                proof_of_election, ..
-            } => proof_of_election.executor_public_key,
-        }
-    }
-}
-
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainHash> {
@@ -524,10 +468,6 @@ impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, Dom
 /// List of [`OpaqueBundle`].
 pub type OpaqueBundles<Block, DomainHash> =
     Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
-
-/// List of [`SignedOpaqueBundle`].
-pub type SignedOpaqueBundles<Block, DomainHash> =
-    Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
 
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
 pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
