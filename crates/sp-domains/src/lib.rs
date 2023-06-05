@@ -377,6 +377,23 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
+
+    /// Returns the domain_id of this bundle.
+    pub fn domain_id(&self) -> DomainId {
+        self.header.bundle_solution.proof_of_election().domain_id
+    }
+
+    /// Consumes [`Bundle`] to extract the inner executor public key.
+    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
+        match self.header.bundle_solution {
+            BundleSolution::System {
+                proof_of_election, ..
+            }
+            | BundleSolution::Core {
+                proof_of_election, ..
+            } => proof_of_election.executor_public_key,
+        }
+    }
 }
 
 /// Bundle with opaque extrinsics.
@@ -518,11 +535,11 @@ pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
     primary_number: BlockNumber,
     primary_hash: Hash,
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, DomainHash>>,
-) -> SignedOpaqueBundle<BlockNumber, Hash, DomainHash>
+) -> OpaqueBundle<BlockNumber, Hash, DomainHash>
 where
-    BlockNumber: Encode + Clone + Default,
-    Hash: Encode + Clone + Default,
-    DomainHash: Encode + Clone + Default,
+    BlockNumber: Encode + Default,
+    Hash: Encode + Default,
+    DomainHash: Encode + Default,
 {
     use sp_core::crypto::UncheckedFrom;
 
@@ -551,20 +568,14 @@ where
         primary_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
-        bundle_solution: bundle_solution.clone(),
+        bundle_solution,
         signature: ExecutorSignature::unchecked_from([0u8; 64]),
     };
 
-    let bundle = Bundle {
+    OpaqueBundle {
         header,
         receipts,
         extrinsics: Vec::new(),
-    };
-
-    SignedOpaqueBundle {
-        bundle,
-        bundle_solution,
-        signature: ExecutorSignature::unchecked_from([0u8; 64]),
     }
 }
 
@@ -572,7 +583,7 @@ sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi<DomainHash: Encode + Decode> {
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
+        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
         /// Submits the fraud proof via an unsigned extrinsic.
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
@@ -580,7 +591,7 @@ sp_api::decl_runtime_apis! {
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> (OpaqueBundles<Block, DomainHash>, SignedOpaqueBundles<Block, DomainHash>);
+        ) -> (OpaqueBundles<Block, DomainHash>, OpaqueBundles<Block, DomainHash>);
 
         /// Extract the core bundles from the given extrinsics.
         fn extract_core_bundles(

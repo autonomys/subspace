@@ -59,7 +59,7 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutionReceipt, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
@@ -764,7 +764,7 @@ impl_runtime_apis! {
 
     impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -777,7 +777,7 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> (
             sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-            sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
+            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
         ) {
             crate::domains::extract_system_bundles(extrinsics)
         }

@@ -12,7 +12,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_domains::SignedBundle;
+use sp_domains::Bundle;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -48,16 +48,16 @@ fn topic<Block: BlockT>() -> Block::Hash {
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
-    Bundle(SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
+    Bundle(Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
 }
 
 impl<PBlock: BlockT, Block: BlockT>
-    From<SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+    From<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     for GossipMessage<PBlock, Block>
 {
     #[inline]
     fn from(
-        bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Self {
         Self::Bundle(bundle)
     }
@@ -92,7 +92,7 @@ where
     /// Validates and applies when a transaction bundle was received.
     fn on_bundle(
         &self,
-        bundle: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Result<Action, Self::Error>;
 }
 
@@ -245,7 +245,7 @@ where
 }
 
 type BundleReceiver<Block, PBlock> = TracingUnboundedReceiver<
-    SignedBundle<
+    Bundle<
         <Block as BlockT>::Extrinsic,
         NumberFor<PBlock>,
         <PBlock as BlockT>::Hash,

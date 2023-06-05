@@ -11,7 +11,6 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
     Bundle, BundleHeader, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature,
-    SignedBundle,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
@@ -20,11 +19,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
-type SignedOpaqueBundle<Block, PBlock> = sp_domains::SignedOpaqueBundle<
-    NumberFor<PBlock>,
-    <PBlock as BlockT>::Hash,
-    <Block as BlockT>::Hash,
->;
+type OpaqueBundle<Block, PBlock> =
+    sp_domains::OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
 
 pub(super) struct DomainBundleProducer<
     Block,
@@ -172,7 +168,7 @@ where
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-    ) -> sp_blockchain::Result<Option<SignedOpaqueBundle<Block, PBlock>>> {
+    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, PBlock>>> {
         let ExecutorSlotInfo {
             slot,
             global_challenge,
@@ -274,7 +270,7 @@ where
                     primary_hash: preliminary_bundle_header.primary_hash,
                     slot_number: preliminary_bundle_header.slot_number,
                     extrinsics_root: preliminary_bundle_header.extrinsics_root,
-                    bundle_solution: bundle_solution.clone(), // TODO: Remove the clone by removing `SignedBundle`.
+                    bundle_solution,
                     signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(
                         |err| {
                             sp_blockchain::Error::Application(Box::from(format!(
@@ -287,22 +283,12 @@ where
                 extrinsics,
             };
 
-            let signed_bundle = SignedBundle {
-                bundle,
-                bundle_solution,
-                signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to decode the signature of bundle: {err}"
-                    )))
-                })?,
-            };
-
             // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
             // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
             // tracing::error!(error = ?e, "Failed to send transaction bundle");
             // }
 
-            Ok(Some(signed_bundle.into_signed_opaque_bundle()))
+            Ok(Some(bundle.into_opaque_bundle()))
         } else {
             Ok(None)
         }

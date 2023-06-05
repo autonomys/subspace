@@ -36,7 +36,7 @@ use sp_domains::bundle_election::{
 };
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
-    BundleSolution, DomainId, ExecutorPublicKey, ProofOfElection, SignedOpaqueBundle, StakeWeight,
+    BundleSolution, DomainId, ExecutorPublicKey, OpaqueBundle, ProofOfElection, StakeWeight,
 };
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::{BlakeTwo256, One, Zero};
@@ -68,7 +68,7 @@ mod pallet {
     use sp_domains::bundle_election::ReadBundleElectionParamsError;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{DomainId, SignedOpaqueBundle};
+    use sp_domains::{DomainId, OpaqueBundle};
     use sp_executor_registry::ExecutorRegistry;
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize};
     use sp_runtime::{FixedPointOperand, Percent};
@@ -308,20 +308,20 @@ mod pallet {
         // TODO: Rename this extrinsic since the core bundle is not submit to the transaction pool but crafted and injected
         // on fly when building the system domain block.
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::submit_core_bundle(signed_opaque_bundle.bundle.receipts.len() as u32))]
+        #[pallet::weight(T::WeightInfo::submit_core_bundle(opaque_bundle.receipts.len() as u32))]
         pub fn submit_core_bundle(
             origin: OriginFor<T>,
-            signed_opaque_bundle: SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
             pallet_settlement::Pallet::<T>::track_receipts(
-                signed_opaque_bundle.domain_id(),
-                signed_opaque_bundle.bundle.receipts.as_slice(),
+                opaque_bundle.domain_id(),
+                opaque_bundle.receipts.as_slice(),
             )
             .map_err(Error::<T>::from)?;
 
-            let bundle_hash = signed_opaque_bundle.hash();
+            let bundle_hash = opaque_bundle.hash();
 
             SuccessfulBundles::<T>::append(bundle_hash);
 
@@ -580,8 +580,8 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::submit_core_bundle {
-                    signed_opaque_bundle,
-                } => Self::pre_dispatch_submit_core_bundle(signed_opaque_bundle).map_err(|e| {
+                    opaque_bundle,
+                } => Self::pre_dispatch_submit_core_bundle(opaque_bundle).map_err(|e| {
                     log::error!(target: "runtime::domain-registry", "Bad core bundle, error: {e:?}");
                     TransactionValidityError::Invalid(InvalidTransactionCode::Bundle.into())
                 }),
@@ -722,24 +722,24 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_submit_core_bundle(
-        signed_opaque_bundle: &SignedOpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), Error<T>> {
         let BundleSolution::Core {
             proof_of_election,
             core_block_number,
             core_block_hash,
             core_state_root
-        } = &signed_opaque_bundle.bundle_solution else {
+        } = &opaque_bundle.header.bundle_solution else {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
 
-        let domain_id = signed_opaque_bundle.domain_id();
+        let domain_id = opaque_bundle.domain_id();
 
         if !domain_id.is_core() {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
-        let bundle = &signed_opaque_bundle.bundle;
+        let bundle = opaque_bundle;
 
         let bundle_created_on_valid_primary_block =
             pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number)

@@ -7,8 +7,8 @@ use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, Bundle, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, PreliminaryBundleHeader, ProofOfElection, SignedOpaqueBundle,
+    create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
+    ExecutionReceipt, ExecutorPair, OpaqueBundle, PreliminaryBundleHeader, ProofOfElection,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -129,7 +129,7 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     primary_number: BlockNumber,
     primary_hash: Hash,
-) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
+) -> OpaqueBundle<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
 
     let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
@@ -162,23 +162,17 @@ fn create_dummy_bundle(
         panic!("Open domain unsupported");
     };
 
-    let bundle = Bundle {
+    OpaqueBundle {
         header: BundleHeader {
             primary_number: preliminary_bundle_header.primary_number,
             primary_hash: preliminary_bundle_header.primary_hash,
             slot_number: preliminary_bundle_header.slot_number,
             extrinsics_root: preliminary_bundle_header.extrinsics_root,
-            bundle_solution: bundle_solution.clone(),
-            signature: signature.clone(),
+            bundle_solution,
+            signature,
         },
         receipts: vec![execution_receipt],
         extrinsics: Vec::new(),
-    };
-
-    SignedOpaqueBundle {
-        bundle,
-        bundle_solution,
-        signature,
     }
 }
 
@@ -187,7 +181,7 @@ fn create_dummy_bundle_with_receipts(
     primary_number: BlockNumber,
     primary_hash: Hash,
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
-) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
+) -> OpaqueBundle<BlockNumber, Hash, H256> {
     create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
         domain_id,
         primary_number,
@@ -208,13 +202,8 @@ fn submit_execution_receipt_incrementally_should_work() {
         })
         .unzip();
 
-    let receipt_hash = |block_number| {
-        dummy_bundles[block_number as usize - 1]
-            .clone()
-            .bundle
-            .receipts[0]
-            .hash()
-    };
+    let receipt_hash =
+        |block_number| dummy_bundles[block_number as usize - 1].clone().receipts[0].hash();
 
     new_test_ext().execute_with(|| {
         let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
@@ -227,7 +216,7 @@ fn submit_execution_receipt_incrementally_should_work() {
 
             assert_ok!(pallet_domains::Pallet::<Test>::pre_dispatch(
                 &pallet_domains::Call::submit_bundle {
-                    signed_opaque_bundle: dummy_bundles[index].clone()
+                    opaque_bundle: dummy_bundles[index].clone()
                 }
             ));
             assert_ok!(Domains::submit_bundle(
@@ -253,7 +242,7 @@ fn submit_execution_receipt_incrementally_should_work() {
 
         assert_noop!(
             pallet_domains::Pallet::<Test>::pre_dispatch(&pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle: dummy_bundles[258].clone()
+                opaque_bundle: dummy_bundles[258].clone()
             }),
             TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
         );
@@ -465,7 +454,7 @@ fn submit_fraud_proof_should_work() {
                 dummy_bundles[index].clone(),
             ));
 
-            let receipt_hash = dummy_bundles[index].clone().bundle.receipts[0].hash();
+            let receipt_hash = dummy_bundles[index].clone().receipts[0].hash();
             assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
             let mut votes = ReceiptVotes::<Test>::iter_prefix((DomainId::SYSTEM, block_hash));
             assert_eq!(votes.next(), Some((receipt_hash, 1)));
@@ -478,7 +467,7 @@ fn submit_fraud_proof_should_work() {
             dummy_proof(DomainId::new(100))
         ));
         assert_eq!(Domains::head_receipt_number(), 256);
-        let receipt_hash = dummy_bundles[255].clone().bundle.receipts[0].hash();
+        let receipt_hash = dummy_bundles[255].clone().receipts[0].hash();
         assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
 
         assert_ok!(Domains::submit_fraud_proof(
@@ -486,15 +475,11 @@ fn submit_fraud_proof_should_work() {
             dummy_proof(DomainId::SYSTEM)
         ));
         assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 99);
-        let receipt_hash = dummy_bundles[98].clone().bundle.receipts[0].hash();
+        let receipt_hash = dummy_bundles[98].clone().receipts[0].hash();
         assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.
         (100..=256).for_each(|block_number| {
-            let receipt_hash = dummy_bundles[block_number as usize - 1]
-                .clone()
-                .bundle
-                .receipts[0]
-                .hash();
+            let receipt_hash = dummy_bundles[block_number as usize - 1].clone().receipts[0].hash();
             assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_none());
             let block_hash = block_hashes[block_number as usize - 1];
             assert!(
