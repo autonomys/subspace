@@ -10,7 +10,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
+    Bundle, BundleHeader, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature,
+    SignedBundle,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
@@ -242,18 +243,12 @@ where
 
             let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
 
-            let bundle = Bundle {
-                header: preliminary_bundle_header,
-                receipts,
-                extrinsics,
-            };
-
-            let to_sign = bundle.hash();
-
             let bundle_author = bundle_solution
                 .proof_of_election()
                 .executor_public_key
                 .clone();
+
+            let to_sign = preliminary_bundle_header.hash();
 
             let signature = self
                 .keystore
@@ -272,6 +267,25 @@ where
                         "This should not happen as the existence of key was just checked",
                     ))
                 })?;
+
+            let bundle = Bundle {
+                header: BundleHeader {
+                    primary_number: preliminary_bundle_header.primary_number,
+                    primary_hash: preliminary_bundle_header.primary_hash,
+                    slot_number: preliminary_bundle_header.slot_number,
+                    extrinsics_root: preliminary_bundle_header.extrinsics_root,
+                    bundle_solution: bundle_solution.clone(), // TODO: Remove the clone by removing `SignedBundle`.
+                    signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(
+                        |err| {
+                            sp_blockchain::Error::Application(Box::from(format!(
+                                "Failed to decode the signature of bundle: {err}"
+                            )))
+                        },
+                    )?,
+                },
+                receipts,
+                extrinsics,
+            };
 
             let signed_bundle = SignedBundle {
                 bundle,

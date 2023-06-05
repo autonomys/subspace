@@ -176,7 +176,11 @@ pub struct DomainConfig<Hash, Balance, Weight> {
     pub min_operator_stake: Balance,
 }
 
-/// Header of bundle.
+/// Preliminary header of bundle.
+///
+/// [`PreliminaryBundleHeader`] contains everything of [`BundleHeader`] except for the signature,
+/// domain operator needs to sign the hash of [`PreliminaryBundleHeader`] and uses the signature to
+/// assemble the final [`BundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct PreliminaryBundleHeader<Number, Hash> {
     /// The block number of primary block at which the bundle was created.
@@ -190,6 +194,61 @@ pub struct PreliminaryBundleHeader<Number, Hash> {
 }
 
 impl<Number: Encode, Hash: Encode> PreliminaryBundleHeader<Number, Hash> {
+    /// Returns the hash of this header.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+}
+
+/// Header of bundle.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+struct PreliminaryBundleHeaderRef<'a, Number, Hash> {
+    /// The block number of primary block at which the bundle was created.
+    pub primary_number: &'a Number,
+    /// The hash of primary block at which the bundle was created.
+    pub primary_hash: &'a Hash,
+    /// The slot number.
+    pub slot_number: u64,
+    /// The merkle root of the extrinsics.
+    pub extrinsics_root: H256,
+}
+
+impl<'a, Number: Encode, Hash: Encode> PreliminaryBundleHeaderRef<'a, Number, Hash> {
+    /// Returns the hash of this header.
+    fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+}
+
+/// Header of bundle.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleHeader<Number, Hash, DomainHash> {
+    /// The block number of primary block at which the bundle was created.
+    pub primary_number: Number,
+    /// The hash of primary block at which the bundle was created.
+    pub primary_hash: Hash,
+    /// The slot number.
+    pub slot_number: u64,
+    /// The merkle root of the extrinsics.
+    pub extrinsics_root: H256,
+    /// Solution of the bundle election.
+    pub bundle_solution: BundleSolution<DomainHash>,
+    /// Signature of the bundle.
+    pub signature: ExecutorSignature,
+}
+
+impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash, DomainHash> {
+    pub fn pre_hash(&self) -> H256 {
+        let preliminary_bundle_header = PreliminaryBundleHeaderRef {
+            primary_number: &self.primary_number,
+            primary_hash: &self.primary_hash,
+            slot_number: self.slot_number,
+            extrinsics_root: self.extrinsics_root,
+        };
+
+        preliminary_bundle_header.hash()
+    }
+
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
@@ -300,7 +359,7 @@ impl<DomainHash> BundleSolution<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
-    pub header: PreliminaryBundleHeader<Number, Hash>,
+    pub header: BundleHeader<Number, Hash, DomainHash>,
     /// Expected receipts by the primay chain when the bundle was created.
     ///
     /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
@@ -461,26 +520,11 @@ pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, DomainHash>>,
 ) -> SignedOpaqueBundle<BlockNumber, Hash, DomainHash>
 where
-    BlockNumber: Encode + Default,
-    Hash: Encode + Default,
-    DomainHash: Encode + Default,
+    BlockNumber: Encode + Clone + Default,
+    Hash: Encode + Clone + Default,
+    DomainHash: Encode + Clone + Default,
 {
     use sp_core::crypto::UncheckedFrom;
-
-    let header = PreliminaryBundleHeader {
-        primary_number,
-        primary_hash,
-        slot_number: 0u64,
-        extrinsics_root: Default::default(),
-    };
-
-    let bundle = Bundle {
-        header,
-        receipts,
-        extrinsics: Vec::new(),
-    };
-
-    let signature = ExecutorSignature::unchecked_from([0u8; 64]);
 
     let proof_of_election =
         ProofOfElection::dummy(domain_id, ExecutorPublicKey::unchecked_from([0u8; 32]));
@@ -502,10 +546,25 @@ where
         panic!("Open domain unsupported");
     };
 
+    let header = BundleHeader {
+        primary_number,
+        primary_hash,
+        slot_number: 0u64,
+        extrinsics_root: Default::default(),
+        bundle_solution: bundle_solution.clone(),
+        signature: ExecutorSignature::unchecked_from([0u8; 64]),
+    };
+
+    let bundle = Bundle {
+        header,
+        receipts,
+        extrinsics: Vec::new(),
+    };
+
     SignedOpaqueBundle {
         bundle,
         bundle_solution,
-        signature,
+        signature: ExecutorSignature::unchecked_from([0u8; 64]),
     }
 }
 

@@ -579,7 +579,7 @@ impl<T: Config> Pallet<T> {
 
         if !proof_of_election
             .executor_public_key
-            .verify(&bundle.hash(), signature)
+            .verify(&bundle.header.pre_hash(), signature)
         {
             return Err(BundleError::BadSignature);
         }

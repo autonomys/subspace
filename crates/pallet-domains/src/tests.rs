@@ -7,8 +7,8 @@ use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, Bundle, BundleSolution, DomainId, ExecutionReceipt,
-    ExecutorPair, PreliminaryBundleHeader, ProofOfElection, SignedOpaqueBundle,
+    create_dummy_bundle_with_receipts_generic, Bundle, BundleHeader, BundleSolution, DomainId,
+    ExecutionReceipt, ExecutorPair, PreliminaryBundleHeader, ProofOfElection, SignedOpaqueBundle,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -134,18 +134,14 @@ fn create_dummy_bundle(
 
     let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
 
-    let bundle = Bundle {
-        header: PreliminaryBundleHeader {
-            primary_number,
-            primary_hash,
-            slot_number: 0u64,
-            extrinsics_root: Default::default(),
-        },
-        receipts: vec![execution_receipt],
-        extrinsics: Vec::new(),
+    let preliminary_bundle_header = PreliminaryBundleHeader {
+        primary_number,
+        primary_hash,
+        slot_number: 0u64,
+        extrinsics_root: Default::default(),
     };
 
-    let signature = pair.sign(bundle.hash().as_ref());
+    let signature = pair.sign(preliminary_bundle_header.hash().as_ref());
 
     let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
 
@@ -164,6 +160,19 @@ fn create_dummy_bundle(
         }
     } else {
         panic!("Open domain unsupported");
+    };
+
+    let bundle = Bundle {
+        header: BundleHeader {
+            primary_number: preliminary_bundle_header.primary_number,
+            primary_hash: preliminary_bundle_header.primary_hash,
+            slot_number: preliminary_bundle_header.slot_number,
+            extrinsics_root: preliminary_bundle_header.extrinsics_root,
+            bundle_solution: bundle_solution.clone(),
+            signature: signature.clone(),
+        },
+        receipts: vec![execution_receipt],
+        extrinsics: Vec::new(),
     };
 
     SignedOpaqueBundle {
