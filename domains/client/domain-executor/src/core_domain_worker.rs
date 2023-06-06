@@ -203,6 +203,7 @@ pub(super) async fn start_worker<
         )
         .await;
     } else {
+        drop(handle_slot_notifications_fut);
         handle_block_import_notifications_fut.await
     }
 }

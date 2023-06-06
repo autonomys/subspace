@@ -16,6 +16,7 @@ include = [
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
 domain-runtime-primitives = { path = "../../primitives/runtime" , default-features = false }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", optional = true }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
@@ -34,6 +35,7 @@ default = ["std"]
 std = [
   "codec/std",
   "domain-runtime-primitives/std",
+  "frame-benchmarking?/std",
   "frame-support/std",
   "frame-system/std",
   "scale-info/std",
@@ -44,3 +46,10 @@ std = [
   "sp-std/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
+runtime-benchmarks = [
+  "frame-benchmarking",
+  "frame-benchmarking/runtime-benchmarks",
+  "frame-support/runtime-benchmarks",
+  "frame-system/runtime-benchmarks",
+  "sp-messenger/runtime-benchmarks",
+]

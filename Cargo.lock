@@ -2391,6 +2391,7 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
  "domain-client-executor-gossip",
+ "domain-client-message-relayer",
  "domain-runtime-primitives",
  "domain-test-primitives",
  "domain-test-service",
@@ -6833,6 +6834,7 @@ name = "pallet-messenger"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -7048,6 +7050,7 @@ name = "pallet-transporter"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",

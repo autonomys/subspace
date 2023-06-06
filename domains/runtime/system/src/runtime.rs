@@ -331,6 +331,12 @@ impl pallet_messenger::Config for Runtime {
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
     ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        // Return a dummy handler for benchmark to observe the outer weight when processing cross domain
+        // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
+        #[cfg(feature = "runtime-benchmarks")]
+        {
+            return Some(Box::new(sp_messenger::endpoint::BenchmarkEndpointHandler));
+        }
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
             Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
         } else {
@@ -343,6 +349,7 @@ impl pallet_messenger::Config for Runtime {
     type RelayerDeposit = RelayerDeposit;
     type DomainInfo = DomainInfo;
     type ConfirmationDepth = RelayConfirmationDepth;
+    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -364,6 +371,7 @@ impl pallet_transporter::Config for Runtime {
     type Currency = Balances;
     type Sender = Messenger;
     type AccountIdConverter = AccountIdConverter;
+    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -412,6 +420,8 @@ frame_benchmarking::define_benchmarks!(
     [pallet_balances, Balances]
     [pallet_executor_registry, ExecutorRegistry]
     [pallet_domain_registry, DomainRegistry]
+    [pallet_messenger, Messenger]
+    [pallet_transporter, Transporter]
 );
 
 impl_runtime_apis! {

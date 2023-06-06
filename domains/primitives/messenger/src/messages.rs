@@ -1,4 +1,4 @@
-use crate::endpoint::{EndpointRequest, EndpointResponse};
+use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
 use crate::verification::StorageProofVerifier;
 use codec::{Decode, Encode, FullCodec};
 use frame_support::pallet_prelude::NMapKey;
@@ -48,6 +48,9 @@ pub struct FeeModel<Balance> {
     pub inbox_fee: ExecutionFee<Balance>,
 }
 
+// TODO: `compute_fee` and `relayer_pool_fee` should be distributed separately, where
+// `compute_fee` should be distributed to executor and `relayer_pool_fee` should be
+// distributed to relayer.
 impl<Balance: CheckedAdd> FeeModel<Balance> {
     pub fn outbox_fee(&self) -> Option<Balance> {
         self.outbox_fee
@@ -103,6 +106,54 @@ pub enum VersionedPayload<Balance> {
     V0(Payload<Balance>),
 }
 
+/// Message weight tag used to indicate the consumed weight when handling the message
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Default)]
+pub enum MessageWeightTag {
+    ProtocolChannelOpen,
+    ProtocolChannelClose,
+    EndpointRequest(Endpoint),
+    EndpointResponse(Endpoint),
+    #[default]
+    None,
+}
+
+impl MessageWeightTag {
+    // Construct the weight tag for outbox message based on the outbox payload
+    pub fn outbox<Balance>(outbox_payload: &VersionedPayload<Balance>) -> Self {
+        match outbox_payload {
+            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                ProtocolMessageRequest::ChannelOpen(_),
+            ))) => MessageWeightTag::ProtocolChannelOpen,
+            VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                ProtocolMessageRequest::ChannelClose,
+            ))) => MessageWeightTag::ProtocolChannelClose,
+            VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(endpoint_req))) => {
+                MessageWeightTag::EndpointRequest(endpoint_req.dst_endpoint.clone())
+            }
+            _ => MessageWeightTag::None,
+        }
+    }
+
+    // Construct the weight tag for inbox response based on the weight tag of the request
+    // message and the response payload
+    pub fn inbox_response<Balance>(
+        req_tyep: MessageWeightTag,
+        resp_payload: &VersionedPayload<Balance>,
+    ) -> Self {
+        match (req_tyep, resp_payload) {
+            (
+                MessageWeightTag::ProtocolChannelOpen,
+                VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(Ok(_)))),
+            ) => MessageWeightTag::ProtocolChannelOpen,
+            (
+                MessageWeightTag::EndpointRequest(endpoint),
+                VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(_))),
+            ) => MessageWeightTag::EndpointResponse(endpoint),
+            _ => MessageWeightTag::None,
+        }
+    }
+}
+
 /// Message contains information to be sent to or received from another domain
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Message<Balance> {
@@ -145,6 +196,23 @@ pub struct Proof<BlockNumber, BlockHash, StateRoot> {
     pub message_proof: StorageProof,
 }
 
+impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
+    Proof<BlockNumber, BlockHash, StateRoot>
+{
+    #[cfg(feature = "runtime-benchmarks")]
+    pub fn dummy() -> Self {
+        Proof {
+            system_domain_block_info: DomainBlockInfo {
+                block_number: Default::default(),
+                block_hash: Default::default(),
+            },
+            system_domain_state_root: Default::default(),
+            core_domain_proof: None,
+            message_proof: StorageProof::empty(),
+        }
+    }
+}
+
 /// Holds the Block info and state roots from which a proof was constructed.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
@@ -171,6 +239,8 @@ pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub nonce: Nonce,
     /// Proof of message processed on src_domain.
     pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
+    /// The message weight tag
+    pub weight_tag: MessageWeightTag,
 }
 
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
@@ -249,6 +319,8 @@ pub struct RelayerMessageWithStorageKey {
     pub nonce: Nonce,
     /// Storage key to generate proof for using proof backend.
     pub storage_key: Vec<u8>,
+    /// The message weight tag
+    pub weight_tag: MessageWeightTag,
 }
 
 /// Set of messages with storage keys to be relayed by a given relayer.
@@ -269,6 +341,7 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
             channel_id: r_msg.channel_id,
             nonce: r_msg.nonce,
             proof,
+            weight_tag: r_msg.weight_tag,
         }
     }
 }
