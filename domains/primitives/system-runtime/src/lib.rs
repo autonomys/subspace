@@ -20,7 +20,7 @@
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, OpaqueBundle};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_std::vec::Vec;
 
@@ -29,7 +29,7 @@ sp_api::decl_runtime_apis! {
     pub trait SystemDomainApi<PNumber: Encode + Decode, PHash: Encode + Decode, CHash: Encode + Decode> {
         /// Wrap the core domain bundles into extrinsics.
         fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<PNumber, PHash, <Block as BlockT>::Hash>>,
+            opaque_bundles: Vec<OpaqueBundle<PNumber, PHash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>>;
 
         /// Returns the parameters for solving the bundle election.

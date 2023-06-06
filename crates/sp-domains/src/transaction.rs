@@ -1,5 +1,5 @@
 use crate::fraud_proof::FraudProof;
-use crate::SignedOpaqueBundle;
+use crate::OpaqueBundle;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -38,7 +38,7 @@ where
 {
     Null,
     FraudProof(FraudProof<NumberFor<Block>, Block::Hash>),
-    Bundle(SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>),
+    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>),
 }
 
 sp_api::decl_runtime_apis! {

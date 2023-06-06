@@ -48,7 +48,7 @@
 //! Every executor must run the system domain, but they can opt-in to run one or multiple
 //! non-system domains by partially allocating their executor stake on the domain.
 //!
-//! Specifically, executors have the responsibity of producing a [`SignedBundle`] which contains a
+//! Specifically, executors have the responsibity of producing a [`Bundle`] which contains a
 //! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The executors
 //! are primarily driven by two events from the consensus chain.
 //!
@@ -57,7 +57,7 @@
 //! a solution to the challenge, they will start producing a bundle: they will collect a set
 //! of extrinsics from the transaction pool which are verified to be able to cover the transaction
 //! fee. With these colltected extrinsics, the bundle election solution and proper receipts, a
-//! [`SignedBundle`] can be constructed and then be submitted to the consensus chain. The transactions
+//! [`Bundle`] can be constructed and then be submitted to the consensus chain. The transactions
 //! included in each bundle are uninterpretable blob from the consensus chain's persepective.
 //!
 //! - On each imported primary block, executors will extract all the needed bundles from it
@@ -117,7 +117,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnNamed;
-use sp_domains::{ExecutionReceipt, SignedBundle};
+use sp_domains::{Bundle, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
@@ -135,7 +135,7 @@ type TransactionFor<Backend, Block> =
     >>::Transaction;
 
 type BundleSender<Block, PBlock> = TracingUnboundedSender<
-    SignedBundle<
+    Bundle<
         <Block as BlockT>::Extrinsic,
         NumberFor<PBlock>,
         <PBlock as BlockT>::Hash,

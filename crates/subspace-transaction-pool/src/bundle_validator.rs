@@ -6,7 +6,7 @@ use sc_consensus_subspace::get_chain_constants;
 use sp_api::{HeaderT, ProvideRuntimeApi};
 use sp_blockchain::HeaderMetadata;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
-use sp_domains::{ExecutorApi, SignedOpaqueBundle};
+use sp_domains::{ExecutorApi, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use std::collections::{HashSet, VecDeque};
@@ -304,7 +304,7 @@ pub trait ValidateBundle<Block: BlockT, DomainHash: Encode> {
     fn validate_bundle(
         &self,
         at: &BlockId<Block>,
-        signed_opaque_bundle: &SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
+        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
     ) -> Result<(), BundleError>;
 }
 
@@ -317,11 +317,11 @@ where
     fn validate_bundle(
         &self,
         at: &BlockId<Block>,
-        signed_opaque_bundle: &SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
+        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
     ) -> Result<(), BundleError> {
         // The hash used here must be the same as what is maintaining in `bundle_stored_in_last_k`,
-        // namely the hash of `SignedOpaqueBundle`
-        let incoming_bundle = signed_opaque_bundle.hash();
+        // namely the hash of `OpaqueBundle`
+        let incoming_bundle = opaque_bundle.hash();
         // This implement will never return false negative result (i.e return `Err` for a new bundle)
         // but it may return false positive result (i.e return `Ok` for a duplicated bundle) if
         // `BundleCollector::on_new_best_block` return error and left some blocks unhandled, and it
@@ -340,7 +340,7 @@ where
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Can not convert BlockId {at:?} to block number"
             )))?;
-        for receipt in signed_opaque_bundle.bundle.receipts.iter() {
+        for receipt in opaque_bundle.receipts.iter() {
             if receipt.primary_number > best_primary_number {
                 return Err(BundleError::ReceiptInFuture);
             }

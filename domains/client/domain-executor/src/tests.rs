@@ -15,7 +15,7 @@ use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{DomainId, ExecutorApi, SignedBundle};
+use sp_domains::{Bundle, DomainId, ExecutorApi};
 use sp_messenger::messages::{ExecutionFee, FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
@@ -125,9 +125,8 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 
     let receipts_primary_info =
-        |signed_bundle: SignedBundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
-            signed_bundle
-                .bundle
+        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
+            bundle
                 .receipts
                 .iter()
                 .map(|receipt| (receipt.primary_number, receipt.primary_hash))
@@ -367,12 +366,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    let bundle_to_tx = |signed_opaque_bundle| {
+    let bundle_to_tx = |opaque_bundle| {
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }
-            .into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
     };
@@ -390,7 +386,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let target_bundle = bundle.unwrap();
-    assert_eq!(target_bundle.bundle.extrinsics.len(), 1);
+    assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
@@ -410,19 +406,19 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
     let bad_submit_bundle_tx = {
-        let mut signed_opaque_bundle = bundle.unwrap();
-        for receipt in signed_opaque_bundle.bundle.receipts.iter_mut() {
-            if receipt.primary_number == target_bundle.bundle.header.primary_number + 1 {
+        let mut opaque_bundle = bundle.unwrap();
+        for receipt in opaque_bundle.receipts.iter_mut() {
+            if receipt.primary_number == target_bundle.header.primary_number + 1 {
                 assert_eq!(receipt.trace.len(), 3);
                 receipt.trace[mismatch_trace_index] = Default::default();
             }
         }
-        signed_opaque_bundle.signature = alice
+        opaque_bundle.header.signature = alice
             .key
             .pair()
-            .sign(signed_opaque_bundle.bundle.hash().as_ref())
+            .sign(opaque_bundle.header.pre_hash().as_ref())
             .into();
-        bundle_to_tx(signed_opaque_bundle)
+        bundle_to_tx(opaque_bundle)
     };
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
@@ -516,23 +512,18 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     // Get a bundle from the txn pool and change its receipt to an invalid one
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
-        let mut signed_opaque_bundle = bundle.unwrap();
-        signed_opaque_bundle
-            .bundle
-            .receipts
-            .last_mut()
-            .unwrap()
-            .trace[0] = Default::default();
-        signed_opaque_bundle
+        let mut opaque_bundle = bundle.unwrap();
+        opaque_bundle.receipts.last_mut().unwrap().trace[0] = Default::default();
+        opaque_bundle
     };
-    let bad_receipt = bad_bundle.bundle.receipts.last().unwrap().clone();
+    let bad_receipt = bad_bundle.receipts.last().unwrap().clone();
     let bad_receipt_number = bad_receipt.primary_number;
     assert_ne!(bad_receipt_number, 1);
 
     // Submit the bad receipt to the primary chain
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle: bad_bundle,
+            opaque_bundle: bad_bundle,
         }
         .into(),
     );
@@ -830,24 +821,17 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
                     )
                 });
 
-        let mut bundle = bundle_template.bundle.clone();
-        bundle.header.primary_number = primary_number;
-        bundle.header.primary_hash = primary_hash;
-        bundle.receipts = vec![execution_receipt];
-
-        let signature = alice_key.pair().sign(bundle.hash().as_ref()).into();
-
-        let signed_opaque_bundle = SignedBundle {
-            bundle,
-            bundle_solution: bundle_template.bundle_solution.clone(),
-            signature,
-        };
+        let mut opaque_bundle = bundle_template.clone();
+        opaque_bundle.header.primary_number = primary_number;
+        opaque_bundle.header.primary_hash = primary_hash;
+        opaque_bundle.header.signature = alice_key
+            .pair()
+            .sign(opaque_bundle.header.pre_hash().as_ref())
+            .into();
+        opaque_bundle.receipts = vec![execution_receipt];
 
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }
-            .into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
     };
@@ -940,7 +924,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle: bundle.unwrap(),
+            opaque_bundle: bundle.unwrap(),
         }
         .into(),
     )
@@ -1018,7 +1002,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle: bundle.unwrap(),
+            opaque_bundle: bundle.unwrap(),
         }
         .into(),
     )

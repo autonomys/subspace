@@ -17,7 +17,7 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, OpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
@@ -641,15 +641,15 @@ impl_runtime_apis! {
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
+            opaque_bundles: Vec<OpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {
             use codec::Encode;
-            signed_opaque_bundles
+            opaque_bundles
                 .into_iter()
-                .map(|signed_opaque_bundle| {
+                .map(|opaque_bundle| {
                     UncheckedExtrinsic::new_unsigned(
                         pallet_domain_registry::Call::submit_core_bundle {
-                            signed_opaque_bundle
+                            opaque_bundle
                         }.into()
                     ).encode()
                 })
@@ -712,11 +712,11 @@ impl_runtime_apis! {
                 .into_iter()
                 .filter_map(|uxt| match uxt.function {
                     RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
-                        signed_opaque_bundle,
-                    }) if signed_opaque_bundle.domain_id() == domain_id
-                        && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+                        opaque_bundle,
+                    }) if opaque_bundle.domain_id() == domain_id
+                        && successful_bundles.contains(&opaque_bundle.hash()) =>
                     {
-                        Some(signed_opaque_bundle.bundle.receipts)
+                        Some(opaque_bundle.receipts)
                     }
                     _ => None,
                 })
