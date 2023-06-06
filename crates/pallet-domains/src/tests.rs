@@ -7,8 +7,8 @@ use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, OpaqueBundle, PreliminaryBundleHeader,
+    create_dummy_bundle_with_receipts_generic, BundleSolution, DomainId, ExecutionReceipt,
+    ExecutorPair, OpaqueBundle, PreliminaryBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -145,14 +145,7 @@ fn create_dummy_bundle(
     let signature = pair.sign(preliminary_bundle_header.hash().as_ref());
 
     OpaqueBundle {
-        header: BundleHeader {
-            primary_number: preliminary_bundle_header.primary_number,
-            primary_hash: preliminary_bundle_header.primary_hash,
-            slot_number: preliminary_bundle_header.slot_number,
-            extrinsics_root: preliminary_bundle_header.extrinsics_root,
-            bundle_solution: preliminary_bundle_header.bundle_solution,
-            signature,
-        },
+        header: preliminary_bundle_header.into_bundle_header(signature),
         receipts: vec![execution_receipt],
         extrinsics: Vec::new(),
     }

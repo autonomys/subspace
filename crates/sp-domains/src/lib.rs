@@ -204,6 +204,23 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
     }
 }
 
+impl<Number, Hash, DomainHash> PreliminaryBundleHeader<Number, Hash, DomainHash> {
+    /// Converts [`PreliminaryBundleHeader`] into [`BundleHeader`].
+    pub fn into_bundle_header(
+        self,
+        signature: ExecutorSignature,
+    ) -> BundleHeader<Number, Hash, DomainHash> {
+        BundleHeader {
+            primary_number: self.primary_number,
+            primary_hash: self.primary_hash,
+            slot_number: self.slot_number,
+            extrinsics_root: self.extrinsics_root,
+            bundle_solution: self.bundle_solution,
+            signature,
+        }
+    }
+}
+
 #[derive(Encode)]
 struct PreliminaryBundleHeaderRef<'a, Number, Hash, DomainHash> {
     primary_number: &'a Number,

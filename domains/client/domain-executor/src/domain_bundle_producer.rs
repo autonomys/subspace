@@ -9,9 +9,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{
-    Bundle, BundleHeader, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature,
-};
+use sp_domains::{Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
@@ -269,21 +267,14 @@ where
                     ))
                 })?;
 
+            let signature = ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
+                sp_blockchain::Error::Application(Box::from(format!(
+                    "Failed to decode the signature of bundle: {err}"
+                )))
+            })?;
+
             let bundle = Bundle {
-                header: BundleHeader {
-                    primary_number: preliminary_bundle_header.primary_number,
-                    primary_hash: preliminary_bundle_header.primary_hash,
-                    slot_number: preliminary_bundle_header.slot_number,
-                    extrinsics_root: preliminary_bundle_header.extrinsics_root,
-                    bundle_solution: preliminary_bundle_header.bundle_solution,
-                    signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(
-                        |err| {
-                            sp_blockchain::Error::Application(Box::from(format!(
-                                "Failed to decode the signature of bundle: {err}"
-                            )))
-                        },
-                    )?,
-                },
+                header: preliminary_bundle_header.into_bundle_header(signature),
                 receipts,
                 extrinsics,
             };
