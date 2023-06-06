@@ -637,6 +637,50 @@ impl_runtime_apis! {
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
         }
+
+        fn extract_receipts(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<BlockNumber, Hash, Hash>> {
+            let successful_bundles = DomainRegistry::successful_bundles();
+            extrinsics
+                .into_iter()
+                .filter_map(|uxt| match uxt.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
+                        opaque_bundle,
+                    }) if opaque_bundle.domain_id() == domain_id
+                        && successful_bundles.contains(&opaque_bundle.hash()) =>
+                    {
+                        Some(opaque_bundle.receipts)
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .collect()
+        }
+
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
+            let successful_fraud_proofs = Settlement::successful_fraud_proofs();
+            extrinsics
+                .into_iter()
+                .filter_map(|uxt| match uxt.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof })
+                        if fraud_proof.domain_id() == domain_id
+                            && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
+                    {
+                        Some(fraud_proof)
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
+            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
+        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash, Hash> for Runtime {
@@ -690,51 +734,6 @@ impl_runtime_apis! {
             storage_keys.push(ExecutorRegistry::key_owner_hashed_key_for(&executor_public_key));
             Some(storage_keys)
         }
-
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<BlockNumber, Hash, Hash>> {
-            let successful_bundles = DomainRegistry::successful_bundles();
-            extrinsics
-                .into_iter()
-                .filter_map(|uxt| match uxt.function {
-                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
-                        opaque_bundle,
-                    }) if opaque_bundle.domain_id() == domain_id
-                        && successful_bundles.contains(&opaque_bundle.hash()) =>
-                    {
-                        Some(opaque_bundle.receipts)
-                    }
-                    _ => None,
-                })
-                .flatten()
-                .collect()
-        }
-
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
-            let successful_fraud_proofs = Settlement::successful_fraud_proofs();
-            extrinsics
-                .into_iter()
-                .filter_map(|uxt| match uxt.function {
-                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof })
-                        if fraud_proof.domain_id() == domain_id
-                            && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
-                    {
-                        Some(fraud_proof)
-                    }
-                    _ => None,
-                })
-                .collect()
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
-            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {

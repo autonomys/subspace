@@ -764,6 +764,24 @@ impl_runtime_apis! {
         fn maximum_receipt_drift() -> NumberFor<Block> {
             MaximumReceiptDrift::get()
         }
+
+        fn extract_receipts(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
+            crate::domains::extract_receipts(extrinsics, domain_id)
+        }
+
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
+            crate::domains::extract_fraud_proofs(extrinsics, domain_id)
+        }
+
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
+        }
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
@@ -779,10 +797,6 @@ impl_runtime_apis! {
             opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
-            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
 
         fn extract_system_bundles(
@@ -803,20 +817,6 @@ impl_runtime_apis! {
 
         fn successful_bundle_hashes() -> Vec<H256> {
             Domains::successful_bundles()
-        }
-
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
-            crate::domains::extract_receipts(extrinsics, domain_id)
-        }
-
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
-            crate::domains::extract_fraud_proofs(extrinsics, domain_id)
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {

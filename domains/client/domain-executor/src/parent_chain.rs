@@ -3,12 +3,11 @@ use sc_client_api::BlockBackend;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::DomainId;
 use sp_runtime::traits::Block as BlockT;
 use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use system_runtime_primitives::SystemDomainApi;
 
 type FraudProofFor<ParentChainBlock> =
     FraudProof<NumberFor<ParentChainBlock>, <ParentChainBlock as BlockT>::Hash>;
@@ -97,8 +96,7 @@ where
     PBlock: BlockT,
     NumberFor<SBlock>: Into<NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + BlockBackend<SBlock> + ProvideRuntimeApi<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + SettlementApi<SBlock, Block::Hash>,
+    SClient::Api: SettlementApi<SBlock, Block::Hash>,
 {
     fn best_hash(&self) -> SBlock::Hash {
         self.system_domain_client.info().best_hash
@@ -203,7 +201,7 @@ where
     PBlock: BlockT,
     NumberFor<PBlock>: Into<NumberFor<Block>>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash>,
+    PClient::Api: SettlementApi<PBlock, Block::Hash>,
 {
     fn best_hash(&self) -> PBlock::Hash {
         self.primary_chain_client.info().best_hash

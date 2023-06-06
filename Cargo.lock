@@ -8539,6 +8539,7 @@ dependencies = [
  "sp-consensus",
  "sp-domains",
  "sp-runtime",
+ "sp-settlement",
  "subspace-fraud-proof",
 ]
 
