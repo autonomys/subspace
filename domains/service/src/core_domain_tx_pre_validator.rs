@@ -7,10 +7,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_transaction_pool::PreValidateTransaction;
-use system_runtime_primitives::SystemDomainApi;
 
 pub struct CoreDomainTxPreValidator<Block, SBlock, PBlock, Client, SClient> {
     system_domain_client: Arc<SClient>,
@@ -54,8 +54,7 @@ where
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: MessengerApi<Block, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + Send + Sync + 'static,
-    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>> + SettlementApi<SBlock, Block::Hash>,
 {
     type Block = Block;
     async fn pre_validate_transaction(

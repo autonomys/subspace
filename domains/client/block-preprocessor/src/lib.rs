@@ -408,7 +408,8 @@ where
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>,
+        + MessengerApi<SBlock, NumberFor<SBlock>>
+        + SettlementApi<SBlock, Block::Hash>,
 {
     pub fn new(
         domain_id: DomainId,

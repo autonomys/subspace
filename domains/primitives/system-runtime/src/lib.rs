@@ -40,12 +40,6 @@ sp_api::decl_runtime_apis! {
             executor_public_key: ExecutorPublicKey,
         ) -> Option<Vec<Vec<u8>>>;
 
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
-
-        fn maximum_receipt_drift() -> NumberFor<Block>;
-
         /// Extracts the successful core domain receipts.
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
@@ -59,12 +53,5 @@ sp_api::decl_runtime_apis! {
         ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
 
         fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
-
-        /// Returns the core domain's state root at a specific number and hash.
-        fn core_domain_state_root_at(
-            domain_id: DomainId,
-            number: NumberFor<Block>,
-            domain_hash: Block::Hash
-        ) -> Option<Block::Hash>;
     }
 }

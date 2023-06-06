@@ -2483,6 +2483,7 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "system-runtime-primitives",
  "tracing",
 ]

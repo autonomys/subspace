@@ -691,18 +691,6 @@ impl_runtime_apis! {
             Some(storage_keys)
         }
 
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
         fn extract_receipts(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
             domain_id: DomainId,
@@ -747,9 +735,6 @@ impl_runtime_apis! {
             DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
         }
 
-        fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
-            Settlement::domain_state_root_at(domain_id, number, domain_hash)
-        }
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {

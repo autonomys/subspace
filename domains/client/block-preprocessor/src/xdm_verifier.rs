@@ -6,7 +6,6 @@ use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor};
 use sp_settlement::SettlementApi;
 use std::sync::Arc;
-use system_runtime_primitives::SystemDomainApi;
 
 /// Verifies if the xdm has the correct proof generated from known parent block.
 /// This is used by Core domain nodes.
@@ -21,8 +20,7 @@ pub fn verify_xdm_with_system_domain_client<SClient, Block, SBlock, PBlock, SRE>
 ) -> Result<bool, Error>
 where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>> + SettlementApi<SBlock, Block::Hash>,
     Block: BlockT,
     SBlock: BlockT,
     SBlock::Hash: From<Block::Hash>,
@@ -62,13 +60,13 @@ where
                 }
             }
 
-            if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
+            if let Some(expected_core_domain_state_root) = api.state_root(
                 best_hash,
                 domain_id,
                 core_domain_info.block_number.into(),
                 core_domain_info.block_hash.into(),
             )? {
-                if expected_core_domain_state_root != core_domain_state_root.into() {
+                if expected_core_domain_state_root != core_domain_state_root {
                     return Ok(false);
                 }
             }

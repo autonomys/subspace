@@ -146,7 +146,8 @@ where
     PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>,
+        + MessengerApi<SBlock, NumberFor<SBlock>>
+        + SettlementApi<SBlock, <Block as BlockT>::Hash>,
     Executor: CodeExecutor,
 {
     /// Constructs a new instance of [`CoreDomainExtrinsicsBuilder`].
@@ -199,7 +200,8 @@ where
     PClient::Api: ExecutorApi<PBlock, <Block as BlockT>::Hash>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>,
+        + MessengerApi<SBlock, NumberFor<SBlock>>
+        + SettlementApi<SBlock, <Block as BlockT>::Hash>,
     Executor: CodeExecutor,
 {
     fn build_domain_extrinsics(

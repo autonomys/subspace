@@ -97,7 +97,8 @@ where
     PBlock: BlockT,
     NumberFor<SBlock>: Into<NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + BlockBackend<SBlock> + ProvideRuntimeApi<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
+        + SettlementApi<SBlock, Block::Hash>,
 {
     fn best_hash(&self) -> SBlock::Hash {
         self.system_domain_client.info().best_hash
