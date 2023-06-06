@@ -232,17 +232,22 @@ where
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
-            let (preliminary_bundle_header, receipts, extrinsics) = self
-                .domain_bundle_proposer
-                .propose_bundle_at(slot, primary_info, self.parent_chain.clone())
-                .await?;
-
             let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
 
             let bundle_author = bundle_solution
                 .proof_of_election()
                 .executor_public_key
                 .clone();
+
+            let (preliminary_bundle_header, receipts, extrinsics) = self
+                .domain_bundle_proposer
+                .propose_bundle_at(
+                    bundle_solution,
+                    slot,
+                    primary_info,
+                    self.parent_chain.clone(),
+                )
+                .await?;
 
             let to_sign = preliminary_bundle_header.hash();
 
@@ -270,7 +275,7 @@ where
                     primary_hash: preliminary_bundle_header.primary_hash,
                     slot_number: preliminary_bundle_header.slot_number,
                     extrinsics_root: preliminary_bundle_header.extrinsics_root,
-                    bundle_solution,
+                    bundle_solution: preliminary_bundle_header.bundle_solution,
                     signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(
                         |err| {
                             sp_blockchain::Error::Application(Box::from(format!(

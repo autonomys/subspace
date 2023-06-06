@@ -8,7 +8,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_domains::PreliminaryBundleHeader;
+use sp_domains::{BundleSolution, PreliminaryBundleHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -35,7 +35,7 @@ impl<Block, Client, PBlock, PClient, TransactionPool> Clone
 }
 
 pub(super) type ProposeBundleOutput<Block, PBlock> = (
-    PreliminaryBundleHeader<NumberFor<PBlock>, <PBlock as BlockT>::Hash>,
+    PreliminaryBundleHeader<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
     Vec<ExecutionReceiptFor<PBlock, <Block as BlockT>::Hash>>,
     Vec<<Block as BlockT>::Extrinsic>,
 );
@@ -66,6 +66,7 @@ where
 
     pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
+        bundle_solution: BundleSolution<Block::Hash>,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_chain: ParentChain,
@@ -131,6 +132,7 @@ where
             primary_hash,
             slot_number: slot.into(),
             extrinsics_root,
+            bundle_solution,
         };
 
         Ok((header, receipts, extrinsics))

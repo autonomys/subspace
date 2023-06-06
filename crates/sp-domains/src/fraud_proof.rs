@@ -1,4 +1,4 @@
-use crate::{DomainId, PreliminaryBundleHeader};
+use crate::{BundleHeader, DomainId};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -263,10 +263,11 @@ pub struct BundleEquivocationProof<Number, Hash> {
     pub offender: AccountId,
     /// The slot at which the equivocation happened.
     pub slot: Slot,
+    // TODO: Make H256 a generic when bundle equivocation is implemented properly.
     /// The first header involved in the equivocation.
-    pub first_header: PreliminaryBundleHeader<Number, Hash>,
+    pub first_header: BundleHeader<Number, Hash, H256>,
     /// The second header involved in the equivocation.
-    pub second_header: PreliminaryBundleHeader<Number, Hash>,
+    pub second_header: BundleHeader<Number, Hash, H256>,
 }
 
 impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
@@ -279,18 +280,27 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 
     // TODO: remove this later.
     /// Constructs a dummy bundle equivocation proof.
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy_at(slot_number: u64) -> Self {
-        let dummy_header = PreliminaryBundleHeader {
+        use sp_application_crypto::UncheckedFrom;
+
+        let dummy_header = BundleHeader {
             primary_number: Number::from(0u32),
             primary_hash: Hash::default(),
             slot_number,
             extrinsics_root: H256::default(),
+            bundle_solution: crate::BundleSolution::dummy(
+                DomainId::SYSTEM,
+                crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
+            ),
+            signature: crate::ExecutorSignature::unchecked_from([0u8; 64]),
         };
+
         Self {
             domain_id: DomainId::SYSTEM,
             offender: AccountId::decode(&mut sp_runtime::traits::TrailingZeroInput::zeroes())
                 .expect("Failed to create zero account"),
-            slot: Slot::default(),
+            slot: slot_number.into(),
             first_header: dummy_header.clone(),
             second_header: dummy_header,
         }

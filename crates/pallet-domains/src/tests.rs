@@ -8,7 +8,7 @@ use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransition
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, OpaqueBundle, PreliminaryBundleHeader, ProofOfElection,
+    ExecutionReceipt, ExecutorPair, OpaqueBundle, PreliminaryBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -139,28 +139,10 @@ fn create_dummy_bundle(
         primary_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
+        bundle_solution: BundleSolution::dummy(domain_id, pair.public()),
     };
 
     let signature = pair.sign(preliminary_bundle_header.hash().as_ref());
-
-    let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
-
-    let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System {
-            authority_stake_weight: Default::default(),
-            authority_witness: Default::default(),
-            proof_of_election,
-        }
-    } else if domain_id.is_core() {
-        BundleSolution::Core {
-            proof_of_election,
-            core_block_number: Default::default(),
-            core_block_hash: Default::default(),
-            core_state_root: Default::default(),
-        }
-    } else {
-        panic!("Open domain unsupported");
-    };
 
     OpaqueBundle {
         header: BundleHeader {
@@ -168,7 +150,7 @@ fn create_dummy_bundle(
             primary_hash: preliminary_bundle_header.primary_hash,
             slot_number: preliminary_bundle_header.slot_number,
             extrinsics_root: preliminary_bundle_header.extrinsics_root,
-            bundle_solution,
+            bundle_solution: preliminary_bundle_header.bundle_solution,
             signature,
         },
         receipts: vec![execution_receipt],

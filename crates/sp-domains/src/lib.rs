@@ -182,7 +182,7 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 /// domain operator needs to sign the hash of [`PreliminaryBundleHeader`] and uses the signature to
 /// assemble the final [`BundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct PreliminaryBundleHeader<Number, Hash> {
+pub struct PreliminaryBundleHeader<Number, Hash, DomainHash> {
     /// The block number of primary block at which the bundle was created.
     pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
@@ -191,33 +191,26 @@ pub struct PreliminaryBundleHeader<Number, Hash> {
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
     pub extrinsics_root: H256,
+    /// Solution of the bundle election.
+    pub bundle_solution: BundleSolution<DomainHash>,
 }
 
-impl<Number: Encode, Hash: Encode> PreliminaryBundleHeader<Number, Hash> {
-    /// Returns the hash of this header.
+impl<Number: Encode, Hash: Encode, DomainHash: Encode>
+    PreliminaryBundleHeader<Number, Hash, DomainHash>
+{
+    /// Returns the hash of this preliminary header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
 }
 
-/// Header of bundle.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-struct PreliminaryBundleHeaderRef<'a, Number, Hash> {
-    /// The block number of primary block at which the bundle was created.
-    pub primary_number: &'a Number,
-    /// The hash of primary block at which the bundle was created.
-    pub primary_hash: &'a Hash,
-    /// The slot number.
-    pub slot_number: u64,
-    /// The merkle root of the extrinsics.
-    pub extrinsics_root: H256,
-}
-
-impl<'a, Number: Encode, Hash: Encode> PreliminaryBundleHeaderRef<'a, Number, Hash> {
-    /// Returns the hash of this header.
-    fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
+#[derive(Encode)]
+struct PreliminaryBundleHeaderRef<'a, Number, Hash, DomainHash> {
+    primary_number: &'a Number,
+    primary_hash: &'a Hash,
+    slot_number: u64,
+    extrinsics_root: H256,
+    bundle_solution: &'a BundleSolution<DomainHash>,
 }
 
 /// Header of bundle.
@@ -238,15 +231,17 @@ pub struct BundleHeader<Number, Hash, DomainHash> {
 }
 
 impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash, DomainHash> {
+    /// Returns the hash of the corresponding preliminary header.
     pub fn pre_hash(&self) -> H256 {
-        let preliminary_bundle_header = PreliminaryBundleHeaderRef {
+        let preliminary_bundle_header_ref = PreliminaryBundleHeaderRef {
             primary_number: &self.primary_number,
             primary_hash: &self.primary_hash,
             slot_number: self.slot_number,
             extrinsics_root: self.extrinsics_root,
+            bundle_solution: &self.bundle_solution,
         };
 
-        preliminary_bundle_header.hash()
+        BlakeTwo256::hash_of(&preliminary_bundle_header_ref)
     }
 
     /// Returns the hash of this header.
@@ -351,6 +346,30 @@ impl<DomainHash> BundleSolution<DomainHash> {
             Self::Core {
                 core_block_hash, ..
             } => core_block_hash,
+        }
+    }
+}
+
+impl<DomainHash: Default> BundleSolution<DomainHash> {
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
+        let proof_of_election = ProofOfElection::dummy(domain_id, executor_public_key);
+
+        if domain_id.is_system() {
+            Self::System {
+                authority_stake_weight: Default::default(),
+                authority_witness: Default::default(),
+                proof_of_election,
+            }
+        } else if domain_id.is_core() {
+            Self::Core {
+                proof_of_election,
+                core_block_number: Default::default(),
+                core_block_hash: Default::default(),
+                core_state_root: Default::default(),
+            }
+        } else {
+            panic!("Open domain unsupported");
         }
     }
 }
@@ -483,32 +502,15 @@ where
 {
     use sp_core::crypto::UncheckedFrom;
 
-    let proof_of_election =
-        ProofOfElection::dummy(domain_id, ExecutorPublicKey::unchecked_from([0u8; 32]));
-
-    let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System {
-            authority_stake_weight: Default::default(),
-            authority_witness: Default::default(),
-            proof_of_election,
-        }
-    } else if domain_id.is_core() {
-        BundleSolution::Core {
-            proof_of_election,
-            core_block_number: Default::default(),
-            core_block_hash: Default::default(),
-            core_state_root: Default::default(),
-        }
-    } else {
-        panic!("Open domain unsupported");
-    };
-
     let header = BundleHeader {
         primary_number,
         primary_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
-        bundle_solution,
+        bundle_solution: BundleSolution::dummy(
+            domain_id,
+            ExecutorPublicKey::unchecked_from([0u8; 32]),
+        ),
         signature: ExecutorSignature::unchecked_from([0u8; 64]),
     };
 
