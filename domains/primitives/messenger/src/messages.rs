@@ -118,7 +118,7 @@ pub enum MessageWeightTag {
 }
 
 impl MessageWeightTag {
-    // Cnstruct the weight tag for outbox message based on the outbox payload
+    // Construct the weight tag for outbox message based on the outbox payload
     pub fn outbox<Balance>(outbox_payload: &VersionedPayload<Balance>) -> Self {
         match outbox_payload {
             VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
@@ -134,7 +134,7 @@ impl MessageWeightTag {
         }
     }
 
-    // Cnstruct the weight tag for inbox response based on the weight tag of the request
+    // Construct the weight tag for inbox response based on the weight tag of the request
     // message and the response payload
     pub fn inbox_response<Balance>(
         req_tyep: MessageWeightTag,
