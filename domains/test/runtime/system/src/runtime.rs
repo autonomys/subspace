@@ -637,6 +637,18 @@ impl_runtime_apis! {
         fn receipts_pruning_depth() -> BlockNumber {
             ReceiptsPruningDepth::get()
         }
+
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Settlement::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Settlement::oldest_receipt_number(domain_id)
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
+        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash, Hash> for Runtime {

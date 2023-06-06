@@ -11,6 +11,7 @@ use sp_core::H256;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
@@ -53,7 +54,8 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>
+        + SettlementApi<PBlock, domain_runtime_primitives::Hash>,
     Executor: CodeExecutor,
 {
     /// Constructs a new instance of [`SystemDomainExtrinsicsBuilder`].
@@ -92,7 +94,8 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: ExecutorApi<PBlock, domain_runtime_primitives::Hash>
+        + SettlementApi<PBlock, domain_runtime_primitives::Hash>,
     Executor: CodeExecutor,
 {
     fn build_domain_extrinsics(

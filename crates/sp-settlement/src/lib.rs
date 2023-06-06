@@ -43,5 +43,14 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the receipts pruning depth.
         fn receipts_pruning_depth() -> NumberFor<Block>;
+
+        /// Returns the best execution chain number.
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+
+        /// Returns the block number of oldest execution receipt.
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+
+        /// Returns the maximum receipt drift.
+        fn maximum_receipt_drift() -> NumberFor<Block>;
     }
 }

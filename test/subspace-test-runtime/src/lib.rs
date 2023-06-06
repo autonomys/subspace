@@ -1160,6 +1160,18 @@ impl_runtime_apis! {
         fn receipts_pruning_depth() -> BlockNumber {
             ReceiptsPruningDepth::get()
         }
+
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Settlement::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Settlement::oldest_receipt_number(domain_id)
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
+        }
     }
 
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
@@ -1221,25 +1233,6 @@ impl_runtime_apis! {
 
         fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
             TEST_DOMAIN_WASM_BUNDLE.into()
-        }
-
-        fn head_receipt_number() -> NumberFor<Block> {
-            Domains::head_receipt_number()
-        }
-
-        fn oldest_receipt_number() -> NumberFor<Block> {
-            Domains::oldest_receipt_number()
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
-        fn system_domain_state_root_at(
-            number: NumberFor<Block>,
-            domain_hash: domain_runtime_primitives::Hash
-        ) -> Option<domain_runtime_primitives::Hash>{
-            Settlement::domain_state_root_at(DomainId::SYSTEM, number, domain_hash)
         }
 
         fn timestamp() -> Moment{

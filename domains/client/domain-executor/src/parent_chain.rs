@@ -5,6 +5,7 @@ use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::Block as BlockT;
+use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
@@ -201,7 +202,7 @@ where
     PBlock: BlockT,
     NumberFor<PBlock>: Into<NumberFor<Block>>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash>,
 {
     fn best_hash(&self) -> PBlock::Hash {
         self.primary_chain_client.info().best_hash
@@ -220,7 +221,7 @@ where
         let oldest_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .oldest_receipt_number(at)?;
+            .oldest_receipt_number(at, DomainId::SYSTEM)?;
         Ok(oldest_receipt_number.into())
     }
 
@@ -228,7 +229,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(at)?;
+            .head_receipt_number(at, DomainId::SYSTEM)?;
         Ok(head_receipt_number.into())
     }
 

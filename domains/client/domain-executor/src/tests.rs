@@ -20,6 +20,7 @@ use sp_messenger::messages::{ExecutionFee, FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
+use sp_settlement::SettlementApi;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_runtime_primitives::opaque::Block as PBlock;
@@ -45,7 +46,7 @@ fn number_hash_mappings_from_head_receipt_number_to_best_header(
     let head_receipt_number = primary_node
         .client
         .runtime_api()
-        .head_receipt_number(best_header.hash())
+        .head_receipt_number(best_header.hash(), DomainId::SYSTEM)
         .unwrap();
 
     let mut current_best = best_header;
@@ -841,7 +842,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         let best_hash = ferdie_client.info().best_hash;
         ferdie_client
             .runtime_api()
-            .head_receipt_number(best_hash)
+            .head_receipt_number(best_hash, DomainId::SYSTEM)
             .expect("Failed to get head receipt number")
     };
 

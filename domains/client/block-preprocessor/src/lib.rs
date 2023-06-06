@@ -40,6 +40,7 @@ use sp_domains::{DomainId, ExecutorApi, OpaqueBundles};
 use sp_messenger::MessengerApi;
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use sp_settlement::SettlementApi;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
@@ -264,7 +265,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash>,
 {
     pub fn new(primary_chain_client: Arc<PClient>, runtime_api: RuntimeApi) -> Self {
         Self {

@@ -587,18 +587,6 @@ sp_api::decl_runtime_apis! {
         /// WASM bundle for system domain runtime.
         fn system_domain_wasm_bundle() -> Cow<'static, [u8]>;
 
-        /// Returns the best execution chain number.
-        fn head_receipt_number() -> NumberFor<Block>;
-
-        /// Returns the block number of oldest execution receipt.
-        fn oldest_receipt_number() -> NumberFor<Block>;
-
-        /// Returns the maximum receipt drift.
-        fn maximum_receipt_drift() -> NumberFor<Block>;
-
-        // Returns the state root of the system domain at specific number and hash.
-        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
-
         // Returns the current timestamp at given height
         fn timestamp() -> Moment;
     }
