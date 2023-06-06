@@ -24,6 +24,11 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+pub mod weights;
+
 mod fees;
 mod messages;
 mod relayer;
@@ -83,12 +88,14 @@ pub(crate) type BalanceOf<T> =
 
 pub(crate) struct ValidatedRelayMessage<Balance> {
     msg: Message<Balance>,
+    next_nonce: Nonce,
     should_init_channel: bool,
 }
 
 #[frame_support::pallet]
 mod pallet {
     use crate::relayer::{RelayerId, RelayerInfo};
+    use crate::weights::WeightInfo;
     use crate::{
         relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
@@ -100,7 +107,7 @@ mod pallet {
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        CrossDomainMessage, InitiateChannelParams, Message, MessageId, Payload,
+        CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag, Payload,
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
@@ -127,6 +134,8 @@ mod pallet {
         type DomainInfo: DomainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
         /// Confirmation depth for XDM coming from core domains.
         type ConfirmationDepth: Get<Self::BlockNumber>;
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
     }
 
     /// Pallet messenger used to communicate between domains and other blockchains.
@@ -154,17 +163,11 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// Stores the incoming messages that are yet to be processed.
-    /// Messages are processed in the inbox nonce order of domain channel.
+    /// A temporary storage for storing decoded inbox message between `pre_dispatch_relay_message`
+    /// and `relay_message`.
     #[pallet::storage]
     #[pallet::getter(fn inbox)]
-    pub(super) type Inbox<T: Config> = CountedStorageMap<
-        _,
-        Identity,
-        (DomainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type Inbox<T: Config> = StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
     /// Stores the message responses of the incoming processed responses.
     /// Used by the dst_domain to verify the message response.
@@ -190,15 +193,12 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// A temporary storage for storing decoded outbox response message between `pre_dispatch_relay_message_response`
+    /// and `relay_message_response`.
     #[pallet::storage]
     #[pallet::getter(fn outbox_responses)]
-    pub(super) type OutboxResponses<T: Config> = CountedStorageMap<
-        _,
-        Identity,
-        (DomainId, ChannelId, Nonce),
-        Message<BalanceOf<T>>,
-        OptionQuery,
-    >;
+    pub(super) type OutboxResponses<T: Config> =
+        StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
     #[pallet::getter(fn relayers_info)]
@@ -340,18 +340,6 @@ mod pallet {
         }
     }
 
-    type Tag = (DomainId, ChannelId, Nonce);
-
-    fn unsigned_validity(prefix: &'static str, provides: Tag) -> TransactionValidity {
-        ValidTransaction::with_tag_prefix(prefix)
-            .priority(TransactionPriority::MAX)
-            .and_provides(provides)
-            .longevity(TransactionLongevity::MAX)
-            // We need this extrinsic to be propagated to the farmer nodes.
-            .propagate(true)
-            .build()
-    }
-
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -361,12 +349,39 @@ mod pallet {
                 Call::relay_message { msg: xdm } => {
                     let ValidatedRelayMessage {
                         msg,
+                        next_nonce,
                         should_init_channel,
                     } = Self::do_validate_relay_message(xdm)?;
+                    if msg.nonce != next_nonce {
+                        log::error!(
+                            "Unexpected message nonce, channel next nonce {:?}, msg nonce {:?}",
+                            next_nonce,
+                            msg.nonce,
+                        );
+                        return Err(if msg.nonce < next_nonce {
+                            InvalidTransaction::Stale
+                        } else {
+                            InvalidTransaction::Future
+                        }
+                        .into());
+                    }
                     Self::pre_dispatch_relay_message(msg, should_init_channel)
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let msg = Self::do_validate_relay_message_response(xdm)?;
+                    let (msg, next_nonce) = Self::do_validate_relay_message_response(xdm)?;
+                    if msg.nonce != next_nonce {
+                        log::error!(
+                            "Unexpected message response nonce, channel next nonce {:?}, msg nonce {:?}",
+                            next_nonce,
+                            msg.nonce,
+                        );
+                        return Err(if msg.nonce < next_nonce {
+                            InvalidTransaction::Stale
+                        } else {
+                            InvalidTransaction::Future
+                        }
+                        .into());
+                    }
                     Self::pre_dispatch_relay_message_response(msg)
                 }
                 _ => Err(InvalidTransaction::Call.into()),
@@ -379,15 +394,45 @@ mod pallet {
                 Call::relay_message { msg: xdm } => {
                     let ValidatedRelayMessage {
                         msg,
+                        next_nonce,
                         should_init_channel: _,
                     } = Self::do_validate_relay_message(xdm)?;
-                    let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
-                    unsigned_validity("MessengerInbox", provides_tag)
+
+                    let mut valid_tx_builder = ValidTransaction::with_tag_prefix("MessengerInbox");
+                    // Only add the requires tag if the msg nonce is in future
+                    if msg.nonce > next_nonce {
+                        valid_tx_builder = valid_tx_builder.and_requires((
+                            msg.dst_domain_id,
+                            msg.channel_id,
+                            msg.nonce - Nonce::one(),
+                        ));
+                    };
+                    valid_tx_builder
+                        .priority(TransactionPriority::MAX)
+                        .longevity(TransactionLongevity::MAX)
+                        .and_provides((msg.dst_domain_id, msg.channel_id, msg.nonce))
+                        .propagate(true)
+                        .build()
                 }
                 Call::relay_message_response { msg: xdm } => {
-                    let msg = Self::do_validate_relay_message_response(xdm)?;
-                    let provides_tag = (msg.dst_domain_id, msg.channel_id, msg.nonce);
-                    unsigned_validity("MessengerOutboxResponse", provides_tag)
+                    let (msg, next_nonce) = Self::do_validate_relay_message_response(xdm)?;
+
+                    let mut valid_tx_builder =
+                        ValidTransaction::with_tag_prefix("MessengerOutboxResponse");
+                    // Only add the requires tag if the msg nonce is in future
+                    if msg.nonce > next_nonce {
+                        valid_tx_builder = valid_tx_builder.and_requires((
+                            msg.dst_domain_id,
+                            msg.channel_id,
+                            msg.nonce - Nonce::one(),
+                        ));
+                    };
+                    valid_tx_builder
+                        .priority(TransactionPriority::MAX)
+                        .longevity(TransactionLongevity::MAX)
+                        .and_provides((msg.dst_domain_id, msg.channel_id, msg.nonce))
+                        .propagate(true)
+                        .build()
                 }
                 _ => InvalidTransaction::Call.into(),
             }
@@ -441,6 +486,10 @@ mod pallet {
 
         /// Emits when there are no relayers to relay messages between domains.
         NoRelayersToAssign,
+
+        /// Emits when there is mismatch between the message's weight tag and the message's
+        /// actual processing path
+        WeightTagNotMatch,
     }
 
     #[pallet::hooks]
@@ -461,7 +510,7 @@ mod pallet {
         /// Channel is set to initiated and do not accept or receive any messages.
         /// Only a root user can create the channel.
         #[pallet::call_index(0)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::initiate_channel(), Pays::No))]
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_domain_id: DomainId,
@@ -490,7 +539,7 @@ mod pallet {
         /// Channel is set to Closed and do not accept or receive any messages.
         /// Only a root user can close an open channel.
         #[pallet::call_index(1)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::close_channel(), Pays::No))]
         pub fn close_channel(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -512,31 +561,33 @@ mod pallet {
 
         /// Receives an Inbox message that needs to be validated and processed.
         #[pallet::call_index(2)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::relay_message().saturating_add(Pallet::<T>::message_weight(&msg.weight_tag)), Pays::No))]
         pub fn relay_message(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::process_inbox_messages(msg.src_domain_id, msg.channel_id)?;
+            let inbox_msg = Inbox::<T>::take().ok_or(Error::<T>::MissingMessage)?;
+            Self::process_inbox_messages(inbox_msg, msg.weight_tag)?;
             Ok(())
         }
 
         /// Receives a response from the dst_domain for a message in Outbox.
         #[pallet::call_index(3)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight((T::WeightInfo::relay_message_response().saturating_add(Pallet::<T>::message_weight(&msg.weight_tag)), Pays::No))]
         pub fn relay_message_response(
             origin: OriginFor<T>,
             msg: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            Self::process_outbox_message_responses(msg.src_domain_id, msg.channel_id)?;
+            let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
+            Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
         }
 
         /// Declare the desire to become a relayer for this domain by reserving the relayer deposit.
         #[pallet::call_index(4)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(T::WeightInfo::join_relayer_set())]
         pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::do_join_relayer_set(who, relayer_id)?;
@@ -545,7 +596,7 @@ mod pallet {
 
         /// Declare the desire to exit relaying for this domain.
         #[pallet::call_index(5)]
-        #[pallet::weight((10_000, Pays::No))]
+        #[pallet::weight(T::WeightInfo::exit_relayer_set())]
         pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::do_exit_relayer_set(who, relayer_id)?;
@@ -575,9 +626,47 @@ mod pallet {
             )?;
             Ok((channel_id, nonce))
         }
+
+        /// Only used in benchmark to prepare for a upcoming `send_message` call to
+        /// ensure it will succeed.
+        #[cfg(feature = "runtime-benchmarks")]
+        fn unchecked_open_channel(dst_domain_id: DomainId) -> Result<(), DispatchError> {
+            let fee_model = FeeModel {
+                outbox_fee: Default::default(),
+                inbox_fee: Default::default(),
+            };
+            let init_params = InitiateChannelParams {
+                max_outgoing_messages: 100,
+                fee_model,
+            };
+            let channel_id = Self::do_init_channel(dst_domain_id, init_params)?;
+            Self::do_open_channel(dst_domain_id, channel_id)?;
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
+        // Get the weight according the given weight tag
+        fn message_weight(weight_tag: &MessageWeightTag) -> Weight {
+            match weight_tag {
+                MessageWeightTag::ProtocolChannelOpen => T::WeightInfo::do_open_channel(),
+                MessageWeightTag::ProtocolChannelClose => T::WeightInfo::do_close_channel(),
+                MessageWeightTag::EndpointRequest(endpoint) => {
+                    T::get_endpoint_response_handler(endpoint)
+                        .map(|endpoint_handler| endpoint_handler.message_weight())
+                        // If there is no endpoint handler the request won't be handled thus reture zero weight
+                        .unwrap_or(Weight::zero())
+                }
+                MessageWeightTag::EndpointResponse(endpoint) => {
+                    T::get_endpoint_response_handler(endpoint)
+                        .map(|endpoint_handler| endpoint_handler.message_response_weight())
+                        // If there is no endpoint handler the request won't be handled thus reture zero weight
+                        .unwrap_or(Weight::zero())
+                }
+                MessageWeightTag::None => Weight::zero(),
+            }
+        }
+
         /// Returns the last open channel for a given domain.
         pub fn get_open_channel_for_domain(
             dst_domain_id: DomainId,
@@ -713,12 +802,6 @@ mod pallet {
                         channel.state == ChannelState::Open,
                         InvalidTransaction::Call
                     );
-
-                    // ensure the fees are deposited to the messenger account to pay
-                    // for relayer set.
-                    Self::ensure_fees_for_inbox_message(&channel.fee).map_err(|_| {
-                        TransactionValidityError::Invalid(InvalidTransaction::Payment)
-                    })?;
                     channel.next_inbox_nonce
                 }
             };
@@ -732,8 +815,23 @@ mod pallet {
 
             // verify and decode message
             let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+
+            // if there is no channel config, this must be the Channel open request
+            if should_init_channel {
+                match msg.payload {
+                    VersionedPayload::V0(Payload::Protocol(RequestResponse::Request(
+                        ProtocolMessageRequest::ChannelOpen(_),
+                    ))) => {}
+                    _ => {
+                        log::error!("Unexpected call instead of channel open request: {:?}", msg,);
+                        return Err(InvalidTransaction::Call.into());
+                    }
+                }
+            }
+
             Ok(ValidatedRelayMessage {
                 msg,
+                next_nonce,
                 should_init_channel,
             })
         }
@@ -762,18 +860,26 @@ mod pallet {
                 }
             }
 
+            let channel = Channels::<T>::get(msg.src_domain_id, msg.channel_id)
+                .ok_or(InvalidTransaction::Call)?;
+
+            // ensure the fees are deposited to the messenger account to pay
+            // for relayer set.
+            Self::ensure_fees_for_inbox_message(&channel.fee)
+                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
+
             Self::deposit_event(Event::InboxMessage {
                 domain_id: msg.src_domain_id,
                 channel_id: msg.channel_id,
                 nonce: msg.nonce,
             });
-            Inbox::<T>::insert((msg.src_domain_id, msg.channel_id, msg.nonce), msg);
+            Inbox::<T>::put(msg);
             Ok(())
         }
 
         pub(crate) fn do_validate_relay_message_response(
             xdm: &CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>>,
-        ) -> Result<Message<BalanceOf<T>>, TransactionValidityError> {
+        ) -> Result<(Message<BalanceOf<T>>, Nonce), TransactionValidityError> {
             // channel should be open and message should be present in outbox
             let next_nonce = match Channels::<T>::get(xdm.src_domain_id, xdm.channel_id) {
                 // unknown channel. return
@@ -796,7 +902,9 @@ mod pallet {
             )));
 
             // verify, decode, and store the message
-            Self::do_verify_xdm(next_nonce, key, xdm)
+            let msg = Self::do_verify_xdm(next_nonce, key, xdm)?;
+
+            Ok((msg, next_nonce))
         }
 
         pub(crate) fn pre_dispatch_relay_message_response(
@@ -808,7 +916,7 @@ mod pallet {
                 nonce: msg.nonce,
             });
 
-            OutboxResponses::<T>::insert((msg.src_domain_id, msg.channel_id, msg.nonce), msg);
+            OutboxResponses::<T>::put(msg);
             Ok(())
         }
 

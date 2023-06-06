@@ -381,8 +381,8 @@ fn send_message_between_domains(
     domain_b_test_ext.execute_with(|| {
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
         assert_eq!(Outbox::<domain_b::Runtime>::count(), 0);
-        assert_eq!(OutboxResponses::<domain_b::Runtime>::count(), 0);
-        assert_eq!(Inbox::<domain_b::Runtime>::count(), 0);
+        assert!(OutboxResponses::<domain_b::Runtime>::get().is_none());
+        assert!(Inbox::<domain_b::Runtime>::get().is_none());
 
         // latest inbox message response is cleared on next message
         assert_eq!(InboxResponses::<domain_b::Runtime>::count(), 1);
@@ -392,8 +392,8 @@ fn send_message_between_domains(
     domain_a_test_ext.execute_with(|| {
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
         assert_eq!(Outbox::<domain_a::Runtime>::count(), 0);
-        assert_eq!(OutboxResponses::<domain_a::Runtime>::count(), 0);
-        assert_eq!(Inbox::<domain_a::Runtime>::count(), 0);
+        assert!(OutboxResponses::<domain_a::Runtime>::get().is_none());
+        assert!(Inbox::<domain_a::Runtime>::get().is_none());
         assert_eq!(InboxResponses::<domain_a::Runtime>::count(), 0);
 
         let channel = domain_a::Messenger::channels(domain_b_id, channel_id).unwrap();
@@ -444,8 +444,8 @@ fn close_channel_between_domains(
 
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
         assert_eq!(Outbox::<domain_b::Runtime>::count(), 0);
-        assert_eq!(OutboxResponses::<domain_b::Runtime>::count(), 0);
-        assert_eq!(Inbox::<domain_b::Runtime>::count(), 0);
+        assert!(OutboxResponses::<domain_b::Runtime>::get().is_none());
+        assert!(Inbox::<domain_b::Runtime>::get().is_none());
 
         // latest inbox message response is cleared on next message
         assert_eq!(InboxResponses::<domain_b::Runtime>::count(), 1);
@@ -473,8 +473,8 @@ fn close_channel_between_domains(
 
         // Outbox, Outbox responses, Inbox, InboxResponses must be empty
         assert_eq!(Outbox::<domain_a::Runtime>::count(), 0);
-        assert_eq!(OutboxResponses::<domain_a::Runtime>::count(), 0);
-        assert_eq!(Inbox::<domain_a::Runtime>::count(), 0);
+        assert!(OutboxResponses::<domain_a::Runtime>::get().is_none());
+        assert!(Inbox::<domain_a::Runtime>::get().is_none());
         assert_eq!(InboxResponses::<domain_a::Runtime>::count(), 0);
     })
 }
@@ -507,6 +507,7 @@ fn channel_relay_request_and_response(
             core_domain_proof: None,
             message_proof,
         },
+        weight_tag: Default::default(),
     };
     domain_b_test_ext.execute_with(|| {
         // set state root
@@ -551,10 +552,7 @@ fn channel_relay_request_and_response(
         assert_eq!(response.dst_domain_id, domain_a_id);
         assert_eq!(response.channel_id, channel_id);
         assert_eq!(response.nonce, nonce);
-        assert_eq!(
-            domain_a::Messenger::inbox((domain_b_id, channel_id, nonce)),
-            None
-        );
+        assert_eq!(domain_a::Messenger::inbox(), None);
     });
 
     // relay message response to domain_a
@@ -577,6 +575,7 @@ fn channel_relay_request_and_response(
             core_domain_proof: None,
             message_proof,
         },
+        weight_tag: Default::default(),
     };
     domain_a_test_ext.execute_with(|| {
         domain_a::Settlement::set_state_root(
@@ -602,10 +601,7 @@ fn channel_relay_request_and_response(
             domain_a::Messenger::outbox((domain_b_id, channel_id, nonce)),
             None
         );
-        assert_eq!(
-            domain_a::Messenger::outbox_responses((domain_b_id, channel_id, nonce)),
-            None
-        );
+        assert_eq!(domain_a::Messenger::outbox_responses(), None);
 
         domain_a::System::assert_has_event(domain_a::RuntimeEvent::Messenger(
             crate::Event::<domain_a::Runtime>::OutboxMessageResult {

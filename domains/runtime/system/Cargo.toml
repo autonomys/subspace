@@ -109,6 +109,8 @@ runtime-benchmarks = [
 	"pallet-balances/runtime-benchmarks",
 	"pallet-domain-registry/runtime-benchmarks",
 	"pallet-executor-registry/runtime-benchmarks",
+	"pallet-messenger/runtime-benchmarks",
+	"pallet-transporter/runtime-benchmarks",
 	"sp-domains/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
