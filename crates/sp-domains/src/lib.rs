@@ -31,7 +31,7 @@ use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
-use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -247,6 +247,14 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
+    }
+
+    /// Returns whether the signature is valid.
+    pub fn verify_signature(&self) -> bool {
+        self.bundle_solution
+            .proof_of_election()
+            .executor_public_key
+            .verify(&self.pre_hash(), &self.signature)
     }
 }
 

@@ -38,7 +38,6 @@ use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, OpaqueBundle, ProofOfElection};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::RuntimeAppPublic;
 use sp_std::vec::Vec;
 
 #[frame_support::pallet]
@@ -573,15 +572,11 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        let proof_of_election = header.bundle_solution.proof_of_election();
-
-        if !proof_of_election
-            .executor_public_key
-            .verify(&header.pre_hash(), &header.signature)
-        {
+        if !header.verify_signature() {
             return Err(BundleError::BadSignature);
         }
 
+        let proof_of_election = header.bundle_solution.proof_of_election();
         proof_of_election
             .verify_vrf_proof()
             .map_err(|_| BundleError::BadVrfProof)?;

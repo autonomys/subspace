@@ -11,7 +11,6 @@ use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
 use sp_domains::Bundle;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
-use sp_runtime::RuntimeAppPublic;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -126,18 +125,13 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            let proof_of_election = bundle.header.bundle_solution.proof_of_election();
-
-            if !proof_of_election
-                .executor_public_key
-                .verify(&bundle.header.pre_hash(), &bundle.header.signature)
-            {
+            if !bundle.header.verify_signature() {
                 return Err(GossipMessageError::BadBundleSignature);
             }
 
             // TODO: validate the bundle election.
 
-            let domain_id = proof_of_election.domain_id;
+            let domain_id = bundle.domain_id();
 
             self.gossip_message_validator
                 .validate_bundle_receipts(&bundle.receipts, domain_id)?;
