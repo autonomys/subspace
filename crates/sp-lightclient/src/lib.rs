@@ -40,7 +40,9 @@ use subspace_core_primitives::{
     SegmentCommitment, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::{check_reward_signature, PieceCheckParams, VerifySolutionParams};
+use subspace_verification::{
+    calculate_block_weight, check_reward_signature, PieceCheckParams, VerifySolutionParams,
+};
 
 #[cfg(test)]
 mod tests;
@@ -359,7 +361,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             parent_header.header.hash(),
         )?;
 
-        let solution_distance = verify_solution(
+        verify_solution(
             (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
             (&VerifySolutionParams {
@@ -374,25 +376,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         )
         .map_err(ImportError::InvalidSolution)?;
 
-        let total_weight =
-            parent_header.total_weight + BlockWeight::from(SolutionRange::MAX - solution_distance);
+        let added_weight = calculate_block_weight(header_digests.solution_range);
+        let total_weight = parent_header.total_weight + added_weight;
 
         // last best header should ideally be parent header. if not check for forks and pick the best chain
         let last_best_header = self.store.best_header();
-        let is_best_header = if last_best_header.header.hash() == parent_header.header.hash() {
-            // header is extending the current best header. consider this best header
-            true
-        } else {
-            let last_best_weight = last_best_header.total_weight;
-            match total_weight.cmp(&last_best_weight) {
-                // current weight is greater than last best. pick this header as best
-                Ordering::Greater => true,
-                // if weights are equal, pick the longest chain
-                Ordering::Equal => header.number() > last_best_header.header.number(),
-                // we already are on the best chain
-                Ordering::Less => false,
-            }
-        };
+        let last_best_weight = last_best_header.total_weight;
+        let is_best_header = total_weight > last_best_weight;
 
         // check if era has changed
         let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
