@@ -2355,6 +2355,7 @@ dependencies = [
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "sp-state-machine",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
@@ -2424,6 +2425,7 @@ dependencies = [
  "sp-keystore",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "sp-state-machine",
  "sp-trie",
  "subspace-core-primitives",
@@ -2481,6 +2483,7 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "system-runtime-primitives",
  "tracing",
 ]
@@ -8536,6 +8539,7 @@ dependencies = [
  "sp-consensus",
  "sp-domains",
  "sp-runtime",
+ "sp-settlement",
  "subspace-fraud-proof",
 ]
 

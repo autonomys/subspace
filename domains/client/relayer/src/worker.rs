@@ -8,8 +8,8 @@ use sp_domains::DomainId;
 use sp_messenger::RelayerApi;
 use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
+use sp_settlement::SettlementApi;
 use std::sync::Arc;
-use system_runtime_primitives::SystemDomainApi;
 
 /// Starts relaying system domain messages to other domains.
 /// If the node is in major sync, worker waits waits until the sync is finished.
@@ -88,7 +88,7 @@ pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, C
     CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
     SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        + SettlementApi<SBlock, Block::Hash>,
     SDSO: SyncOracle + Send,
     CDSO: SyncOracle + Send,
     RelayerId: Encode + Decode + Clone,

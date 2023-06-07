@@ -12,6 +12,7 @@ use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -86,7 +87,8 @@ where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>,
+        + MessengerApi<SBlock, NumberFor<SBlock>>
+        + SettlementApi<SBlock, Block::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>

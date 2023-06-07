@@ -20,6 +20,7 @@ use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
+use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
@@ -97,7 +98,8 @@ where
         + 'static,
     SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>,
+        + MessengerApi<SBlock, NumberFor<SBlock>>
+        + SettlementApi<SBlock, Block::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>

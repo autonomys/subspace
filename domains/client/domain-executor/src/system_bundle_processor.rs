@@ -9,11 +9,12 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
-use sp_domains::ExecutorApi;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
+use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -91,7 +92,7 @@ where
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -217,7 +218,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(primary_hash)?
+            .head_receipt_number(primary_hash, DomainId::SYSTEM)?
             .into();
 
         assert!(

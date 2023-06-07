@@ -125,7 +125,8 @@ pub struct NewFullCore<
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
+        + SettlementApi<SBlock, Block::Hash>,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -206,7 +207,8 @@ where
     PBlock: BlockT,
     SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
     SDC::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
+        + SettlementApi<SBlock, Block::Hash>,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, Executor>>,
 {
     let telemetry = config

@@ -22,7 +22,6 @@ pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
 
-use crate::fraud_proof::FraudProof;
 use bundle_election::VrfProofError;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
@@ -552,9 +551,6 @@ sp_api::decl_runtime_apis! {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
-        /// Submits the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
-
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
             extrinsics: Vec<Block::Extrinsic>,
@@ -569,35 +565,11 @@ sp_api::decl_runtime_apis! {
         /// Returns the hash of successfully submitted bundles.
         fn successful_bundle_hashes() -> Vec<H256>;
 
-        /// Extract the receipts from the given extrinsics.
-        fn extract_receipts(
-            extrinsics: Vec<Block::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
-
-        /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(
-            extrinsics: Vec<Block::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
-
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
         /// WASM bundle for system domain runtime.
         fn system_domain_wasm_bundle() -> Cow<'static, [u8]>;
-
-        /// Returns the best execution chain number.
-        fn head_receipt_number() -> NumberFor<Block>;
-
-        /// Returns the block number of oldest execution receipt.
-        fn oldest_receipt_number() -> NumberFor<Block>;
-
-        /// Returns the maximum receipt drift.
-        fn maximum_receipt_drift() -> NumberFor<Block>;
-
-        // Returns the state root of the system domain at specific number and hash.
-        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
 
         // Returns the current timestamp at given height
         fn timestamp() -> Moment;

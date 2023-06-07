@@ -19,9 +19,8 @@
 
 use parity_scale_codec::{Decode, Encode};
 use sp_domains::bundle_election::BundleElectionSolverParams;
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, OpaqueBundle};
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_domains::{DomainId, ExecutorPublicKey, OpaqueBundle};
+use sp_runtime::traits::Block as BlockT;
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
@@ -39,32 +38,5 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
             executor_public_key: ExecutorPublicKey,
         ) -> Option<Vec<Vec<u8>>>;
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
-
-        fn maximum_receipt_drift() -> NumberFor<Block>;
-
-        /// Extracts the successful core domain receipts.
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, CHash>>;
-
-        /// Extracts the successful core domain fraud proofs.
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
-
-        /// Returns the core domain's state root at a specific number and hash.
-        fn core_domain_state_root_at(
-            domain_id: DomainId,
-            number: NumberFor<Block>,
-            domain_hash: Block::Hash
-        ) -> Option<Block::Hash>;
     }
 }

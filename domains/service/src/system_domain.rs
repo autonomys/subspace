@@ -81,7 +81,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -209,7 +209,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>
         + Send
         + Sync
