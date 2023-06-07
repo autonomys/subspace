@@ -78,6 +78,7 @@
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
 #![feature(array_windows)]
+#![feature(const_option)]
 #![feature(drain_filter)]
 
 mod aux_schema;
@@ -93,6 +94,7 @@ mod domain_worker;
 mod fraud_proof;
 mod gossip_message_validator;
 mod parent_chain;
+mod sortition;
 mod system_bundle_processor;
 mod system_domain_worker;
 mod system_executor;

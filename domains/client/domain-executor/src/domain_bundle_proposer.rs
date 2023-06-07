@@ -1,6 +1,8 @@
 use crate::parent_chain::ParentChainInterface;
+use crate::sortition::{TransactionSelectError, TransactionSelector};
 use crate::ExecutionReceiptFor;
 use codec::Encode;
+use domain_runtime_primitives::DomainCoreApi;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
@@ -47,7 +49,7 @@ where
     PBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<PBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block>,
+    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     PClient: HeaderBackend<PBlock>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -70,6 +72,7 @@ where
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_chain: ParentChain,
+        tx_selector: TransactionSelector<Block, Client>,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, PBlock>>
     where
         ParentChainBlock: BlockT,
@@ -109,7 +112,16 @@ where
                 break;
             }
             let pending_tx_data = pending_tx.data().clone();
-            extrinsics.push(pending_tx_data);
+            let should_select_this_tx = tx_selector
+                .should_select_tx(parent_hash, pending_tx_data.clone())
+                .unwrap_or_else(|err| {
+                    // Accept unsigned transactions like cross domain.
+                    tracing::trace!("propose bundle: sortition select failed: {err:?}");
+                    matches!(err, TransactionSelectError::TxSignerNotFound)
+                });
+            if should_select_this_tx {
+                extrinsics.push(pending_tx_data);
+            }
         }
 
         let extrinsics_root = BlakeTwo256::ordered_trie_root(

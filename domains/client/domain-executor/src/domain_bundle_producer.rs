@@ -1,6 +1,7 @@
 use crate::bundle_election_solver::{BundleElectionSolver, PreliminaryBundleSolution};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
+use crate::sortition::TransactionSelector;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::Decode;
@@ -17,6 +18,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Ze
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_core_primitives::U256;
 use system_runtime_primitives::SystemDomainApi;
 
 type OpaqueBundle<Block, PBlock> =
@@ -121,7 +123,7 @@ where
     NumberFor<Block>: Into<NumberFor<PBlock>>,
     NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block>,
+    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     SClient: HeaderBackend<SBlock>
         + BlockBackend<SBlock>
         + ProvideRuntimeApi<SBlock>
@@ -132,6 +134,7 @@ where
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
@@ -235,11 +238,12 @@ where
 
             let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
 
-            let bundle_author = bundle_solution
-                .proof_of_election()
-                .executor_public_key
-                .clone();
-
+            let proof_of_election = bundle_solution.proof_of_election();
+            let bundle_author = proof_of_election.executor_public_key.clone();
+            let tx_selector = TransactionSelector::new(
+                U256::from_be_bytes(proof_of_election.vrf_hash()),
+                self.client.clone(),
+            );
             let (bundle_header, receipt, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
@@ -247,6 +251,7 @@ where
                     slot,
                     primary_info,
                     self.parent_chain.clone(),
+                    tx_selector,
                 )
                 .await?;
 
