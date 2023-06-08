@@ -18,6 +18,7 @@
 #![feature(type_alias_impl_trait, type_changing_struct_update)]
 
 pub mod dsn;
+mod metrics;
 pub mod piece_cache;
 pub mod rpc;
 pub mod segment_headers;
@@ -25,6 +26,7 @@ pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
+use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::PrimaryChainTxPreValidator;
@@ -785,6 +787,27 @@ where
             }
         }),
     );
+
+    if let Some(registry) = config.prometheus_registry().as_ref() {
+        match NodeMetrics::new(
+            client.clone(),
+            client.import_notification_stream(),
+            registry,
+        ) {
+            Ok(node_metrics) => {
+                task_manager.spawn_handle().spawn(
+                    "node_metrics",
+                    None,
+                    Box::pin(async move {
+                        node_metrics.run().await;
+                    }),
+                );
+            }
+            Err(err) => {
+                error!("Failed to initialize node metrics: {err:?}");
+            }
+        }
+    }
 
     if config.offchain_worker.enabled {
         sc_service::build_offchain_workers(
