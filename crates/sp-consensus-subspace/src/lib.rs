@@ -431,14 +431,13 @@ impl PosExtension {
 /// Consensus-related runtime interface
 #[runtime_interface]
 pub trait Consensus {
-    /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
-    /// success.
+    /// Verify whether solution is valid.
     fn verify_solution(
         &mut self,
         solution: WrappedSolution,
         slot: u64,
         params: WrappedVerifySolutionParams<'_>,
-    ) -> Result<SolutionRange, String> {
+    ) -> Result<(), String> {
         use sp_externalities::ExternalitiesExt;
         use subspace_proof_of_space::PosTableType;
 
@@ -453,21 +452,27 @@ pub trait Consensus {
             .0;
 
         match pos_table_type {
-            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _, _>(
-                &solution.0,
-                slot,
-                &params.0,
-                kzg,
-            )
-            .map_err(|error| error.to_string()),
-            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _, _>(
-                &solution.0,
-                slot,
-                &params.0,
-                kzg,
-            )
-            .map_err(|error| error.to_string()),
+            PosTableType::Chia => {
+                subspace_verification::verify_solution::<ChiaTable, _, _>(
+                    &solution.0,
+                    slot,
+                    &params.0,
+                    kzg,
+                )
+                .map_err(|error| error.to_string())?;
+            }
+            PosTableType::Shim => {
+                subspace_verification::verify_solution::<ShimTable, _, _>(
+                    &solution.0,
+                    slot,
+                    &params.0,
+                    kzg,
+                )
+                .map_err(|error| error.to_string())?;
+            }
         }
+
+        Ok(())
     }
 }
 
