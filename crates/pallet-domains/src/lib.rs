@@ -162,7 +162,7 @@ mod pallet {
         #[pallet::call_index(0)]
         #[pallet::weight(
             if opaque_bundle.domain_id().is_system() {
-                T::WeightInfo::submit_system_bundle(1u32)
+                T::WeightInfo::submit_system_bundle()
             } else {
                 T::WeightInfo::submit_core_bundle()
             }

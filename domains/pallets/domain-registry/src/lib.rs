@@ -309,7 +309,7 @@ mod pallet {
         // TODO: Rename this extrinsic since the core bundle is not submit to the transaction pool but crafted and injected
         // on fly when building the system domain block.
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::submit_core_bundle(1u32))]
+        #[pallet::weight(T::WeightInfo::submit_core_bundle())]
         pub fn submit_core_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
