@@ -89,9 +89,9 @@ fn schedule_connection() -> Instant {
 /// Defines the state of a reserved peer connection state.
 #[derive(Debug, Clone)]
 struct ReservedPeerState {
-    pub connection_status: ConnectionStatus,
-    pub peer_id: PeerId,
-    pub address: Multiaddr,
+    connection_status: ConnectionStatus,
+    peer_id: PeerId,
+    address: Multiaddr,
 }
 
 /// Reserved peer connection events.
