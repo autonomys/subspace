@@ -28,7 +28,7 @@ use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
@@ -213,24 +213,6 @@ where
     async fn handle_peer_dialing(&mut self) {
         let local_peer_id = *self.swarm.local_peer_id();
         let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
-
-        // Handle reserved peers first.
-        if !self.reserved_peers.is_empty() {
-            trace!(%local_peer_id, "Checking reserved peers connection: {:?}", self.reserved_peers);
-
-            let connected_peers_id_set = connected_peers.iter().cloned().collect();
-            let reserved_peers_id_set = self.reserved_peers.keys().cloned().collect::<HashSet<_>>();
-
-            let missing_reserved_peer_ids =
-                reserved_peers_id_set.difference(&connected_peers_id_set);
-
-            // Establish missing connections to reserved peers.
-            for peer_id in missing_reserved_peer_ids {
-                if let Some(addr) = self.reserved_peers.get(peer_id) {
-                    self.dial_peer(*peer_id, addr.clone());
-                }
-            }
-        }
 
         // Maintain target connection number.
         let (total_current_connections, established_connections) = {
@@ -538,6 +520,8 @@ where
         let local_peer_id = *self.swarm.local_peer_id();
 
         if let IdentifyEvent::Received { peer_id, mut info } = event {
+            debug!(?peer_id, protocols=?info.protocols, "IdentifyEvent::Received");
+
             // Check for network partition
             if info.protocol_version != self.protocol_version {
                 debug!(
