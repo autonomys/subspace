@@ -36,7 +36,7 @@ impl<Block, Client, PBlock, PClient, TransactionPool> Clone
 
 pub(super) type ProposeBundleOutput<Block, PBlock> = (
     PreliminaryBundleHeader<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
-    Vec<ExecutionReceiptFor<PBlock, <Block as BlockT>::Hash>>,
+    ExecutionReceiptFor<PBlock, <Block as BlockT>::Hash>,
     Vec<<Block as BlockT>::Extrinsic>,
 );
 
@@ -118,6 +118,7 @@ where
         );
 
         let (primary_hash, primary_number) = primary_info;
+        // FIXME: replace `Vec<Receipt>` with `Receipt`
 
         let receipts = if primary_number.is_zero() {
             Vec::new()

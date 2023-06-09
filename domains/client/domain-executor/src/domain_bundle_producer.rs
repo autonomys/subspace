@@ -237,7 +237,7 @@ where
                 .executor_public_key
                 .clone();
 
-            let (preliminary_bundle_header, receipts, extrinsics) = self
+            let (preliminary_bundle_header, receipt, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
                     bundle_solution,
@@ -275,7 +275,7 @@ where
 
             let bundle = Bundle {
                 header: preliminary_bundle_header.into_bundle_header(signature),
-                receipts,
+                receipt,
                 extrinsics,
             };
 

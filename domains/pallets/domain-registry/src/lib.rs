@@ -41,6 +41,7 @@ use sp_domains::{
 use sp_executor_registry::{ExecutorRegistry, OnNewEpoch};
 use sp_runtime::traits::{BlakeTwo256, One, Zero};
 use sp_runtime::Percent;
+use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec;
 use sp_std::vec::Vec;
@@ -308,16 +309,16 @@ mod pallet {
         // TODO: Rename this extrinsic since the core bundle is not submit to the transaction pool but crafted and injected
         // on fly when building the system domain block.
         #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::submit_core_bundle(opaque_bundle.receipts.len() as u32))]
+        #[pallet::weight(T::WeightInfo::submit_core_bundle(1u32))]
         pub fn submit_core_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
-            pallet_settlement::Pallet::<T>::track_receipts(
+            pallet_settlement::Pallet::<T>::track_receipt(
                 opaque_bundle.domain_id(),
-                opaque_bundle.receipts.as_slice(),
+                &opaque_bundle.receipt,
             )
             .map_err(Error::<T>::from)?;
 
@@ -759,56 +760,55 @@ impl<T: Config> Pallet<T> {
 
         let created_at = CreatedAt::<T>::get(domain_id).ok_or(Error::<T>::DomainNotCreated)?;
         let head_receipt_number = Self::head_receipt_number(domain_id);
+        let next_head_receipt_number = head_receipt_number + One::one();
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
+        let receipt = &bundle.receipt;
 
-        let mut new_best_number = head_receipt_number;
-        let receipts = &bundle.receipts;
-        for receipt in receipts {
-            // Non-best receipt
-            if receipt.primary_number <= new_best_number {
-                continue;
-                // New nest receipt.
-            } else if receipt.primary_number == new_best_number + One::one() {
-                new_best_number += One::one();
-                // Missing receipt.
-            } else {
-                let missing_receipt_number = new_best_number + One::one();
+        // TODO: Check if the receipt extend the receipt chain or add confirmations to the head receipt
+        match receipt.primary_number.cmp(&next_head_receipt_number) {
+            // Missing receipt.
+            Ordering::Greater => {
                 log::debug!(
                     target: "runtime::domain-registry",
-                    "Receipt for {domain_id:?} #{missing_receipt_number:?} is missing, \
+                    "Receipt for {domain_id:?} #{next_head_receipt_number:?} is missing, \
                     head_receipt_number: {head_receipt_number:?}, max_allowed: {max_allowed:?}, received: {:?}",
-                    receipts.iter().map(|r| r.primary_number).collect::<Vec<_>>()
+                    receipt.primary_number
                 );
                 return Err(Error::<T>::Receipt(ReceiptError::MissingParent));
             }
+            // Non-best receipt
+            Ordering::Less => {}
+            // New nest receipt.
+            Ordering::Equal => {
+                let primary_number = receipt.primary_number;
 
-            let primary_number = receipt.primary_number;
+                if primary_number <= created_at {
+                    log::debug!(
+                        target: "runtime::domain-registry",
+                        "Domain was created at #{created_at:?}, but this receipt points to an earlier block #{:?}", receipt.primary_number,
+                    );
+                    return Err(Error::<T>::Receipt(ReceiptError::BeforeDomainCreation));
+                }
 
-            if primary_number <= created_at {
-                log::debug!(
-                    target: "runtime::domain-registry",
-                    "Domain was created at #{created_at:?}, but this receipt points to an earlier block #{:?}", receipt.primary_number,
-                );
-                return Err(Error::<T>::Receipt(ReceiptError::BeforeDomainCreation));
-            }
+                if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt)
+                {
+                    log::debug!(
+                        target: "runtime::domain-registry",
+                        "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
+                        expected: #{primary_number:?},{:?}",
+                        receipt.primary_hash,
+                        pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, primary_number),
+                    );
+                    return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
+                }
 
-            if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(domain_id, receipt) {
-                log::debug!(
-                    target: "runtime::domain-registry",
-                    "Receipt of {domain_id:?} #{primary_number:?},{:?} points to an unknown primary block, \
-                    expected: #{primary_number:?},{:?}",
-                    receipt.primary_hash,
-                    pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, primary_number),
-                );
-                return Err(Error::<T>::Receipt(ReceiptError::UnknownBlock));
-            }
-
-            if primary_number > max_allowed {
-                log::debug!(
-                    target: "runtime::domain-registry",
-                    "Receipt for #{primary_number:?} is too far in future, max_allowed: {max_allowed:?}",
-                );
-                return Err(Error::<T>::Receipt(ReceiptError::TooFarInFuture));
+                if primary_number > max_allowed {
+                    log::debug!(
+                        target: "runtime::domain-registry",
+                        "Receipt for #{primary_number:?} is too far in future, max_allowed: {max_allowed:?}",
+                    );
+                    return Err(Error::<T>::Receipt(ReceiptError::TooFarInFuture));
+                }
             }
         }
 
@@ -837,20 +837,16 @@ impl<T: Config> Pallet<T> {
         // domain resumes because the computation resource per block is limited anyway.
         //
         // This edge case does not impact the security due to the fraud-proof mechanism.
-        let state_root_verifiable = core_block_number <= new_best_number;
+        let state_root_verifiable = core_block_number <= head_receipt_number;
 
         if !core_block_number.is_zero() && state_root_verifiable {
-            let maybe_state_root = bundle.receipts.iter().find_map(|receipt| {
-                receipt.trace.last().and_then(|state_root| {
-                    if (receipt.primary_number, receipt.domain_hash)
-                        == (core_block_number, *core_block_hash)
-                    {
-                        Some(*state_root)
-                    } else {
-                        None
-                    }
-                })
-            });
+            let maybe_state_root = if (receipt.primary_number, receipt.domain_hash)
+                == (core_block_number, *core_block_hash)
+            {
+                receipt.trace.last().cloned()
+            } else {
+                None
+            };
 
             let expected_state_root = match maybe_state_root {
                 Some(v) => v,

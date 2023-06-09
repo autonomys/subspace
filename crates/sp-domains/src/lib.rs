@@ -403,12 +403,9 @@ impl<DomainHash: Default> BundleSolution<DomainHash> {
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
     pub header: BundleHeader<Number, Hash, DomainHash>,
-    /// Expected receipts by the primay chain when the bundle was created.
-    ///
-    /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
-    /// wrapped in an unsigned extrinsic, therefore the number of receipts
-    /// in a bundle is inherently constrained by the max extrinsic size limit.
-    pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
+    /// Execution receipt that should extend the receipt chain or add confirmations
+    /// to the head receipt.
+    pub receipt: ExecutionReceipt<Number, Hash, DomainHash>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
@@ -447,7 +444,7 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
     pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHash> {
         let Bundle {
             header,
-            receipts,
+            receipt,
             extrinsics,
         } = self;
         let opaque_extrinsics = extrinsics
@@ -459,7 +456,7 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
             .collect();
         OpaqueBundle {
             header,
-            receipts,
+            receipt,
             extrinsics: opaque_extrinsics,
         }
     }
@@ -517,7 +514,7 @@ pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
     domain_id: DomainId,
     primary_number: BlockNumber,
     primary_hash: Hash,
-    receipts: Vec<ExecutionReceipt<BlockNumber, Hash, DomainHash>>,
+    receipt: ExecutionReceipt<BlockNumber, Hash, DomainHash>,
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHash>
 where
     BlockNumber: Encode + Default,
@@ -540,7 +537,7 @@ where
 
     OpaqueBundle {
         header,
-        receipts,
+        receipt,
         extrinsics: Vec::new(),
     }
 }
