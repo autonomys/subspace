@@ -194,21 +194,22 @@ where
             self.client.info().best_number.saturating_sub(One::one())
         };
 
-        let should_skip_slot = if domain_best_number.is_zero() {
+        let should_skip_slot = {
             let primary_block_number = primary_info.1;
-
-            // Executor hasn't able to finish the processing of domain block #1.
-            !primary_block_number.is_zero()
-        } else {
             let head_receipt_number = self
                 .parent_chain
                 .head_receipt_number(self.parent_chain.best_hash())?;
 
-            // Executor is lagging behind the receipt chain on its parent chain as another executor
-            // already processed a block higher than the local best and submitted the receipt to
-            // the parent chain, we ought to catch up with the primary block processing before
-            // producing new bundle.
-            domain_best_number <= head_receipt_number
+            // Receipt for block #0 does not exist, simply skip slot here to bypasss this case and
+            // make the code cleaner
+            primary_block_number.is_zero()
+                // Executor hasn't able to finish the processing of domain block #1.
+                || domain_best_number.is_zero()
+                // Executor is lagging behind the receipt chain on its parent chain as another executor
+                // already processed a block higher than the local best and submitted the receipt to
+                // the parent chain, we ought to catch up with the primary block processing before
+                // producing new bundle.
+                || domain_best_number <= head_receipt_number
         };
 
         if should_skip_slot {
