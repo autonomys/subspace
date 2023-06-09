@@ -88,7 +88,7 @@ fn schedule_connection() -> Instant {
 
 /// Defines the state of a reserved peer connection state.
 #[derive(Debug, Clone)]
-pub struct ReservedPeerState {
+struct ReservedPeerState {
     pub connection_status: ConnectionStatus,
     pub peer_id: PeerId,
     pub address: Multiaddr,
@@ -181,9 +181,7 @@ impl NetworkBehaviour for Behaviour {
                 ..
             }) => {
                 if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
-                    if remaining_established > 0 {
-                        state.connection_status = ConnectionStatus::Connected;
-                    } else {
+                    if remaining_established == 0 {
                         state.connection_status = ConnectionStatus::NotConnected {
                             scheduled_at: schedule_connection(),
                         };
@@ -195,8 +193,10 @@ impl NetworkBehaviour for Behaviour {
             FromSwarm::DialFailure(DialFailure { peer_id, .. }) => {
                 if let Some(peer_id) = peer_id {
                     if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
-                        state.connection_status = ConnectionStatus::NotConnected {
-                            scheduled_at: schedule_connection(),
+                        if state.connection_status == ConnectionStatus::PendingConnection {
+                            state.connection_status = ConnectionStatus::NotConnected {
+                                scheduled_at: schedule_connection(),
+                            };
                         };
 
                         debug!(peer_id=%state.peer_id, "Reserved peer dialing failed.");
