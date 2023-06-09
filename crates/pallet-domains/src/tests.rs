@@ -146,7 +146,7 @@ fn create_dummy_bundle(
 
     OpaqueBundle {
         header: preliminary_bundle_header.into_bundle_header(signature),
-        receipts: vec![execution_receipt],
+        receipt: execution_receipt,
         extrinsics: Vec::new(),
     }
 }
@@ -155,13 +155,13 @@ fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
     primary_number: BlockNumber,
     primary_hash: Hash,
-    receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
+    receipt: ExecutionReceipt<BlockNumber, Hash, H256>,
 ) -> OpaqueBundle<BlockNumber, Hash, H256> {
     create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
         domain_id,
         primary_number,
         primary_hash,
-        receipts,
+        receipt,
     )
 }
 
@@ -177,8 +177,12 @@ fn submit_execution_receipt_incrementally_should_work() {
         })
         .unzip();
 
-    let receipt_hash =
-        |block_number| dummy_bundles[block_number as usize - 1].clone().receipts[0].hash();
+    let receipt_hash = |block_number| {
+        dummy_bundles[block_number as usize - 1]
+            .clone()
+            .receipt
+            .hash()
+    };
 
     new_test_ext().execute_with(|| {
         let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
@@ -297,74 +301,6 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
 }
 
 #[test]
-fn submit_bundle_with_many_reeipts_should_work() {
-    let (receipts, mut block_hashes): (Vec<_>, Vec<_>) = (1u64..=255u64)
-        .map(|n| {
-            let primary_hash = Hash::random();
-            (create_dummy_receipt(n, primary_hash), primary_hash)
-        })
-        .unzip();
-
-    let primary_hash_255 = *block_hashes.last().unwrap();
-    let bundle1 =
-        create_dummy_bundle_with_receipts(DomainId::SYSTEM, 255u64, primary_hash_255, receipts);
-
-    let primary_hash_256 = Hash::random();
-    block_hashes.push(primary_hash_256);
-    let bundle2 = create_dummy_bundle(DomainId::SYSTEM, 256, primary_hash_256);
-
-    let primary_hash_257 = Hash::random();
-    block_hashes.push(primary_hash_257);
-    let bundle3 = create_dummy_bundle(DomainId::SYSTEM, 257, primary_hash_257);
-
-    let primary_hash_258 = Hash::random();
-    block_hashes.push(primary_hash_258);
-    let bundle4 = create_dummy_bundle(DomainId::SYSTEM, 258, primary_hash_258);
-
-    let run_to_block = |n: BlockNumber, block_hashes: Vec<Hash>| {
-        System::initialize(&1, &System::parent_hash(), &Default::default());
-        <Domains as Hooks<BlockNumber>>::on_initialize(1);
-        System::finalize();
-
-        for b in 2..=n {
-            System::set_block_number(b);
-            System::initialize(&b, &block_hashes[b as usize - 2], &Default::default());
-            <Domains as Hooks<BlockNumber>>::on_initialize(b);
-            System::finalize();
-        }
-    };
-
-    new_test_ext().execute_with(|| {
-        run_to_block(256 + 2, block_hashes);
-
-        // Submit ancient receipts still works even the block hash mapping for [1, 256)
-        // in System has been removed.
-        assert!(!frame_system::BlockHash::<Test>::contains_key(1));
-        assert!(!frame_system::BlockHash::<Test>::contains_key(255));
-        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle1));
-        assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 255);
-
-        // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
-        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
-        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle2));
-        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
-        assert_eq!(Settlement::oldest_receipt_number(DomainId::SYSTEM), 1);
-
-        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
-        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle3));
-        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
-        assert_eq!(Settlement::oldest_receipt_number(DomainId::SYSTEM), 2);
-
-        assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
-        assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle4));
-        assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
-        assert_eq!(Settlement::oldest_receipt_number(DomainId::SYSTEM), 3);
-        assert_eq!(Settlement::finalized_receipt_number(DomainId::SYSTEM), 2);
-        assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 258);
-    });
-}
-
-#[test]
 fn only_system_domain_receipts_are_maintained_on_primary_chain() {
     let primary_hash = Hash::random();
 
@@ -373,15 +309,11 @@ fn only_system_domain_receipts_are_maintained_on_primary_chain() {
         DomainId::SYSTEM,
         1,
         primary_hash,
-        vec![system_receipt.clone()],
+        system_receipt.clone(),
     );
     let core_receipt = create_dummy_receipt(1, primary_hash);
-    let core_bundle = create_dummy_bundle_with_receipts(
-        DomainId::new(1),
-        1,
-        primary_hash,
-        vec![core_receipt.clone()],
-    );
+    let core_bundle =
+        create_dummy_bundle_with_receipts(DomainId::new(1), 1, primary_hash, core_receipt.clone());
 
     new_test_ext().execute_with(|| {
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), system_bundle));
@@ -429,7 +361,7 @@ fn submit_fraud_proof_should_work() {
                 dummy_bundles[index].clone(),
             ));
 
-            let receipt_hash = dummy_bundles[index].clone().receipts[0].hash();
+            let receipt_hash = dummy_bundles[index].clone().receipt.hash();
             assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
             let mut votes = ReceiptVotes::<Test>::iter_prefix((DomainId::SYSTEM, block_hash));
             assert_eq!(votes.next(), Some((receipt_hash, 1)));
@@ -442,7 +374,7 @@ fn submit_fraud_proof_should_work() {
             dummy_proof(DomainId::new(100))
         ));
         assert_eq!(Domains::head_receipt_number(), 256);
-        let receipt_hash = dummy_bundles[255].clone().receipts[0].hash();
+        let receipt_hash = dummy_bundles[255].clone().receipt.hash();
         assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
 
         assert_ok!(Domains::submit_fraud_proof(
@@ -450,11 +382,14 @@ fn submit_fraud_proof_should_work() {
             dummy_proof(DomainId::SYSTEM)
         ));
         assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 99);
-        let receipt_hash = dummy_bundles[98].clone().receipts[0].hash();
+        let receipt_hash = dummy_bundles[98].clone().receipt.hash();
         assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.
         (100..=256).for_each(|block_number| {
-            let receipt_hash = dummy_bundles[block_number as usize - 1].clone().receipts[0].hash();
+            let receipt_hash = dummy_bundles[block_number as usize - 1]
+                .clone()
+                .receipt
+                .hash();
             assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_none());
             let block_hash = block_hashes[block_number as usize - 1];
             assert!(
@@ -464,25 +399,6 @@ fn submit_fraud_proof_should_work() {
             );
         });
     });
-}
-
-#[test]
-fn test_receipts_are_consecutive() {
-    let receipts = vec![
-        create_dummy_receipt(1, Hash::random()),
-        create_dummy_receipt(2, Hash::random()),
-        create_dummy_receipt(3, Hash::random()),
-    ];
-    assert!(Domains::receipts_are_consecutive(&receipts));
-    let receipts = vec![
-        create_dummy_receipt(1, Hash::random()),
-        create_dummy_receipt(2, Hash::random()),
-        create_dummy_receipt(4, Hash::random()),
-    ];
-    assert!(!Domains::receipts_are_consecutive(&receipts));
-    let receipts = vec![create_dummy_receipt(1, Hash::random())];
-    assert!(Domains::receipts_are_consecutive(&receipts));
-    assert!(Domains::receipts_are_consecutive(&[]));
 }
 
 #[test]

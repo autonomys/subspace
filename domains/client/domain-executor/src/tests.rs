@@ -38,33 +38,6 @@ fn number_of(primary_node: &MockPrimaryNode, block_hash: Hash) -> u32 {
         .unwrap_or_else(|| panic!("header {block_hash} not in the chain"))
 }
 
-/// Returns a list of (block_number, block_hash) ranging from head_receipt_number(exclusive) to best_header(inclusive).
-fn number_hash_mappings_from_head_receipt_number_to_best_header(
-    primary_node: &MockPrimaryNode,
-    best_header: Header,
-) -> Vec<(u32, Hash)> {
-    let head_receipt_number = primary_node
-        .client
-        .runtime_api()
-        .head_receipt_number(best_header.hash(), DomainId::SYSTEM)
-        .unwrap();
-
-    let mut current_best = best_header;
-    let mut mappings = vec![];
-    while *current_best.number() > head_receipt_number {
-        mappings.push((*current_best.number(), current_best.hash()));
-        current_best = primary_node
-            .client
-            .header(*current_best.parent_hash())
-            .unwrap()
-            .unwrap();
-    }
-
-    mappings.reverse();
-
-    mappings
-}
-
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -125,23 +98,17 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         best_primary_hash
     );
 
+    let primary_block_info =
+        |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_primary_info =
         |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
-            bundle
-                .receipts
-                .iter()
-                .map(|receipt| (receipt.primary_number, receipt.primary_hash))
-                .collect::<Vec<_>>()
+            (bundle.receipt.primary_number, bundle.receipt.primary_hash)
         };
 
     // Produce a bundle after the fork block #3a has been produced.
     let signed_bundle = primary_node.notify_new_slot_and_wait_for_bundle(slot).await;
 
-    let expected_receipts_primary_info =
-        number_hash_mappings_from_head_receipt_number_to_best_header(
-            &primary_node,
-            best_header.clone(),
-        );
+    let expected_receipts_primary_info = primary_block_info(best_header.clone());
 
     // TODO: make MaximumReceiptDrift configurable in order to submit all the pending receipts at
     // once, now the max drift is 2, the receipts is limitted to [2, 3]. Once configurable, we
@@ -149,10 +116,10 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     // assert_eq!(receipts_primary_info, expected_receipts_primary_info).
     //
     // Receipts are always collected against the current best block.
-    receipts_primary_info(signed_bundle.unwrap())
-        .into_iter()
-        .zip(expected_receipts_primary_info.clone())
-        .for_each(|(a, b)| assert_eq!(a, b));
+    assert_eq!(
+        receipts_primary_info(signed_bundle.unwrap()),
+        expected_receipts_primary_info
+    );
 
     let slot = primary_node.produce_slot();
     let fork_block_hash_3b = primary_node
@@ -173,10 +140,10 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     // Produce a bundle after the fork block #3b has been produced.
     let signed_bundle = primary_node.notify_new_slot_and_wait_for_bundle(slot).await;
     // Receipts are always collected against the current best block.
-    receipts_primary_info(signed_bundle.unwrap())
-        .into_iter()
-        .zip(expected_receipts_primary_info)
-        .for_each(|(a, b)| assert_eq!(a, b));
+    assert_eq!(
+        receipts_primary_info(signed_bundle.unwrap()),
+        expected_receipts_primary_info
+    );
 
     // Produce a new tip at #4.
     let slot = primary_node.produce_slot();
@@ -206,17 +173,14 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         .produce_slot_and_wait_for_bundle_submission()
         .await;
 
-    let expected_receipts_primary_info =
-        number_hash_mappings_from_head_receipt_number_to_best_header(
-            &primary_node,
-            new_best_header,
-        );
-
-    // Receipts are always collected against the current best block.
-    receipts_primary_info(signed_bundle.unwrap())
-        .into_iter()
-        .zip(expected_receipts_primary_info)
-        .for_each(|(a, b)| assert_eq!(a, b));
+    // In the new best fork, the receipt header number is 1 thus it produce the receipt
+    // of next block namely block 2
+    let hash_2 = primary_node.client.hash(2).unwrap().unwrap();
+    let header_2 = primary_node.client.header(hash_2).unwrap().unwrap();
+    assert_eq!(
+        receipts_primary_info(signed_bundle.unwrap()),
+        primary_block_info(header_2)
+    );
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
@@ -408,12 +372,14 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
     let bad_submit_bundle_tx = {
         let mut opaque_bundle = bundle.unwrap();
-        for receipt in opaque_bundle.receipts.iter_mut() {
-            if receipt.primary_number == target_bundle.header.primary_number + 1 {
-                assert_eq!(receipt.trace.len(), 3);
-                receipt.trace[mismatch_trace_index] = Default::default();
-            }
-        }
+        let receipt = &mut opaque_bundle.receipt;
+        assert_eq!(
+            receipt.primary_number,
+            target_bundle.header.primary_number + 1
+        );
+        assert_eq!(receipt.trace.len(), 3);
+
+        receipt.trace[mismatch_trace_index] = Default::default();
         opaque_bundle.header.signature = alice
             .key
             .pair()
@@ -514,10 +480,10 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
         let mut opaque_bundle = bundle.unwrap();
-        opaque_bundle.receipts.last_mut().unwrap().trace[0] = Default::default();
+        opaque_bundle.receipt.trace[0] = Default::default();
         opaque_bundle
     };
-    let bad_receipt = bad_bundle.receipts.last().unwrap().clone();
+    let bad_receipt = bad_bundle.receipt.clone();
     let bad_receipt_number = bad_receipt.primary_number;
     assert_ne!(bad_receipt_number, 1);
 
@@ -829,7 +795,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
             .pair()
             .sign(opaque_bundle.header.pre_hash().as_ref())
             .into();
-        opaque_bundle.receipts = vec![execution_receipt];
+        opaque_bundle.receipt = execution_receipt;
 
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
             pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
