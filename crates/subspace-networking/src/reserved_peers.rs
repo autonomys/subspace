@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 mod handler;
 
 use handler::Handler;
@@ -79,12 +78,12 @@ pub enum ConnectionStatus {
 
 /// We pause between reserved peers dialing otherwise we could do multiple dials to offline peers
 /// wasting resources and producing a ton of log records.
-const DIALING_INTERVAL_IN_SECS: u64 = 1;
+const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
 
 /// Helper-function to schedule a connection attempt.
 #[inline]
 fn schedule_connection() -> Instant {
-    Instant::now().add(Duration::from_secs(DIALING_INTERVAL_IN_SECS))
+    Instant::now().add(DIALING_INTERVAL_IN_SECS)
 }
 
 /// Defines the state of a reserved peer connection state.
@@ -112,8 +111,7 @@ impl Behaviour {
         let peer_addresses = convert_multiaddresses(config.reserved_peers);
 
         let reserved_peers_state = peer_addresses
-            .iter()
-            .cloned()
+            .into_iter()
             .map(|(peer_id, address)| {
                 (
                     peer_id,
