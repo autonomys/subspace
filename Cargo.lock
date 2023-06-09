@@ -2355,6 +2355,7 @@ dependencies = [
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "sp-state-machine",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
@@ -2391,6 +2392,7 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
  "domain-client-executor-gossip",
+ "domain-client-message-relayer",
  "domain-runtime-primitives",
  "domain-test-primitives",
  "domain-test-service",
@@ -2423,6 +2425,7 @@ dependencies = [
  "sp-keystore",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "sp-state-machine",
  "sp-trie",
  "subspace-core-primitives",
@@ -2480,6 +2483,7 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
+ "sp-settlement",
  "system-runtime-primitives",
  "tracing",
 ]
@@ -2596,9 +2600,9 @@ dependencies = [
  "sp-keystore",
  "sp-messenger",
  "sp-offchain",
- "sp-receipts",
  "sp-runtime",
  "sp-session",
+ "sp-settlement",
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-fraud-proof",
@@ -6650,7 +6654,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-executor-registry",
- "pallet-receipts",
+ "pallet-settlement",
  "parity-scale-codec",
  "scale-info",
  "serde",
@@ -6672,7 +6676,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
- "pallet-receipts",
+ "pallet-settlement",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -6833,6 +6837,7 @@ name = "pallet-messenger"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "log",
@@ -6885,21 +6890,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-receipts"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
@@ -6920,6 +6910,21 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-runtime",
+]
+
+[[package]]
+name = "pallet-settlement"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
@@ -7048,6 +7053,7 @@ name = "pallet-transporter"
 version = "0.1.0"
 dependencies = [
  "domain-runtime-primitives",
+ "frame-benchmarking",
  "frame-support",
  "frame-system",
  "pallet-balances",
@@ -8533,6 +8539,7 @@ dependencies = [
  "sp-consensus",
  "sp-domains",
  "sp-runtime",
+ "sp-settlement",
  "subspace-fraud-proof",
 ]
 
@@ -10381,18 +10388,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-receipts"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "sp-rpc"
 version = "6.0.0"
 source = "git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30#9cf78129a2638d3f370868863d16f4fe32b4ad30"
@@ -10465,6 +10460,18 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-staking",
+ "sp-std",
+]
+
+[[package]]
+name = "sp-settlement"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
  "sp-std",
 ]
 
@@ -10981,8 +10988,8 @@ dependencies = [
  "sp-domains",
  "sp-keyring",
  "sp-messenger",
- "sp-receipts",
  "sp-runtime",
+ "sp-settlement",
  "sp-state-machine",
  "sp-trie",
  "subspace-runtime-primitives",
@@ -11136,9 +11143,9 @@ dependencies = [
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
- "pallet-receipts",
  "pallet-rewards",
  "pallet-runtime-configs",
+ "pallet-settlement",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
@@ -11157,9 +11164,9 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
- "sp-receipts",
  "sp-runtime",
  "sp-session",
+ "sp-settlement",
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
@@ -11232,9 +11239,9 @@ dependencies = [
  "sp-externalities",
  "sp-objects",
  "sp-offchain",
- "sp-receipts",
  "sp-runtime",
  "sp-session",
+ "sp-settlement",
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
@@ -11301,8 +11308,8 @@ dependencies = [
  "pallet-grandpa-finality-verifier",
  "pallet-object-store",
  "pallet-offences-subspace",
- "pallet-receipts",
  "pallet-rewards",
+ "pallet-settlement",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
@@ -11320,9 +11327,9 @@ dependencies = [
  "sp-inherents",
  "sp-objects",
  "sp-offchain",
- "sp-receipts",
  "sp-runtime",
  "sp-session",
+ "sp-settlement",
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
@@ -11712,7 +11719,7 @@ dependencies = [
  "pallet-domain-registry",
  "pallet-executor-registry",
  "pallet-messenger",
- "pallet-receipts",
+ "pallet-settlement",
  "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -11727,9 +11734,9 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-receipts",
  "sp-runtime",
  "sp-session",
+ "sp-settlement",
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
@@ -11758,7 +11765,7 @@ dependencies = [
  "pallet-domain-registry",
  "pallet-executor-registry",
  "pallet-messenger",
- "pallet-receipts",
+ "pallet-settlement",
  "pallet-sudo",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -11773,9 +11780,9 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-offchain",
- "sp-receipts",
  "sp-runtime",
  "sp-session",
+ "sp-settlement",
  "sp-std",
  "sp-transaction-pool",
  "sp-version",

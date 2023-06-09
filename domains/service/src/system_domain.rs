@@ -34,8 +34,8 @@ use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
-use sp_receipts::ReceiptsApi;
 use sp_session::SessionKeys;
+use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
@@ -81,7 +81,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -98,7 +98,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, AccountId, NumberFor<Block>>
-        + ReceiptsApi<Block, Hash>
+        + SettlementApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
 {
     /// Task manager.
@@ -209,7 +209,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>
         + Send
         + Sync
@@ -218,7 +218,7 @@ where
         + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, <Block as BlockT>::Hash>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
-        + ReceiptsApi<Block, Hash>
+        + SettlementApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
     ExecutionDispatch: NativeExecutionDispatch + 'static,
 {
@@ -352,7 +352,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash> + ReceiptsApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
@@ -373,7 +373,7 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, AccountId, NumberFor<Block>>
-        + ReceiptsApi<Block, Hash>
+        + SettlementApi<Block, Hash>
         + PreValidationObjectApi<Block, Hash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

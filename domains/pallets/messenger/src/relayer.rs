@@ -7,7 +7,7 @@ use frame_support::ensure;
 use frame_support::traits::ReservableCurrency;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
-    MessageId, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
+    MessageId, MessageWeightTag, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
@@ -29,8 +29,8 @@ pub struct RelayerInfo<AccountId, Balance> {
 /// Set of messages to be relayed by a given relayer.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct RelayerMessages {
-    pub outbox: Vec<(DomainId, MessageId)>,
-    pub inbox_responses: Vec<(DomainId, MessageId)>,
+    pub outbox: Vec<(DomainId, MessageId, MessageWeightTag)>,
+    pub inbox_responses: Vec<(DomainId, MessageId, MessageWeightTag)>,
 }
 
 impl<T: Config> Pallet<T> {
@@ -146,7 +146,7 @@ impl<T: Config> Pallet<T> {
 
         // create storage keys for inbox responses
         assigned_messages.inbox_responses.into_iter().for_each(
-            |(domain_id, (channel_id, nonce))| {
+            |(domain_id, (channel_id, nonce), weight_tag)| {
                 let storage_key =
                     InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
                 messages_with_storage_key
@@ -157,15 +157,14 @@ impl<T: Config> Pallet<T> {
                         channel_id,
                         nonce,
                         storage_key,
+                        weight_tag,
                     })
             },
         );
 
         // create storage keys for outbox
-        assigned_messages
-            .outbox
-            .into_iter()
-            .for_each(|(domain_id, (channel_id, nonce))| {
+        assigned_messages.outbox.into_iter().for_each(
+            |(domain_id, (channel_id, nonce), weight_tag)| {
                 let storage_key = Outbox::<T>::hashed_key_for((domain_id, channel_id, nonce));
                 messages_with_storage_key
                     .outbox
@@ -175,8 +174,10 @@ impl<T: Config> Pallet<T> {
                         channel_id,
                         nonce,
                         storage_key,
+                        weight_tag,
                     })
-            });
+            },
+        );
 
         messages_with_storage_key
     }

@@ -8,7 +8,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_domains::{Bundle, BundleHeader};
+use sp_domains::{BundleSolution, PreliminaryBundleHeader};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -33,6 +33,12 @@ impl<Block, Client, PBlock, PClient, TransactionPool> Clone
         }
     }
 }
+
+pub(super) type ProposeBundleOutput<Block, PBlock> = (
+    PreliminaryBundleHeader<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
+    Vec<ExecutionReceiptFor<PBlock, <Block as BlockT>::Hash>>,
+    Vec<<Block as BlockT>::Extrinsic>,
+);
 
 impl<Block, Client, PBlock, PClient, TransactionPool>
     DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>
@@ -60,10 +66,11 @@ where
 
     pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
+        bundle_solution: BundleSolution<Block::Hash>,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_chain: ParentChain,
-    ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+    ) -> sp_blockchain::Result<ProposeBundleOutput<Block, PBlock>>
     where
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -120,18 +127,15 @@ where
 
         receipts_sanity_check::<Block, PBlock>(&receipts)?;
 
-        let bundle = Bundle {
-            header: BundleHeader {
-                primary_number,
-                primary_hash,
-                slot_number: slot.into(),
-                extrinsics_root,
-            },
-            receipts,
-            extrinsics,
+        let header = PreliminaryBundleHeader {
+            primary_number,
+            primary_hash,
+            slot_number: slot.into(),
+            extrinsics_root,
+            bundle_solution,
         };
 
-        Ok(bundle)
+        Ok((header, receipts, extrinsics))
     }
 
     /// Returns the receipts in the next domain bundle.

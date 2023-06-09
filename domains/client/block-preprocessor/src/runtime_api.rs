@@ -1,6 +1,6 @@
 use domain_runtime_primitives::opaque::AccountId;
 use sp_api::{ApiError, BlockT};
-use sp_domains::SignedOpaqueBundle;
+use sp_domains::OpaqueBundle;
 use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_runtime::traits::NumberFor;
 
@@ -25,9 +25,7 @@ pub trait CoreBundleConstructor<PBlock: BlockT, Block: BlockT> {
     fn construct_submit_core_bundle_extrinsics(
         &self,
         at: Block::Hash,
-        signed_opaque_bundles: Vec<
-            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        >,
+        opaque_bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
     ) -> Result<Vec<Vec<u8>>, ApiError>;
 }
 

@@ -55,7 +55,7 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
-use sp_domains::SignedOpaqueBundle;
+use sp_domains::OpaqueBundle;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::{BlockId, Digest};
@@ -444,7 +444,7 @@ impl MockPrimaryNode {
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
         slot: Slot,
-    ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, H256>> {
         let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
@@ -478,10 +478,7 @@ impl MockPrimaryNode {
     /// Produce a new slot and wait for a bundle produced at this slot.
     pub async fn produce_slot_and_wait_for_bundle_submission(
         &mut self,
-    ) -> (
-        Slot,
-        Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>>,
-    ) {
+    ) -> (Slot, Option<OpaqueBundle<NumberFor<Block>, Hash, H256>>) {
         let slot = self.produce_slot();
 
         let bundle = self.notify_new_slot_and_wait_for_bundle(slot).await;
@@ -509,16 +506,15 @@ impl MockPrimaryNode {
     pub fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
-    ) -> Option<SignedOpaqueBundle<NumberFor<Block>, Hash, H256>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, H256>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) = ext.function
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
+                ext.function
             {
-                if signed_opaque_bundle.bundle.header.slot_number == slot {
-                    return Some(signed_opaque_bundle);
+                if opaque_bundle.header.slot_number == slot {
+                    return Some(opaque_bundle);
                 }
             }
         }
@@ -536,10 +532,12 @@ impl MockPrimaryNode {
             .await
     }
 
-    /// Remove tx from tx pool
-    pub fn remove_tx_from_tx_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
-        self.transaction_pool
-            .remove_invalid(&[self.transaction_pool.hash_of(tx)]);
+    /// Remove a ready transaction from transaction pool.
+    pub fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
+        self.transaction_pool.pool().prune_known(
+            &BlockId::Hash(self.client.info().best_hash),
+            &[self.transaction_pool.hash_of(tx)],
+        )?;
         self.transaction_pool
             .pool()
             .validated_pool()

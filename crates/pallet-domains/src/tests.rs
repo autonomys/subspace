@@ -1,14 +1,14 @@
 use crate::{self as pallet_domains};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::{assert_noop, assert_ok, parameter_types};
-use pallet_receipts::{PrimaryBlockHash, ReceiptVotes};
+use pallet_settlement::{PrimaryBlockHash, ReceiptVotes};
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, Bundle, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, ProofOfElection, SignedOpaqueBundle,
+    create_dummy_bundle_with_receipts_generic, BundleSolution, DomainId, ExecutionReceipt,
+    ExecutorPair, OpaqueBundle, PreliminaryBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup, ValidateUnsigned};
@@ -27,7 +27,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system,
-        Receipts: pallet_receipts,
+        Settlement: pallet_settlement,
         Domains: pallet_domains,
     }
 );
@@ -93,7 +93,7 @@ impl pallet_domains::Config for Test {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
 }
 
-impl pallet_receipts::Config for Test {
+impl pallet_settlement::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = H256;
     type MaximumReceiptDrift = MaximumReceiptDrift;
@@ -129,47 +129,25 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     primary_number: BlockNumber,
     primary_hash: Hash,
-) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
+) -> OpaqueBundle<BlockNumber, Hash, H256> {
     let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
 
     let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
 
-    let bundle = Bundle {
-        header: BundleHeader {
-            primary_number,
-            primary_hash,
-            slot_number: 0u64,
-            extrinsics_root: Default::default(),
-        },
+    let preliminary_bundle_header = PreliminaryBundleHeader {
+        primary_number,
+        primary_hash,
+        slot_number: 0u64,
+        extrinsics_root: Default::default(),
+        bundle_solution: BundleSolution::dummy(domain_id, pair.public()),
+    };
+
+    let signature = pair.sign(preliminary_bundle_header.hash().as_ref());
+
+    OpaqueBundle {
+        header: preliminary_bundle_header.into_bundle_header(signature),
         receipts: vec![execution_receipt],
         extrinsics: Vec::new(),
-    };
-
-    let signature = pair.sign(bundle.hash().as_ref());
-
-    let proof_of_election = ProofOfElection::dummy(domain_id, pair.public());
-
-    let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System {
-            authority_stake_weight: Default::default(),
-            authority_witness: Default::default(),
-            proof_of_election,
-        }
-    } else if domain_id.is_core() {
-        BundleSolution::Core {
-            proof_of_election,
-            core_block_number: Default::default(),
-            core_block_hash: Default::default(),
-            core_state_root: Default::default(),
-        }
-    } else {
-        panic!("Open domain unsupported");
-    };
-
-    SignedOpaqueBundle {
-        bundle,
-        bundle_solution,
-        signature,
     }
 }
 
@@ -178,7 +156,7 @@ fn create_dummy_bundle_with_receipts(
     primary_number: BlockNumber,
     primary_hash: Hash,
     receipts: Vec<ExecutionReceipt<BlockNumber, Hash, H256>>,
-) -> SignedOpaqueBundle<BlockNumber, Hash, H256> {
+) -> OpaqueBundle<BlockNumber, Hash, H256> {
     create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
         domain_id,
         primary_number,
@@ -199,18 +177,13 @@ fn submit_execution_receipt_incrementally_should_work() {
         })
         .unzip();
 
-    let receipt_hash = |block_number| {
-        dummy_bundles[block_number as usize - 1]
-            .clone()
-            .bundle
-            .receipts[0]
-            .hash()
-    };
+    let receipt_hash =
+        |block_number| dummy_bundles[block_number as usize - 1].clone().receipts[0].hash();
 
     new_test_ext().execute_with(|| {
         let genesis_hash = frame_system::Pallet::<Test>::block_hash(0);
         PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, 0, genesis_hash);
-        Receipts::initialize_genesis_receipt(DomainId::SYSTEM, genesis_hash);
+        Settlement::initialize_genesis_receipt(DomainId::SYSTEM, genesis_hash);
 
         (0..256).for_each(|index| {
             let block_hash = block_hashes[index];
@@ -218,7 +191,7 @@ fn submit_execution_receipt_incrementally_should_work() {
 
             assert_ok!(pallet_domains::Pallet::<Test>::pre_dispatch(
                 &pallet_domains::Call::submit_bundle {
-                    signed_opaque_bundle: dummy_bundles[index].clone()
+                    opaque_bundle: dummy_bundles[index].clone()
                 }
             ));
             assert_ok!(Domains::submit_bundle(
@@ -226,25 +199,25 @@ fn submit_execution_receipt_incrementally_should_work() {
                 dummy_bundles[index].clone(),
             ));
 
-            assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 0);
+            assert_eq!(Settlement::finalized_receipt_number(DomainId::SYSTEM), 0);
         });
 
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(257)).is_none());
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(257)).is_none());
         assert_ok!(Domains::submit_bundle(
             RuntimeOrigin::none(),
             dummy_bundles[256].clone(),
         ));
         // The oldest ER should be deleted.
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(1)).is_none());
-        assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 1);
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(257)).is_some());
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(1)).is_none());
+        assert_eq!(Settlement::finalized_receipt_number(DomainId::SYSTEM), 1);
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(257)).is_some());
 
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(2)).is_some());
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(258)).is_none());
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(2)).is_some());
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(258)).is_none());
 
         assert_noop!(
             pallet_domains::Pallet::<Test>::pre_dispatch(&pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle: dummy_bundles[258].clone()
+                opaque_bundle: dummy_bundles[258].clone()
             }),
             TransactionValidityError::Invalid(InvalidTransactionCode::ExecutionReceipt.into())
         );
@@ -253,9 +226,9 @@ fn submit_execution_receipt_incrementally_should_work() {
             RuntimeOrigin::none(),
             dummy_bundles[257].clone(),
         ));
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(2)).is_none());
-        assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash(258)).is_some());
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(2)).is_none());
+        assert_eq!(Settlement::finalized_receipt_number(DomainId::SYSTEM), 2);
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash(258)).is_some());
     });
 }
 
@@ -319,7 +292,7 @@ fn submit_execution_receipt_with_huge_gap_should_work() {
             dummy_bundles[257].clone(),
         ));
         assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
-        assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
+        assert_eq!(Settlement::finalized_receipt_number(DomainId::SYSTEM), 2);
     });
 }
 
@@ -369,25 +342,25 @@ fn submit_bundle_with_many_reeipts_should_work() {
         assert!(!frame_system::BlockHash::<Test>::contains_key(1));
         assert!(!frame_system::BlockHash::<Test>::contains_key(255));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle1));
-        assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 255);
+        assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 255);
 
         // Reaching the receipts pruning depth, block hash mapping will be pruned as well.
         assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle2));
         assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 0));
-        assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 1);
+        assert_eq!(Settlement::oldest_receipt_number(DomainId::SYSTEM), 1);
 
         assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle3));
         assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 1));
-        assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 2);
+        assert_eq!(Settlement::oldest_receipt_number(DomainId::SYSTEM), 2);
 
         assert!(PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), bundle4));
         assert!(!PrimaryBlockHash::<Test>::contains_key(DomainId::SYSTEM, 2));
-        assert_eq!(Receipts::oldest_receipt_number(DomainId::SYSTEM), 3);
-        assert_eq!(Receipts::finalized_receipt_number(DomainId::SYSTEM), 2);
-        assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 258);
+        assert_eq!(Settlement::oldest_receipt_number(DomainId::SYSTEM), 3);
+        assert_eq!(Settlement::finalized_receipt_number(DomainId::SYSTEM), 2);
+        assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 258);
     });
 }
 
@@ -414,8 +387,8 @@ fn only_system_domain_receipts_are_maintained_on_primary_chain() {
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), system_bundle));
         assert_ok!(Domains::submit_bundle(RuntimeOrigin::none(), core_bundle));
         // Only system domain receipt is tracked, core domain receipt is ignored.
-        assert!(Receipts::receipts(DomainId::SYSTEM, system_receipt.hash()).is_some());
-        assert!(Receipts::receipts(DomainId::SYSTEM, core_receipt.hash()).is_none());
+        assert!(Settlement::receipts(DomainId::SYSTEM, system_receipt.hash()).is_some());
+        assert!(Settlement::receipts(DomainId::SYSTEM, core_receipt.hash()).is_none());
     });
 }
 
@@ -456,8 +429,8 @@ fn submit_fraud_proof_should_work() {
                 dummy_bundles[index].clone(),
             ));
 
-            let receipt_hash = dummy_bundles[index].clone().bundle.receipts[0].hash();
-            assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash).is_some());
+            let receipt_hash = dummy_bundles[index].clone().receipts[0].hash();
+            assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
             let mut votes = ReceiptVotes::<Test>::iter_prefix((DomainId::SYSTEM, block_hash));
             assert_eq!(votes.next(), Some((receipt_hash, 1)));
             assert_eq!(votes.next(), None);
@@ -469,24 +442,20 @@ fn submit_fraud_proof_should_work() {
             dummy_proof(DomainId::new(100))
         ));
         assert_eq!(Domains::head_receipt_number(), 256);
-        let receipt_hash = dummy_bundles[255].clone().bundle.receipts[0].hash();
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash).is_some());
+        let receipt_hash = dummy_bundles[255].clone().receipts[0].hash();
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
 
         assert_ok!(Domains::submit_fraud_proof(
             RuntimeOrigin::none(),
             dummy_proof(DomainId::SYSTEM)
         ));
-        assert_eq!(Receipts::head_receipt_number(DomainId::SYSTEM), 99);
-        let receipt_hash = dummy_bundles[98].clone().bundle.receipts[0].hash();
-        assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash).is_some());
+        assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 99);
+        let receipt_hash = dummy_bundles[98].clone().receipts[0].hash();
+        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.
         (100..=256).for_each(|block_number| {
-            let receipt_hash = dummy_bundles[block_number as usize - 1]
-                .clone()
-                .bundle
-                .receipts[0]
-                .hash();
-            assert!(Receipts::receipts(DomainId::SYSTEM, receipt_hash).is_none());
+            let receipt_hash = dummy_bundles[block_number as usize - 1].clone().receipts[0].hash();
+            assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_none());
             let block_hash = block_hashes[block_number as usize - 1];
             assert!(
                 ReceiptVotes::<Test>::iter_prefix((DomainId::SYSTEM, block_hash))

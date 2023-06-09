@@ -1,5 +1,5 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{AccountIdConverter, DomainCoreApi, Hash};
+use domain_runtime_primitives::{AccountId, AccountIdConverter, DomainCoreApi, Hash};
 use domain_test_primitives::TimestampApi;
 use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
 use domain_test_service::Keyring::{Alice, Bob, Charlie, Ferdie};
@@ -10,18 +10,20 @@ use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
-use sp_core::traits::FetchRuntimeCode;
+use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{DomainId, ExecutorApi, SignedBundle};
+use sp_domains::{Bundle, DomainId, ExecutorApi};
 use sp_messenger::messages::{ExecutionFee, FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
+use sp_settlement::SettlementApi;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
+use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockPrimaryNode,
 };
@@ -44,7 +46,7 @@ fn number_hash_mappings_from_head_receipt_number_to_best_header(
     let head_receipt_number = primary_node
         .client
         .runtime_api()
-        .head_receipt_number(best_header.hash())
+        .head_receipt_number(best_header.hash(), DomainId::SYSTEM)
         .unwrap();
 
     let mut current_best = best_header;
@@ -124,9 +126,8 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 
     let receipts_primary_info =
-        |signed_bundle: SignedBundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
-            signed_bundle
-                .bundle
+        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
+            bundle
                 .receipts
                 .iter()
                 .map(|receipt| (receipt.primary_number, receipt.primary_hash))
@@ -366,12 +367,9 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
-    let bundle_to_tx = |signed_opaque_bundle| {
+    let bundle_to_tx = |opaque_bundle| {
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }
-            .into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
     };
@@ -389,13 +387,13 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let target_bundle = bundle.unwrap();
-    assert_eq!(target_bundle.bundle.extrinsics.len(), 1);
+    assert_eq!(target_bundle.extrinsics.len(), 1);
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
     // Manually remove the target bundle from tx pool in case resubmit it by accident
     ferdie
-        .remove_tx_from_tx_pool(&bundle_to_tx(target_bundle.clone()))
+        .prune_tx_from_pool(&bundle_to_tx(target_bundle.clone()))
         .unwrap();
 
     // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
@@ -409,24 +407,24 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
     let bad_submit_bundle_tx = {
-        let mut signed_opaque_bundle = bundle.unwrap();
-        for receipt in signed_opaque_bundle.bundle.receipts.iter_mut() {
-            if receipt.primary_number == target_bundle.bundle.header.primary_number + 1 {
+        let mut opaque_bundle = bundle.unwrap();
+        for receipt in opaque_bundle.receipts.iter_mut() {
+            if receipt.primary_number == target_bundle.header.primary_number + 1 {
                 assert_eq!(receipt.trace.len(), 3);
                 receipt.trace[mismatch_trace_index] = Default::default();
             }
         }
-        signed_opaque_bundle.signature = alice
+        opaque_bundle.header.signature = alice
             .key
             .pair()
-            .sign(signed_opaque_bundle.bundle.hash().as_ref())
+            .sign(opaque_bundle.header.pre_hash().as_ref())
             .into();
-        bundle_to_tx(signed_opaque_bundle)
+        bundle_to_tx(opaque_bundle)
     };
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
     ferdie
-        .remove_tx_from_tx_pool(&original_submit_bundle_tx)
+        .prune_tx_from_pool(&original_submit_bundle_tx)
         .unwrap();
     assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
 
@@ -515,23 +513,18 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     // Get a bundle from the txn pool and change its receipt to an invalid one
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
-        let mut signed_opaque_bundle = bundle.unwrap();
-        signed_opaque_bundle
-            .bundle
-            .receipts
-            .last_mut()
-            .unwrap()
-            .trace[0] = Default::default();
-        signed_opaque_bundle
+        let mut opaque_bundle = bundle.unwrap();
+        opaque_bundle.receipts.last_mut().unwrap().trace[0] = Default::default();
+        opaque_bundle
     };
-    let bad_receipt = bad_bundle.bundle.receipts.last().unwrap().clone();
+    let bad_receipt = bad_bundle.receipts.last().unwrap().clone();
     let bad_receipt_number = bad_receipt.primary_number;
     assert_ne!(bad_receipt_number, 1);
 
     // Submit the bad receipt to the primary chain
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle: bad_bundle,
+            opaque_bundle: bad_bundle,
         }
         .into(),
     );
@@ -829,24 +822,17 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
                     )
                 });
 
-        let mut bundle = bundle_template.bundle.clone();
-        bundle.header.primary_number = primary_number;
-        bundle.header.primary_hash = primary_hash;
-        bundle.receipts = vec![execution_receipt];
-
-        let signature = alice_key.pair().sign(bundle.hash().as_ref()).into();
-
-        let signed_opaque_bundle = SignedBundle {
-            bundle,
-            bundle_solution: bundle_template.bundle_solution.clone(),
-            signature,
-        };
+        let mut opaque_bundle = bundle_template.clone();
+        opaque_bundle.header.primary_number = primary_number;
+        opaque_bundle.header.primary_hash = primary_hash;
+        opaque_bundle.header.signature = alice_key
+            .pair()
+            .sign(opaque_bundle.header.pre_hash().as_ref())
+            .into();
+        opaque_bundle.receipts = vec![execution_receipt];
 
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }
-            .into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
     };
@@ -856,7 +842,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         let best_hash = ferdie_client.info().best_hash;
         ferdie_client
             .runtime_api()
-            .head_receipt_number(best_hash)
+            .head_receipt_number(best_hash, DomainId::SYSTEM)
             .expect("Failed to get head receipt number")
     };
 
@@ -884,7 +870,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         e => panic!("Unexpected error while submitting execution receipt: {e}"),
     }
 
-    // The 4 is able to submit to tx pool but will fail to execute due to the receipt of 3 is missing.
+    // The 4 is able to be submitted to tx pool but the execution will fail as the receipt of 3 is missing.
     let submit_bundle_4 = create_submit_bundle(4);
     ferdie
         .submit_transaction(submit_bundle_4.clone())
@@ -893,8 +879,9 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     assert!(ferdie.produce_blocks(1).await.is_err());
     assert_eq!(head_receipt_number(), 2);
 
-    // Re-submit 4 after 3, this time it will successfully execute and update the head receipt number.
-    ferdie.remove_tx_from_tx_pool(&submit_bundle_4).unwrap();
+    // Re-submit 4 after 3, this time the execution will succeed and the head receipt number will
+    // be updated.
+    ferdie.prune_tx_from_pool(&submit_bundle_4).unwrap();
     ferdie
         .submit_transaction(create_submit_bundle(3))
         .await
@@ -938,19 +925,19 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle: bundle.unwrap(),
+            opaque_bundle: bundle.unwrap(),
         }
         .into(),
     )
     .into();
 
-    // Wait one block to ensure the bundle is stored onchain and manually remove it from tx pool
+    // Wait for one block to ensure the bundle is stored onchain and then manually remove it from tx pool.
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_tx).unwrap();
 
-    // Bundle is rejected due to it is duplicated
+    // Bundle is rejected because it is duplicated.
     match ferdie
         .submit_transaction(submit_bundle_tx.clone())
         .await
@@ -970,7 +957,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     // Wait for confirmation depth K blocks which is 100 in test
     produce_blocks!(ferdie, alice, 100).await.unwrap();
 
-    // Bundle is now rejected due to it is stale
+    // Bundle is now rejected because it is stale.
     match ferdie
         .submit_transaction(submit_bundle_tx)
         .await
@@ -1016,7 +1003,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle: bundle.unwrap(),
+            opaque_bundle: bundle.unwrap(),
         }
         .into(),
     )
@@ -1040,12 +1027,12 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .unwrap();
 
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
-    ferdie.remove_tx_from_tx_pool(&submit_bundle_tx).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_tx).unwrap();
 
     // Bundle can be successfully submitted to the new fork, or it is also possible
-    // that the retracted block's `submit_bundle_tx` have resubmitted to the tx pool
-    // in the background by the `txpool-notifications` worker just after the above
-    // `remove_tx_from_tx_pool` call
+    // that the `submit_bundle_tx` in the retracted block has been resubmitted to the
+    // tx pool in the background by the `txpool-notifications` worker just after the above
+    // `prune_tx_from_pool` call.
     match ferdie.submit_transaction(submit_bundle_tx).await {
         Ok(_) | Err(sc_transaction_pool::error::Error::Pool(TxPoolError::AlreadyImported(_))) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -1229,6 +1216,201 @@ async fn test_cross_domains_message_should_work() {
                 - fee_model.outbox_fee().unwrap()
                 - fee_model.inbox_fee().unwrap()
             && post_charlie_free_balance == pre_charlie_free_balance + transfer_amount
+    })
+    .await
+    .unwrap();
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_unordered_cross_domains_message_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .run_relayer()
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    // Run Bob (a core payments domain authority node)
+    let mut bob = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .run_relayer()
+    .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
+    .await;
+
+    // Run Charlie (a core eth relay domain full node) and don't its relayer worker
+    let charlie = domain_test_service::CoreDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Charlie,
+        BasePath::new(directory.path().join("charlie")),
+    )
+    .build_core_payments_node(Role::Full, &mut ferdie, &alice)
+    .await;
+    let gossip_msg_sink = ferdie.xdm_gossip_worker_builder().gossip_msg_sink();
+
+    // Run the cross domain gossip message worker
+    ferdie.start_cross_domain_gossip_message_worker();
+
+    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+
+    // Open channel between the system domain and the core payments domain
+    let fee_model = FeeModel {
+        outbox_fee: ExecutionFee {
+            relayer_pool_fee: 2,
+            compute_fee: 0,
+        },
+        inbox_fee: ExecutionFee {
+            relayer_pool_fee: 0,
+            compute_fee: 5,
+        },
+    };
+    bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+        call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
+            pallet_messenger::Call::initiate_channel {
+                dst_domain_id: DomainId::SYSTEM,
+                params: InitiateChannelParams {
+                    max_outgoing_messages: 1000,
+                    fee_model,
+                },
+            },
+        )),
+    })
+    .await
+    .expect("Failed to construct and send extrinsic");
+    // Wait until channel open
+    produce_blocks_until!(ferdie, alice, bob, charlie, {
+        alice
+            .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
+            .is_some()
+            && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
+    })
+    .await
+    .unwrap();
+
+    // Register `charlie` as relayer such that message will assign to it, but as its relayer
+    // is not started these massage won't be relayed.
+    bob.construct_and_send_extrinsic(pallet_messenger::Call::join_relayer_set {
+        relayer_id: Charlie.into(),
+    })
+    .await
+    .expect("Failed to construct and send extrinsic");
+    produce_blocks!(ferdie, alice, bob, charlie, 3)
+        .await
+        .unwrap();
+
+    // Create cross domain message, only message assigned to `alice` and `bob` will be relayed
+    // and send to tx pool, and these message is unordered because the message assigned to `charlie`
+    // is not relayed.
+    let relayer_id: AccountId = Charlie.into();
+    let alice_transfer_amount = 1;
+    let bob_transfer_amount = 2;
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+    let mut alice_account_nonce = alice.account_nonce();
+    let mut bob_account_nonce = bob.account_nonce();
+    // Assigne `inbox_response` message to `charlie`
+    for _ in 0..10 {
+        let tx = alice.construct_extrinsic(
+            alice_account_nonce,
+            pallet_transporter::Call::transfer {
+                dst_location: pallet_transporter::Location {
+                    domain_id: DomainId::CORE_PAYMENTS,
+                    account_id: AccountIdConverter::convert(Bob.into()),
+                },
+                amount: alice_transfer_amount,
+            },
+        );
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+        alice_account_nonce += 1;
+
+        produce_blocks!(ferdie, alice, bob, charlie, 1)
+            .await
+            .unwrap();
+    }
+    // Assigne `outbox` message to `charlie`
+    for _ in 0..10 {
+        let tx = bob.construct_extrinsic(
+            bob_account_nonce,
+            pallet_transporter::Call::transfer {
+                dst_location: pallet_transporter::Location {
+                    domain_id: DomainId::SYSTEM,
+                    account_id: AccountIdConverter::convert(Alice.into()),
+                },
+                amount: bob_transfer_amount,
+            },
+        );
+        bob.send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+        bob_account_nonce += 1;
+
+        produce_blocks!(ferdie, alice, bob, charlie, 1)
+            .await
+            .unwrap();
+    }
+
+    // Run charlie's relayer worker, the message assigned to `charlie` will be relayed
+    // and send to tx pool now
+    let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages::<
+        _,
+        _,
+        PBlock,
+        _,
+        _,
+        _,
+        _,
+        _,
+    >(
+        relayer_id,
+        charlie.client.clone(),
+        alice.client.clone(),
+        alice.sync_service.clone(),
+        charlie.sync_service.clone(),
+        gossip_msg_sink,
+    );
+    bob.task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "core-domain-relayer-charlie",
+            None,
+            Box::pin(relayer_worker),
+        );
+
+    // Wait until all message are relayed and handled
+    let fee = fee_model.outbox_fee().unwrap() + fee_model.inbox_fee().unwrap();
+    produce_blocks_until!(ferdie, alice, bob, {
+        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+        let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+
+        post_alice_free_balance
+            == pre_alice_free_balance - alice_transfer_amount * 10 + bob_transfer_amount * 10
+                - fee * 10
+            && post_bob_free_balance
+                == pre_bob_free_balance - bob_transfer_amount * 10 + alice_transfer_amount * 10
+                    - fee * 10
     })
     .await
     .unwrap();

@@ -5,7 +5,7 @@ use crate::runtime_api::{
 use codec::Encode;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
-use sp_domains::SignedOpaqueBundle;
+use sp_domains::OpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use std::sync::Arc;
@@ -60,12 +60,10 @@ where
     fn construct_submit_core_bundle_extrinsics(
         &self,
         at: Block::Hash,
-        signed_opaque_bundles: Vec<
-            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        >,
+        opaque_bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
     ) -> Result<Vec<Vec<u8>>, ApiError> {
         let api = self.client.runtime_api();
-        api.construct_submit_core_bundle_extrinsics(at, signed_opaque_bundles)
+        api.construct_submit_core_bundle_extrinsics(at, opaque_bundles)
     }
 }
 

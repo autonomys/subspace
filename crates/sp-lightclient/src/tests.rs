@@ -216,8 +216,7 @@ fn valid_header(
         )
         .unwrap();
         let solution_range = solution_distance * 2;
-        let block_weight =
-            calculate_block_weight::<PosTable, _, _>(&solution, slot, &global_randomness).unwrap();
+        let block_weight = calculate_block_weight(solution_range);
 
         let pre_digest = PreDigest {
             slot: slot.into(),
@@ -618,8 +617,9 @@ fn test_header_import_non_canonical_with_equal_block_weight() {
     });
 }
 
+// TODO: This test doesn't actually reorg, but probably should
 #[test]
-fn test_chain_reorg_to_longer_chain() {
+fn test_chain_reorg_to_heavier_chain() {
     new_test_ext().execute_with(|| {
         let keypair = Keypair::generate();
         let farmer = FarmerParameters::new();

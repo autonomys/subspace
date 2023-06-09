@@ -19,12 +19,13 @@
 
 use codec::{Decode, Encode};
 use sp_core::H256;
-use sp_domains::DomainId;
+use sp_domains::fraud_proof::FraudProof;
+use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::NumberFor;
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
-    pub trait ReceiptsApi<DomainHash: Encode + Decode> {
+    pub trait SettlementApi<DomainHash: Encode + Decode> {
         /// Returns the trace of given domain receipt hash.
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<DomainHash>;
 
@@ -43,5 +44,29 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the receipts pruning depth.
         fn receipts_pruning_depth() -> NumberFor<Block>;
+
+        /// Returns the best execution chain number.
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+
+        /// Returns the block number of oldest execution receipt.
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+
+        /// Returns the maximum receipt drift.
+        fn maximum_receipt_drift() -> NumberFor<Block>;
+
+        /// Extract the receipts from the given extrinsics.
+        fn extract_receipts(
+            extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
+
+        /// Extract the fraud proofs from the given extrinsics.
+        fn extract_fraud_proofs(
+            extrinsics: Vec<Block::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
+
+        /// Submits the fraud proof via an unsigned extrinsic.
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
     }
 }

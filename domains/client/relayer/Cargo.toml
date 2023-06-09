@@ -30,5 +30,6 @@ sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/subs
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
 sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sp-settlement = { version = "0.1.0", path = "../../../crates/sp-settlement" }
 system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime" }
 tracing = "0.1.37"

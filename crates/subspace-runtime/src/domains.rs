@@ -1,4 +1,4 @@
-use crate::{Block, BlockNumber, Domains, Hash, Receipts, RuntimeCall, UncheckedExtrinsic};
+use crate::{Block, BlockNumber, Domains, Hash, RuntimeCall, Settlement, UncheckedExtrinsic};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_domains::fraud_proof::FraudProof;
@@ -13,19 +13,19 @@ pub(crate) fn extract_system_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
 ) -> (
     sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-    sp_domains::SignedOpaqueBundles<Block, domain_runtime_primitives::Hash>,
+    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
 ) {
     let successful_bundles = Domains::successful_bundles();
     let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) if successful_bundles.contains(&signed_opaque_bundle.hash()) => {
-                if signed_opaque_bundle.domain_id().is_system() {
-                    Some((Some(signed_opaque_bundle.bundle), None))
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
+                if successful_bundles.contains(&opaque_bundle.hash()) =>
+            {
+                if opaque_bundle.domain_id().is_system() {
+                    Some((Some(opaque_bundle), None))
                 } else {
-                    Some((None, Some(signed_opaque_bundle)))
+                    Some((None, Some(opaque_bundle)))
                 }
             }
             _ => None,
@@ -45,12 +45,11 @@ pub(crate) fn extract_core_bundles(
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id
-                && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
+                if opaque_bundle.domain_id() == domain_id
+                    && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
-                Some(signed_opaque_bundle.bundle)
+                Some(opaque_bundle)
             }
             _ => None,
         })
@@ -65,12 +64,11 @@ pub(crate) fn extract_receipts(
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-                signed_opaque_bundle,
-            }) if signed_opaque_bundle.domain_id() == domain_id
-                && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
+                if opaque_bundle.domain_id() == domain_id
+                    && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
-                Some(signed_opaque_bundle.bundle.receipts)
+                Some(opaque_bundle.receipts)
             }
             _ => None,
         })
@@ -82,7 +80,7 @@ pub(crate) fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<FraudProof<BlockNumber, Hash>> {
-    let successful_fraud_proofs = Receipts::successful_fraud_proofs();
+    let successful_fraud_proofs = Settlement::successful_fraud_proofs();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
@@ -104,9 +102,9 @@ pub(crate) fn extract_pre_validation_object(
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(fraud_proof)
         }
-        RuntimeCall::Domains(pallet_domains::Call::submit_bundle {
-            signed_opaque_bundle,
-        }) => PreValidationObject::Bundle(signed_opaque_bundle),
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
+            PreValidationObject::Bundle(opaque_bundle)
+        }
         _ => PreValidationObject::Null,
     }
 }

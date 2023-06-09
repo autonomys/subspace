@@ -18,6 +18,7 @@
 #![feature(type_alias_impl_trait, type_changing_struct_update)]
 
 pub mod dsn;
+mod metrics;
 pub mod piece_cache;
 pub mod rpc;
 pub mod segment_headers;
@@ -25,6 +26,7 @@ pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
+use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::PrimaryChainTxPreValidator;
@@ -70,9 +72,9 @@ use sp_domains::ExecutorApi;
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
-use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
+use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -280,7 +282,7 @@ where
         + TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + ReceiptsApi<Block, domain_runtime_primitives::Hash>
+        + SettlementApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -534,7 +536,7 @@ where
         + TransactionPaymentApi<Block, Balance>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + ReceiptsApi<Block, domain_runtime_primitives::Hash>
+        + SettlementApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -785,6 +787,27 @@ where
             }
         }),
     );
+
+    if let Some(registry) = config.prometheus_registry().as_ref() {
+        match NodeMetrics::new(
+            client.clone(),
+            client.import_notification_stream(),
+            registry,
+        ) {
+            Ok(node_metrics) => {
+                task_manager.spawn_handle().spawn(
+                    "node_metrics",
+                    None,
+                    Box::pin(async move {
+                        node_metrics.run().await;
+                    }),
+                );
+            }
+            Err(err) => {
+                error!("Failed to initialize node metrics: {err:?}");
+            }
+        }
+    }
 
     if config.offchain_worker.enabled {
         sc_service::build_offchain_workers(

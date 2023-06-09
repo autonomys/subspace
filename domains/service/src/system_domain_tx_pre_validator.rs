@@ -9,8 +9,8 @@ use sp_core::traits::SpawnNamed;
 use sp_domains::transaction::{
     InvalidTransactionCode, PreValidationObject, PreValidationObjectApi,
 };
-use sp_domains::ExecutorApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -76,7 +76,7 @@ where
     Client::Api: PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: SettlementApi<PBlock, Block::Hash>,
     SRE: StateRootExtractor<Block> + Send + Sync,
 {
     type Block = Block;
