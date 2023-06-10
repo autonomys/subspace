@@ -237,7 +237,7 @@ where
                 .executor_public_key
                 .clone();
 
-            let (preliminary_bundle_header, receipts, extrinsics) = self
+            let (bundle_header, receipts, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
                     bundle_solution,
@@ -247,7 +247,7 @@ where
                 )
                 .await?;
 
-            let to_sign = preliminary_bundle_header.hash();
+            let to_sign = bundle_header.hash();
 
             let signature = self
                 .keystore
@@ -274,7 +274,7 @@ where
             })?;
 
             let bundle = Bundle {
-                header: preliminary_bundle_header.into_bundle_header(signature),
+                header: bundle_header.into_sealed_bundle_header(signature),
                 receipts,
                 extrinsics,
             };

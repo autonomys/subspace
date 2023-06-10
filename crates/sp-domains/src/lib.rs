@@ -175,13 +175,13 @@ pub struct DomainConfig<Hash, Balance, Weight> {
     pub min_operator_stake: Balance,
 }
 
-/// Preliminary header of bundle.
+/// Unsealed header of bundle.
 ///
-/// [`PreliminaryBundleHeader`] contains everything of [`SealedBundleHeader`] except for the signature,
-/// domain operator needs to sign the hash of [`PreliminaryBundleHeader`] and uses the signature to
+/// [`BundleHeader`] contains everything of [`SealedBundleHeader`] except for the signature,
+/// domain operator needs to sign the hash of [`BundleHeader`] and uses the signature to
 /// assemble the final [`SealedBundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct PreliminaryBundleHeader<Number, Hash, DomainHash> {
+pub struct BundleHeader<Number, Hash, DomainHash> {
     /// The block number of primary block at which the bundle was created.
     pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
@@ -194,18 +194,16 @@ pub struct PreliminaryBundleHeader<Number, Hash, DomainHash> {
     pub bundle_solution: BundleSolution<DomainHash>,
 }
 
-impl<Number: Encode, Hash: Encode, DomainHash: Encode>
-    PreliminaryBundleHeader<Number, Hash, DomainHash>
-{
-    /// Returns the hash of this preliminary header.
+impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash, DomainHash> {
+    /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
 }
 
-impl<Number, Hash, DomainHash> PreliminaryBundleHeader<Number, Hash, DomainHash> {
-    /// Converts [`PreliminaryBundleHeader`] into [`SealedBundleHeader`].
-    pub fn into_bundle_header(
+impl<Number, Hash, DomainHash> BundleHeader<Number, Hash, DomainHash> {
+    /// Converts [`BundleHeader`] into [`SealedBundleHeader`].
+    pub fn into_sealed_bundle_header(
         self,
         signature: ExecutorSignature,
     ) -> SealedBundleHeader<Number, Hash, DomainHash> {
@@ -221,7 +219,7 @@ impl<Number, Hash, DomainHash> PreliminaryBundleHeader<Number, Hash, DomainHash>
 }
 
 #[derive(Encode)]
-struct PreliminaryBundleHeaderRef<'a, Number, Hash, DomainHash> {
+struct BundleHeaderRef<'a, Number, Hash, DomainHash> {
     primary_number: &'a Number,
     primary_hash: &'a Hash,
     slot_number: u64,
@@ -249,9 +247,9 @@ pub struct SealedBundleHeader<Number, Hash, DomainHash> {
 impl<Number: Encode, Hash: Encode, DomainHash: Encode>
     SealedBundleHeader<Number, Hash, DomainHash>
 {
-    /// Returns the hash of the corresponding preliminary header.
+    /// Returns the hash of the corresponding unsealed header.
     pub fn pre_hash(&self) -> H256 {
-        let preliminary_bundle_header_ref = PreliminaryBundleHeaderRef {
+        let bundle_header_ref = BundleHeaderRef {
             primary_number: &self.primary_number,
             primary_hash: &self.primary_hash,
             slot_number: self.slot_number,
@@ -259,7 +257,7 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
             bundle_solution: &self.bundle_solution,
         };
 
-        BlakeTwo256::hash_of(&preliminary_bundle_header_ref)
+        BlakeTwo256::hash_of(&bundle_header_ref)
     }
 
     /// Returns the hash of this header.
