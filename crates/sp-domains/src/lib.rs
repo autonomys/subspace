@@ -177,9 +177,9 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
 /// Preliminary header of bundle.
 ///
-/// [`PreliminaryBundleHeader`] contains everything of [`BundleHeader`] except for the signature,
+/// [`PreliminaryBundleHeader`] contains everything of [`SealedBundleHeader`] except for the signature,
 /// domain operator needs to sign the hash of [`PreliminaryBundleHeader`] and uses the signature to
-/// assemble the final [`BundleHeader`].
+/// assemble the final [`SealedBundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct PreliminaryBundleHeader<Number, Hash, DomainHash> {
     /// The block number of primary block at which the bundle was created.
@@ -204,12 +204,12 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
 }
 
 impl<Number, Hash, DomainHash> PreliminaryBundleHeader<Number, Hash, DomainHash> {
-    /// Converts [`PreliminaryBundleHeader`] into [`BundleHeader`].
+    /// Converts [`PreliminaryBundleHeader`] into [`SealedBundleHeader`].
     pub fn into_bundle_header(
         self,
         signature: ExecutorSignature,
-    ) -> BundleHeader<Number, Hash, DomainHash> {
-        BundleHeader {
+    ) -> SealedBundleHeader<Number, Hash, DomainHash> {
+        SealedBundleHeader {
             primary_number: self.primary_number,
             primary_hash: self.primary_hash,
             slot_number: self.slot_number,
@@ -231,7 +231,7 @@ struct PreliminaryBundleHeaderRef<'a, Number, Hash, DomainHash> {
 
 /// Header of bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleHeader<Number, Hash, DomainHash> {
+pub struct SealedBundleHeader<Number, Hash, DomainHash> {
     /// The block number of primary block at which the bundle was created.
     pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
@@ -246,7 +246,9 @@ pub struct BundleHeader<Number, Hash, DomainHash> {
     pub signature: ExecutorSignature,
 }
 
-impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash, DomainHash> {
+impl<Number: Encode, Hash: Encode, DomainHash: Encode>
+    SealedBundleHeader<Number, Hash, DomainHash>
+{
     /// Returns the hash of the corresponding preliminary header.
     pub fn pre_hash(&self) -> H256 {
         let preliminary_bundle_header_ref = PreliminaryBundleHeaderRef {
@@ -402,7 +404,7 @@ impl<DomainHash: Default> BundleSolution<DomainHash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
     /// The bundle header.
-    pub header: BundleHeader<Number, Hash, DomainHash>,
+    pub header: SealedBundleHeader<Number, Hash, DomainHash>,
     /// Expected receipts by the primay chain when the bundle was created.
     ///
     /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
@@ -526,7 +528,7 @@ where
 {
     use sp_core::crypto::UncheckedFrom;
 
-    let header = BundleHeader {
+    let header = SealedBundleHeader {
         primary_number,
         primary_hash,
         slot_number: 0u64,
