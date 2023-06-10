@@ -9,7 +9,9 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature};
+use sp_domains::{
+    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
+};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
@@ -274,7 +276,7 @@ where
             })?;
 
             let bundle = Bundle {
-                header: bundle_header.into_sealed_bundle_header(signature),
+                sealed_header: SealedBundleHeader::new(bundle_header, signature),
                 receipts,
                 extrinsics,
             };

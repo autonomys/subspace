@@ -409,15 +409,15 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let bad_submit_bundle_tx = {
         let mut opaque_bundle = bundle.unwrap();
         for receipt in opaque_bundle.receipts.iter_mut() {
-            if receipt.primary_number == target_bundle.header.primary_number + 1 {
+            if receipt.primary_number == target_bundle.sealed_header.header.primary_number + 1 {
                 assert_eq!(receipt.trace.len(), 3);
                 receipt.trace[mismatch_trace_index] = Default::default();
             }
         }
-        opaque_bundle.header.signature = alice
+        opaque_bundle.sealed_header.signature = alice
             .key
             .pair()
-            .sign(opaque_bundle.header.pre_hash().as_ref())
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
             .into();
         bundle_to_tx(opaque_bundle)
     };
@@ -823,11 +823,11 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
                 });
 
         let mut opaque_bundle = bundle_template.clone();
-        opaque_bundle.header.primary_number = primary_number;
-        opaque_bundle.header.primary_hash = primary_hash;
-        opaque_bundle.header.signature = alice_key
+        opaque_bundle.sealed_header.header.primary_number = primary_number;
+        opaque_bundle.sealed_header.header.primary_hash = primary_hash;
+        opaque_bundle.sealed_header.signature = alice_key
             .pair()
-            .sign(opaque_bundle.header.pre_hash().as_ref())
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
             .into();
         opaque_bundle.receipts = vec![execution_receipt];
 

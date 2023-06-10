@@ -724,12 +724,14 @@ impl<T: Config> Pallet<T> {
     fn pre_dispatch_submit_core_bundle(
         opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), Error<T>> {
+        let header = &opaque_bundle.sealed_header.header;
+
         let BundleSolution::Core {
             proof_of_election,
             core_block_number,
             core_block_hash,
             core_state_root
-        } = &opaque_bundle.header.bundle_solution else {
+        } = &header.bundle_solution else {
             return Err(Error::<T>::NotCoreDomainBundle);
         };
 
@@ -739,20 +741,18 @@ impl<T: Config> Pallet<T> {
             return Err(Error::<T>::NotCoreDomainBundle);
         }
 
-        let bundle = opaque_bundle;
-
         let bundle_created_on_valid_primary_block =
-            pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number)
-                .map(|block_hash| block_hash == bundle.header.primary_hash)
+            pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, header.primary_number)
+                .map(|block_hash| block_hash == header.primary_hash)
                 .unwrap_or(false);
 
         if !bundle_created_on_valid_primary_block {
             log::debug!(
                 target: "runtime::domain-registry",
                 "Bundle of {domain_id:?} is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
-                bundle.header.primary_number,
-                pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, bundle.header.primary_number),
-                bundle.header.primary_hash,
+                header.primary_number,
+                pallet_settlement::PrimaryBlockHash::<T>::get(domain_id, header.primary_number),
+                header.primary_hash,
             );
             return Err(Error::BundleCreatedOnUnknownBlock);
         }
@@ -762,7 +762,7 @@ impl<T: Config> Pallet<T> {
         let max_allowed = head_receipt_number + T::MaximumReceiptDrift::get();
 
         let mut new_best_number = head_receipt_number;
-        let receipts = &bundle.receipts;
+        let receipts = &opaque_bundle.receipts;
         for receipt in receipts {
             // Non-best receipt
             if receipt.primary_number <= new_best_number {
@@ -840,7 +840,7 @@ impl<T: Config> Pallet<T> {
         let state_root_verifiable = core_block_number <= new_best_number;
 
         if !core_block_number.is_zero() && state_root_verifiable {
-            let maybe_state_root = bundle.receipts.iter().find_map(|receipt| {
+            let maybe_state_root = opaque_bundle.receipts.iter().find_map(|receipt| {
                 receipt.trace.last().and_then(|state_root| {
                     if (receipt.primary_number, receipt.domain_hash)
                         == (core_block_number, *core_block_hash)

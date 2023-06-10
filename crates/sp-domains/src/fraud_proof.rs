@@ -1,4 +1,4 @@
-use crate::{DomainId, SealedBundleHeader};
+use crate::{BundleHeader, DomainId, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -285,14 +285,16 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
         use sp_application_crypto::UncheckedFrom;
 
         let dummy_header = SealedBundleHeader {
-            primary_number: Number::from(0u32),
-            primary_hash: Hash::default(),
-            slot_number,
-            extrinsics_root: H256::default(),
-            bundle_solution: crate::BundleSolution::dummy(
-                DomainId::SYSTEM,
-                crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
-            ),
+            header: BundleHeader {
+                primary_number: Number::from(0u32),
+                primary_hash: Hash::default(),
+                slot_number,
+                extrinsics_root: H256::default(),
+                bundle_solution: crate::BundleSolution::dummy(
+                    DomainId::SYSTEM,
+                    crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
+                ),
+            },
             signature: crate::ExecutorSignature::unchecked_from([0u8; 64]),
         };
 

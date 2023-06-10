@@ -177,8 +177,7 @@ pub struct DomainConfig<Hash, Balance, Weight> {
 
 /// Unsealed header of bundle.
 ///
-/// [`BundleHeader`] contains everything of [`SealedBundleHeader`] except for the signature,
-/// domain operator needs to sign the hash of [`BundleHeader`] and uses the signature to
+/// Domain operator needs to sign the hash of [`BundleHeader`] and uses the signature to
 /// assemble the final [`SealedBundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHash> {
@@ -201,45 +200,11 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash
     }
 }
 
-impl<Number, Hash, DomainHash> BundleHeader<Number, Hash, DomainHash> {
-    /// Converts [`BundleHeader`] into [`SealedBundleHeader`].
-    pub fn into_sealed_bundle_header(
-        self,
-        signature: ExecutorSignature,
-    ) -> SealedBundleHeader<Number, Hash, DomainHash> {
-        SealedBundleHeader {
-            primary_number: self.primary_number,
-            primary_hash: self.primary_hash,
-            slot_number: self.slot_number,
-            extrinsics_root: self.extrinsics_root,
-            bundle_solution: self.bundle_solution,
-            signature,
-        }
-    }
-}
-
-#[derive(Encode)]
-struct BundleHeaderRef<'a, Number, Hash, DomainHash> {
-    primary_number: &'a Number,
-    primary_hash: &'a Hash,
-    slot_number: u64,
-    extrinsics_root: H256,
-    bundle_solution: &'a BundleSolution<DomainHash>,
-}
-
 /// Header of bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SealedBundleHeader<Number, Hash, DomainHash> {
-    /// The block number of primary block at which the bundle was created.
-    pub primary_number: Number,
-    /// The hash of primary block at which the bundle was created.
-    pub primary_hash: Hash,
-    /// The slot number.
-    pub slot_number: u64,
-    /// The merkle root of the extrinsics.
-    pub extrinsics_root: H256,
-    /// Solution of the bundle election.
-    pub bundle_solution: BundleSolution<DomainHash>,
+    /// Unsealed header.
+    pub header: BundleHeader<Number, Hash, DomainHash>,
     /// Signature of the bundle.
     pub signature: ExecutorSignature,
 }
@@ -247,17 +212,17 @@ pub struct SealedBundleHeader<Number, Hash, DomainHash> {
 impl<Number: Encode, Hash: Encode, DomainHash: Encode>
     SealedBundleHeader<Number, Hash, DomainHash>
 {
-    /// Returns the hash of the corresponding unsealed header.
-    pub fn pre_hash(&self) -> H256 {
-        let bundle_header_ref = BundleHeaderRef {
-            primary_number: &self.primary_number,
-            primary_hash: &self.primary_hash,
-            slot_number: self.slot_number,
-            extrinsics_root: self.extrinsics_root,
-            bundle_solution: &self.bundle_solution,
-        };
+    /// Constructs a new instance of [`SealedBundleHeader`].
+    pub fn new(
+        header: BundleHeader<Number, Hash, DomainHash>,
+        signature: ExecutorSignature,
+    ) -> Self {
+        Self { header, signature }
+    }
 
-        BlakeTwo256::hash_of(&bundle_header_ref)
+    /// Returns the hash of the inner unsealed header.
+    pub fn pre_hash(&self) -> H256 {
+        self.header.hash()
     }
 
     /// Returns the hash of this header.
@@ -267,7 +232,8 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
 
     /// Returns whether the signature is valid.
     pub fn verify_signature(&self) -> bool {
-        self.bundle_solution
+        self.header
+            .bundle_solution
             .proof_of_election()
             .executor_public_key
             .verify(&self.pre_hash(), &self.signature)
@@ -401,8 +367,8 @@ impl<DomainHash: Default> BundleSolution<DomainHash> {
 /// Domain bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
-    /// The bundle header.
-    pub header: SealedBundleHeader<Number, Hash, DomainHash>,
+    /// Sealed bundle header.
+    pub sealed_header: SealedBundleHeader<Number, Hash, DomainHash>,
     /// Expected receipts by the primay chain when the bundle was created.
     ///
     /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
@@ -423,12 +389,16 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
 
     /// Returns the domain_id of this bundle.
     pub fn domain_id(&self) -> DomainId {
-        self.header.bundle_solution.proof_of_election().domain_id
+        self.sealed_header
+            .header
+            .bundle_solution
+            .proof_of_election()
+            .domain_id
     }
 
     /// Consumes [`Bundle`] to extract the inner executor public key.
     pub fn into_executor_public_key(self) -> ExecutorPublicKey {
-        match self.header.bundle_solution {
+        match self.sealed_header.header.bundle_solution {
             BundleSolution::System {
                 proof_of_election, ..
             }
@@ -446,7 +416,7 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
     pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHash> {
         let Bundle {
-            header,
+            sealed_header,
             receipts,
             extrinsics,
         } = self;
@@ -458,7 +428,7 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
             })
             .collect();
         OpaqueBundle {
-            header,
+            sealed_header,
             receipts,
             extrinsics: opaque_extrinsics,
         }
@@ -526,20 +496,22 @@ where
 {
     use sp_core::crypto::UncheckedFrom;
 
-    let header = SealedBundleHeader {
-        primary_number,
-        primary_hash,
-        slot_number: 0u64,
-        extrinsics_root: Default::default(),
-        bundle_solution: BundleSolution::dummy(
-            domain_id,
-            ExecutorPublicKey::unchecked_from([0u8; 32]),
-        ),
+    let sealed_header = SealedBundleHeader {
+        header: BundleHeader {
+            primary_number,
+            primary_hash,
+            slot_number: 0u64,
+            extrinsics_root: Default::default(),
+            bundle_solution: BundleSolution::dummy(
+                domain_id,
+                ExecutorPublicKey::unchecked_from([0u8; 32]),
+            ),
+        },
         signature: ExecutorSignature::unchecked_from([0u8; 64]),
     };
 
     OpaqueBundle {
-        header,
+        sealed_header,
         receipts,
         extrinsics: Vec::new(),
     }
