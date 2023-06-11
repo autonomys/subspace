@@ -11,6 +11,7 @@ use crate::create::transport::build_transport;
 use crate::node::{CircuitRelayClientError, Node};
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
+use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
 use backoff::{ExponentialBackoff, SystemClock};
@@ -46,6 +47,7 @@ use tracing::{debug, error, info};
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
+const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
 
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
@@ -428,6 +430,10 @@ where
         record_store: ProviderOnlyRecordStore::new(provider_storage),
         request_response_protocols,
         connection_limits,
+        reserved_peers: ReservedPeersConfig {
+            reserved_peers: reserved_peers.clone(),
+            protocol_name: RESERVED_PEERS_PROTOCOL_NAME,
+        },
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
