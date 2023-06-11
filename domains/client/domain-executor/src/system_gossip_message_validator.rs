@@ -125,7 +125,7 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            if !bundle.header.verify_signature() {
+            if !bundle.sealed_header.verify_signature() {
                 return Err(GossipMessageError::BadBundleSignature);
             }
 
@@ -136,7 +136,11 @@ where
             self.gossip_message_validator
                 .validate_bundle_receipts(&bundle.receipts, domain_id)?;
 
-            let at = bundle.header.bundle_solution.creation_block_hash();
+            let at = bundle
+                .sealed_header
+                .header
+                .bundle_solution
+                .creation_block_hash();
 
             self.gossip_message_validator.validate_bundle_transactions(
                 &bundle.extrinsics,

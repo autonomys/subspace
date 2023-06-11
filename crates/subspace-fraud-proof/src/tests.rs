@@ -697,10 +697,10 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
     let mut bundle_with_bad_extrinsics = maybe_bundle.unwrap();
     bundle_with_bad_extrinsics.extrinsics =
         vec![OpaqueExtrinsic::from_bytes(&transfer_from_one_to_bob.encode()).unwrap()];
-    bundle_with_bad_extrinsics.header.signature = alice
+    bundle_with_bad_extrinsics.sealed_header.signature = alice
         .key
         .pair()
-        .sign(bundle_with_bad_extrinsics.header.pre_hash().as_ref())
+        .sign(bundle_with_bad_extrinsics.sealed_header.pre_hash().as_ref())
         .into();
 
     alice

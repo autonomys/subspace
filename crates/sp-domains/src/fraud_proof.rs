@@ -1,4 +1,4 @@
-use crate::{BundleHeader, DomainId};
+use crate::{BundleHeader, DomainId, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -265,9 +265,9 @@ pub struct BundleEquivocationProof<Number, Hash> {
     pub slot: Slot,
     // TODO: Make H256 a generic when bundle equivocation is implemented properly.
     /// The first header involved in the equivocation.
-    pub first_header: BundleHeader<Number, Hash, H256>,
+    pub first_header: SealedBundleHeader<Number, Hash, H256>,
     /// The second header involved in the equivocation.
-    pub second_header: BundleHeader<Number, Hash, H256>,
+    pub second_header: SealedBundleHeader<Number, Hash, H256>,
 }
 
 impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
@@ -284,15 +284,17 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
     pub fn dummy_at(slot_number: u64) -> Self {
         use sp_application_crypto::UncheckedFrom;
 
-        let dummy_header = BundleHeader {
-            primary_number: Number::from(0u32),
-            primary_hash: Hash::default(),
-            slot_number,
-            extrinsics_root: H256::default(),
-            bundle_solution: crate::BundleSolution::dummy(
-                DomainId::SYSTEM,
-                crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
-            ),
+        let dummy_header = SealedBundleHeader {
+            header: BundleHeader {
+                primary_number: Number::from(0u32),
+                primary_hash: Hash::default(),
+                slot_number,
+                extrinsics_root: H256::default(),
+                bundle_solution: crate::BundleSolution::dummy(
+                    DomainId::SYSTEM,
+                    crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
+                ),
+            },
             signature: crate::ExecutorSignature::unchecked_from([0u8; 64]),
         };
 

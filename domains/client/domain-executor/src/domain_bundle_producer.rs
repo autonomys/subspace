@@ -9,7 +9,9 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature};
+use sp_domains::{
+    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
+};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
@@ -237,7 +239,7 @@ where
                 .executor_public_key
                 .clone();
 
-            let (preliminary_bundle_header, receipts, extrinsics) = self
+            let (bundle_header, receipts, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
                     bundle_solution,
@@ -247,7 +249,7 @@ where
                 )
                 .await?;
 
-            let to_sign = preliminary_bundle_header.hash();
+            let to_sign = bundle_header.hash();
 
             let signature = self
                 .keystore
@@ -274,7 +276,7 @@ where
             })?;
 
             let bundle = Bundle {
-                header: preliminary_bundle_header.into_bundle_header(signature),
+                sealed_header: SealedBundleHeader::new(bundle_header, signature),
                 receipts,
                 extrinsics,
             };
