@@ -182,7 +182,6 @@ where
         let available_best_receipt_number = if header_block_receipt_is_written {
             header_number
         } else {
-            // TODO: We should wait until the receipt receipt generation finish before propose bundle
             header_number.saturating_sub(One::one())
         };
 
