@@ -477,11 +477,17 @@ impl<T: Config> Pallet<T> {
 
     fn validate_bundle(
         OpaqueBundle {
-            header,
+            sealed_header,
             receipt,
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
+        if !sealed_header.verify_signature() {
+            return Err(BundleError::BadSignature);
+        }
+
+        let header = &sealed_header.header;
+
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
         // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
@@ -510,10 +516,6 @@ impl<T: Config> Pallet<T> {
                     return Err(BundleError::StaleBundle);
                 }
             }
-        }
-
-        if !header.verify_signature() {
-            return Err(BundleError::BadSignature);
         }
 
         let proof_of_election = header.bundle_solution.proof_of_election();
@@ -622,7 +624,7 @@ where
     pub fn submit_bundle_unsigned(
         opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
-        let slot = opaque_bundle.header.slot_number;
+        let slot = opaque_bundle.sealed_header.header.slot_number;
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };

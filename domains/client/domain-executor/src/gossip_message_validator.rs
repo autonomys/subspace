@@ -179,7 +179,8 @@ where
         let bundle_is_an_equivocation = false;
 
         if bundle_is_an_equivocation {
-            let equivocation_proof = BundleEquivocationProof::dummy_at(bundle.header.slot_number);
+            let equivocation_proof =
+                BundleEquivocationProof::dummy_at(bundle.sealed_header.header.slot_number);
             let fraud_proof =
                 FraudProof::<ParentChainBlock>::BundleEquivocation(equivocation_proof);
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
