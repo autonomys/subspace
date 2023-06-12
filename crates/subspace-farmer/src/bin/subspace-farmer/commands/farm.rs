@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex};
+use subspace_core_primitives::{ArchivedHistorySegment, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
     SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
@@ -36,8 +36,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 use zeroize::Zeroizing;
@@ -142,14 +141,20 @@ where
         piece_cache.clone(),
     ));
 
-    let (run_cache_sync_tx, run_cache_sync_rx) = mpsc::channel::<SegmentIndex>(1);
+    let last_segment_index = node_client
+        .farmer_app_info()
+        .await
+        .map_err(|err| anyhow::anyhow!("Couldn't receive history size: {}", err,))?
+        .protocol_info
+        .history_size
+        .segment_index();
 
     tokio::spawn(run_future_in_dedicated_thread(
         Box::pin({
             let piece_cache = piece_cache.clone();
             let piece_getter = piece_getter.clone();
 
-            populate_pieces_cache(run_cache_sync_rx, piece_getter, piece_cache)
+            populate_pieces_cache(last_segment_index, piece_getter, piece_cache)
         }),
         "pieces-cache-population".to_string(),
     )?);
@@ -159,7 +164,7 @@ where
             let piece_cache = piece_cache.clone();
             let node_client = node_client.clone();
 
-            fill_piece_cache_from_archived_segments(run_cache_sync_tx, node_client, piece_cache)
+            fill_piece_cache_from_archived_segments(node_client, piece_cache)
         }),
         "pieces-cache-maintainer".to_string(),
     )?);
@@ -452,53 +457,46 @@ fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
 /// previous segments to see if they are already in the cache. If they are not, they are added
 /// from DSN.
 async fn populate_pieces_cache<PG, PC>(
-    mut run_cache_sync_rx: Receiver<SegmentIndex>,
+    segment_index: SegmentIndex,
     piece_getter: Arc<FarmerPieceGetter<PG, PC>>,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
 ) where
     PG: PieceGetter + Send + Sync,
     PC: PieceCache + Send + 'static,
 {
-    let piece_cache = piece_cache.clone();
-    let piece_getter = piece_getter.clone();
+    info!(%segment_index, "Started syncing piece cache...");
+    let final_piece_index =
+        u64::from(segment_index.first_piece_index()) + ArchivedHistorySegment::NUM_PIECES as u64;
 
-    if let Some(segment_index) = run_cache_sync_rx.recv().await {
-        // Notify sender that we received a new segment index and started a cache sync.
-        run_cache_sync_rx.close();
+    for piece_index in 0..final_piece_index {
+        let key = PieceIndex::from(piece_index).hash().to_multihash().into();
 
-        info!(new_segment_index=%segment_index, "Started syncing piece cache...");
+        let should_cache = { piece_cache.lock().await.should_cache(&key) };
+        if should_cache {
+            let result = piece_getter
+                .get_piece(piece_index.into(), PieceGetterRetryPolicy::Limited(1))
+                .await;
 
-        for piece_index in 0..segment_index.first_piece_index().into() {
-            let key = PieceIndex::from(piece_index).hash().to_multihash().into();
-
-            let should_cache = { piece_cache.lock().await.should_cache(&key) };
-            if should_cache {
-                let result = piece_getter
-                    .get_piece(piece_index.into(), PieceGetterRetryPolicy::Limited(1))
-                    .await;
-
-                match result {
-                    Ok(Some(piece)) => {
-                        debug!(%piece_index, "Added piece to cache.");
-                        piece_cache.lock().await.add_piece(key, piece);
-                    }
-                    Ok(None) => {
-                        debug!(%piece_index, "Couldn't find piece.");
-                    }
-                    Err(err) => {
-                        debug!(error=%err, %piece_index, "Failed to get piece for piece cache.");
-                    }
+            match result {
+                Ok(Some(piece)) => {
+                    debug!(%piece_index, "Added piece to cache.");
+                    piece_cache.lock().await.add_piece(key, piece);
+                }
+                Ok(None) => {
+                    debug!(%piece_index, "Couldn't find piece.");
+                }
+                Err(err) => {
+                    debug!(error=%err, %piece_index, "Failed to get piece for piece cache.");
                 }
             }
         }
-
-        info!("Finished syncing piece cache.");
     }
+
+    info!("Finished syncing piece cache.");
 }
 
 /// Subscribes to a new segment index and adds pieces from the segment to the cache if required.
 async fn fill_piece_cache_from_archived_segments(
-    run_cache_sync_tx: Sender<SegmentIndex>,
     node_client: NodeRpcClient,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
 ) {
@@ -512,17 +510,6 @@ async fn fill_piece_cache_from_archived_segments(
         Ok(mut segment_headers_notifications) => {
             while let Some(segment_header) = segment_headers_notifications.next().await {
                 let segment_index = segment_header.segment_index();
-                let run_cache_sync_tx = run_cache_sync_tx.clone();
-
-                // Notify piece cache sync about new segment
-                if !run_cache_sync_tx.is_closed() {
-                    if let Err(err) = run_cache_sync_tx.send(segment_index).await {
-                        error!(
-                            "Failed to notify piece cache sync about new segment: {}",
-                            err
-                        );
-                    }
-                }
 
                 debug!(%segment_index, "Starting to process archived segment....");
 
