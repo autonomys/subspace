@@ -14,42 +14,41 @@ use sp_runtime::traits::SaturatedConversion;
 mod benchmarks {
     use super::*;
 
-    // TODO: pick https://github.com/paritytech/substrate/pull/13919 to support generic argument:
-    // Linear<1, { T::ReceiptsPruningDepth::get() }>
     /// Benchmark `submit_bundle` extrinsic with the worst possible conditions:
     /// - Submit a system domain bundle
-    /// - All receipts are new and will prune the same number of expired receipts
+    /// - The receipts will prune a expired receipt
     #[benchmark]
-    fn submit_system_bundle(x: Linear<1, 256>) {
+    fn submit_system_bundle() {
         let receipts_pruning_depth = T::ReceiptsPruningDepth::get().saturated_into::<u32>();
 
         // Import `ReceiptsPruningDepth` number of receipts which will be pruned later
         run_to_block::<T>(1, receipts_pruning_depth);
-        let receipts: Vec<_> = (0..receipts_pruning_depth)
-            .map(|i| ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i)))
-            .collect();
-        let bundle = create_dummy_bundle_with_receipts_generic(
-            DomainId::SYSTEM,
-            receipts_pruning_depth.into(),
-            Default::default(),
-            receipts,
-        );
-        assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+        for i in 0..receipts_pruning_depth {
+            let receipt = ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i));
+            let bundle = create_dummy_bundle_with_receipts_generic(
+                DomainId::SYSTEM,
+                (i + 1).into(),
+                Default::default(),
+                receipt,
+            );
+            assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+        }
         assert_eq!(
             Domains::<T>::head_receipt_number(),
             (receipts_pruning_depth - 1).into()
         );
 
-        // Construct a bundle that contain `x` number of new receipts
-        run_to_block::<T>(receipts_pruning_depth + 1, receipts_pruning_depth + x);
-        let receipts: Vec<_> = (receipts_pruning_depth..(receipts_pruning_depth + x))
-            .map(|i| ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i)))
-            .collect();
+        // Construct a bundle that contains a new receipt
+        run_to_block::<T>(receipts_pruning_depth + 1, receipts_pruning_depth + 2);
+        let receipt = ExecutionReceipt::dummy(
+            receipts_pruning_depth.into(),
+            block_hash_n::<T>(receipts_pruning_depth),
+        );
         let bundle = create_dummy_bundle_with_receipts_generic(
             DomainId::SYSTEM,
-            x.into(),
+            (receipts_pruning_depth + 1).into(),
             Default::default(),
-            receipts,
+            receipt,
         );
 
         #[extrinsic_call]
@@ -57,9 +56,9 @@ mod benchmarks {
 
         assert_eq!(
             Domains::<T>::head_receipt_number(),
-            ((receipts_pruning_depth + x) - 1).into()
+            receipts_pruning_depth.into()
         );
-        assert_eq!(Domains::<T>::oldest_receipt_number(), x.into());
+        assert_eq!(Domains::<T>::oldest_receipt_number(), 1u32.into());
     }
 
     #[benchmark]
@@ -68,7 +67,7 @@ mod benchmarks {
             DomainId::CORE_PAYMENTS,
             2u32.into(),
             Default::default(),
-            vec![ExecutionReceipt::dummy(1u32.into(), block_hash_n::<T>(1))],
+            ExecutionReceipt::dummy(1u32.into(), block_hash_n::<T>(1)),
         );
 
         #[extrinsic_call]
@@ -84,16 +83,16 @@ mod benchmarks {
 
         // Import `ReceiptsPruningDepth` number of receipts which will be revert later
         run_to_block::<T>(1, receipts_pruning_depth);
-        let receipts: Vec<_> = (0..receipts_pruning_depth)
-            .map(|i| ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i)))
-            .collect();
-        let bundle = create_dummy_bundle_with_receipts_generic(
-            DomainId::SYSTEM,
-            receipts_pruning_depth.into(),
-            Default::default(),
-            receipts,
-        );
-        assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+        for i in 0..receipts_pruning_depth {
+            let receipt = ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i));
+            let bundle = create_dummy_bundle_with_receipts_generic(
+                DomainId::SYSTEM,
+                (i + 1).into(),
+                Default::default(),
+                receipt,
+            );
+            assert_ok!(Domains::<T>::submit_bundle(RawOrigin::None.into(), bundle));
+        }
         assert_eq!(
             Domains::<T>::head_receipt_number(),
             (receipts_pruning_depth - 1).into()

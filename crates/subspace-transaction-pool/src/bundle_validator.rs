@@ -340,17 +340,15 @@ where
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Can not convert BlockId {at:?} to block number"
             )))?;
-        for receipt in opaque_bundle.receipts.iter() {
-            if receipt.primary_number > best_primary_number {
-                return Err(BundleError::ReceiptInFuture);
-            }
-            if let Some(expected_hash) = self
-                .bundle_stored_in_last_k
-                .get_canonical_block_hash(receipt.primary_number)
-            {
-                if receipt.primary_hash != expected_hash {
-                    return Err(BundleError::ReceiptPointToUnknownBlock);
-                }
+        if opaque_bundle.receipt.primary_number > best_primary_number {
+            return Err(BundleError::ReceiptInFuture);
+        }
+        if let Some(expected_hash) = self
+            .bundle_stored_in_last_k
+            .get_canonical_block_hash(opaque_bundle.receipt.primary_number)
+        {
+            if opaque_bundle.receipt.primary_hash != expected_hash {
+                return Err(BundleError::ReceiptPointToUnknownBlock);
             }
         }
         Ok(())

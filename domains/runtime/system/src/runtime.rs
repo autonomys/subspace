@@ -651,11 +651,10 @@ impl_runtime_apis! {
                     }) if opaque_bundle.domain_id() == domain_id
                         && successful_bundles.contains(&opaque_bundle.hash()) =>
                     {
-                        Some(opaque_bundle.receipts)
+                        Some(opaque_bundle.receipt)
                     }
                     _ => None,
                 })
-                .flatten()
                 .collect()
         }
 

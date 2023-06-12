@@ -282,32 +282,30 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Track the execution receipts for the domain
-    pub fn track_receipts(
+    pub fn track_receipt(
         domain_id: DomainId,
-        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+        receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), Error> {
         let oldest_receipt_number = <OldestReceiptNumber<T>>::get(domain_id);
         let mut best_number = <HeadReceiptNumber<T>>::get(domain_id);
 
-        for receipt in receipts {
-            let primary_number = receipt.primary_number;
+        let primary_number = receipt.primary_number;
 
-            // Ignore the receipt if it has already been pruned.
-            if primary_number < oldest_receipt_number {
-                continue;
-            }
+        // Ignore the receipt if it has already been pruned.
+        if primary_number < oldest_receipt_number {
+            return Ok(());
+        }
 
-            if primary_number <= best_number {
-                // Either increase the vote for a known receipt or add a fork receipt at this height.
-                Self::import_receipt(domain_id, receipt);
-            } else if primary_number == best_number + One::one() {
-                Self::import_head_receipt(domain_id, receipt);
-                Self::remove_expired_receipts(domain_id, primary_number);
-                best_number += One::one();
-            } else {
-                // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
-                return Err(Error::MissingParent);
-            }
+        if primary_number <= best_number {
+            // Either increase the vote for a known receipt or add a fork receipt at this height.
+            Self::import_receipt(domain_id, receipt);
+        } else if primary_number == best_number + One::one() {
+            Self::import_head_receipt(domain_id, receipt);
+            Self::remove_expired_receipts(domain_id, primary_number);
+            best_number += One::one();
+        } else {
+            // Reject the entire Bundle due to the missing receipt(s) between [best_number, .., receipt.primary_number].
+            return Err(Error::MissingParent);
         }
         Ok(())
     }

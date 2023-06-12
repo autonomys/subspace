@@ -38,6 +38,7 @@ use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, OpaqueBundle, ProofOfElection};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
 
 #[frame_support::pallet]
@@ -161,9 +162,7 @@ mod pallet {
         #[pallet::call_index(0)]
         #[pallet::weight(
             if opaque_bundle.domain_id().is_system() {
-                T::WeightInfo::submit_system_bundle(
-                    opaque_bundle.receipts.len() as u32
-                )
+                T::WeightInfo::submit_system_bundle()
             } else {
                 T::WeightInfo::submit_core_bundle()
             }
@@ -180,11 +179,8 @@ mod pallet {
 
             // Only process the system domain receipts.
             if domain_id.is_system() {
-                pallet_settlement::Pallet::<T>::track_receipts(
-                    domain_id,
-                    opaque_bundle.receipts.as_slice(),
-                )
-                .map_err(Error::<T>::from)?;
+                pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
+                    .map_err(Error::<T>::from)?;
             }
 
             let bundle_hash = opaque_bundle.hash();
@@ -358,74 +354,44 @@ impl<T: Config> Pallet<T> {
         pallet_settlement::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
     }
 
-    fn receipts_are_consecutive(
-        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
-    ) -> bool {
-        receipts
-            .array_windows()
-            .all(|[ref head, ref tail]| head.primary_number + One::one() == tail.primary_number)
-    }
-
     fn pre_dispatch_submit_bundle(
         opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
-        let execution_receipts = &opaque_bundle.receipts;
-
-        if !Self::receipts_are_consecutive(execution_receipts) {
-            return Err(TransactionValidityError::Invalid(
-                InvalidTransactionCode::ExecutionReceipt.into(),
-            ));
+        if !opaque_bundle.domain_id().is_system() {
+            return Ok(());
         }
 
-        if opaque_bundle.domain_id().is_system() {
-            let oldest_receipt_number = Self::oldest_receipt_number();
-            let mut best_number = Self::head_receipt_number();
+        let receipt = &opaque_bundle.receipt;
+        let oldest_receipt_number = Self::oldest_receipt_number();
+        let next_head_receipt_number = Self::head_receipt_number() + One::one();
+        let primary_number = receipt.primary_number;
 
-            for receipt in execution_receipts {
-                let primary_number = receipt.primary_number;
+        // Ignore the receipt if it has already been pruned.
+        if primary_number < oldest_receipt_number {
+            return Ok(());
+        }
 
-                // Ignore the receipt if it has already been pruned.
-                if primary_number < oldest_receipt_number {
-                    continue;
-                }
-
-                // Non-best receipt
-                if primary_number <= best_number {
-                    if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
-                        DomainId::SYSTEM,
-                        receipt,
-                    ) {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Invalid primary hash for #{primary_number:?} in receipt, \
-                            expected: {:?}, got: {:?}",
-                            pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
-                            receipt.primary_hash,
-                        );
-                        return Err(TransactionValidityError::Invalid(
-                            InvalidTransactionCode::ExecutionReceipt.into(),
-                        ));
-                    }
-                    // New best receipt.
-                } else if primary_number == best_number + One::one() {
-                    if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
-                        DomainId::SYSTEM,
-                        receipt,
-                    ) {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Invalid primary hash for #{primary_number:?} in receipt, \
-                            expected: {:?}, got: {:?}",
-                            pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
-                            receipt.primary_hash,
-                        );
-                        return Err(TransactionValidityError::Invalid(
-                            InvalidTransactionCode::ExecutionReceipt.into(),
-                        ));
-                    }
-                    best_number += One::one();
-                    // Missing receipt.
-                } else {
+        // TODO: check if the receipt extend the receipt chain or add confirmations to the head receipt.
+        match primary_number.cmp(&next_head_receipt_number) {
+            // Missing receipt.
+            Ordering::Greater => {
+                return Err(TransactionValidityError::Invalid(
+                    InvalidTransactionCode::ExecutionReceipt.into(),
+                ));
+            }
+            // Non-best receipt or new best receipt.
+            Ordering::Less | Ordering::Equal => {
+                if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
+                    DomainId::SYSTEM,
+                    receipt,
+                ) {
+                    log::debug!(
+                        target: "runtime::domains",
+                        "Invalid primary hash for #{primary_number:?} in receipt, \
+                        expected: {:?}, got: {:?}",
+                        pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                        receipt.primary_hash,
+                    );
                     return Err(TransactionValidityError::Invalid(
                         InvalidTransactionCode::ExecutionReceipt.into(),
                     ));
@@ -437,7 +403,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_system_bundle_solution(
-        receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
+        receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
         authority_stake_weight: sp_domains::StakeWeight,
         authority_witness: &Witness,
         proof_of_election: &ProofOfElection<T::DomainHash>,
@@ -453,24 +419,17 @@ impl<T: Config> Pallet<T> {
         let block_number = T::BlockNumber::from(*system_block_number);
         let block_hash = *system_block_hash;
 
-        let new_best_receipt_number = receipts
-            .iter()
-            .map(|receipt| receipt.primary_number)
-            .max()
-            .unwrap_or_default()
-            .max(Self::head_receipt_number());
+        let new_best_receipt_number = receipt.primary_number.max(Self::head_receipt_number());
 
         let state_root_verifiable = block_number <= new_best_receipt_number;
 
         if !block_number.is_zero() && state_root_verifiable {
-            let maybe_state_root = receipts.iter().find_map(|receipt| {
-                receipt.trace.last().and_then(|state_root| {
-                    if (receipt.primary_number, receipt.domain_hash) == (block_number, block_hash) {
-                        Some(*state_root)
-                    } else {
-                        None
-                    }
-                })
+            let maybe_state_root = receipt.trace.last().and_then(|state_root| {
+                if (receipt.primary_number, receipt.domain_hash) == (block_number, block_hash) {
+                    Some(*state_root)
+                } else {
+                    None
+                }
             });
 
             let expected_state_root = match maybe_state_root {
@@ -516,29 +475,10 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    /// Common validation of receipts in all kinds of domain bundle.
-    fn validate_execution_receipts(
-        execution_receipts: &[ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>],
-    ) -> Result<(), ExecutionReceiptError> {
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
-
-        // Genesis block receipt is initialized on primary chain, the first block has no receipts,
-        // but any block after the first one requires at least one receipt.
-        if current_block_number > One::one() && execution_receipts.is_empty() {
-            return Err(ExecutionReceiptError::Empty);
-        }
-
-        if !Self::receipts_are_consecutive(execution_receipts) {
-            return Err(ExecutionReceiptError::Inconsecutive);
-        }
-
-        Ok(())
-    }
-
     fn validate_bundle(
         OpaqueBundle {
             sealed_header,
-            receipts,
+            receipt,
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
@@ -583,8 +523,6 @@ impl<T: Config> Pallet<T> {
             .verify_vrf_proof()
             .map_err(|_| BundleError::BadVrfProof)?;
 
-        Self::validate_execution_receipts(receipts).map_err(BundleError::Receipt)?;
-
         if proof_of_election.domain_id.is_system() {
             let BundleSolution::System {
                 authority_stake_weight,
@@ -623,7 +561,7 @@ impl<T: Config> Pallet<T> {
             }
 
             Self::validate_system_bundle_solution(
-                receipts,
+                receipt,
                 *authority_stake_weight,
                 authority_witness,
                 proof_of_election,
@@ -631,50 +569,46 @@ impl<T: Config> Pallet<T> {
 
             let best_number = Self::head_receipt_number();
             let max_allowed = best_number + T::MaximumReceiptDrift::get();
-
             let oldest_receipt_number = Self::oldest_receipt_number();
+            let primary_number = receipt.primary_number;
 
-            for execution_receipt in receipts.iter() {
-                let primary_number = execution_receipt.primary_number;
+            // The corresponding block info has been pruned, such expired receipts
+            // will be skipped too while applying the bundle.
+            if primary_number < oldest_receipt_number {
+                return Ok(());
+            }
 
-                // The corresponding block info has been pruned, such expired receipts
-                // will be skipped too while applying the bundle.
-                if primary_number < oldest_receipt_number {
-                    continue;
-                }
+            // Due to `initialize_block` is skipped while calling the runtime api, the block
+            // hash mapping for last block is unknown to the transaction pool, but this info
+            // is already available in System.
+            let point_to_parent_block = primary_number == current_block_number - One::one()
+                && receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
 
-                // Due to `initialize_block` is skipped while calling the runtime api, the block
-                // hash mapping for last block is unknown to the transaction pool, but this info
-                // is already available in System.
-                let point_to_parent_block = primary_number == current_block_number - One::one()
-                    && execution_receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
+            let point_to_valid_primary_block =
+                pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
+                    DomainId::SYSTEM,
+                    receipt,
+                );
 
-                let point_to_valid_primary_block =
-                    pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
-                        DomainId::SYSTEM,
-                        execution_receipt,
-                    );
+            if !point_to_parent_block && !point_to_valid_primary_block {
+                log::debug!(
+                    target: "runtime::domains",
+                    "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
+                    expected: #{primary_number:?},{:?}",
+                    receipt.primary_hash,
+                    pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
+                );
+                return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
+            }
 
-                if !point_to_parent_block && !point_to_valid_primary_block {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
-                        expected: #{primary_number:?},{:?}",
-                        execution_receipt.primary_hash,
-                        pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
-                    );
-                    return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
-                }
-
-                // Ensure the receipt is not too new.
-                if primary_number == current_block_number || primary_number > max_allowed {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "Receipt for #{primary_number:?} is too far in future, \
-                        current_block_number: {current_block_number:?}, max_allowed: {max_allowed:?}",
-                    );
-                    return Err(BundleError::Receipt(ExecutionReceiptError::TooFarInFuture));
-                }
+            // Ensure the receipt is not too new.
+            if primary_number == current_block_number || primary_number > max_allowed {
+                log::debug!(
+                    target: "runtime::domains",
+                    "Receipt for #{primary_number:?} is too far in future, \
+                    current_block_number: {current_block_number:?}, max_allowed: {max_allowed:?}",
+                );
+                return Err(BundleError::Receipt(ExecutionReceiptError::TooFarInFuture));
             }
         }
 
@@ -691,7 +625,6 @@ where
         opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) {
         let slot = opaque_bundle.sealed_header.header.slot_number;
-        let receipts_count = opaque_bundle.receipts.len();
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };
@@ -700,7 +633,7 @@ where
             Ok(()) => {
                 log::info!(
                     target: "runtime::domains",
-                    "Submitted bundle from slot {slot}, receipts: {receipts_count}, extrinsics: {extrincis_count}",
+                    "Submitted bundle from slot {slot}, extrinsics: {extrincis_count}",
                 );
             }
             Err(()) => {

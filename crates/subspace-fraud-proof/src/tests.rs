@@ -24,7 +24,7 @@ use sp_runtime::OpaqueExtrinsic;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
-use subspace_test_service::{produce_blocks, MockPrimaryNode};
+use subspace_test_service::{produce_block_with, produce_blocks, MockPrimaryNode};
 use tempfile::TempDir;
 
 struct TestVerifierClient {
@@ -169,13 +169,9 @@ async fn execution_proof_creation_and_verification_should_work() {
     // to apply these txs
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
-    futures::future::join(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot),
-    )
-    .await
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
 
     let best_hash = alice.client.info().best_hash;
     let header = alice.client.header(best_hash).unwrap().unwrap();
@@ -489,13 +485,9 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(bundle.is_some());
 
     // Wait for `alice` to apply these txs
-    futures::future::join(
-        alice.wait_for_blocks(1),
-        ferdie.produce_block_with_slot(slot),
-    )
-    .await
-    .1
-    .unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
 
     let best_hash = alice.client.info().best_hash;
     let header = alice.client.header(best_hash).unwrap().unwrap();
@@ -665,6 +657,8 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
     .build_with_mock_primary_node(Role::Authority, &mut ferdie)
     .await;
 
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
     alice
         .construct_and_send_extrinsic(pallet_balances::Call::transfer {
             dest: domain_test_service::system_domain_test_runtime::Address::Id(One.public().into()),
@@ -675,15 +669,11 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
 
     ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
-    futures::join!(alice.wait_for_blocks(1), ferdie.produce_blocks(1))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     let (_slot, maybe_bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
 
-    futures::join!(alice.wait_for_blocks(3), ferdie.produce_blocks(3))
-        .1
-        .unwrap();
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // This is an invalid transaction.
     let transfer_from_one_to_bob = alice.construct_extrinsic_with_caller(

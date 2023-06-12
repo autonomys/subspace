@@ -134,7 +134,7 @@ where
             let domain_id = bundle.domain_id();
 
             self.gossip_message_validator
-                .validate_bundle_receipts(&bundle.receipts, domain_id)?;
+                .validate_bundle_receipt(&bundle.receipt, domain_id)?;
 
             let at = bundle
                 .sealed_header
