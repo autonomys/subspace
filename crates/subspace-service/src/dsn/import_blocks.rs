@@ -78,12 +78,14 @@ impl<B: BlockT> Link<B> for WaitLink<B> {
 }
 
 /// Starts the process of importing blocks.
+///
+/// Returns number of imported blocks.
 pub async fn import_blocks<B, IQ, C>(
     node: &Node,
     client: Arc<C>,
     import_queue: &mut IQ,
     force: bool,
-) -> Result<(), sc_service::Error>
+) -> Result<u64, sc_service::Error>
 where
     C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
     B: BlockT,
@@ -235,13 +237,5 @@ where
         }
     }
 
-    info!(
-        "🎉 Imported {} blocks, best #{}/#{}, check against reliable sources to make sure it is a \
-        block on canonical chain",
-        imported_blocks,
-        client.info().best_number,
-        client.info().best_hash
-    );
-
-    Ok(())
+    Ok(imported_blocks)
 }
