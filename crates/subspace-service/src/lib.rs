@@ -559,6 +559,7 @@ where
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
+            // TODO: Revisit piece cache creation when we get SDK requirements.
         } => (node, bootstrap_nodes, None),
         SubspaceNetworking::Create {
             config: dsn_config,

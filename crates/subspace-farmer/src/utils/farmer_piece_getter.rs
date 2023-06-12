@@ -34,12 +34,9 @@ where
         let piece_index_hash = piece_index.hash();
         let key = piece_index_hash.to_multihash().into();
 
-        {
-            let piece_cache = self.piece_cache.lock().await;
-            if let Some(piece) = piece_cache.get_piece(&key) {
-                return Ok(Some(piece));
-            }
-        };
+        if let Some(piece) = self.piece_cache.lock().await.get_piece(&key) {
+            return Ok(Some(piece));
+        }
 
         let maybe_piece = self
             .base_piece_getter

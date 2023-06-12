@@ -105,8 +105,8 @@ pub trait SubspaceRpcApi {
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<SegmentHeader>>>;
 
-    #[method(name = "subspace_Piece")]
-    async fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>>;
+    #[method(name = "subspace_Piece", blocking)]
+    fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>>;
 }
 
 #[derive(Default)]
@@ -561,7 +561,7 @@ where
         segment_commitment_result
     }
 
-    async fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
+    fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
         if let Some(piece_provider) = self.piece_provider.as_ref() {
             let result = piece_provider.get_piece_by_index(piece_index).map_err(|_| {
                 JsonRpseeError::Custom("Internal error during `piece` call".to_string())

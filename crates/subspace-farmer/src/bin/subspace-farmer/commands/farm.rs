@@ -144,19 +144,25 @@ where
 
     let (run_cache_sync_tx, run_cache_sync_rx) = mpsc::channel::<SegmentIndex>(1);
 
-    tokio::spawn({
-        let piece_cache = piece_cache.clone();
-        let piece_getter = piece_getter.clone();
+    tokio::spawn(run_future_in_dedicated_thread(
+        Box::pin({
+            let piece_cache = piece_cache.clone();
+            let piece_getter = piece_getter.clone();
 
-        restore_pieces_cache(run_cache_sync_rx, piece_getter, piece_cache)
-    });
+            populate_pieces_cache(run_cache_sync_rx, piece_getter, piece_cache)
+        }),
+        "pieces-cache-population".to_string(),
+    )?);
 
-    tokio::spawn({
-        let piece_cache = piece_cache.clone();
-        let node_client = node_client.clone();
+    tokio::spawn(run_future_in_dedicated_thread(
+        Box::pin({
+            let piece_cache = piece_cache.clone();
+            let node_client = node_client.clone();
 
-        fill_piece_cache_from_archived_segments(run_cache_sync_tx, node_client, piece_cache)
-    });
+            fill_piece_cache_from_archived_segments(run_cache_sync_tx, node_client, piece_cache)
+        }),
+        "pieces-cache-maintainer".to_string(),
+    )?);
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
     let max_pieces_in_sector = match max_pieces_in_sector {
@@ -442,10 +448,10 @@ fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
     Keypair::from(keypair)
 }
 
-/// Restores piece cache on startup. It waits for the new segment index and check all pieces from
+/// Populates piece cache on startup. It waits for the new segment index and check all pieces from
 /// previous segments to see if they are already in the cache. If they are not, they are added
 /// from DSN.
-async fn restore_pieces_cache<PG, PC>(
+async fn populate_pieces_cache<PG, PC>(
     mut run_cache_sync_rx: Receiver<SegmentIndex>,
     piece_getter: Arc<FarmerPieceGetter<PG, PC>>,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
@@ -457,6 +463,7 @@ async fn restore_pieces_cache<PG, PC>(
     let piece_getter = piece_getter.clone();
 
     if let Some(segment_index) = run_cache_sync_rx.recv().await {
+        // Notify sender that we received a new segment index and started a cache sync.
         run_cache_sync_rx.close();
 
         info!(new_segment_index=%segment_index, "Started syncing piece cache...");
