@@ -21,6 +21,7 @@ use blst_rust::types::poly::FsPoly;
 use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
+use kzg::eip_4844::{BYTES_PER_G1, BYTES_PER_G2};
 use kzg::{FFTFr, FFTSettings, Fr, KZGSettings};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 #[cfg(feature = "std")]
@@ -30,23 +31,35 @@ use scale_info::{Type, TypeInfo};
 use spin::Mutex;
 use tracing::debug;
 
+// TODO: Update with final Ethereum parameters once KZG Summoning Ceremony is finished:
+//  https://ceremony.ethereum.org/
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases
+/// Generated with with following command (using current Ethereum KZG Summoning Ceremony):
+/// ```bash
+/// curl -s https://seq.ceremony.ethereum.org/info/current_state | jq '.transcripts[3].powersOfTau' | jq -r '.G1Powers + .G2Powers | map(.[2:]) | join("")' | xxd -r -p - eth-public-parameters.bin
+/// ```
 #[cfg(feature = "embedded-kzg-settings")]
-pub const EMBEDDED_KZG_SETTINGS_BYTES: &[u8] = include_bytes!("kzg/test-public-parameters.bin");
+pub const EMBEDDED_KZG_SETTINGS_BYTES: &[u8] = include_bytes!("kzg/eth-public-parameters.bin");
+/// Number of G1 powers stored in [`EMBEDDED_KZG_SETTINGS_BYTES`]
+pub const NUM_G1_POWERS: usize = 32_768;
+/// Number of G2 powers stored in [`EMBEDDED_KZG_SETTINGS_BYTES`]
+pub const NUM_G2_POWERS: usize = 65;
 
 // Symmetric function is present in tests
 /// Function turns bytes into `FsKZGSettings`, it is up to the user to ensure that bytes make sense,
 /// otherwise result can be very wrong (but will not panic).
-pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
-    // 48 bytes per G1 and 96 bytes per G2;
-    if bytes.is_empty() || bytes.len() % (48 + 96) != 0 {
-        return Err("Bad bytes".to_string());
+pub fn bytes_to_kzg_settings(
+    bytes: &[u8],
+    num_g1_powers: usize,
+    num_g2_powers: usize,
+) -> Result<FsKZGSettings, String> {
+    if bytes.len() != BYTES_PER_G1 * num_g1_powers + BYTES_PER_G2 * num_g2_powers {
+        return Err("Invalid bytes length".to_string());
     }
-    let secret_len = bytes.len() / (48 + 96);
 
-    let (secret_g1_bytes, secret_g2_bytes) = bytes.split_at(secret_len * 48);
+    let (secret_g1_bytes, secret_g2_bytes) = bytes.split_at(BYTES_PER_G1 * num_g1_powers);
     let secret_g1 = secret_g1_bytes
-        .chunks_exact(48)
+        .chunks_exact(BYTES_PER_G1)
         .map(|bytes| {
             FsG1::from_bytes(
                 bytes
@@ -56,7 +69,7 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     let secret_g2 = secret_g2_bytes
-        .chunks_exact(96)
+        .chunks_exact(BYTES_PER_G2)
         .map(|bytes| {
             FsG2::from_bytes(
                 bytes
@@ -67,14 +80,14 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
         .collect::<Result<Vec<_>, _>>()?;
 
     let fft_settings = FsFFTSettings::new(
-        secret_len
+        num_g1_powers
             .checked_sub(1)
             .expect("Checked to be not empty above; qed")
             .ilog2() as usize,
     )
     .expect("Scale is within allowed bounds; qed");
 
-    // Below is the same as `FsKZGSettings::new(&s1, &s2, secret_len, &fft_settings)`, but without
+    // Below is the same as `FsKZGSettings::new(&s1, &s2, num_g1_powers, &fft_settings)`, but without
     // extra checks (parameters are static anyway) and without unnecessary allocations
     Ok(FsKZGSettings {
         fs: fft_settings,
@@ -83,11 +96,10 @@ pub fn bytes_to_kzg_settings(bytes: &[u8]) -> Result<FsKZGSettings, String> {
     })
 }
 
-/// TODO: Test public parameters, must be replaced with proper public parameters later
 /// Embedded KZG settings
 #[cfg(feature = "embedded-kzg-settings")]
 pub fn embedded_kzg_settings() -> FsKZGSettings {
-    bytes_to_kzg_settings(EMBEDDED_KZG_SETTINGS_BYTES)
+    bytes_to_kzg_settings(EMBEDDED_KZG_SETTINGS_BYTES, NUM_G1_POWERS, NUM_G2_POWERS)
         .expect("Static bytes are correct, there is a test for this; qed")
 }
 
