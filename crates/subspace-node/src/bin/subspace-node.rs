@@ -573,7 +573,8 @@ fn main() -> Result<(), Error> {
                         },
                         segment_publish_concurrency: cli.segment_publish_concurrency,
                         sync_from_dsn: cli.sync_from_dsn,
-                        enable_subspace_block_relay: cli.enable_subspace_block_relay,
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay ||
+                                                    cli.run.is_dev().unwrap_or(false),
                     };
 
                     let partial_components =
