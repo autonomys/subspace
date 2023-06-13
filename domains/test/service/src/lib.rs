@@ -93,6 +93,8 @@ pub fn node_config(
         .listen_addresses
         .push(multiaddr::Protocol::Memory(rand::random()).into());
 
+    network_config.force_synced = true;
+
     network_config.transport = TransportConfig::MemoryOnly;
 
     Ok(ServiceConfiguration {
