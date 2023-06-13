@@ -32,6 +32,7 @@ use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
 use sc_rpc::SubscriptionTaskExecutor;
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -39,7 +40,10 @@ use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as Sub
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Zero};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::error::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::{
@@ -51,7 +55,7 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
     MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
@@ -107,6 +111,18 @@ pub trait SubspaceRpcApi {
 
     #[method(name = "subspace_Piece", blocking)]
     fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>>;
+
+    #[method(name = "subspace_acknowledgeArchivedSegmentHeader")]
+    async fn acknowledge_archived_segment_header(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> RpcResult<()>;
+}
+
+#[derive(Default)]
+struct ArchivedSegmentHeaderAcknowledgementSenders {
+    segment_index: SegmentIndex,
+    senders: HashMap<u64, TracingUnboundedSender<()>>,
 }
 
 #[derive(Default)]
@@ -148,6 +164,9 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: Pi
     subspace_link: SubspaceLink<Block>,
     segment_header_provider: RBP,
     piece_provider: Option<PP>,
+    archived_segment_acknowledgement_senders:
+        Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
+    next_subscription_id: AtomicU64,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -187,6 +206,8 @@ impl<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider>
             subspace_link,
             segment_header_provider,
             piece_provider,
+            archived_segment_acknowledgement_senders: Arc::default(),
+            next_subscription_id: AtomicU64::default(),
         }
     }
 }
@@ -449,13 +470,53 @@ where
     }
 
     fn subscribe_archived_segment_header(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
-        let stream = self.archived_segment_notification_stream.subscribe().map(
-            |archived_segment_notification| {
-                archived_segment_notification
-                    .archived_segment
-                    .segment_header
-            },
-        );
+        let archived_segment_acknowledgement_senders =
+            self.archived_segment_acknowledgement_senders.clone();
+
+        let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
+
+        let stream = self
+            .archived_segment_notification_stream
+            .subscribe()
+            .filter_map(move |archived_segment_notification| {
+                let ArchivedSegmentNotification {
+                    archived_segment,
+                    acknowledgement_sender,
+                } = archived_segment_notification;
+
+                let segment_index = archived_segment.segment_header.segment_index();
+
+                // Store acknowledgment sender so that we can retrieve it when acknowledgement
+                // comes from the farmer
+                {
+                    let mut archived_segment_acknowledgement_senders =
+                        archived_segment_acknowledgement_senders.lock();
+
+                    if archived_segment_acknowledgement_senders.segment_index != segment_index {
+                        archived_segment_acknowledgement_senders.segment_index = segment_index;
+                        archived_segment_acknowledgement_senders.senders.clear();
+                    }
+
+                    let maybe_archived_segment_header =
+                        match archived_segment_acknowledgement_senders
+                            .senders
+                            .entry(subscription_id)
+                        {
+                            Entry::Occupied(_) => {
+                                // No need to do anything, farmer is processing request
+                                None
+                            }
+                            Entry::Vacant(entry) => {
+                                entry.insert(acknowledgement_sender);
+
+                                // This will be sent to the farmer
+                                Some(archived_segment.segment_header)
+                            }
+                        };
+
+                    Box::pin(async move { maybe_archived_segment_header })
+                }
+            });
 
         let fut = async move {
             sink.pipe_from_stream(stream).await;
@@ -466,6 +527,44 @@ where
             Some("rpc"),
             fut.boxed(),
         );
+
+        Ok(())
+    }
+
+    async fn acknowledge_archived_segment_header(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> RpcResult<()> {
+        let archived_segment_acknowledgement_senders =
+            self.archived_segment_acknowledgement_senders.clone();
+
+        let maybe_sender = {
+            let mut archived_segment_acknowledgement_senders_guard =
+                archived_segment_acknowledgement_senders.lock();
+
+            (archived_segment_acknowledgement_senders_guard.segment_index == segment_index)
+                .then(|| {
+                    let last_key = *archived_segment_acknowledgement_senders_guard
+                        .senders
+                        .keys()
+                        .next()?;
+
+                    archived_segment_acknowledgement_senders_guard
+                        .senders
+                        .remove(&last_key)
+                })
+                .flatten()
+        };
+
+        if let Some(sender) = maybe_sender {
+            if let Err(error) = sender.unbounded_send(()) {
+                if !error.is_closed() {
+                    warn!("Failed to acknowledge archived segment: {error}");
+                }
+            }
+        }
+
+        debug!(%segment_index, "Acknowledged archived segment.");
 
         Ok(())
     }

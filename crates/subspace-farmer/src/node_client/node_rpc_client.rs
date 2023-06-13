@@ -158,4 +158,17 @@ impl NodeClient for NodeRpcClient {
 
         Ok(None)
     }
+
+    async fn acknowledge_archived_segment_header(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<(), Error> {
+        Ok(self
+            .client
+            .request(
+                "subspace_acknowledgeArchivedSegmentHeader",
+                rpc_params![&segment_index],
+            )
+            .await?)
+    }
 }

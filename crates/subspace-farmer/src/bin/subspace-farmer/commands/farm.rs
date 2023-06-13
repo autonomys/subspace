@@ -16,7 +16,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{ArchivedHistorySegment, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex};
+use subspace_core_primitives::{
+    ArchivedHistorySegment, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
     SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
@@ -511,7 +513,7 @@ async fn fill_piece_cache_from_archived_segments(
             while let Some(segment_header) = segment_headers_notifications.next().await {
                 let segment_index = segment_header.segment_index();
 
-                debug!(%segment_index, "Starting to process archived segment....");
+                info!(%segment_index, "Starting to process archived segment....");
 
                 for piece_index in segment_index.segment_piece_indexes() {
                     let key = piece_index.hash().to_multihash().into();
@@ -565,7 +567,19 @@ async fn fill_piece_cache_from_archived_segments(
                     }
                 }
 
-                debug!(%segment_index, "Finished processing archived segment.");
+                match node_client
+                    .acknowledge_archived_segment_header(segment_index)
+                    .await
+                {
+                    Ok(()) => {
+                        debug!(%segment_index, "Acknowledged archived segment.");
+                    }
+                    Err(err) => {
+                        error!(%segment_index, ?err, "Failed to acknowledged archived segment.");
+                    }
+                };
+
+                info!(%segment_index, "Finished processing archived segment.");
             }
         }
         Err(err) => {

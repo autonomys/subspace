@@ -58,4 +58,10 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
 
     /// Get piece by index.
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, Error>;
+
+    /// Acknowledge segment header.
+    async fn acknowledge_archived_segment_header(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<(), Error>;
 }
