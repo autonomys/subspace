@@ -329,7 +329,7 @@ impl ArchivedBlockProgress {
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct LastArchivedBlock {
     /// Block number
-    pub number: u32,
+    pub number: BlockNumber,
     /// Progress of an archived block.
     pub archived_progress: ArchivedBlockProgress,
 }
@@ -341,7 +341,7 @@ impl LastArchivedBlock {
     }
 
     /// Sets new number of partially archived bytes.
-    pub fn set_partial_archived(&mut self, new_partial: u32) {
+    pub fn set_partial_archived(&mut self, new_partial: BlockNumber) {
         self.archived_progress.set_partial(new_partial);
     }
 

@@ -37,6 +37,16 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, SegmentHeader};
 
+/// How deep (in segments) should block be in order to be finalized.
+///
+/// This is required for full nodes to not prune recent history such that keep-up sync in Substrate
+/// works even without archival nodes (initial sync will be done from DSN).
+///
+/// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
+/// Substrate and is not worth it right now.
+/// https://github.com/paritytech/substrate/discussions/14359
+const FINALIZATION_DEPTH_IN_SEGMENTS: usize = 5;
+
 fn find_last_archived_block<Block, Client>(
     client: &Client,
     best_block_hash: Block::Hash,
@@ -528,17 +538,31 @@ where
             }
 
             if !new_segment_headers.is_empty() {
-                segment_headers
-                    .lock()
-                    .put(block_number + One::one(), new_segment_headers);
-            }
+                let maybe_block_number_to_finalize = {
+                    let mut segment_headers = segment_headers.lock();
+                    segment_headers.put(block_number + One::one(), new_segment_headers);
 
-            finalize_block(
-                client.as_ref(),
-                telemetry.clone(),
-                block_hash_to_archive,
-                block_number_to_archive,
-            );
+                    // Skip last 5 archived segments
+                    segment_headers
+                        .iter()
+                        .flat_map(|(_k, v)| v.iter().rev())
+                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS + 1)
+                        .map(|segment_header| segment_header.last_archived_block().number)
+                };
+
+                if let Some(block_number_to_finalize) = maybe_block_number_to_finalize {
+                    let block_hash_to_finalize = client
+                        .hash(block_number_to_finalize.into())
+                        .expect("Block about to be finalized must always exist")
+                        .expect("Block about to be finalized must always exist");
+                    finalize_block(
+                        client.as_ref(),
+                        telemetry.clone(),
+                        block_hash_to_finalize,
+                        block_number_to_finalize.into(),
+                    );
+                }
+            }
         }
     }
 }
