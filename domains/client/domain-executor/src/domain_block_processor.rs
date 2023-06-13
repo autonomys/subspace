@@ -236,17 +236,17 @@ where
         if let Some(to_finalize_block_number) =
             header_number.checked_sub(&self.domain_confirmation_depth)
         {
-            let to_finalize_block_hash =
-                self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!(
-                        "Header for #{to_finalize_block_number} not found"
-                    ))
-                })?;
-            self.client
-                .finalize_block(to_finalize_block_hash, None, true)?;
-            tracing::debug!(
-                "Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}"
-            );
+            if to_finalize_block_number > self.client.info().finalized_number {
+                let to_finalize_block_hash =
+                    self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Header for #{to_finalize_block_number} not found"
+                        ))
+                    })?;
+                self.client
+                    .finalize_block(to_finalize_block_hash, None, true)?;
+                tracing::debug!("Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}");
+            }
         }
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
