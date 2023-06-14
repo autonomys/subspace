@@ -93,6 +93,9 @@ pub fn node_config(
         .listen_addresses
         .push(multiaddr::Protocol::Memory(rand::random()).into());
 
+    // NOTE: Block sync is disabled for the domain subnet thus the major sync state may not be accurate,
+    // which will cause transaction not propagate through network properly, setting the `force_synced`
+    // flag can workaround this issue.
     network_config.force_synced = true;
 
     network_config.transport = TransportConfig::MemoryOnly;
