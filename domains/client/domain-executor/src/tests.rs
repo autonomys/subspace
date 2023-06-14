@@ -10,6 +10,7 @@ use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
+use sp_consensus::SyncOracle;
 use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
@@ -181,6 +182,64 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         receipts_primary_info(signed_bundle.unwrap()),
         primary_block_info(header_2)
     );
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_domain_tx_propagate() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a system domain authority node)
+    let alice = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+    .await;
+
+    // Run Bob (a system domain full node)
+    let mut bob = domain_test_service::SystemDomainNodeBuilder::new(
+        tokio_handle,
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .connect_to_system_domain_node(&alice)
+    .build_with_mock_primary_node(Role::Full, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, bob, 5).await.unwrap();
+    while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+    // Construct and send an extrinsic to bob, as bob is not a authoity node, the extrinsic has
+    // to propagate to alice to get executed
+    bob.construct_and_send_extrinsic(pallet_balances::Call::transfer {
+        dest: Address::Id(Alice.public().into()),
+        value: 123,
+    })
+    .await
+    .expect("Failed to send extrinsic");
+
+    produce_blocks_until!(ferdie, alice, bob, {
+        alice.free_balance(alice.key.to_account_id()) == pre_alice_free_balance + 123
+    })
+    .await
+    .unwrap();
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]

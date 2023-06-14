@@ -1,6 +1,6 @@
 use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
@@ -10,7 +10,7 @@ use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash};
 use futures::channel::mpsc;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
@@ -21,7 +21,6 @@ use sc_service::{
     SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
-use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -29,7 +28,6 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_core::Encode;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
@@ -399,7 +397,7 @@ where
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
-        sc_service::build_network(BuildNetworkParams {
+        crate::build_network(BuildNetworkParams {
             config: &system_domain_config.service_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
@@ -535,32 +533,6 @@ where
         None,
         Box::pin(system_domain_listener),
     );
-
-    spawn_essential.spawn_blocking("system-domain-transaction-gossip", None, {
-        Box::pin(async move {
-            while let Some(hash) = transaction_pool.import_notification_stream().next().await {
-                let maybe_transaction = transaction_pool.ready_transaction(&hash).and_then(
-                    // Only propagable transactions should be resolved for network service.
-                    |tx| {
-                        if tx.is_propagable() {
-                            Some(tx.data().clone())
-                        } else {
-                            None
-                        }
-                    },
-                );
-                if let Some(tx) = maybe_transaction {
-                    let msg = GossipMessage {
-                        domain_id: DomainId::SYSTEM,
-                        encoded_data: tx.encode(),
-                    };
-                    if let Err(_e) = gossip_message_sink.unbounded_send(msg) {
-                        return;
-                    }
-                }
-            }
-        })
-    });
 
     let new_full = NewFullSystem {
         task_manager,
