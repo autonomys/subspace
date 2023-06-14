@@ -143,15 +143,9 @@ where
         piece_cache.clone(),
     ));
 
-    let last_segment_index = node_client
-        .farmer_app_info()
-        .await
-        .map_err(|err| anyhow::anyhow!("Couldn't receive history size: {}", err,))?
-        .protocol_info
-        .history_size
-        .segment_index();
+    let last_segment_index = farmer_app_info.protocol_info.history_size.segment_index();
 
-    tokio::spawn(run_future_in_dedicated_thread(
+    let _piece_cache_population = run_future_in_dedicated_thread(
         Box::pin({
             let piece_cache = piece_cache.clone();
             let piece_getter = piece_getter.clone();
@@ -159,9 +153,9 @@ where
             populate_pieces_cache(last_segment_index, piece_getter, piece_cache)
         }),
         "pieces-cache-population".to_string(),
-    )?);
+    )?;
 
-    tokio::spawn(run_future_in_dedicated_thread(
+    let _piece_cache_maintainer = run_future_in_dedicated_thread(
         Box::pin({
             let piece_cache = piece_cache.clone();
             let node_client = node_client.clone();
@@ -169,7 +163,7 @@ where
             fill_piece_cache_from_archived_segments(node_client, piece_cache)
         }),
         "pieces-cache-maintainer".to_string(),
-    )?);
+    )?;
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
     let max_pieces_in_sector = match max_pieces_in_sector {
@@ -466,35 +460,50 @@ async fn populate_pieces_cache<PG, PC>(
     PG: PieceGetter + Send + Sync,
     PC: PieceCache + Send + 'static,
 {
-    info!(%segment_index, "Started syncing piece cache...");
+    debug!(%segment_index, "Started syncing piece cache...");
     let final_piece_index =
         u64::from(segment_index.first_piece_index()) + ArchivedHistorySegment::NUM_PIECES as u64;
 
-    for piece_index in 0..final_piece_index {
-        let key = PieceIndex::from(piece_index).hash().to_multihash().into();
+    // TODO: consider optimizing starting point of this loop
+    let mut piece_index = 0;
+    'outer: while piece_index < final_piece_index {
+        // Scroll to the next piece index to cache.
+        {
+            let piece_cache = piece_cache.lock().await;
+            while !piece_cache
+                .should_cache(&PieceIndex::from(piece_index).hash().to_multihash().into())
+            {
+                piece_index += 1;
 
-        let should_cache = { piece_cache.lock().await.should_cache(&key) };
-        if should_cache {
-            let result = piece_getter
-                .get_piece(piece_index.into(), PieceGetterRetryPolicy::Limited(1))
-                .await;
-
-            match result {
-                Ok(Some(piece)) => {
-                    debug!(%piece_index, "Added piece to cache.");
-                    piece_cache.lock().await.add_piece(key, piece);
-                }
-                Ok(None) => {
-                    debug!(%piece_index, "Couldn't find piece.");
-                }
-                Err(err) => {
-                    debug!(error=%err, %piece_index, "Failed to get piece for piece cache.");
+                if piece_index >= final_piece_index {
+                    break 'outer;
                 }
             }
         }
+
+        let key = PieceIndex::from(piece_index).hash().to_multihash().into();
+
+        let result = piece_getter
+            .get_piece(piece_index.into(), PieceGetterRetryPolicy::Limited(1))
+            .await;
+
+        match result {
+            Ok(Some(piece)) => {
+                debug!(%piece_index, "Added piece to cache.");
+                piece_cache.lock().await.add_piece(key, piece);
+            }
+            Ok(None) => {
+                debug!(%piece_index, "Couldn't find piece.");
+            }
+            Err(err) => {
+                debug!(error=%err, %piece_index, "Failed to get piece for piece cache.");
+            }
+        }
+
+        piece_index += 1;
     }
 
-    info!("Finished syncing piece cache.");
+    debug!("Finished syncing piece cache.");
 }
 
 /// Subscribes to a new segment index and adds pieces from the segment to the cache if required.
@@ -513,7 +522,7 @@ async fn fill_piece_cache_from_archived_segments(
             while let Some(segment_header) = segment_headers_notifications.next().await {
                 let segment_index = segment_header.segment_index();
 
-                info!(%segment_index, "Starting to process archived segment....");
+                debug!(%segment_index, "Starting to process archived segment....");
 
                 for piece_index in segment_index.segment_piece_indexes() {
                     let key = piece_index.hash().to_multihash().into();
@@ -575,11 +584,11 @@ async fn fill_piece_cache_from_archived_segments(
                         debug!(%segment_index, "Acknowledged archived segment.");
                     }
                     Err(err) => {
-                        error!(%segment_index, ?err, "Failed to acknowledged archived segment.");
+                        error!(%segment_index, ?err, "Failed to acknowledge archived segment.");
                     }
                 };
 
-                info!(%segment_index, "Finished processing archived segment.");
+                debug!(%segment_index, "Finished processing archived segment.");
             }
         }
         Err(err) => {

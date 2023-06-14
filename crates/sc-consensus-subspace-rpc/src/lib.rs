@@ -518,8 +518,17 @@ where
                 }
             });
 
+        let archived_segment_acknowledgement_senders =
+            self.archived_segment_acknowledgement_senders.clone();
         let fut = async move {
             sink.pipe_from_stream(stream).await;
+
+            let mut archived_segment_acknowledgement_senders =
+                archived_segment_acknowledgement_senders.lock();
+
+            archived_segment_acknowledgement_senders
+                .senders
+                .remove(&subscription_id);
         };
 
         self.executor.spawn(
