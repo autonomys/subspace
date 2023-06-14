@@ -785,13 +785,6 @@ where
 }
 
 /// A block-import handler for Subspace.
-///
-/// This scans each imported block for epoch change signals. The signals are
-/// tracked in a tree (of all forks), and the import logic validates all epoch
-/// change transitions, i.e. whether a given epoch change is expected or whether
-/// it is missing.
-///
-/// The epoch change tree should be pruned as blocks are finalized.
 pub struct SubspaceBlockImport<PosTable, Block: BlockT, Client, I, CIDP> {
     inner: I,
     client: Arc<Client>,

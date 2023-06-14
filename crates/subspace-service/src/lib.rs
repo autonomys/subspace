@@ -737,11 +737,40 @@ where
         .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
     if config.sync_from_dsn {
-        import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
-            .await
-            .map_err(|error| {
-                sc_service::Error::Other(format!("Failed to import blocks from DSN: {error:?}"))
-            })?;
+        let mut imported_blocks = 0;
+
+        // Repeat until no new blocks are imported
+        loop {
+            let new_imported_blocks =
+                import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
+                    .await
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to import blocks from DSN: {error:?}"
+                        ))
+                    })?;
+
+            if new_imported_blocks == 0 {
+                break;
+            }
+
+            imported_blocks += new_imported_blocks;
+
+            info!(
+                "🎉 Imported {} blocks, best #{}/#{}",
+                imported_blocks,
+                client.info().best_number,
+                client.info().best_hash
+            );
+        }
+
+        info!(
+            "🎉 Imported {} blocks, best #{}/#{}, check against reliable sources to make sure it is a \
+            block on canonical chain",
+            imported_blocks,
+            client.info().best_number,
+            client.info().best_hash
+        );
     }
 
     let network_wrapper = Arc::new(NetworkWrapper::default());

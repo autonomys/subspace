@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use clap::Parser;
+use log::info;
 use sc_cli::{CliConfiguration, ImportParams, SharedParams};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sp_core::traits::SpawnEssentialNamed;
@@ -80,9 +81,36 @@ impl ImportBlocksFromDsnCmd {
             }),
         );
 
-        import_blocks(&node, client, &mut import_queue, false)
-            .await
-            .map_err(Into::into)
+        let mut imported_blocks = 0;
+
+        // Repeat until no new blocks are imported
+        loop {
+            let new_imported_blocks =
+                import_blocks(&node, Arc::clone(&client), &mut import_queue, false).await?;
+
+            if new_imported_blocks == 0 {
+                break;
+            }
+
+            imported_blocks += new_imported_blocks;
+
+            info!(
+                "🎉 Imported {} blocks, best #{}/#{}",
+                imported_blocks,
+                client.info().best_number,
+                client.info().best_hash
+            );
+        }
+
+        info!(
+            "🎉 Imported {} blocks, best #{}/#{}, check against reliable sources to make sure it is a \
+            block on canonical chain",
+            imported_blocks,
+            client.info().best_number,
+            client.info().best_hash
+        );
+
+        Ok(())
     }
 }
 
