@@ -23,6 +23,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
     SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
 };
+use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
@@ -289,6 +290,8 @@ where
         .lock()
         .replace(ReadersAndPieces::new(piece_readers, plotted_pieces));
 
+    let archival_storage_pieces = ArchivalStoragePieces::default();
+
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
         .enumerate()
@@ -296,6 +299,7 @@ where
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
             let span = info_span!("farm", %disk_farm_index);
+            let archival_storage_pieces = archival_storage_pieces.clone();
 
             // We are not going to send anything here, but dropping of sender on dropping of
             // corresponding `SingleDiskPlot` will allow us to stop background tasks.
@@ -352,6 +356,15 @@ where
                         if new_pieces.is_empty() {
                             // None of the pieces are new, nothing left to do here
                             return;
+                        }
+
+                        if let Err(err) = archival_storage_pieces.add_pieces(&new_pieces) {
+                            error!(
+                                %err,
+                                %disk_farm_index,
+                                %sector_index,
+                                %sector_offset,
+                                "Couldn't add new pieces to archival storage cuckoo filter.");
                         }
 
                         // TODO: Skip those that were already announced (because they cached)
