@@ -21,12 +21,11 @@ use sc_network_sync::block_request_handler::BlockRequestHandler;
 use sc_network_sync::engine::SyncingEngine;
 use sc_network_sync::service::network::NetworkServiceProvider;
 use sc_network_sync::state_request_handler::StateRequestHandler;
-use sc_network_sync::warp_request_handler::RequestHandler as WarpSyncRequestHandler;
 use sc_network_sync::SyncingService;
 use sc_service::config::SyncMode;
 use sc_service::{
     build_system_rpc_future, BuildNetworkParams, Configuration as ServiceConfiguration,
-    NetworkStarter, TFullClient, TransactionPoolAdapter, WarpSyncParams,
+    NetworkStarter, TFullClient, TransactionPoolAdapter,
 };
 use sc_transaction_pool_api::MaintainedTransactionPool;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
@@ -84,14 +83,10 @@ where
         transaction_pool,
         spawn_handle,
         import_queue,
-        block_announce_validator_builder,
-        warp_sync_params,
+        block_announce_validator_builder: _,
+        warp_sync_params: _,
         block_relay,
     } = params;
-
-    if warp_sync_params.is_none() && config.network.sync_mode.is_warp() {
-        return Err("Warp sync enabled, but no warp sync provider configured.".into());
-    }
 
     if client.requires_full_sync() {
         match config.network.sync_mode {
@@ -102,12 +97,6 @@ where
     }
 
     let protocol_id = config.protocol_id();
-
-    let block_announce_validator = if let Some(f) = block_announce_validator_builder {
-        f(client.clone())
-    } else {
-        Box::new(DefaultBlockAnnounceValidator)
-    };
 
     let (chain_sync_network_provider, chain_sync_network_handle) = NetworkServiceProvider::new();
     let (mut block_server, block_downloader, block_request_protocol_config) = match block_relay {
@@ -149,29 +138,6 @@ where
         protocol_config
     };
 
-    let warp_sync_protocol_config = match warp_sync_params.as_ref() {
-        Some(WarpSyncParams::WithProvider(warp_with_provider)) => {
-            // Allow both outgoing and incoming requests.
-            let (handler, protocol_config) = WarpSyncRequestHandler::new(
-                protocol_id.clone(),
-                client
-                    .block_hash(0u32.into())
-                    .ok()
-                    .flatten()
-                    .expect("Genesis block exists; qed"),
-                config.chain_spec.fork_id(),
-                warp_with_provider.clone(),
-            );
-            spawn_handle.spawn(
-                "warp-sync-request-handler",
-                Some("networking"),
-                handler.run(),
-            );
-            Some(protocol_config)
-        }
-        _ => None,
-    };
-
     let (tx, rx) = sc_utils::mpsc::tracing_unbounded("mpsc_syncing_engine_protocol", 100_000);
     let (engine, sync_service, block_announce_config) = SyncingEngine::new(
         Roles::from(&config.role),
@@ -184,15 +150,13 @@ where
         &config.network,
         protocol_id.clone(),
         &config.chain_spec.fork_id().map(ToOwned::to_owned),
-        block_announce_validator,
-        warp_sync_params,
+        Box::new(DefaultBlockAnnounceValidator),
+        None,
         chain_sync_network_handle,
         import_queue.service(),
         block_downloader,
         state_request_protocol_config.name.clone(),
-        warp_sync_protocol_config
-            .as_ref()
-            .map(|config| config.name.clone()),
+        None,
         rx,
         config.network.force_synced,
     )?;
@@ -223,13 +187,9 @@ where
         block_announce_config,
         tx,
         request_response_protocol_configs: vec![
-            Some(block_request_protocol_config),
-            Some(state_request_protocol_config),
-            warp_sync_protocol_config,
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>(),
+            block_request_protocol_config,
+            state_request_protocol_config,
+        ],
     };
 
     // crate transactions protocol and add it to the list of supported protocols of `network_params`
