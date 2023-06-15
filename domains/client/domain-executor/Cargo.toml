@@ -51,6 +51,7 @@ core-payments-domain-runtime = { version = "0.1.0", path = "../../runtime/core-p
 domain-client-message-relayer = { version = "0.1.0", path = "../relayer" }
 domain-test-primitives = { version = "0.1.0", path = "../../test/primitives" }
 domain-test-service = { version = "0.1.0", path = "../../test/service" }
+num-traits = "0.2.15"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 pallet-domains = { version = "0.1.0", path = "../../../crates/pallet-domains" }
 pallet-messenger = { version = "0.1.0", path = "../../pallets/messenger" }

@@ -2398,6 +2398,7 @@ dependencies = [
  "domain-test-service",
  "futures",
  "futures-timer",
+ "num-traits",
  "pallet-balances",
  "pallet-domains",
  "pallet-messenger",

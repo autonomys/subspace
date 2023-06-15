@@ -34,6 +34,7 @@ use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::Moment;
 
@@ -270,6 +271,13 @@ impl<DomainHash> ProofOfElection<DomainHash> {
             &self.vrf_proof,
             &self.global_challenge,
         )
+    }
+
+    /// Computes the VRF hash.
+    pub fn vrf_hash(&self) -> Blake2b256Hash {
+        let mut bytes = self.vrf_output.encode();
+        bytes.append(&mut self.vrf_proof.encode());
+        blake2b_256_hash(&bytes)
     }
 }
 
