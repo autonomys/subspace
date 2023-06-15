@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 mod handler;
 
 use handler::Handler;
@@ -79,20 +78,20 @@ pub enum ConnectionStatus {
 
 /// We pause between reserved peers dialing otherwise we could do multiple dials to offline peers
 /// wasting resources and producing a ton of log records.
-const DIALING_INTERVAL_IN_SECS: u64 = 1;
+const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
 
 /// Helper-function to schedule a connection attempt.
 #[inline]
 fn schedule_connection() -> Instant {
-    Instant::now().add(Duration::from_secs(DIALING_INTERVAL_IN_SECS))
+    Instant::now().add(DIALING_INTERVAL_IN_SECS)
 }
 
 /// Defines the state of a reserved peer connection state.
 #[derive(Debug, Clone)]
-pub struct ReservedPeerState {
-    pub connection_status: ConnectionStatus,
-    pub peer_id: PeerId,
-    pub address: Multiaddr,
+struct ReservedPeerState {
+    connection_status: ConnectionStatus,
+    peer_id: PeerId,
+    address: Multiaddr,
 }
 
 /// Reserved peer connection events.
@@ -112,8 +111,7 @@ impl Behaviour {
         let peer_addresses = convert_multiaddresses(config.reserved_peers);
 
         let reserved_peers_state = peer_addresses
-            .iter()
-            .cloned()
+            .into_iter()
             .map(|(peer_id, address)| {
                 (
                     peer_id,
@@ -183,9 +181,7 @@ impl NetworkBehaviour for Behaviour {
                 ..
             }) => {
                 if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
-                    if remaining_established > 0 {
-                        state.connection_status = ConnectionStatus::Connected;
-                    } else {
+                    if remaining_established == 0 {
                         state.connection_status = ConnectionStatus::NotConnected {
                             scheduled_at: schedule_connection(),
                         };
@@ -197,8 +193,10 @@ impl NetworkBehaviour for Behaviour {
             FromSwarm::DialFailure(DialFailure { peer_id, .. }) => {
                 if let Some(peer_id) = peer_id {
                     if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
-                        state.connection_status = ConnectionStatus::NotConnected {
-                            scheduled_at: schedule_connection(),
+                        if state.connection_status == ConnectionStatus::PendingConnection {
+                            state.connection_status = ConnectionStatus::NotConnected {
+                                scheduled_at: schedule_connection(),
+                            };
                         };
 
                         debug!(peer_id=%state.peer_id, "Reserved peer dialing failed.");

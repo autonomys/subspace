@@ -89,7 +89,7 @@ pub fn check_reward_signature(
 
 /// Calculates solution distance for given parameters, is used as a primitive to check whether
 /// solution distance is within solution range (see [`is_within_solution_range()`]).
-pub fn calculate_solution_distance(
+fn calculate_solution_distance(
     global_challenge: &Blake2b256Hash,
     audit_chunk: SolutionRange,
     sector_slot_challenge: &SectorSlotChallenge,
@@ -145,53 +145,9 @@ pub struct VerifySolutionParams {
     pub piece_check_params: Option<PieceCheckParams>,
 }
 
-/// Calculate weight derived from provided solution, used during block production
-pub fn calculate_block_weight<'a, PosTable, FarmerPublicKey, RewardAddress>(
-    solution: &'a Solution<FarmerPublicKey, RewardAddress>,
-    slot: SlotNumber,
-    global_randomness: &Randomness,
-) -> Result<BlockWeight, Error>
-where
-    PosTable: Table,
-    PublicKey: From<&'a FarmerPublicKey>,
-{
-    let sector_id = SectorId::new(
-        PublicKey::from(&solution.public_key).hash(),
-        solution.sector_index,
-    );
-
-    let global_challenge = global_randomness.derive_global_challenge(slot);
-    let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
-    let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
-
-    // Check that proof of space is valid
-    let quality = match PosTable::is_proof_valid(
-        &sector_id.evaluation_seed(solution.piece_offset, solution.history_size),
-        s_bucket_audit_index.into(),
-        &solution.proof_of_space,
-    ) {
-        Some(quality) => quality,
-        None => {
-            return Err(Error::InvalidProofOfSpace);
-        }
-    };
-
-    let masked_chunk = (Simd::from(solution.chunk.to_bytes()) ^ Simd::from(*quality)).to_array();
-    // Extract audit chunk from masked chunk
-    let audit_chunk = match masked_chunk
-        .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-        .nth(usize::from(solution.audit_chunk_offset))
-    {
-        Some(audit_chunk) => SolutionRange::from_le_bytes(*audit_chunk),
-        None => {
-            return Err(Error::InvalidAuditChunkOffset);
-        }
-    };
-
-    Ok(BlockWeight::from(
-        SolutionRange::MAX
-            - calculate_solution_distance(&global_challenge, audit_chunk, &sector_slot_challenge),
-    ))
+/// Calculate weight derived from provided solution range
+pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
+    BlockWeight::from(SolutionRange::MAX - solution_range)
 }
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on

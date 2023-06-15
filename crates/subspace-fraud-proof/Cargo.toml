@@ -15,20 +15,20 @@ targets = ["x86_64-unknown-linux-gnu"]
 codec = { package = "parity-scale-codec", version = "3.4.0", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
-frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 futures = "0.3.28"
 hash-db = "0.16.0"
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
 sp-domain-digests = { version = "0.1.0", path = "../../domains/primitives/digests" }
 sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }
-sp-receipts = { version = "0.1.0", path = "../sp-receipts" }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-settlement = { version = "0.1.0", path = "../sp-settlement" }
+sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 subspace-wasm-tools = { version = "0.1.0", path = "../subspace-wasm-tools" }
 system-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/system-runtime" }
 tracing = "0.1.37"
@@ -36,15 +36,15 @@ tracing = "0.1.37"
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
 domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
-pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
-sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", default-features = false }
-sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
+sp-keyring = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-client" }
 subspace-test-runtime = { version = "0.1.0", path = "../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
-substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 tempfile = "3.5.0"
 tokio = "1.27.0"

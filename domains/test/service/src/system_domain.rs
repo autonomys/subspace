@@ -14,6 +14,7 @@ use sc_service::{
     BasePath, Configuration as ServiceConfiguration, Role, RpcHandlers, TFullBackend, TFullClient,
     TaskManager,
 };
+use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domains::DomainId;
@@ -93,6 +94,7 @@ impl sc_executor::NativeExecutionDispatch for SystemDomainExecutorDispatch {
 /// Start an executor with the given system domain `Configuration` and the mock primary node.
 #[sc_tracing::logging::prefix_logs_with(system_domain_config.network.node_name.as_str())]
 async fn run_executor_with_mock_primary_node(
+    role: Role,
     system_domain_config: ServiceConfiguration,
     mock_primary_node: &mut MockPrimaryNode,
     maybe_relayer_id: Option<AccountId>,
@@ -106,6 +108,7 @@ async fn run_executor_with_mock_primary_node(
     RpcHandlers,
     SystemExecutor,
     SystemGossipMessageValidator,
+    TracingUnboundedSender<Vec<u8>>,
 )> {
     let system_domain_config = DomainConfiguration {
         service_config: system_domain_config,
@@ -159,9 +162,11 @@ async fn run_executor_with_mock_primary_node(
         tx_pool_sink,
     } = system_domain_node;
 
-    mock_primary_node
-        .xdm_gossip_worker_builder()
-        .push_domain_tx_pool_sink(DomainId::SYSTEM, tx_pool_sink);
+    if role.is_authority() {
+        mock_primary_node
+            .xdm_gossip_worker_builder()
+            .push_domain_tx_pool_sink(DomainId::SYSTEM, tx_pool_sink.clone());
+    }
 
     network_starter.start_network();
 
@@ -175,6 +180,7 @@ async fn run_executor_with_mock_primary_node(
         rpc_handlers,
         executor,
         gossip_message_validator,
+        tx_pool_sink,
     ))
 }
 
@@ -203,6 +209,8 @@ pub struct SystemDomainNode {
     pub executor: SystemExecutor,
     /// System domain gossip message validator.
     pub gossip_message_validator: SystemGossipMessageValidator,
+    /// Sink to the node's tx pool
+    pub tx_pool_sink: TracingUnboundedSender<Vec<u8>>,
 }
 
 /// A builder to create a [`SystemDomainNode`].
@@ -285,7 +293,7 @@ impl SystemDomainNodeBuilder {
             self.key,
             self.system_domain_nodes,
             self.system_domain_nodes_exclusive,
-            role,
+            role.clone(),
             BasePath::new(self.base_path.path().join("system")),
         )
         .expect("could not generate system domain node Configuration");
@@ -307,7 +315,9 @@ impl SystemDomainNodeBuilder {
             rpc_handlers,
             executor,
             gossip_message_validator,
+            tx_pool_sink,
         ) = run_executor_with_mock_primary_node(
+            role,
             system_domain_config,
             mock_primary_node,
             maybe_relayer_id,
@@ -330,6 +340,7 @@ impl SystemDomainNodeBuilder {
             rpc_handlers,
             executor,
             gossip_message_validator,
+            tx_pool_sink,
         }
     }
 }

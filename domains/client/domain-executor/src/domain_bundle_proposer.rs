@@ -1,6 +1,8 @@
 use crate::parent_chain::ParentChainInterface;
+use crate::sortition::{TransactionSelectError, TransactionSelector};
 use crate::ExecutionReceiptFor;
 use codec::Encode;
+use domain_runtime_primitives::DomainCoreApi;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
@@ -8,8 +10,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_domains::{Bundle, BundleHeader};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
+use sp_domains::{BundleHeader, BundleSolution};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -34,6 +36,12 @@ impl<Block, Client, PBlock, PClient, TransactionPool> Clone
     }
 }
 
+pub(super) type ProposeBundleOutput<Block, PBlock> = (
+    BundleHeader<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
+    ExecutionReceiptFor<PBlock, <Block as BlockT>::Hash>,
+    Vec<<Block as BlockT>::Extrinsic>,
+);
+
 impl<Block, Client, PBlock, PClient, TransactionPool>
     DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>
 where
@@ -41,7 +49,7 @@ where
     PBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<PBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block>,
+    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     PClient: HeaderBackend<PBlock>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -60,10 +68,12 @@ where
 
     pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
+        bundle_solution: BundleSolution<Block::Hash>,
         slot: Slot,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_chain: ParentChain,
-    ) -> sp_blockchain::Result<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+        tx_selector: TransactionSelector<Block, Client>,
+    ) -> sp_blockchain::Result<ProposeBundleOutput<Block, PBlock>>
     where
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -102,7 +112,16 @@ where
                 break;
             }
             let pending_tx_data = pending_tx.data().clone();
-            extrinsics.push(pending_tx_data);
+            let should_select_this_tx = tx_selector
+                .should_select_tx(parent_hash, pending_tx_data.clone())
+                .unwrap_or_else(|err| {
+                    // Accept unsigned transactions like cross domain.
+                    tracing::trace!("propose bundle: sortition select failed: {err:?}");
+                    matches!(err, TransactionSelectError::TxSignerNotFound)
+                });
+            if should_select_this_tx {
+                extrinsics.push(pending_tx_data);
+            }
         }
 
         let extrinsics_root = BlakeTwo256::ordered_trie_root(
@@ -112,37 +131,26 @@ where
 
         let (primary_hash, primary_number) = primary_info;
 
-        let receipts = if primary_number.is_zero() {
-            Vec::new()
-        } else {
-            self.collect_bundle_receipts(parent_number, parent_hash, parent_chain)?
+        let receipt = self.load_bundle_receipt(parent_number, parent_hash, parent_chain)?;
+
+        let header = BundleHeader {
+            primary_number,
+            primary_hash,
+            slot_number: slot.into(),
+            extrinsics_root,
+            bundle_solution,
         };
 
-        receipts_sanity_check::<Block, PBlock>(&receipts)?;
-
-        let bundle = Bundle {
-            header: BundleHeader {
-                primary_number,
-                primary_hash,
-                slot_number: slot.into(),
-                extrinsics_root,
-            },
-            receipts,
-            extrinsics,
-        };
-
-        Ok(bundle)
+        Ok((header, receipt, extrinsics))
     }
 
-    /// Returns the receipts in the next domain bundle.
-    ///
-    /// There will be at least one receipt in the collected receipts.
-    fn collect_bundle_receipts<ParentChain, ParentChainBlock>(
+    /// Returns the receipt in the next domain bundle.
+    fn load_bundle_receipt<ParentChain, ParentChainBlock>(
         &self,
         header_number: NumberFor<Block>,
         header_hash: Block::Hash,
         parent_chain: ParentChain,
-    ) -> sp_blockchain::Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>>
+    ) -> sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>
     where
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -172,9 +180,6 @@ where
             })
         };
 
-        let mut receipts = Vec::new();
-        let mut to_send = head_receipt_number + One::one();
-
         let header_block_receipt_is_written =
             crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(&*self.client, header_hash)?
                 .is_some();
@@ -192,96 +197,17 @@ where
             header_number.saturating_sub(One::one())
         };
 
-        let max_allowed = (head_receipt_number + max_drift).min(available_best_receipt_number);
+        let receipt_number = (head_receipt_number + One::one()).min(available_best_receipt_number);
 
-        loop {
-            let primary_block_hash =
-                self.primary_chain_client
-                    .hash(to_send.into())?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Primary block hash for #{to_send:?} not found"
-                        ))
-                    })?;
-            receipts.push(load_receipt(primary_block_hash, to_send)?);
-            to_send += One::one();
+        let primary_block_hash = self
+            .primary_chain_client
+            .hash(receipt_number.into())?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Primary block hash for #{receipt_number:?} not found"
+                ))
+            })?;
 
-            if to_send > max_allowed {
-                break;
-            }
-        }
-
-        Ok(receipts)
-    }
-}
-
-/// Performs the sanity check in order to detect the potential invalid receipts earlier.
-fn receipts_sanity_check<Block, PBlock>(
-    receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
-) -> sp_blockchain::Result<()>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-{
-    for (i, [ref head, ref tail]) in receipts.array_windows().enumerate() {
-        if head.primary_number + One::one() != tail.primary_number {
-            return Err(sp_blockchain::Error::Application(Box::from(format!(
-                "Found inconsecutive receipt at index {}, receipts[{i}]: {:?}, receipts[{}]: {:?}",
-                i + 1,
-                (head.primary_number, head.primary_hash),
-                i + 1,
-                (tail.primary_number, tail.primary_hash),
-            ))));
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::receipts_sanity_check;
-    use domain_test_service::system_domain_test_runtime::Block;
-    use sp_core::H256;
-    use sp_domains::ExecutionReceipt;
-    use subspace_core_primitives::BlockNumber;
-    use subspace_runtime_primitives::Hash;
-    use subspace_test_runtime::Block as PBlock;
-
-    fn create_dummy_receipt_for(
-        primary_number: BlockNumber,
-    ) -> ExecutionReceipt<BlockNumber, Hash, H256> {
-        ExecutionReceipt {
-            primary_number,
-            primary_hash: H256::random(),
-            domain_hash: H256::random(),
-            trace: if primary_number == 0 {
-                Vec::new()
-            } else {
-                vec![H256::random(), H256::random()]
-            },
-            trace_root: Default::default(),
-        }
-    }
-
-    #[test]
-    fn test_receipts_sanity_check() {
-        let receipts = vec![
-            create_dummy_receipt_for(1),
-            create_dummy_receipt_for(2),
-            create_dummy_receipt_for(4),
-        ];
-        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_err());
-
-        let receipts = vec![
-            create_dummy_receipt_for(1),
-            create_dummy_receipt_for(2),
-            create_dummy_receipt_for(3),
-        ];
-        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
-
-        let receipts = vec![create_dummy_receipt_for(1)];
-        assert!(receipts_sanity_check::<Block, PBlock>(&receipts).is_ok());
-
-        assert!(receipts_sanity_check::<Block, PBlock>(&[]).is_ok());
+        load_receipt(primary_block_hash, receipt_number)
     }
 }

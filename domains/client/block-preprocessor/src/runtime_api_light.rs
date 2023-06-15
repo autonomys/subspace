@@ -8,7 +8,7 @@ use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::ExecutionContext;
-use sp_domains::SignedOpaqueBundle;
+use sp_domains::OpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_runtime::Storage;
@@ -214,12 +214,10 @@ where
     fn construct_submit_core_bundle_extrinsics(
         &self,
         at: Block::Hash,
-        signed_opaque_bundles: Vec<
-            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        >,
+        opaque_bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
     ) -> Result<Vec<Vec<u8>>, ApiError> {
         <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>::construct_submit_core_bundle_extrinsics(
-            self, at, signed_opaque_bundles,
+            self, at, opaque_bundles,
         )
     }
 }

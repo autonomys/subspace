@@ -572,7 +572,8 @@ fn main() -> Result<(), Error> {
                             piece_cache_size: cli.piece_cache_size.as_u64(),
                         },
                         sync_from_dsn: cli.sync_from_dsn,
-                        enable_subspace_block_relay: cli.enable_subspace_block_relay,
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay ||
+                                                    cli.run.is_dev().unwrap_or(false),
                     };
 
                     let partial_components =

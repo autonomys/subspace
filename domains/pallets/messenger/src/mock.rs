@@ -1,5 +1,6 @@
 use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRootOf};
 use frame_support::storage::generator::StorageDoubleMap;
+use frame_support::weights::Weight;
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
@@ -17,7 +18,7 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 macro_rules! impl_runtime {
     ($runtime:ty, $domain_id:literal) => {
         use crate::mock::{
-            mock_pallet_receipts, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
+            mock_pallet_settlement, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
         };
         use crate::relayer::RelayerId;
         use codec::{Encode, Decode};
@@ -42,7 +43,7 @@ macro_rules! impl_runtime {
                 UncheckedExtrinsic = UncheckedExtrinsic,
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                Receipts: mock_pallet_receipts::{Pallet, Storage},
+                Settlement: mock_pallet_settlement::{Pallet, Storage},
                 Messenger: crate::{Pallet, Call, Event<T>},
                 Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
                 Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
@@ -86,7 +87,7 @@ macro_rules! impl_runtime {
             pub const RelayerConfirmationDepth: u64 = 2;
         }
 
-        impl mock_pallet_receipts::Config for $runtime {}
+        impl mock_pallet_settlement::Config for $runtime {}
 
         parameter_types! {
             pub const SelfDomainId: DomainId = DomainId::new($domain_id);
@@ -102,10 +103,17 @@ macro_rules! impl_runtime {
             type RelayerDeposit = RelayerDeposit;
             type ConfirmationDepth = RelayerConfirmationDepth;
             type DomainInfo = ();
+            type WeightInfo = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,
             ) -> Option<Box<dyn EndpointHandler<MessageId>>>{
+                // Return a dummy handler for benchmark to observe the outer weight when processing cross domain
+                // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
+                #[cfg(feature = "runtime-benchmarks")]
+                {
+                    return Some(Box::new(sp_messenger::endpoint::BenchmarkEndpointHandler));
+                }
                 match endpoint {
                     Endpoint::Id(id) => match id {
                         100 => Some(Box::new(pallet_transporter::EndpointHandler(PhantomData::<$runtime>))),
@@ -161,6 +169,7 @@ macro_rules! impl_runtime {
             type Currency = Balances;
             type Sender = Messenger;
             type AccountIdConverter = MockAccountIdConverter;
+            type WeightInfo = ();
         }
 
         pub const USER_ACCOUNT: AccountId = 1;
@@ -212,6 +221,10 @@ impl EndpointHandler<MessageId> for MockEndpoint {
         Ok(vec![5, 6, 7, 8])
     }
 
+    fn message_weight(&self) -> Weight {
+        Weight::zero()
+    }
+
     fn message_response(
         &self,
         _dst_domain_id: DomainId,
@@ -223,11 +236,15 @@ impl EndpointHandler<MessageId> for MockEndpoint {
         assert_eq!(resp, vec![5, 6, 7, 8]);
         Ok(())
     }
+
+    fn message_response_weight(&self) -> Weight {
+        Weight::zero()
+    }
 }
 
 #[frame_support::pallet]
 #[allow(dead_code)]
-pub(crate) mod mock_pallet_receipts {
+pub(crate) mod mock_pallet_settlement {
     use crate::mock::DomainId;
     use frame_support::pallet_prelude::*;
 

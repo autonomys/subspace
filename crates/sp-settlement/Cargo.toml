@@ -1,0 +1,31 @@
+[package]
+name = "sp-settlement"
+version = "0.1.0"
+authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Primitives for Receipts"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.1.2", default-features = false }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"sp-api/std",
+	"sp-core/std",
+	"sp-domains/std",
+	"sp-runtime/std",
+	"sp-std/std",
+]

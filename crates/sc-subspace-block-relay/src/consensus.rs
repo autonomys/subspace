@@ -91,6 +91,14 @@ enum ServerMessage<Block: BlockT, ProtocolRequest> {
     ProtocolRequest(ProtocolRequest),
 }
 
+impl<Block: BlockT, ProtocolRequest> From<ProtocolRequest>
+    for ServerMessage<Block, ProtocolRequest>
+{
+    fn from(inner: ProtocolRequest) -> ServerMessage<Block, ProtocolRequest> {
+        ServerMessage::ProtocolRequest(inner)
+    }
+}
+
 /// The client side of the consensus block relay
 struct ConsensusRelayClient<Block, Pool, ProtoClient>
 where
@@ -140,7 +148,10 @@ where
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics(protocol_response, &network_peer_handle)
+                .resolve_extrinsics::<ServerMessage<Block, ProtoClient::Request>>(
+                    protocol_response,
+                    &network_peer_handle,
+                )
                 .await?;
             (Some(body), local_miss)
         } else {
@@ -168,14 +179,17 @@ where
     }
 
     /// Resolves the extrinsics from the initial response
-    async fn resolve_extrinsics(
+    async fn resolve_extrinsics<Request>(
         &self,
         protocol_response: ProtoClient::Response,
         network_peer_handle: &NetworkPeerHandle,
-    ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError> {
+    ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError>
+    where
+        Request: From<ProtoClient::Request> + Encode + Send + Sync,
+    {
         let (block_hash, resolved) = self
             .protocol_client
-            .resolve_initial_response(protocol_response, network_peer_handle)
+            .resolve_initial_response::<Request>(protocol_response, network_peer_handle)
             .await?;
         let mut local_miss = 0;
         let extrinsics = resolved

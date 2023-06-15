@@ -179,7 +179,8 @@ where
         let bundle_is_an_equivocation = false;
 
         if bundle_is_an_equivocation {
-            let equivocation_proof = BundleEquivocationProof::dummy_at(bundle.header.slot_number);
+            let equivocation_proof =
+                BundleEquivocationProof::dummy_at(bundle.sealed_header.header.slot_number);
             let fraud_proof =
                 FraudProof::<ParentChainBlock>::BundleEquivocation(equivocation_proof);
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
@@ -189,9 +190,9 @@ where
         }
     }
 
-    pub(crate) fn validate_bundle_receipts(
+    pub(crate) fn validate_bundle_receipt(
         &self,
-        receipts: &[ExecutionReceiptFor<PBlock, Block::Hash>],
+        receipt: &ExecutionReceiptFor<PBlock, Block::Hash>,
         domain_id: DomainId,
     ) -> Result<(), GossipMessageError> {
         let head_receipt_number = self
@@ -199,12 +200,10 @@ where
             .head_receipt_number(self.parent_chain.best_hash())?;
         let head_receipt_number = to_number_primitive(head_receipt_number);
 
-        for receipt in receipts {
-            if let Some(fraud_proof) =
-                self.validate_execution_receipt(receipt, head_receipt_number, domain_id)?
-            {
-                self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
-            }
+        if let Some(fraud_proof) =
+            self.validate_execution_receipt(receipt, head_receipt_number, domain_id)?
+        {
+            self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 
         Ok(())

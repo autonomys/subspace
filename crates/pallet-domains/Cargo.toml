@@ -13,20 +13,20 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
-frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30", optional = true }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", optional = true }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 log = { version = "0.4.17", default-features = false }
-pallet-receipts = { version = "0.1.0", default-features = false, path = "../pallet-receipts" }
+pallet-settlement = { version = "0.1.0", default-features = false, path = "../pallet-settlement" }
 scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 
 [dev-dependencies]
-sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
-sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "9cf78129a2638d3f370868863d16f4fe32b4ad30" }
+sp-io = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-trie = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 
 [features]
 default = ["std"]
@@ -39,7 +39,7 @@ std = [
   "scale-info/std",
   "sp-core/std",
   "sp-domains/std",
-  "pallet-receipts/std",
+  "pallet-settlement/std",
   "sp-runtime/std",
   "sp-std/std",
 ]

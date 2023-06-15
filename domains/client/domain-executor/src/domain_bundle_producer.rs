@@ -1,6 +1,7 @@
 use crate::bundle_election_solver::{BundleElectionSolver, PreliminaryBundleSolution};
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
+use crate::sortition::TransactionSelector;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::Decode;
@@ -10,20 +11,18 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
+    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_core_primitives::U256;
 use system_runtime_primitives::SystemDomainApi;
 
-type SignedOpaqueBundle<Block, PBlock> = sp_domains::SignedOpaqueBundle<
-    NumberFor<PBlock>,
-    <PBlock as BlockT>::Hash,
-    <Block as BlockT>::Hash,
->;
+type OpaqueBundle<Block, PBlock> =
+    sp_domains::OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
 
 pub(super) struct DomainBundleProducer<
     Block,
@@ -124,7 +123,7 @@ where
     NumberFor<Block>: Into<NumberFor<PBlock>>,
     NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block>,
+    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     SClient: HeaderBackend<SBlock>
         + BlockBackend<SBlock>
         + ProvideRuntimeApi<SBlock>
@@ -135,6 +134,7 @@ where
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
         system_domain_client: Arc<SClient>,
@@ -171,7 +171,7 @@ where
         self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         slot_info: ExecutorSlotInfo,
-    ) -> sp_blockchain::Result<Option<SignedOpaqueBundle<Block, PBlock>>> {
+    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, PBlock>>> {
         let ExecutorSlotInfo {
             slot,
             global_challenge,
@@ -199,21 +199,22 @@ where
             self.client.info().best_number.saturating_sub(One::one())
         };
 
-        let should_skip_slot = if domain_best_number.is_zero() {
+        let should_skip_slot = {
             let primary_block_number = primary_info.1;
-
-            // Executor hasn't able to finish the processing of domain block #1.
-            !primary_block_number.is_zero()
-        } else {
             let head_receipt_number = self
                 .parent_chain
                 .head_receipt_number(self.parent_chain.best_hash())?;
 
-            // Executor is lagging behind the receipt chain on its parent chain as another executor
-            // already processed a block higher than the local best and submitted the receipt to
-            // the parent chain, we ought to catch up with the primary block processing before
-            // producing new bundle.
-            domain_best_number <= head_receipt_number
+            // Receipt for block #0 does not exist, simply skip slot here to bypasss this case and
+            // make the code cleaner
+            primary_block_number.is_zero()
+                // Executor hasn't able to finish the processing of domain block #1.
+                || domain_best_number.is_zero()
+                // Executor is lagging behind the receipt chain on its parent chain as another executor
+                // already processed a block higher than the local best and submitted the receipt to
+                // the parent chain, we ought to catch up with the primary block processing before
+                // producing new bundle.
+                || domain_best_number <= head_receipt_number
         };
 
         if should_skip_slot {
@@ -235,18 +236,63 @@ where
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
-            let bundle = self
-                .domain_bundle_proposer
-                .propose_bundle_at(slot, primary_info, self.parent_chain.clone())
-                .await?;
-
             let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
 
-            Ok(Some(sign_new_bundle::<Block, PBlock>(
-                bundle,
-                self.keystore,
-                bundle_solution,
-            )?))
+            let proof_of_election = bundle_solution.proof_of_election();
+            let bundle_author = proof_of_election.executor_public_key.clone();
+            let tx_selector = TransactionSelector::new(
+                U256::from_be_bytes(proof_of_election.vrf_hash()),
+                self.client.clone(),
+            );
+            let (bundle_header, receipt, extrinsics) = self
+                .domain_bundle_proposer
+                .propose_bundle_at(
+                    bundle_solution,
+                    slot,
+                    primary_info,
+                    self.parent_chain.clone(),
+                    tx_selector,
+                )
+                .await?;
+
+            let to_sign = bundle_header.hash();
+
+            let signature = self
+                .keystore
+                .sr25519_sign(
+                    ExecutorPublicKey::ID,
+                    bundle_author.as_ref(),
+                    to_sign.as_ref(),
+                )
+                .map_err(|error| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Error occurred when signing the bundle: {error}"
+                    )))
+                })?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Application(Box::from(
+                        "This should not happen as the existence of key was just checked",
+                    ))
+                })?;
+
+            let signature = ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
+                sp_blockchain::Error::Application(Box::from(format!(
+                    "Failed to decode the signature of bundle: {err}"
+                )))
+            })?;
+
+            let bundle = Bundle {
+                sealed_header: SealedBundleHeader::new(bundle_header, signature),
+                receipt,
+                extrinsics,
+            };
+
+            // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
+            // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
+            // tracing::error!(error = ?e, "Failed to send transaction bundle");
+            // }
+
+            Ok(Some(bundle.into_opaque_bundle()))
         } else {
             Ok(None)
         }
@@ -282,47 +328,5 @@ where
                 })
             }
         }
-    }
-}
-
-pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
-    bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    keystore: KeystorePtr,
-    bundle_solution: BundleSolution<Block::Hash>,
-) -> sp_blockchain::Result<SignedOpaqueBundle<Block, PBlock>> {
-    let to_sign = bundle.hash();
-    let bundle_author = bundle_solution
-        .proof_of_election()
-        .executor_public_key
-        .clone();
-    match keystore.sr25519_sign(
-        ExecutorPublicKey::ID,
-        bundle_author.as_ref(),
-        to_sign.as_ref(),
-    ) {
-        Ok(Some(signature)) => {
-            let signed_bundle = SignedBundle {
-                bundle,
-                bundle_solution,
-                signature: ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to decode the signature of bundle: {err}"
-                    )))
-                })?,
-            };
-
-            // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
-            // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-            // tracing::error!(error = ?e, "Failed to send transaction bundle");
-            // }
-
-            Ok(signed_bundle.into_signed_opaque_bundle())
-        }
-        Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
-            "This should not happen as the existence of key was just checked",
-        ))),
-        Err(error) => Err(sp_blockchain::Error::Application(Box::from(format!(
-            "Error occurred when signing the bundle: {error}"
-        )))),
     }
 }

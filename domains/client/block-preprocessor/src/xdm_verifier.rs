@@ -1,11 +1,11 @@
 use crate::runtime_api::StateRootExtractor;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend};
-use sp_domains::ExecutorApi;
+use sp_domains::DomainId;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor};
+use sp_settlement::SettlementApi;
 use std::sync::Arc;
-use system_runtime_primitives::SystemDomainApi;
 
 /// Verifies if the xdm has the correct proof generated from known parent block.
 /// This is used by Core domain nodes.
@@ -20,8 +20,7 @@ pub fn verify_xdm_with_system_domain_client<SClient, Block, SBlock, PBlock, SRE>
 ) -> Result<bool, Error>
 where
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    SClient::Api: MessengerApi<SBlock, NumberFor<SBlock>> + SettlementApi<SBlock, Block::Hash>,
     Block: BlockT,
     SBlock: BlockT,
     SBlock::Hash: From<Block::Hash>,
@@ -61,13 +60,13 @@ where
                 }
             }
 
-            if let Some(expected_core_domain_state_root) = api.core_domain_state_root_at(
+            if let Some(expected_core_domain_state_root) = api.state_root(
                 best_hash,
                 domain_id,
                 core_domain_info.block_number.into(),
                 core_domain_info.block_hash.into(),
             )? {
-                if expected_core_domain_state_root != core_domain_state_root.into() {
+                if expected_core_domain_state_root != core_domain_state_root {
                     return Ok(false);
                 }
             }
@@ -89,7 +88,7 @@ pub fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
 ) -> Result<bool, Error>
 where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
+    PClient::Api: SettlementApi<PBlock, SBlock::Hash>,
     SBlock: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<SBlock>>,
@@ -100,12 +99,13 @@ where
         // verify system domain state root
         let best_hash = primary_chain_client.info().best_hash;
         let primary_runtime = primary_chain_client.runtime_api();
-        if let Some(system_domain_state_root) = primary_runtime.system_domain_state_root_at(
+        if let Some(system_domain_state_root) = primary_runtime.state_root(
             best_hash,
+            DomainId::SYSTEM,
             state_roots.system_domain_block_info.block_number.into(),
-            state_roots.system_domain_block_info.block_hash,
+            state_roots.system_domain_block_info.block_hash.into(),
         )? {
-            if system_domain_state_root != state_roots.system_domain_state_root.into() {
+            if system_domain_state_root != state_roots.system_domain_state_root {
                 return Ok(false);
             }
         }

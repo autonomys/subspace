@@ -36,6 +36,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
+use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use system_runtime_primitives::SystemDomainApi;
@@ -115,7 +116,8 @@ pub(super) async fn start_worker<
         + 'static,
     SClient::Api: DomainCoreApi<SBlock>
         + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>,
+        + MessengerApi<SBlock, NumberFor<SBlock>>
+        + SettlementApi<SBlock, Block::Hash>,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>
@@ -203,6 +205,7 @@ pub(super) async fn start_worker<
         )
         .await;
     } else {
+        drop(handle_slot_notifications_fut);
         handle_block_import_notifications_fut.await
     }
 }

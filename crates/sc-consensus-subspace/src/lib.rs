@@ -69,7 +69,6 @@ use sp_consensus_subspace::{
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
-use std::cmp::Ordering;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -786,13 +785,6 @@ where
 }
 
 /// A block-import handler for Subspace.
-///
-/// This scans each imported block for epoch change signals. The signals are
-/// tracked in a tree (of all forks), and the import logic validates all epoch
-/// change transitions, i.e. whether a given epoch change is expected or whether
-/// it is missing.
-///
-/// The epoch change tree should be pruned as blocks are finalized.
 pub struct SubspaceBlockImport<PosTable, Block: BlockT, Client, I, CIDP> {
     inner: I,
     client: Arc<Client>,
@@ -1121,8 +1113,6 @@ where
         .await
         .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
 
-        let pre_digest = subspace_digest_items.pre_digest;
-
         let parent_weight = if block_number.is_one() {
             0
         } else {
@@ -1136,12 +1126,7 @@ where
                 })?
         };
 
-        let added_weight = calculate_block_weight::<PosTable, _, _>(
-            &pre_digest.solution,
-            pre_digest.slot.into(),
-            &subspace_digest_items.global_randomness,
-        )
-        .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+        let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
         let total_weight = parent_weight + added_weight;
 
         let info = self.client.info();
@@ -1175,14 +1160,12 @@ where
         // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
         // range), if there's a tie we go with the longest chain.
         let fork_choice = {
-            let (last_best, last_best_number) = (info.best_hash, info.best_number);
-
-            let last_best_weight = if &last_best == block.header.parent_hash() {
+            let last_best_weight = if &info.best_hash == block.header.parent_hash() {
                 // the parent=genesis case is already covered for loading parent weight,
                 // so we don't need to cover again here.
                 parent_weight
             } else {
-                aux_schema::load_block_weight(&*self.client, last_best)
+                aux_schema::load_block_weight(&*self.client, info.best_hash)
                     .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
                     .ok_or_else(|| {
                         ConsensusError::ChainLookup(
@@ -1191,11 +1174,7 @@ where
                     })?
             };
 
-            ForkChoiceStrategy::Custom(match total_weight.cmp(&last_best_weight) {
-                Ordering::Greater => true,
-                Ordering::Equal => block_number > last_best_number,
-                Ordering::Less => false,
-            })
+            ForkChoiceStrategy::Custom(total_weight > last_best_weight)
         };
         block.fork_choice = Some(fork_choice);
 

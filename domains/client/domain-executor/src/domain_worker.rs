@@ -5,7 +5,7 @@ use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::{ExecutorApi, SignedOpaqueBundle};
+use sp_domains::{ExecutorApi, OpaqueBundle};
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -27,9 +27,7 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
         ) -> Pin<
             Box<
                 dyn Future<
-                        Output = Option<
-                            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-                        >,
+                        Output = Option<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
                     > + Send,
             >,
         > + Send
@@ -203,9 +201,7 @@ where
         ) -> Pin<
             Box<
                 dyn Future<
-                        Output = Option<
-                            SignedOpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-                        >,
+                        Output = Option<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
                     > + Send,
             >,
         > + Send

@@ -1,4 +1,4 @@
-//! This module derives an trait [`VerifierApi`] from the runtime api `ReceiptsApi`
+//! This module derives an trait [`VerifierApi`] from the runtime api `SettlementApi`
 //! as well as the implementation to provide convenient interfaces used in the fraud
 //! proof verification.
 
@@ -9,8 +9,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::DomainId;
-use sp_receipts::ReceiptsApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -46,7 +46,7 @@ pub trait VerifierApi {
 
 /// A wrapper of primary chain client/system domain client in common.
 ///
-/// Both primary chain client and system domain client maintains the state of receipts, i.e., implements `ReceiptsApi`.
+/// Both primary chain client and system domain client maintains the state of receipts, i.e., implements `SettlementApi`.
 pub struct VerifierClient<Client, Block> {
     client: Arc<Client>,
     _phantom: PhantomData<Block>,
@@ -75,7 +75,7 @@ impl<Client, Block> VerifierApi for VerifierClient<Client, Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: ReceiptsApi<Block, domain_runtime_primitives::Hash>,
+    Client::Api: SettlementApi<Block, domain_runtime_primitives::Hash>,
 {
     // TODO: It's not necessary to require `pre_state_root` in the proof and then verify, it can
     // be just retrieved by the verifier itself according the execution phase, which requires some

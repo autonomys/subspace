@@ -22,7 +22,6 @@ pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
 
-use crate::fraud_proof::FraudProof;
 use bundle_election::VrfProofError;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode};
@@ -31,10 +30,11 @@ use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
-use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
 use subspace_runtime_primitives::Moment;
 
@@ -176,9 +176,12 @@ pub struct DomainConfig<Hash, Balance, Weight> {
     pub min_operator_stake: Balance,
 }
 
-/// Header of bundle.
+/// Unsealed header of bundle.
+///
+/// Domain operator needs to sign the hash of [`BundleHeader`] and uses the signature to
+/// assemble the final [`SealedBundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleHeader<Number, Hash> {
+pub struct BundleHeader<Number, Hash, DomainHash> {
     /// The block number of primary block at which the bundle was created.
     pub primary_number: Number,
     /// The hash of primary block at which the bundle was created.
@@ -187,12 +190,54 @@ pub struct BundleHeader<Number, Hash> {
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
     pub extrinsics_root: H256,
+    /// Solution of the bundle election.
+    pub bundle_solution: BundleSolution<DomainHash>,
 }
 
-impl<Number: Encode, Hash: Encode> BundleHeader<Number, Hash> {
+impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash, DomainHash> {
     /// Returns the hash of this header.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
+    }
+}
+
+/// Header of bundle.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct SealedBundleHeader<Number, Hash, DomainHash> {
+    /// Unsealed header.
+    pub header: BundleHeader<Number, Hash, DomainHash>,
+    /// Signature of the bundle.
+    pub signature: ExecutorSignature,
+}
+
+impl<Number: Encode, Hash: Encode, DomainHash: Encode>
+    SealedBundleHeader<Number, Hash, DomainHash>
+{
+    /// Constructs a new instance of [`SealedBundleHeader`].
+    pub fn new(
+        header: BundleHeader<Number, Hash, DomainHash>,
+        signature: ExecutorSignature,
+    ) -> Self {
+        Self { header, signature }
+    }
+
+    /// Returns the hash of the inner unsealed header.
+    pub fn pre_hash(&self) -> H256 {
+        self.header.hash()
+    }
+
+    /// Returns the hash of this header.
+    pub fn hash(&self) -> H256 {
+        BlakeTwo256::hash_of(self)
+    }
+
+    /// Returns whether the signature is valid.
+    pub fn verify_signature(&self) -> bool {
+        self.header
+            .bundle_solution
+            .proof_of_election()
+            .executor_public_key
+            .verify(&self.pre_hash(), &self.signature)
     }
 }
 
@@ -226,6 +271,13 @@ impl<DomainHash> ProofOfElection<DomainHash> {
             &self.vrf_proof,
             &self.global_challenge,
         )
+    }
+
+    /// Computes the VRF hash.
+    pub fn vrf_hash(&self) -> Blake2b256Hash {
+        let mut bytes = self.vrf_output.encode();
+        bytes.append(&mut self.vrf_proof.encode());
+        blake2b_256_hash(&bytes)
     }
 }
 
@@ -296,17 +348,38 @@ impl<DomainHash> BundleSolution<DomainHash> {
     }
 }
 
+impl<DomainHash: Default> BundleSolution<DomainHash> {
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
+        let proof_of_election = ProofOfElection::dummy(domain_id, executor_public_key);
+
+        if domain_id.is_system() {
+            Self::System {
+                authority_stake_weight: Default::default(),
+                authority_witness: Default::default(),
+                proof_of_election,
+            }
+        } else if domain_id.is_core() {
+            Self::Core {
+                proof_of_election,
+                core_block_number: Default::default(),
+                core_block_hash: Default::default(),
+                core_state_root: Default::default(),
+            }
+        } else {
+            panic!("Open domain unsupported");
+        }
+    }
+}
+
 /// Domain bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
-    /// The bundle header.
-    pub header: BundleHeader<Number, Hash>,
-    /// Expected receipts by the primay chain when the bundle was created.
-    ///
-    /// NOTE: It's fine to `Vec` instead of `BoundedVec` as each bundle is
-    /// wrapped in an unsigned extrinsic, therefore the number of receipts
-    /// in a bundle is inherently constrained by the max extrinsic size limit.
-    pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
+    /// Sealed bundle header.
+    pub sealed_header: SealedBundleHeader<Number, Hash, DomainHash>,
+    /// Execution receipt that should extend the receipt chain or add confirmations
+    /// to the head receipt.
+    pub receipt: ExecutionReceipt<Number, Hash, DomainHash>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
@@ -318,6 +391,27 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
+
+    /// Returns the domain_id of this bundle.
+    pub fn domain_id(&self) -> DomainId {
+        self.sealed_header
+            .header
+            .bundle_solution
+            .proof_of_election()
+            .domain_id
+    }
+
+    /// Consumes [`Bundle`] to extract the inner executor public key.
+    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
+        match self.sealed_header.header.bundle_solution {
+            BundleSolution::System {
+                proof_of_election, ..
+            }
+            | BundleSolution::Core {
+                proof_of_election, ..
+            } => proof_of_election.executor_public_key,
+        }
+    }
 }
 
 /// Bundle with opaque extrinsics.
@@ -327,8 +421,8 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
     pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHash> {
         let Bundle {
-            header,
-            receipts,
+            sealed_header,
+            receipt,
             extrinsics,
         } = self;
         let opaque_extrinsics = extrinsics
@@ -339,65 +433,9 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
             })
             .collect();
         OpaqueBundle {
-            header,
-            receipts,
+            sealed_header,
+            receipt,
             extrinsics: opaque_extrinsics,
-        }
-    }
-}
-
-/// Signed version of [`Bundle`].
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct SignedBundle<Extrinsic, Number, Hash, DomainHash> {
-    /// The bundle header.
-    pub bundle: Bundle<Extrinsic, Number, Hash, DomainHash>,
-    /// Solution of the bundle election.
-    pub bundle_solution: BundleSolution<DomainHash>,
-    /// Signature of the bundle.
-    pub signature: ExecutorSignature,
-}
-
-/// [`SignedBundle`] with opaque extrinsic.
-pub type SignedOpaqueBundle<Number, Hash, DomainHash> =
-    SignedBundle<OpaqueExtrinsic, Number, Hash, DomainHash>;
-
-impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
-    SignedBundle<Extrinsic, Number, Hash, DomainHash>
-{
-    /// Returns the hash of signed bundle.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
-    }
-
-    /// Returns the domain_id of this bundle.
-    pub fn domain_id(&self) -> DomainId {
-        self.bundle_solution.proof_of_election().domain_id
-    }
-}
-
-impl<Extrinsic: Encode, Number, Hash, DomainHash>
-    SignedBundle<Extrinsic, Number, Hash, DomainHash>
-{
-    /// Convert a signed bundle with generic extrinsic to a signed bundle with opaque extrinsic.
-    pub fn into_signed_opaque_bundle(self) -> SignedOpaqueBundle<Number, Hash, DomainHash> {
-        SignedOpaqueBundle {
-            bundle: self.bundle.into_opaque_bundle(),
-            bundle_solution: self.bundle_solution,
-            signature: self.signature,
-        }
-    }
-}
-
-impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, DomainHash> {
-    /// Consumes [`SignedBundle`] to extract the inner executor public key.
-    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
-        match self.bundle_solution {
-            BundleSolution::System {
-                proof_of_election, ..
-            }
-            | BundleSolution::Core {
-                proof_of_election, ..
-            } => proof_of_election.executor_public_key,
         }
     }
 }
@@ -449,17 +487,13 @@ impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, Dom
 pub type OpaqueBundles<Block, DomainHash> =
     Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
 
-/// List of [`SignedOpaqueBundle`].
-pub type SignedOpaqueBundles<Block, DomainHash> =
-    Vec<SignedOpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
-
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
 pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
     domain_id: DomainId,
     primary_number: BlockNumber,
     primary_hash: Hash,
-    receipts: Vec<ExecutionReceipt<BlockNumber, Hash, DomainHash>>,
-) -> SignedOpaqueBundle<BlockNumber, Hash, DomainHash>
+    receipt: ExecutionReceipt<BlockNumber, Hash, DomainHash>,
+) -> OpaqueBundle<BlockNumber, Hash, DomainHash>
 where
     BlockNumber: Encode + Default,
     Hash: Encode + Default,
@@ -467,45 +501,24 @@ where
 {
     use sp_core::crypto::UncheckedFrom;
 
-    let header = BundleHeader {
-        primary_number,
-        primary_hash,
-        slot_number: 0u64,
-        extrinsics_root: Default::default(),
+    let sealed_header = SealedBundleHeader {
+        header: BundleHeader {
+            primary_number,
+            primary_hash,
+            slot_number: 0u64,
+            extrinsics_root: Default::default(),
+            bundle_solution: BundleSolution::dummy(
+                domain_id,
+                ExecutorPublicKey::unchecked_from([0u8; 32]),
+            ),
+        },
+        signature: ExecutorSignature::unchecked_from([0u8; 64]),
     };
 
-    let bundle = Bundle {
-        header,
-        receipts,
+    OpaqueBundle {
+        sealed_header,
+        receipt,
         extrinsics: Vec::new(),
-    };
-
-    let signature = ExecutorSignature::unchecked_from([0u8; 64]);
-
-    let proof_of_election =
-        ProofOfElection::dummy(domain_id, ExecutorPublicKey::unchecked_from([0u8; 32]));
-
-    let bundle_solution = if domain_id.is_system() {
-        BundleSolution::System {
-            authority_stake_weight: Default::default(),
-            authority_witness: Default::default(),
-            proof_of_election,
-        }
-    } else if domain_id.is_core() {
-        BundleSolution::Core {
-            proof_of_election,
-            core_block_number: Default::default(),
-            core_block_hash: Default::default(),
-            core_state_root: Default::default(),
-        }
-    } else {
-        panic!("Open domain unsupported");
-    };
-
-    SignedOpaqueBundle {
-        bundle,
-        bundle_solution,
-        signature,
     }
 }
 
@@ -513,15 +526,12 @@ sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi<DomainHash: Encode + Decode> {
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_bundle_unsigned(opaque_bundle: SignedOpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
-
-        /// Submits the fraud proof via an unsigned extrinsic.
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>);
+        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
         /// Extract the system bundles from the given extrinsics.
         fn extract_system_bundles(
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> (OpaqueBundles<Block, DomainHash>, SignedOpaqueBundles<Block, DomainHash>);
+        ) -> (OpaqueBundles<Block, DomainHash>, OpaqueBundles<Block, DomainHash>);
 
         /// Extract the core bundles from the given extrinsics.
         fn extract_core_bundles(
@@ -532,35 +542,11 @@ sp_api::decl_runtime_apis! {
         /// Returns the hash of successfully submitted bundles.
         fn successful_bundle_hashes() -> Vec<H256>;
 
-        /// Extract the receipts from the given extrinsics.
-        fn extract_receipts(
-            extrinsics: Vec<Block::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainHash>>;
-
-        /// Extract the fraud proofs from the given extrinsics.
-        fn extract_fraud_proofs(
-            extrinsics: Vec<Block::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash>>;
-
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
         /// WASM bundle for system domain runtime.
         fn system_domain_wasm_bundle() -> Cow<'static, [u8]>;
-
-        /// Returns the best execution chain number.
-        fn head_receipt_number() -> NumberFor<Block>;
-
-        /// Returns the block number of oldest execution receipt.
-        fn oldest_receipt_number() -> NumberFor<Block>;
-
-        /// Returns the maximum receipt drift.
-        fn maximum_receipt_drift() -> NumberFor<Block>;
-
-        // Returns the state root of the system domain at specific number and hash.
-        fn system_domain_state_root_at(number: NumberFor<Block>, domain_hash: DomainHash) -> Option<Block::Hash>;
 
         // Returns the current timestamp at given height
         fn timestamp() -> Moment;

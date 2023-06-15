@@ -6,14 +6,9 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, SegmentHeaderRequest, SegmentHeaderResponse};
 use tracing::{debug, error, trace, warn};
 
-const LAST_BLOCK_GET_RETRIES: u8 = 5;
-const ROOT_BLOCK_NUMBER_PER_REQUEST: u64 = 1000;
-/// Minimum peers number to participate in segment header election.
-// TODO: change the value
-const ROOT_BLOCK_CONSENSUS_MIN_SET: usize = 2;
-/// Threshold for the segment header election success (percentage).
-// TODO: change the value
-const ROOT_BLOCK_CONSENSUS_THRESHOLD: (usize, usize) = (51, 100);
+const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;
+/// Initial number of peers to query for segment header
+const SEGMENT_HEADER_CONSENSUS_INITIAL_NODES: usize = 20;
 
 /// Helps gathering segment headers from DSN
 pub struct SegmentHeaderHandler {
@@ -44,7 +39,7 @@ impl SegmentHeaderHandler {
         while last_segment_header.segment_index() > SegmentIndex::ZERO {
             let segment_indexes: Vec<_> = (SegmentIndex::ZERO..last_segment_header.segment_index())
                 .rev()
-                .take(ROOT_BLOCK_NUMBER_PER_REQUEST as usize)
+                .take(SEGMENT_HEADER_NUMBER_PER_REQUEST as usize)
                 .collect();
 
             let (peer_id, segment_headers) = self
@@ -78,13 +73,17 @@ impl SegmentHeaderHandler {
     }
 
     /// Return last segment header known to DSN and peers voted for it. We ask several peers for the
-    /// highest segment header known to them. Target segment header should be known to at least
-    /// ROOT_BLOCK_CONSENSUS_THRESHOLD among peer set with minimum size
-    /// of ROOT_BLOCK_CONSENSUS_MIN_SET peers.
+    /// highest segment header known to them. Target segment header should be known to the majority
+    /// of the peer set with minimum initial size of [`SEGMENT_HEADER_CONSENSUS_INITIAL_NODES`]
+    /// peers.
     async fn get_last_segment_header(
         &self,
     ) -> Result<(SegmentHeader, Vec<PeerId>), Box<dyn Error>> {
-        for retry_attempt in 1..=LAST_BLOCK_GET_RETRIES {
+        for (root_block_consensus_nodes, retry_attempt) in (1
+            ..=SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
+            .rev()
+            .zip(1_usize..)
+        {
             trace!(%retry_attempt, "Getting last segment header...");
 
             // Get random peers. Some of them could be bootstrap nodes with no support for
@@ -112,7 +111,7 @@ impl SegmentHeaderHandler {
                         .send_generic_request(
                             peer_id,
                             SegmentHeaderRequest::LastSegmentHeaders {
-                                segment_header_number: ROOT_BLOCK_NUMBER_PER_REQUEST,
+                                segment_header_number: SEGMENT_HEADER_NUMBER_PER_REQUEST,
                             },
                         )
                         .await;
@@ -145,8 +144,13 @@ impl SegmentHeaderHandler {
 
             let peer_count = peer_blocks.len();
 
-            if peer_count < ROOT_BLOCK_CONSENSUS_MIN_SET {
-                debug!(%peer_count, "Segment header consensus failed: not enough peers");
+            if peer_count < root_block_consensus_nodes {
+                debug!(
+                    %peer_count,
+                    %root_block_consensus_nodes,
+                    %retry_attempt,
+                    "Segment header consensus requires more peers, will retry"
+                );
 
                 continue;
             }
@@ -166,49 +170,26 @@ impl SegmentHeaderHandler {
             }
 
             let mut segment_header_peers_iter = segment_header_peers.into_iter();
-            let (mut last_segment_header, mut last_segment_header_peers) = segment_header_peers_iter
-                .next()
-                .expect(
-                "Not empty due to not empty list of peers with non empty list of segment headers \
-                    each; qed",
-            );
-            let mut last_share =
-                last_segment_header_peers.len() * ROOT_BLOCK_CONSENSUS_THRESHOLD.1 / peer_count;
+            let (mut best_segment_header, mut most_peers) =
+                segment_header_peers_iter.next().expect(
+                    "Not empty due to not empty list of peers with non empty list of segment \
+                    headers each; qed",
+                );
 
             for (segment_header, peers) in segment_header_peers_iter {
-                if segment_header.segment_index() > last_segment_header.segment_index()
-                    || last_share < ROOT_BLOCK_CONSENSUS_THRESHOLD.0
+                if peers.len() > most_peers.len()
+                    || (peers.len() == most_peers.len()
+                        && segment_header.segment_index() > best_segment_header.segment_index())
                 {
-                    let share = peers.len() * ROOT_BLOCK_CONSENSUS_THRESHOLD.1 / peer_count;
-
-                    trace!(
-                        %share,
-                        required_share=%ROOT_BLOCK_CONSENSUS_THRESHOLD.0,
-                        "Segment headers share"
-                    );
-
-                    if share >= ROOT_BLOCK_CONSENSUS_THRESHOLD.0 {
-                        (last_segment_header, last_segment_header_peers) = (segment_header, peers);
-                        last_share = share;
-                    }
+                    best_segment_header = segment_header;
+                    most_peers = peers;
                 }
             }
 
-            debug!(
-                %last_share,
-                required_share=%ROOT_BLOCK_CONSENSUS_THRESHOLD.0,
-                ?last_segment_header,
-                "Best segment header selected"
-            );
-
-            if last_share >= ROOT_BLOCK_CONSENSUS_THRESHOLD.0 {
-                return Ok((last_segment_header, last_segment_header_peers));
-            }
-
-            debug!(retry_attempt, "Failed attempt to get a segment header.");
+            return Ok((best_segment_header, most_peers));
         }
 
-        Err("Segment header consensus failed: can't pass the threshold.".into())
+        Err("No peers found to sync from".into())
     }
 
     /// Validates segment headers and related segment indexes.

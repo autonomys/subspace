@@ -9,9 +9,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, SpawnNamed};
 use sp_core::H256;
-use sp_domains::SignedBundle;
+use sp_domains::Bundle;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
-use sp_runtime::RuntimeAppPublic;
 use std::sync::Arc;
 use system_runtime_primitives::SystemDomainApi;
 
@@ -116,19 +115,8 @@ where
 
     pub fn validate_gossiped_bundle(
         &self,
-        signed_bundle: &SignedBundle<
-            Block::Extrinsic,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-            Block::Hash,
-        >,
+        bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Result<Action, GossipMessageError> {
-        let SignedBundle {
-            bundle,
-            bundle_solution,
-            signature,
-        } = signed_bundle;
-
         self.gossip_message_validator
             .check_bundle_equivocation(bundle)?;
 
@@ -137,23 +125,22 @@ where
         if bundle_exists {
             Ok(Action::Empty)
         } else {
-            let proof_of_election = bundle_solution.proof_of_election();
-
-            if !proof_of_election
-                .executor_public_key
-                .verify(&bundle.hash(), signature)
-            {
+            if !bundle.sealed_header.verify_signature() {
                 return Err(GossipMessageError::BadBundleSignature);
             }
 
             // TODO: validate the bundle election.
 
-            let domain_id = proof_of_election.domain_id;
+            let domain_id = bundle.domain_id();
 
             self.gossip_message_validator
-                .validate_bundle_receipts(&bundle.receipts, domain_id)?;
+                .validate_bundle_receipt(&bundle.receipt, domain_id)?;
 
-            let at = bundle_solution.creation_block_hash();
+            let at = bundle
+                .sealed_header
+                .header
+                .bundle_solution
+                .creation_block_hash();
 
             self.gossip_message_validator.validate_bundle_transactions(
                 &bundle.extrinsics,
@@ -205,13 +192,8 @@ where
 
     fn on_bundle(
         &self,
-        signed_bundle: &SignedBundle<
-            Block::Extrinsic,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-            Block::Hash,
-        >,
+        bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Result<Action, Self::Error> {
-        self.validate_gossiped_bundle(signed_bundle)
+        self.validate_gossiped_bundle(bundle)
     }
 }

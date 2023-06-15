@@ -16,7 +16,7 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_election::BundleElectionSolverParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, SignedOpaqueBundle};
+use sp_domains::{DomainId, ExecutionReceipt, ExecutorPublicKey, OpaqueBundle};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
@@ -294,7 +294,7 @@ impl pallet_domain_registry::Config for Runtime {
     type WeightInfo = pallet_domain_registry::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_receipts::Config for Runtime {
+impl pallet_settlement::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = domain_runtime_primitives::Hash;
     type MaximumReceiptDrift = MaximumReceiptDrift;
@@ -310,11 +310,11 @@ pub struct DomainInfo;
 
 impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
     fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-        Some(Receipts::head_receipt_number(domain_id))
+        Some(Settlement::head_receipt_number(domain_id))
     }
 
     fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
-        Receipts::domain_state_root_at(domain_id, number, hash)
+        Settlement::domain_state_root_at(domain_id, number, hash)
     }
 }
 
@@ -331,6 +331,12 @@ impl pallet_messenger::Config for Runtime {
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
     ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        // Return a dummy handler for benchmark to observe the outer weight when processing cross domain
+        // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
+        #[cfg(feature = "runtime-benchmarks")]
+        {
+            return Some(Box::new(sp_messenger::endpoint::BenchmarkEndpointHandler));
+        }
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
             Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
         } else {
@@ -343,6 +349,7 @@ impl pallet_messenger::Config for Runtime {
     type RelayerDeposit = RelayerDeposit;
     type DomainInfo = DomainInfo;
     type ConfirmationDepth = RelayConfirmationDepth;
+    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -364,6 +371,7 @@ impl pallet_transporter::Config for Runtime {
     type Currency = Balances;
     type Sender = Messenger;
     type AccountIdConverter = AccountIdConverter;
+    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -393,7 +401,7 @@ construct_runtime!(
         // Must be after Balances pallet so that its genesis is built after the Balances genesis is
         // built.
         ExecutorRegistry: pallet_executor_registry = 40,
-        Receipts: pallet_receipts = 41,
+        Settlement: pallet_settlement = 41,
         DomainRegistry: pallet_domain_registry = 42,
 
         // Note: Indexes should be used by all other core domain for proper xdm decode.
@@ -412,6 +420,8 @@ frame_benchmarking::define_benchmarks!(
     [pallet_balances, Balances]
     [pallet_executor_registry, ExecutorRegistry]
     [pallet_domain_registry, DomainRegistry]
+    [pallet_messenger, Messenger]
+    [pallet_transporter, Transporter]
 );
 
 impl_runtime_apis! {
@@ -595,9 +605,9 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_receipts::ReceiptsApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_settlement::SettlementApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
-            Receipts::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
+            Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
         }
 
         fn state_root(
@@ -605,29 +615,84 @@ impl_runtime_apis! {
             domain_block_number: BlockNumber,
             domain_block_hash: Hash,
         ) -> Option<Hash> {
-            Receipts::state_root((domain_id, domain_block_number, domain_block_hash))
+            Settlement::state_root((domain_id, domain_block_number, domain_block_hash))
         }
 
         fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Receipts::primary_hash(domain_id, domain_block_number)
+            Settlement::primary_hash(domain_id, domain_block_number)
         }
 
         fn receipts_pruning_depth() -> BlockNumber {
             ReceiptsPruningDepth::get()
         }
+
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Settlement::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Settlement::oldest_receipt_number(domain_id)
+        }
+
+        fn maximum_receipt_drift() -> NumberFor<Block> {
+            MaximumReceiptDrift::get()
+        }
+
+        fn extract_receipts(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<ExecutionReceipt<BlockNumber, Hash, Hash>> {
+            let successful_bundles = DomainRegistry::successful_bundles();
+            extrinsics
+                .into_iter()
+                .filter_map(|uxt| match uxt.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
+                        opaque_bundle,
+                    }) if opaque_bundle.domain_id() == domain_id
+                        && successful_bundles.contains(&opaque_bundle.hash()) =>
+                    {
+                        Some(opaque_bundle.receipt)
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn extract_fraud_proofs(
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+            domain_id: DomainId,
+        ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
+            let successful_fraud_proofs = Settlement::successful_fraud_proofs();
+            extrinsics
+                .into_iter()
+                .filter_map(|uxt| match uxt.function {
+                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof })
+                        if fraud_proof.domain_id() == domain_id
+                            && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
+                    {
+                        Some(fraud_proof)
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
+            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
+        }
     }
 
     impl system_runtime_primitives::SystemDomainApi<Block, BlockNumber, Hash, Hash> for Runtime {
         fn construct_submit_core_bundle_extrinsics(
-            signed_opaque_bundles: Vec<SignedOpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
+            opaque_bundles: Vec<OpaqueBundle<BlockNumber, Hash, <Block as BlockT>::Hash>>,
         ) -> Vec<Vec<u8>> {
             use codec::Encode;
-            signed_opaque_bundles
+            opaque_bundles
                 .into_iter()
-                .map(|signed_opaque_bundle| {
+                .map(|opaque_bundle| {
                     UncheckedExtrinsic::new_unsigned(
                         pallet_domain_registry::Call::submit_core_bundle {
-                            signed_opaque_bundle
+                            opaque_bundle
                         }.into()
                     ).encode()
                 })
@@ -668,66 +733,6 @@ impl_runtime_apis! {
             storage_keys.push(ExecutorRegistry::key_owner_hashed_key_for(&executor_public_key));
             Some(storage_keys)
         }
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            DomainRegistry::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<BlockNumber, Hash, Hash>> {
-            let successful_bundles = DomainRegistry::successful_bundles();
-            extrinsics
-                .into_iter()
-                .filter_map(|uxt| match uxt.function {
-                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_core_bundle {
-                        signed_opaque_bundle,
-                    }) if signed_opaque_bundle.domain_id() == domain_id
-                        && successful_bundles.contains(&signed_opaque_bundle.hash()) =>
-                    {
-                        Some(signed_opaque_bundle.bundle.receipts)
-                    }
-                    _ => None,
-                })
-                .flatten()
-                .collect()
-        }
-
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
-            let successful_fraud_proofs = Receipts::successful_fraud_proofs();
-            extrinsics
-                .into_iter()
-                .filter_map(|uxt| match uxt.function {
-                    RuntimeCall::DomainRegistry(pallet_domain_registry::Call::submit_fraud_proof { fraud_proof })
-                        if fraud_proof.domain_id() == domain_id
-                            && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
-                    {
-                        Some(fraud_proof)
-                    }
-                    _ => None,
-                })
-                .collect()
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Hash>) {
-            DomainRegistry::submit_fraud_proof_unsigned(fraud_proof)
-        }
-
-        fn core_domain_state_root_at(domain_id: DomainId, number: BlockNumber, domain_hash: Hash) -> Option<Hash> {
-            Receipts::domain_state_root_at(domain_id, number, domain_hash)
-        }
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
@@ -740,11 +745,11 @@ impl_runtime_apis! {
         }
 
         fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-            Some(Receipts::head_receipt_number(domain_id))
+            Some(Settlement::head_receipt_number(domain_id))
         }
 
         fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash>{
-            Receipts::domain_state_root_at(domain_id, number, hash)
+            Settlement::domain_state_root_at(domain_id, number, hash)
         }
 
         fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {

@@ -5,7 +5,7 @@ use futures::{future, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
-use sp_domains::SignedBundle;
+use sp_domains::Bundle;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ where
 
     fn gossip_bundle(
         &self,
-        bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) {
         let outgoing_message: GossipMessage<PBlock, Block> = bundle.into();
         let encoded_message = outgoing_message.encode();
