@@ -353,6 +353,7 @@ mod tests {
     use sp_blockchain::HeaderBackend;
     use sp_core::Blake2Hasher;
     use sp_state_machine::Backend;
+    // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
     #[test]

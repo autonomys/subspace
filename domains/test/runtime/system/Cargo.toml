@@ -66,6 +66,7 @@ std = [
 	"core-payments-domain-runtime/std",
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
+	"domain-test-primitives/std",
 	"frame-support/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",

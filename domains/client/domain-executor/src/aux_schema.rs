@@ -400,6 +400,7 @@ mod tests {
     use std::sync::Mutex;
     use subspace_runtime_primitives::{BlockNumber, Hash};
     use subspace_test_runtime::Block as PBlock;
+    // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
     type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, Hash>;

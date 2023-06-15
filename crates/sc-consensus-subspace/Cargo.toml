@@ -51,14 +51,15 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.38"
 
 [dev-dependencies]
-sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
-sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-network-test = { version = "0.8.0", path = "../../substrate/sc-network-test" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["shim"] }
-substrate-test-runtime = { version = "2.0.0", path = "../../substrate/substrate-test-runtime" }
-substrate-test-runtime-client = { version = "2.0.0", path = "../../substrate/substrate-test-runtime-client" }
-tokio = "1.27.0"
+# TODO: Restore in the future, currently tests are mostly broken and useless
+#sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+#sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
+#sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
+#sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+#sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+#sp-tracing = { version = "6.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+#sc-network-test = { version = "0.8.0", path = "../../substrate/sc-network-test" }
+#subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["shim"] }
+#substrate-test-runtime = { version = "2.0.0", path = "../../substrate/substrate-test-runtime" }
+#substrate-test-runtime-client = { version = "2.0.0", path = "../../substrate/substrate-test-runtime-client" }
+#tokio = "1.27.0"

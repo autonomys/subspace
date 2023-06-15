@@ -15,8 +15,8 @@ The structure of this repository is the following:
 - `crates` contains Subspace-specific Rust crates used to build node and farmer, most are following Substrate naming conventions
   - `subspace-node` is an implementation of the node for Subspace protocol
   - `subspace-farmer` is a CLI farmer app
-- `cumulus` contains modified copies of Cumulus crates that we use right now
-- `substrate` contains modified copies of Substrate's crates that we use for testing
+- `domains` contains client and runtime code for decoupled execution and domains
+- `orml` contains a fork of orml vesting pallet with modified dependencies
 
 ## How to run
 
