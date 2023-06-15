@@ -38,7 +38,7 @@ use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness, U256};
 use subspace_runtime_primitives::Moment;
 
 /// Key type for Executor.
@@ -507,7 +507,10 @@ sp_api::decl_runtime_apis! {
         /// Returns the WASM bundle for given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
 
-        // Returns the current timestamp at given height
+        /// Returns the current timestamp at given height.
         fn timestamp() -> Moment;
+
+        /// Returns the current Tx range for the given domain Id.
+        fn domain_tx_range(domain_id: DomainId) -> U256;
     }
 }

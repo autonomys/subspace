@@ -69,7 +69,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange,
+    SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -141,6 +141,20 @@ const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
+
+/// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
+const INITIAL_DOMAIN_TX_RANGE: u64 = 10;
+
+/// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
+const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
+
+/// Expected bundles per slot.
+/// TODO: this should come from DomainConfig when domain registry is implemented.
+const EXPECTED_BUNDLES_PER_SLOT: u64 = 1;
+
+/// Expected bundles to be produced per adjustment interval.
+const EXPECTED_BUNDLES_PER_INTERVAL: u64 =
+    TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS * SLOT_PROBABILITY.1 * EXPECTED_BUNDLES_PER_SLOT;
 
 // We assume initial plot size starts with the a single sector, where we effectively audit each
 // chunk of every piece.
@@ -409,12 +423,18 @@ impl pallet_offences_subspace::Config for Runtime {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
+    pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
+    pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
+    type InitialDomainTxRange = InitialDomainTxRange;
+    type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
+    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
 }
 
 impl pallet_settlement::Config for Runtime {
@@ -829,6 +849,10 @@ impl_runtime_apis! {
 
         fn timestamp() -> Moment{
             Timestamp::now()
+        }
+
+        fn domain_tx_range(domain_id: DomainId) -> U256 {
+            Domains::domain_tx_range(domain_id)
         }
     }
 

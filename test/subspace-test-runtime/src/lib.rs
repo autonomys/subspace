@@ -68,6 +68,7 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    U256,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -479,12 +480,18 @@ impl pallet_offences_subspace::Config for Runtime {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 2;
+    pub const InitialDomainTxRange: u64 = 10;
+    pub const DomainTxRangeAdjustmentInterval: u64 = 100;
+    pub const ExpectedBundlesPerInterval: u64 = 600;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
+    type InitialDomainTxRange = InitialDomainTxRange;
+    type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
+    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
 }
 
 impl pallet_settlement::Config for Runtime {
@@ -1198,6 +1205,10 @@ impl_runtime_apis! {
 
         fn timestamp() -> Moment{
             Timestamp::now()
+        }
+
+        fn domain_tx_range(_: DomainId) -> U256 {
+            U256::MAX
         }
     }
 
