@@ -45,9 +45,6 @@ pub use request_handlers::generic_request_handler::{GenericRequest, GenericReque
 pub use request_handlers::object_mappings::{
     ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
 };
-pub use request_handlers::peer_info::{
-    PeerInfo, PeerInfoRequest, PeerInfoRequestHandler, PeerInfoResponse, PeerSyncStatus,
-};
 pub use request_handlers::piece_announcement::{
     PieceAnnouncementRequest, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
 };
