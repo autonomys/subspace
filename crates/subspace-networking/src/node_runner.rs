@@ -5,6 +5,7 @@ use crate::create::{
     ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
+use crate::peer_info;
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::{is_global_address_or_dns, ResizableSemaphorePermit};
@@ -72,14 +73,15 @@ enum QueryResultSender {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<ProviderStorage>
+pub struct NodeRunner<ProviderStorage, PeerInfoProvider>
 where
     ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
+    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
+    swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>, PeerInfoProvider>>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -110,13 +112,14 @@ where
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<ProviderStorage>
+pub(crate) struct NodeRunnerConfig<ProviderStorage, PeerInfoProvider>
 where
     ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
+    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     pub(crate) allow_non_global_addresses_in_dht: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
-    pub(crate) swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
+    pub(crate) swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>, PeerInfoProvider>>,
     pub(crate) shared_weak: Weak<Shared>,
     pub(crate) next_random_query_interval: Duration,
     pub(crate) networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
@@ -127,9 +130,10 @@ where
     pub(crate) protocol_version: String,
 }
 
-impl<ProviderStorage> NodeRunner<ProviderStorage>
+impl<ProviderStorage, PeerInfoProvider> NodeRunner<ProviderStorage, PeerInfoProvider>
 where
     ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
+    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     pub(crate) fn new(
         NodeRunnerConfig {
@@ -144,7 +148,7 @@ where
             temporary_bans,
             metrics,
             protocol_version,
-        }: NodeRunnerConfig<ProviderStorage>,
+        }: NodeRunnerConfig<ProviderStorage, PeerInfoProvider>,
     ) -> Self {
         Self {
             allow_non_global_addresses_in_dht,

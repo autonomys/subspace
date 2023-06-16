@@ -22,6 +22,7 @@ mod behavior;
 mod create;
 mod node;
 mod node_runner;
+mod peer_info;
 mod request_handlers;
 mod request_responses;
 mod reserved_peers;
@@ -36,6 +37,9 @@ pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
 };
 pub use crate::node_runner::{NodeRunner, KADEMLIA_PROVIDER_TTL_IN_SECS};
+pub use crate::peer_info::{
+    Config as PeerInfoConfig, ConstantPeerInfoProvider, PeerInfo, PeerRole,
+};
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
 };

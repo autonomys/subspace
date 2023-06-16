@@ -18,11 +18,11 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
-    create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-    KADEMLIA_PROVIDER_TTL_IN_SECS,
+    create, peer_id, Config, ConstantPeerInfoProvider, NetworkingParametersManager, Node,
+    NodeRunner, ParityDbProviderStorage, PeerInfo, PeerRole, PieceAnnouncementRequestHandler,
+    PieceAnnouncementResponse, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
+    SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use tracing::{debug, error, info, trace, Instrument};
 
@@ -52,7 +52,10 @@ pub(super) fn configure_dsn(
 ) -> Result<
     (
         Node,
-        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>>,
+        NodeRunner<
+            FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>,
+            ConstantPeerInfoProvider,
+        >,
         FarmerPieceCache,
     ),
     anyhow::Error,
@@ -141,7 +144,14 @@ pub(super) fn configure_dsn(
         }
     });
 
-    let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage.clone());
+    let default_config = Config::new(
+        protocol_prefix,
+        keypair,
+        farmer_provider_storage.clone(),
+        ConstantPeerInfoProvider::new(PeerInfo {
+            role: PeerRole::Farmer,
+        }),
+    );
     let config = Config {
         reserved_peers,
         listen_on,

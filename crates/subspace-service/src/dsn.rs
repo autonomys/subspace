@@ -14,12 +14,12 @@ use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
-    NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbError, ParityDbProviderStorage, PieceAnnouncementRequestHandler,
-    PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-    KADEMLIA_PROVIDER_TTL_IN_SECS,
+    peer_id, BootstrappedNetworkingParameters, ConstantPeerInfoProvider, CreationError,
+    MemoryProviderStorage, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
+    NodeRunner, ParityDbError, ParityDbProviderStorage, PeerInfo, PeerRole,
+    PieceAnnouncementRequestHandler, PieceAnnouncementResponse, PieceByHashRequestHandler,
+    PieceByHashResponse, ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler,
+    SegmentHeaderRequest, SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -88,7 +88,13 @@ pub(crate) fn create_dsn_instance<AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     segment_header_cache: SegmentHeaderCache<AS>,
-) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
+) -> Result<
+    (
+        Node,
+        NodeRunner<DsnProviderStorage<AS>, ConstantPeerInfoProvider>,
+    ),
+    DsnConfigurationError,
+>
 where
     AS: AuxStore + Sync + Send + 'static,
 {
@@ -125,8 +131,14 @@ where
     let provider_storage =
         NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
     let keypair = dsn_config.keypair.clone();
-    let mut default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_version, keypair, provider_storage.clone());
+    let mut default_networking_config = subspace_networking::Config::new(
+        dsn_protocol_version,
+        keypair,
+        provider_storage.clone(),
+        ConstantPeerInfoProvider::new(PeerInfo {
+            role: PeerRole::Node,
+        }),
+    );
 
     default_networking_config
         .kademlia

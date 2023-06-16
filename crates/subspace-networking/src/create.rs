@@ -10,10 +10,12 @@ use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
+use crate::peer_info::{self, ConstantPeerInfoProvider, PeerInfo};
 use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
+use crate::PeerInfoConfig;
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::connection_limits::ConnectionLimits;
@@ -48,6 +50,7 @@ const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
+const PEER_INFO_PROTOCOL_NAME: &[u8] = b"/subspace/peer-info/1.0.0";
 
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
@@ -181,7 +184,7 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-pub struct Config<ProviderStorage> {
+pub struct Config<ProviderStorage, PeerInfoProvider> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -229,15 +232,17 @@ pub struct Config<ProviderStorage> {
     pub metrics: Option<Metrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
+
+    pub peer_info_provider: PeerInfoProvider,
 }
 
-impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
+impl<ProviderStorage, PeerInfoProvider> fmt::Debug for Config<ProviderStorage, PeerInfoProvider> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }
 }
 
-impl Default for Config<MemoryProviderStorage> {
+impl Default for Config<MemoryProviderStorage, ConstantPeerInfoProvider> {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
@@ -248,19 +253,22 @@ impl Default for Config<MemoryProviderStorage> {
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
             MemoryProviderStorage::new(peer_id),
+            ConstantPeerInfoProvider::new(PeerInfo::default()),
         )
     }
 }
 
-impl<ProviderStorage> Config<ProviderStorage>
+impl<ProviderStorage, PeerInfoProvider> Config<ProviderStorage, PeerInfoProvider>
 where
     ProviderStorage: provider_storage::ProviderStorage,
+    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     /// Creates a new [`Config`].
     pub fn new(
         protocol_version: String,
         keypair: identity::Keypair,
         provider_storage: ProviderStorage,
+        peer_info_provider: PeerInfoProvider,
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
@@ -332,6 +340,7 @@ where
             temporary_ban_backoff,
             metrics: None,
             protocol_version,
+            peer_info_provider,
         }
     }
 }
@@ -360,11 +369,12 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub fn create<ProviderStorage>(
-    config: Config<ProviderStorage>,
-) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
+pub fn create<ProviderStorage, PeerInfoProvider>(
+    config: Config<ProviderStorage, PeerInfoProvider>,
+) -> Result<(Node, NodeRunner<ProviderStorage, PeerInfoProvider>), CreationError>
 where
     ProviderStorage: Send + Sync + provider_storage::ProviderStorage + 'static,
+    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     let Config {
         keypair,
@@ -390,6 +400,7 @@ where
         temporary_ban_backoff,
         metrics,
         protocol_version,
+        peer_info_provider,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -433,6 +444,8 @@ where
             reserved_peers: reserved_peers.clone(),
             protocol_name: RESERVED_PEERS_PROTOCOL_NAME,
         },
+        peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
+        peer_info_provider,
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
@@ -471,7 +484,10 @@ where
     let shared_weak = Arc::downgrade(&shared);
 
     let node = Node::new(shared);
-    let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
+    let node_runner = NodeRunner::<ProviderStorage, PeerInfoProvider>::new(NodeRunnerConfig::<
+        ProviderStorage,
+        PeerInfoProvider,
+    > {
         allow_non_global_addresses_in_dht,
         command_receiver,
         swarm,
