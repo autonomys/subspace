@@ -34,9 +34,8 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
 
-// Make core-payments WASM runtime available.
+// Make various WASM runtimes available.
 include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
-include!(concat!(env!("OUT_DIR"), "/core_eth_relay_wasm_bundle.rs"));
 include!(concat!(env!("OUT_DIR"), "/core_evm_wasm_bundle.rs"));
 
 /// Block header type as expected by this runtime.
@@ -224,7 +223,7 @@ impl pallet_balances::Config for Runtime {
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type HoldIdentifier = ();
+    type RuntimeHoldReason = ();
     type MaxHolds = ();
 }
 
@@ -377,6 +376,7 @@ impl pallet_transporter::Config for Runtime {
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
+    type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

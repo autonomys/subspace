@@ -24,10 +24,13 @@ pub mod transaction;
 
 use bundle_election::VrfProofError;
 use merkle_tree::Witness;
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+use parity_scale_codec::MaxEncodedLen;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use schnorrkel::vrf::{VRF_OUTPUT_LENGTH, VRF_PROOF_LENGTH};
+use serde::{Deserialize, Serialize};
 use sp_core::crypto::KeyTypeId;
+use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
 use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
@@ -73,9 +76,21 @@ pub type StakeWeight = u128;
 
 /// Unique identifier of a domain.
 #[derive(
-    Clone, Copy, Debug, Hash, Default, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, TypeInfo,
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    Default,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
 )]
-#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
 pub struct DomainId(u32);
 
 impl From<u32> for DomainId {
@@ -117,8 +132,6 @@ impl DomainId {
 
     pub const CORE_PAYMENTS: Self = Self::new(1);
 
-    pub const CORE_ETH_RELAY: Self = Self::new(2);
-
     pub const CORE_EVM: Self = Self::new(3);
 
     /// Creates a [`DomainId`].
@@ -155,8 +168,8 @@ impl DomainId {
 }
 
 /// Domain configuration.
-#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DomainConfig<Hash, Balance, Weight> {
     /// Hash of the domain wasm runtime blob.
     pub wasm_runtime_hash: Hash,
@@ -246,9 +259,9 @@ pub struct ProofOfElection<DomainHash> {
     /// Domain id.
     pub domain_id: DomainId,
     /// VRF output.
-    pub vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    pub vrf_output: VrfOutput,
     /// VRF proof.
-    pub vrf_proof: [u8; VRF_PROOF_LENGTH],
+    pub vrf_proof: VrfProof,
     /// VRF public key.
     pub executor_public_key: ExecutorPublicKey,
     /// Global challenge.
@@ -267,8 +280,12 @@ impl<DomainHash> ProofOfElection<DomainHash> {
     pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
         bundle_election::verify_vrf_proof(
             &self.executor_public_key,
-            &self.vrf_output,
-            &self.vrf_proof,
+            // TODO: Maybe we want to store signature in the struct rather than separate fields,
+            //  such that we don't need to clone here?
+            &VrfSignature {
+                output: self.vrf_output.clone(),
+                proof: self.vrf_proof.clone(),
+            },
             &self.global_challenge,
         )
     }
@@ -284,10 +301,12 @@ impl<DomainHash> ProofOfElection<DomainHash> {
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
+        let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
+        let proof_bytes = vec![0u8; VrfProof::max_encoded_len()];
         Self {
             domain_id,
-            vrf_output: [0u8; VRF_OUTPUT_LENGTH],
-            vrf_proof: [0u8; VRF_PROOF_LENGTH],
+            vrf_output: VrfOutput::decode(&mut output_bytes.as_slice()).unwrap(),
+            vrf_proof: VrfProof::decode(&mut proof_bytes.as_slice()).unwrap(),
             executor_public_key,
             global_challenge: Blake2b256Hash::default(),
             storage_proof: StorageProof::empty(),

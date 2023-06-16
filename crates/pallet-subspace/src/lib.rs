@@ -272,7 +272,6 @@ mod pallet {
         pub allow_authoring_by: AllowAuthoringBy,
     }
 
-    #[cfg(feature = "std")]
     impl Default for GenesisConfig {
         #[inline]
         fn default() -> Self {

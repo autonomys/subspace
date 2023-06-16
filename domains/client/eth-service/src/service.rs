@@ -1,10 +1,12 @@
 pub use fc_consensus::FrontierBlockImport;
-pub use fc_db::frontier_database_dir;
-use fc_mapping_sync::{MappingSyncWorker, SyncStrategy};
+pub use fc_db::kv::frontier_database_dir;
+use fc_mapping_sync::kv::MappingSyncWorker;
+use fc_mapping_sync::SyncStrategy;
 use fc_rpc::{EthTask, OverrideHandle};
 pub use fc_rpc_core::types::{FeeHistoryCache, FeeHistoryCacheLimit, FilterPool};
 use futures::{future, StreamExt};
 use sc_client_api::{BlockchainEvents, StorageProvider};
+use sc_network_sync::SyncingService;
 use sc_service::error::Error as ServiceError;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -13,9 +15,6 @@ use sp_runtime::traits::{NumberFor, Zero};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-/// Frontier DB backend type.
-pub type FrontierBackend<Block> = fc_db::Backend<Block>;
 
 /// The ethereum-compatibility configuration used to run a node.
 #[derive(Clone, Debug, clap::Parser)]
@@ -65,13 +64,20 @@ pub(crate) fn new_frontier_partial(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
     essential_task_spawner: SE,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    frontier_backend: Arc<FrontierBackend<Block>>,
+    frontier_backend: Arc<fc_db::kv::Backend<Block>>,
     overrides: Arc<OverrideHandle<Block>>,
     frontier_partial_components: FrontierPartialComponents,
+    sync: Arc<SyncingService<Block>>,
+    pubsub_notification_sinks: Arc<
+        fc_mapping_sync::EthereumBlockNotificationSinks<
+            fc_mapping_sync::EthereumBlockNotification<Block>,
+        >,
+    >,
 ) where
     Block: BlockT,
     Backend: sc_client_api::Backend<Block> + 'static,
@@ -101,6 +107,8 @@ pub(crate) fn spawn_frontier_tasks<Block, Client, Backend, SE>(
                 3,
                 NumberFor::<Block>::zero(),
                 SyncStrategy::Normal,
+                sync,
+                pubsub_notification_sinks,
             )
             .for_each(|()| future::ready(())),
         ),

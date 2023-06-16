@@ -1,13 +1,10 @@
 use crate::merkle_tree::{MerkleProof, Witness};
 use crate::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
-use merlin::Transcript;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use schnorrkel::vrf::{VRFOutput, VRFProof, VRF_OUTPUT_LENGTH};
-use schnorrkel::{SignatureError, SignatureResult};
+use sp_core::crypto::{VrfPublic, Wraps};
+use sp_core::sr25519::vrf::{VrfInput, VrfOutput, VrfSignature};
 use sp_core::H256;
-#[cfg(feature = "std")]
-use sp_keystore::vrf::{VRFTranscriptData, VRFTranscriptValue};
 use sp_runtime::traits::{BlakeTwo256, Hash};
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
@@ -22,25 +19,24 @@ const LOCAL_RANDOMNESS_CONTEXT: &[u8] = b"bundle_election_local_randomness_conte
 type LocalRandomness = [u8; core::mem::size_of::<u128>()];
 
 fn derive_local_randomness(
-    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    vrf_output: &VrfOutput,
     public_key: &ExecutorPublicKey,
     global_challenge: &Blake2b256Hash,
-) -> SignatureResult<LocalRandomness> {
-    let in_out = VRFOutput(vrf_output).attach_input_hash(
-        &schnorrkel::PublicKey::from_bytes(public_key.as_ref())?,
-        make_local_randomness_transcript(global_challenge),
-    )?;
-
-    Ok(in_out.make_bytes(LOCAL_RANDOMNESS_CONTEXT))
+) -> Result<LocalRandomness, parity_scale_codec::Error> {
+    vrf_output.make_bytes(
+        LOCAL_RANDOMNESS_CONTEXT,
+        &make_local_randomness_input(global_challenge),
+        public_key.as_ref(),
+    )
 }
 
 /// Returns the domain-specific solution for the challenge of producing a bundle.
 pub fn derive_bundle_election_solution(
     domain_id: DomainId,
-    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    vrf_output: &VrfOutput,
     public_key: &ExecutorPublicKey,
     global_challenge: &Blake2b256Hash,
-) -> SignatureResult<u128> {
+) -> Result<u128, parity_scale_codec::Error> {
     let local_randomness = derive_local_randomness(vrf_output, public_key, global_challenge)?;
     let local_domain_randomness =
         blake2b_256_hash_list(&[&domain_id.to_le_bytes(), &local_randomness]);
@@ -78,25 +74,12 @@ pub fn is_election_solution_within_threshold(election_solution: u128, threshold:
     election_solution <= threshold
 }
 
-/// Make a VRF transcript.
-pub fn make_local_randomness_transcript(global_challenge: &Blake2b256Hash) -> Transcript {
-    let mut transcript = Transcript::new(VRF_TRANSCRIPT_LABEL);
-    transcript.append_message(b"global challenge", global_challenge);
-    transcript
-}
-
-/// Make a VRF transcript data.
-#[cfg(feature = "std")]
-pub fn make_local_randomness_transcript_data(
-    global_challenge: &Blake2b256Hash,
-) -> VRFTranscriptData {
-    VRFTranscriptData {
-        label: VRF_TRANSCRIPT_LABEL,
-        items: vec![(
-            "global challenge",
-            VRFTranscriptValue::Bytes(global_challenge.to_vec()),
-        )],
-    }
+/// Make a VRF inout.
+pub fn make_local_randomness_input(global_challenge: &Blake2b256Hash) -> VrfInput {
+    VrfInput::new(
+        VRF_TRANSCRIPT_LABEL,
+        &[(b"global challenge", global_challenge)],
+    )
 }
 
 pub mod well_known_keys {
@@ -161,8 +144,6 @@ struct SystemBundleElectionVerifierParams {
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum VrfProofError {
-    /// Can not construct the vrf public_key/output/proof from the raw bytes.
-    VrfSignatureConstructionError,
     /// Invalid vrf proof.
     BadProof,
 }
@@ -170,22 +151,15 @@ pub enum VrfProofError {
 /// Verify the vrf proof generated in the bundle election.
 pub(crate) fn verify_vrf_proof(
     public_key: &ExecutorPublicKey,
-    vrf_output: &[u8],
-    vrf_proof: &[u8],
+    vrf_signature: &VrfSignature,
     global_challenge: &Blake2b256Hash,
 ) -> Result<(), VrfProofError> {
-    let public_key = schnorrkel::PublicKey::from_bytes(public_key.as_ref())
-        .map_err(|_| VrfProofError::VrfSignatureConstructionError)?;
-
-    public_key
-        .vrf_verify(
-            make_local_randomness_transcript(global_challenge),
-            &VRFOutput::from_bytes(vrf_output)
-                .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
-            &VRFProof::from_bytes(vrf_proof)
-                .map_err(|_| VrfProofError::VrfSignatureConstructionError)?,
-        )
-        .map_err(|_| VrfProofError::BadProof)?;
+    if !public_key.as_inner_ref().vrf_verify(
+        &make_local_randomness_input(global_challenge).into(),
+        vrf_signature,
+    ) {
+        return Err(VrfProofError::BadProof);
+    }
 
     Ok(())
 }
@@ -244,7 +218,7 @@ pub enum BundleSolutionError {
     /// Invalid merkle proof.
     BadMerkleProof,
     /// Failed to derive the bundle election solution.
-    FailedToDeriveBundleElectionSolution(SignatureError),
+    FailedToDeriveBundleElectionSolution(parity_scale_codec::Error),
     /// Election solution does not satisfy the threshold.
     InvalidElectionSolution,
 }
@@ -296,7 +270,7 @@ pub fn verify_system_bundle_solution<DomainHash>(
 
     verify_bundle_solution_threshold(
         *domain_id,
-        *vrf_output,
+        vrf_output,
         stake_weight,
         total_stake_weight,
         slot_probability,
@@ -309,7 +283,7 @@ pub fn verify_system_bundle_solution<DomainHash>(
 
 pub fn verify_bundle_solution_threshold(
     domain_id: DomainId,
-    vrf_output: [u8; VRF_OUTPUT_LENGTH],
+    vrf_output: &VrfOutput,
     stake_weight: StakeWeight,
     total_stake_weight: StakeWeight,
     slot_probability: (u64, u64),

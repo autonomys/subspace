@@ -232,7 +232,7 @@ mod pallet {
         /// Declare no desire to be an executor and remove the registration.
         // TODO: proper weight
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight({10_000})]
         pub fn deregister(origin: OriginFor<T>) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
@@ -500,7 +500,6 @@ mod pallet {
         }
     }
 
-    #[cfg(feature = "std")]
     type GenesisExecutorInfo<T> = (
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
@@ -514,7 +513,6 @@ mod pallet {
         pub slot_probability: (u64, u64),
     }
 
-    #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
         #[inline]
         fn default() -> Self {
@@ -810,7 +808,6 @@ impl<T: Config> ExecutorRegistry<T::AccountId, BalanceOf<T>, T::StakeWeight> for
         Self::key_owner_hashed_key_for(executor_public_key)
     }
 
-    #[cfg(feature = "std")]
     fn authority_stake_weight(who: &T::AccountId) -> Option<T::StakeWeight> {
         Executors::<T>::get(who).and_then(|executor_config| {
             Authorities::<T>::get()

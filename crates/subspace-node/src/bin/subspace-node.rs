@@ -17,7 +17,7 @@
 //! Subspace node implementation.
 
 use core_evm_runtime::AccountId as AccountId20;
-use cross_domain_message_gossip::{cdm_gossip_peers_set_config, GossipWorkerBuilder};
+use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_executor::ExecutorStreams;
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
@@ -84,24 +84,6 @@ impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
 
     fn native_version() -> sc_executor::NativeVersion {
         core_payments_domain_runtime::native_version()
-    }
-}
-
-/// Core eth relay domain executor instance.
-pub struct CoreEthRelayDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for CoreEthRelayDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        core_eth_relay_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        core_eth_relay_runtime::native_version()
     }
 }
 
@@ -557,12 +539,6 @@ fn main() -> Result<(), Error> {
                         }
                     };
 
-                    let mut primary_chain_config = primary_chain_config;
-                    primary_chain_config
-                        .network
-                        .extra_sets
-                        .push(cdm_gossip_peers_set_config());
-
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
                         // Domain node needs slots notifications for bundle production.
@@ -774,63 +750,6 @@ fn main() -> Result<(), Error> {
 
                                 core_domain_node.network_starter.start_network();
                             }
-                            DomainId::CORE_ETH_RELAY => {
-                                let core_domain_config = core_domain_cli
-                                    .create_domain_configuration::<_, Identity>(tokio_handle)
-                                    .map_err(|error| {
-                                        sc_service::Error::Other(format!(
-                                            "Failed to create core domain configuration: {error:?}"
-                                        ))
-                                    })?;
-
-                                let core_domain_params = domain_service::CoreDomainParams {
-                                    domain_id: core_domain_cli.domain_id,
-                                    core_domain_config,
-                                    system_domain_client: system_domain_node.client.clone(),
-                                    system_domain_sync_service: system_domain_node
-                                        .sync_service
-                                        .clone(),
-                                    system_domain_block_import_notifications: system_domain_node
-                                        .executor
-                                        .import_notification_stream(),
-                                    primary_chain_client: primary_chain_node.client.clone(),
-                                    primary_network_sync_oracle: primary_chain_node
-                                        .sync_service
-                                        .clone(),
-                                    select_chain: primary_chain_node.select_chain.clone(),
-                                    executor_streams,
-                                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
-                                    provider: DefaultProvider,
-                                };
-
-                                let core_domain_node =
-                                    domain_service::new_full_core::<
-                                        DomainBlock,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        core_eth_relay_runtime::RuntimeApi,
-                                        CoreEthRelayDomainExecutorDispatch,
-                                        AccountId32,
-                                        _,
-                                    >(core_domain_params)
-                                        .await?;
-
-                                xdm_gossip_worker_builder.push_domain_tx_pool_sink(
-                                    core_domain_cli.domain_id,
-                                    core_domain_node.tx_pool_sink,
-                                );
-                                primary_chain_node
-                                    .task_manager
-                                    .add_child(core_domain_node.task_manager);
-
-                                core_domain_node.network_starter.start_network();
-                            }
                             DomainId::CORE_EVM => {
                                 let core_domain_config = core_domain_cli
                                     .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
@@ -842,15 +761,14 @@ fn main() -> Result<(), Error> {
                                         ))
                                     })?;
 
-                                let evm_base_path = core_domain_config
-                                    .service_config
-                                    .base_path
-                                    .as_ref()
-                                    .map(|base_path| {
-                                        BasePath::new(
-                                            base_path.config_dir(core_domain_config.service_config.chain_spec.id()),
+                                let evm_base_path = BasePath::new(
+                                    core_domain_config
+                                        .service_config
+                                        .base_path
+                                        .config_dir(
+                                            core_domain_config.service_config.chain_spec.id()
                                         )
-                                    });
+                                );
                                 let eth_provider = EthProvider::<
                                     core_evm_runtime::TransactionConverter,
                                     DefaultEthConfig<
@@ -861,7 +779,7 @@ fn main() -> Result<(), Error> {
                                         >,
                                         FullBackend<DomainBlock>,
                                     >,
-                                >::new(evm_base_path, core_domain_cli.additional_args());
+                                >::new(Some(evm_base_path), core_domain_cli.additional_args());
                                 let core_domain_params = domain_service::CoreDomainParams {
                                     domain_id: core_domain_cli.domain_id,
                                     core_domain_config,

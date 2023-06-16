@@ -31,11 +31,10 @@ use crate::digests::{CompatibleDigestItem, PreDigest};
 use alloc::borrow::Cow;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::time::Duration;
 use scale_info::TypeInfo;
 use schnorrkel::context::SigningContext;
 use sp_api::{BlockT, HeaderT};
-use sp_consensus_slots::Slot;
+use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
@@ -480,7 +479,7 @@ sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// The slot duration in milliseconds for Subspace.
-        fn slot_duration() -> Duration;
+        fn slot_duration() -> SlotDuration;
 
         /// Global randomnesses used for deriving global challenges.
         fn global_randomnesses() -> GlobalRandomnesses;

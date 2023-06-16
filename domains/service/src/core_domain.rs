@@ -221,12 +221,7 @@ where
         })
         .transpose()?;
 
-    let executor = NativeElseWasmExecutor::new(
-        config.wasm_method,
-        config.default_heap_pages,
-        config.max_runtime_instances,
-        config.runtime_cache_size,
-    );
+    let executor = sc_service::new_native_or_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
         config,
@@ -456,12 +451,6 @@ where
     // TODO: Do we even need block announcement on core domain node?
     // core_domain_config.announce_block = false;
 
-    core_domain_config
-        .service_config
-        .network
-        .extra_sets
-        .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
-
     let params = new_partial::<_, _, _, Block, SBlock, PBlock, Provider>(
         &core_domain_config.service_config,
         system_domain_client.clone(),
@@ -477,9 +466,18 @@ where
     let mut task_manager = params.task_manager;
     let import_queue = params.import_queue;
 
+    let mut net_config = sc_network::config::FullNetworkConfiguration::new(
+        &core_domain_config.service_config.network,
+    );
+
+    net_config.add_notification_protocol(
+        domain_client_executor_gossip::executor_gossip_peers_set_config(),
+    );
+
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         crate::build_network(BuildNetworkParams {
             config: &core_domain_config.service_config,
+            net_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
@@ -579,7 +577,6 @@ where
             code_executor: code_executor.clone(),
             is_authority,
             keystore: params.keystore_container.keystore(),
-            spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
             domain_confirmation_depth,

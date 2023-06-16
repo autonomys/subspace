@@ -17,17 +17,20 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 parity-scale-codec = { version = "3.4.0", default-features = false, features = ["derive"] }
-serde = { version = "1.0.159", optional = true, features = ["derive"] }
-sp-core = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-runtime = { version = "7.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+# TODO: Should, idealy, be optional, but `sp-runtime`'s `serde` feature is enabled unconditiionally by something in
+#  Substrate and as the result our custom `Block` implementation has to derive `serde` traits essentially
+#  unconditionally or else it doesn't compile
+serde = { version = "1.0.159", default-features = false, features = ["alloc", "derive"] }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [features]
 default = ["std"]
 std = [
 	"parity-scale-codec/std",
-	"serde",
+	"serde/std",
 	"sp-core/std",
 	"sp-runtime/std",
 	"sp-std/std",

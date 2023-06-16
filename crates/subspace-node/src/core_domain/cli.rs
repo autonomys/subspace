@@ -14,9 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_domain::{
-    core_eth_relay_chain_spec, core_evm_chain_spec, core_payments_chain_spec,
-};
+use crate::core_domain::{core_evm_chain_spec, core_payments_chain_spec};
 use clap::Parser;
 use core_evm_runtime::AccountId as AccountId20;
 use domain_service::DomainConfiguration;
@@ -184,7 +182,6 @@ impl SubstrateCli for CoreDomainCli {
         // TODO: add core domain chain spec an extension of system domain chain spec.
         match self.domain_id {
             DomainId::CORE_PAYMENTS => core_payments_chain_spec::load_chain_spec(id),
-            DomainId::CORE_ETH_RELAY => core_eth_relay_chain_spec::load_chain_spec(id),
             DomainId::CORE_EVM => core_evm_chain_spec::load_chain_spec(id),
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         }
@@ -196,7 +193,6 @@ impl SubstrateCli for CoreDomainCli {
             .expect("Initialized when constructing this struct")
         {
             &DomainId::CORE_PAYMENTS => &core_payments_domain_runtime::VERSION,
-            &DomainId::CORE_ETH_RELAY => &core_eth_relay_runtime::VERSION,
             &DomainId::CORE_EVM => &core_evm_runtime::VERSION,
             domain_id => unreachable!("Unsupported core domain: {domain_id:?}"),
         }
@@ -208,12 +204,8 @@ impl DefaultConfigurationValues for CoreDomainCli {
         30335
     }
 
-    fn rpc_ws_listen_port() -> u16 {
+    fn rpc_listen_port() -> u16 {
         9946
-    }
-
-    fn rpc_http_listen_port() -> u16 {
-        9935
     }
 
     fn prometheus_listen_port() -> u16 {
@@ -250,16 +242,8 @@ impl CliConfiguration<Self> for CoreDomainCli {
             .or_else(|| self.base_path.clone().map(Into::into)))
     }
 
-    fn rpc_http(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.rpc_http(default_listen_port)
-    }
-
-    fn rpc_ipc(&self) -> Result<Option<String>> {
-        self.run.rpc_ipc()
-    }
-
-    fn rpc_ws(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.rpc_ws(default_listen_port)
+    fn rpc_addr(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
+        self.run.rpc_addr(default_listen_port)
     }
 
     fn prometheus_config(
@@ -290,8 +274,8 @@ impl CliConfiguration<Self> for CoreDomainCli {
         self.run.rpc_methods()
     }
 
-    fn rpc_ws_max_connections(&self) -> Result<Option<usize>> {
-        self.run.rpc_ws_max_connections()
+    fn rpc_max_connections(&self) -> Result<u32> {
+        self.run.rpc_max_connections()
     }
 
     fn rpc_cors(&self, is_dev: bool) -> Result<Option<Vec<String>>> {

@@ -30,6 +30,7 @@ use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::PrimaryChainTxPreValidator;
+use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
 use dsn::start_dsn_archiver;
@@ -53,10 +54,7 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_service::error::Error as ServiceError;
-use sc_service::{
-    Configuration, NetworkStarter, PartialComponents, SpawnTaskHandle, SpawnTasksParams,
-    TaskManager,
-};
+use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
@@ -154,7 +152,6 @@ pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
         NativeElseWasmExecutor<ExecutorDispatch>,
-        SpawnTaskHandle,
         Hash,
         VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
         SystemDomainExtrinsicsBuilder<
@@ -298,12 +295,7 @@ where
         })
         .transpose()?;
 
-    let executor = NativeElseWasmExecutor::<ExecutorDispatch>::new(
-        config.wasm_method,
-        config.default_heap_pages,
-        config.max_runtime_instances,
-        config.runtime_cache_size,
-    );
+    let executor = sc_service::new_native_or_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
@@ -347,7 +339,6 @@ where
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         client.clone(),
         executor,
-        task_manager.spawn_handle(),
         VerifierClient::new(client.clone()),
         domain_extrinsics_builder,
     );
@@ -784,9 +775,12 @@ where
     } else {
         None
     };
+    let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+    net_config.add_notification_protocol(cdm_gossip_peers_set_config());
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
+            net_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),

@@ -7,7 +7,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use futures::channel::{mpsc, oneshot};
+use futures::channel::oneshot;
 use futures::stream::StreamExt;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -288,7 +288,7 @@ struct ConsensusRelayServer<
 > {
     client: Arc<Client>,
     protocol: Box<ProtoServer>,
-    request_receiver: mpsc::Receiver<IncomingRequest>,
+    request_receiver: async_channel::Receiver<IncomingRequest>,
     _block: std::marker::PhantomData<Block>,
 }
 
@@ -602,7 +602,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + 'static,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    let (tx, request_receiver) = mpsc::channel(NUM_PEER_HINT.get());
+    let (tx, request_receiver) = async_channel::bounded(NUM_PEER_HINT.get());
 
     let backend = Arc::new(ConsensusBackend::new(client.clone(), pool, spawn_handle));
     let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient {

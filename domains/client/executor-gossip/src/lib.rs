@@ -31,7 +31,8 @@ const REBROADCAST_AFTER: Duration = Duration::from_secs(6);
 
 type MessageHash = [u8; 8];
 
-/// Returns the configuration value to put in [`sc_network::config::NetworkConfiguration::extra_sets`].
+/// Returns the configuration value to use in
+/// [`sc_network::config::FullNetworkConfiguration::add_notification_protocol`].
 pub fn executor_gossip_peers_set_config() -> NonDefaultSetConfig {
     let mut cfg = NonDefaultSetConfig::new(EXECUTOR_PROTOCOL_NAME.into(), 1024 * 1024);
     cfg.allow_non_reserved(25, 25);
