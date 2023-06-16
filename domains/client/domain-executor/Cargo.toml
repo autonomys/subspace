@@ -65,6 +65,6 @@ sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/subs
 system-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/system" }
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
-substrate-test-runtime-client = { version = "2.0.0", path = "../../../substrate/substrate-test-runtime-client" }
+substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
 tempfile = "3.5.0"

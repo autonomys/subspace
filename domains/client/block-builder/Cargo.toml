@@ -25,4 +25,4 @@ sp-state-machine = { version = "0.13.0", git = "https://github.com/subspace/subs
 tracing = "0.1.37"
 
 [dev-dependencies]
-substrate-test-runtime-client = { version = "2.0.0", path = "../../../substrate/substrate-test-runtime-client" }
+substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }

@@ -2,7 +2,6 @@
 !/crates
 !/domains
 !/orml
-!/substrate
 !/test
 !/Cargo.lock
 !/Cargo.toml
