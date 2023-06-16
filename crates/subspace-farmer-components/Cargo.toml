@@ -21,7 +21,7 @@ backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
 fs2 = "0.4.3"
 futures = "0.3.28"
-libc = "0.2.139"
+libc = "0.2.146"
 lru = "0.10.0"
 parity-scale-codec = "3.4.0"
 parking_lot = "0.12.1"
@@ -40,9 +40,9 @@ tokio = { version = "1.28.2", features = ["macros", "parking_lot", "rt-multi-thr
 tracing = "0.1.37"
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = "0.5.1"
 futures = "0.3.28"
-memmap2 = "0.5.10"
+memmap2 = "0.7.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
 
