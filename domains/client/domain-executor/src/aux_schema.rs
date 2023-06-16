@@ -436,7 +436,9 @@ mod tests {
         header_hash
     }
 
+    // TODO: Un-ignore once test client is fixed and working again on Windows
     #[test]
+    #[ignore]
     fn normal_prune_execution_receipt_works() {
         let client = substrate_test_runtime_client::new();
 
@@ -522,7 +524,9 @@ mod tests {
         );
     }
 
+    // TODO: Un-ignore once test client is fixed and working again on Windows
     #[test]
+    #[ignore]
     fn execution_receipts_should_be_kept_against_head_receipt_number() {
         let client = substrate_test_runtime_client::new();
 
@@ -600,7 +604,9 @@ mod tests {
         assert_eq!(receipt_start(), Some(4));
     }
 
+    // TODO: Un-ignore once test client is fixed and working again on Windows
     #[test]
+    #[ignore]
     fn write_delete_prune_bad_receipt_works() {
         struct PrimaryNumberHashMappings(Mutex<Vec<(u32, Hash)>>);
 
