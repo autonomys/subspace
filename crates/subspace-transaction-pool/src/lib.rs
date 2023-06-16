@@ -9,9 +9,9 @@ use sc_transaction_pool::{
 };
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::{
-    ChainEvent, ImportNotificationStream, MaintainedTransactionPool, PoolFuture, PoolStatus,
-    ReadyTransactions, TransactionFor, TransactionPool, TransactionSource,
-    TransactionStatusStreamFor, TxHash,
+    ChainEvent, ImportNotificationStream, MaintainedTransactionPool,
+    OffchainTransactionPoolFactory, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
+    TransactionPool, TransactionSource, TransactionStatusStreamFor, TxHash,
 };
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
@@ -277,12 +277,13 @@ where
 
     fn submit_local(
         &self,
-        at: &BlockId<Self::Block>,
+        at: Block::Hash,
         xt: sc_transaction_pool_api::LocalTransactionFor<Self>,
     ) -> Result<Self::Hash, Self::Error> {
+        let at = BlockId::Hash(at);
         let validity = self
             .api()
-            .validate_transaction_blocking(at, TransactionSource::Local, xt.clone())?
+            .validate_transaction_blocking(&at, TransactionSource::Local, xt.clone())?
             .map_err(|e| {
                 Self::Error::Pool(match e {
                     TransactionValidityError::Invalid(i) => TxPoolError::InvalidTransaction(i),
@@ -292,7 +293,7 @@ where
         let (hash, bytes) = self.pool().validated_pool().api().hash_and_length(&xt);
         let block_number = self
             .api()
-            .block_id_to_number(at)?
+            .block_id_to_number(&at)?
             .ok_or_else(|| sc_transaction_pool::error::Error::BlockIdConversion(at.to_string()))?;
         let validated = ValidatedTransaction::valid_at(
             block_number.saturated_into::<u64>(),
@@ -429,7 +430,7 @@ where
     // make transaction pool available for off-chain runtime calls.
     client
         .execution_extensions()
-        .register_transaction_pool(&pool);
+        .register_transaction_pool_factory(OffchainTransactionPoolFactory::new(&pool));
 
     pool
 }

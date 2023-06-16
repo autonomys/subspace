@@ -307,7 +307,7 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
 }
 
 /// Relayer message with storage key to generate storage proof using the backend.
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq)]
+#[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct RelayerMessageWithStorageKey {
     /// Domain which initiated this message.
     pub src_domain_id: DomainId,
@@ -324,7 +324,7 @@ pub struct RelayerMessageWithStorageKey {
 }
 
 /// Set of messages with storage keys to be relayed by a given relayer.
-#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq)]
+#[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct RelayerMessagesWithStorageKey {
     pub outbox: Vec<RelayerMessageWithStorageKey>,
     pub inbox_responses: Vec<RelayerMessageWithStorageKey>,

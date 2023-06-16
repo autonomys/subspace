@@ -213,7 +213,7 @@ mod pallet {
 
         // TODO: proper weight
         #[pallet::call_index(1)]
-        #[pallet::weight(10_000)]
+        #[pallet::weight({10_000})]
         pub fn update_domain_config(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -378,7 +378,6 @@ mod pallet {
         }
     }
 
-    #[cfg(feature = "std")]
     type GenesisDomainInfo<T> = (
         <T as frame_system::Config>::AccountId,
         BalanceOf<T>,
@@ -388,18 +387,9 @@ mod pallet {
     );
 
     #[pallet::genesis_config]
+    #[derive(frame_support::DefaultNoBound)]
     pub struct GenesisConfig<T: Config> {
         pub domains: Vec<GenesisDomainInfo<T>>,
-    }
-
-    #[cfg(feature = "std")]
-    impl<T: Config> Default for GenesisConfig<T> {
-        #[inline]
-        fn default() -> Self {
-            Self {
-                domains: Vec::new(),
-            }
-        }
     }
 
     #[pallet::genesis_build]
@@ -914,7 +904,7 @@ impl<T: Config> Pallet<T> {
 
         verify_bundle_solution_threshold(
             domain_id,
-            *vrf_output,
+            vrf_output,
             stake_weight,
             total_stake_weight,
             slot_probability,

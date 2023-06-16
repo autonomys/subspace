@@ -228,11 +228,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     };
     let initialize_block_call_data = new_header.encode();
 
-    let prover = ExecutionProver::new(
-        alice.backend.clone(),
-        alice.code_executor.clone(),
-        Box::new(alice.task_manager.spawn_handle()),
-    );
+    let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());
 
     // Test `initialize_block`.
     let storage_proof = prover
@@ -267,7 +263,6 @@ async fn execution_proof_creation_and_verification_should_work() {
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
-        ferdie.task_manager.spawn_handle(),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
         SystemDomainExtrinsicsBuilder::new(
             ferdie.client.clone(),
@@ -511,11 +506,7 @@ async fn invalid_execution_proof_should_not_work() {
         .unwrap()
     };
 
-    let prover = ExecutionProver::new(
-        alice.backend.clone(),
-        alice.code_executor.clone(),
-        Box::new(alice.task_manager.spawn_handle()),
-    );
+    let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());
 
     let create_extrinsic_proof = |extrinsic_index: usize| {
         let storage_changes = create_block_builder()
@@ -563,7 +554,6 @@ async fn invalid_execution_proof_should_not_work() {
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
-        ferdie.task_manager.spawn_handle(),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
         SystemDomainExtrinsicsBuilder::new(
             ferdie.client.clone(),
@@ -733,7 +723,6 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
-        ferdie.task_manager.spawn_handle(),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
         domain_extrinsics_builder.clone(),
     );

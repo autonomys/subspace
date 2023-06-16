@@ -12,7 +12,7 @@ use domain_runtime_primitives::opaque::Block;
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
 use sp_api::{ProvideRuntimeApi, StorageProof};
-use sp_core::traits::{CodeExecutor, RuntimeCode, SpawnNamed};
+use sp_core::traits::{CodeExecutor, RuntimeCode};
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
@@ -29,7 +29,6 @@ use std::sync::Arc;
 pub struct ExecutionProver<Block, B, Exec> {
     backend: Arc<B>,
     executor: Arc<Exec>,
-    spawn_handle: Box<dyn SpawnNamed>,
     _phantom: PhantomData<Block>,
 }
 
@@ -40,11 +39,10 @@ where
     Exec: CodeExecutor + 'static,
 {
     /// Constructs a new instance of [`ExecutionProver`].
-    pub fn new(backend: Arc<B>, executor: Arc<Exec>, spawn_handle: Box<dyn SpawnNamed>) -> Self {
+    pub fn new(backend: Arc<B>, executor: Arc<Exec>) -> Self {
         Self {
             backend,
             executor,
-            spawn_handle,
             _phantom: PhantomData::<Block>,
         }
     }
@@ -75,7 +73,6 @@ where
                 &delta_backend,
                 &mut Default::default(),
                 &*self.executor,
-                self.spawn_handle.clone(),
                 execution_phase.proving_method(),
                 call_data,
                 &runtime_code,
@@ -88,7 +85,6 @@ where
                 trie_backend,
                 &mut Default::default(),
                 &*self.executor,
-                self.spawn_handle.clone(),
                 execution_phase.proving_method(),
                 call_data,
                 &runtime_code,
@@ -121,12 +117,11 @@ where
             .runtime_code()
             .map_err(sp_blockchain::Error::RuntimeCode)?;
 
-        sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
+        sp_state_machine::execution_proof_check::<BlakeTwo256, _>(
             pre_execution_root,
             proof,
             &mut Default::default(),
             &*self.executor,
-            self.spawn_handle.clone(),
             execution_phase.verifying_method(),
             call_data,
             &runtime_code,
@@ -191,32 +186,28 @@ pub struct InvalidStateTransitionProofVerifier<
     PBlock,
     PClient,
     Exec,
-    Spawn,
     Hash,
     VerifierClient,
     DomainExtrinsicsBuilder,
 > {
     primary_chain_client: Arc<PClient>,
     executor: Exec,
-    spawn_handle: Spawn,
     verifier_client: VerifierClient,
     domain_extrinsics_builder: DomainExtrinsicsBuilder,
     _phantom: PhantomData<(PBlock, Hash)>,
 }
 
-impl<PBlock, PClient, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
+impl<PBlock, PClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
     for InvalidStateTransitionProofVerifier<
         PBlock,
         PClient,
         Exec,
-        Spawn,
         Hash,
         VerifierClient,
         DomainExtrinsicsBuilder,
     >
 where
     Exec: Clone,
-    Spawn: Clone,
     VerifierClient: Clone,
     DomainExtrinsicsBuilder: Clone,
 {
@@ -224,7 +215,6 @@ where
         Self {
             primary_chain_client: self.primary_chain_client.clone(),
             executor: self.executor.clone(),
-            spawn_handle: self.spawn_handle.clone(),
             verifier_client: self.verifier_client.clone(),
             domain_extrinsics_builder: self.domain_extrinsics_builder.clone(),
             _phantom: self._phantom,
@@ -232,12 +222,11 @@ where
     }
 }
 
-impl<PBlock, PClient, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder>
+impl<PBlock, PClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
     InvalidStateTransitionProofVerifier<
         PBlock,
         PClient,
         Exec,
-        Spawn,
         Hash,
         VerifierClient,
         DomainExtrinsicsBuilder,
@@ -248,7 +237,6 @@ where
     PClient: ProvideRuntimeApi<PBlock> + Send + Sync,
     PClient::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
-    Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
     DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
@@ -257,14 +245,12 @@ where
     pub fn new(
         primary_chain_client: Arc<PClient>,
         executor: Exec,
-        spawn_handle: Spawn,
         verifier_client: VerifierClient,
         domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
             primary_chain_client,
             executor,
-            spawn_handle,
             verifier_client,
             domain_extrinsics_builder,
             _phantom: PhantomData::<(PBlock, Hash)>,
@@ -356,12 +342,11 @@ where
             ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
         };
 
-        let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _, _>(
+        let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _>(
             *pre_state_root,
             proof.clone(),
             &mut Default::default(),
             &self.executor,
-            self.spawn_handle.clone(),
             execution_phase.verifying_method(),
             &call_data,
             &runtime_code,
@@ -392,13 +377,12 @@ pub trait VerifyInvalidStateTransitionProof {
     ) -> Result<(), VerificationError>;
 }
 
-impl<PBlock, C, Exec, Spawn, Hash, VerifierClient, DomainExtrinsicsBuilder>
+impl<PBlock, C, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
     VerifyInvalidStateTransitionProof
     for InvalidStateTransitionProofVerifier<
         PBlock,
         C,
         Exec,
-        Spawn,
         Hash,
         VerifierClient,
         DomainExtrinsicsBuilder,
@@ -409,7 +393,6 @@ where
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
     C::Api: ExecutorApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
-    Spawn: SpawnNamed + Clone + Send + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
     DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,

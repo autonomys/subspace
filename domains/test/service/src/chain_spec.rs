@@ -56,9 +56,6 @@ pub fn get_chain_spec(domain_id: DomainId) -> Box<dyn ChainSpec> {
         DomainId::CORE_PAYMENTS => {
             Box::new(chain_spec_from_genesis!(testnet_core_payments_genesis))
         }
-        DomainId::CORE_ETH_RELAY => {
-            Box::new(chain_spec_from_genesis!(testnet_core_eth_relay_genesis))
-        }
         _ => panic!("{domain_id:?} unimplemented"),
     }
 }
@@ -78,33 +75,6 @@ fn endowed_accounts() -> Vec<AccountId> {
         get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
         get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
     ]
-}
-
-fn testnet_core_eth_relay_genesis() -> core_eth_relay_domain_test_runtime::GenesisConfig {
-    core_eth_relay_domain_test_runtime::GenesisConfig {
-        system: core_eth_relay_domain_test_runtime::SystemConfig {
-            code: core_eth_relay_domain_test_runtime::WASM_BINARY
-                .expect("WASM binary was not build, please build it!")
-                .to_vec(),
-        },
-        transaction_payment: Default::default(),
-        balances: core_eth_relay_domain_test_runtime::BalancesConfig {
-            balances: endowed_accounts()
-                .iter()
-                .cloned()
-                .map(|k| (k, 1_000_000 * SSC))
-                .collect(),
-        },
-        messenger: core_eth_relay_domain_test_runtime::MessengerConfig {
-            relayers: vec![(Charlie.to_account_id(), Charlie.to_account_id())],
-        },
-        sudo: core_eth_relay_domain_test_runtime::SudoConfig {
-            key: Some(Charlie.to_account_id()),
-        },
-        ethereum_beacon_client: core_eth_relay_domain_test_runtime::EthereumBeaconClientConfig {
-            initial_sync: Default::default(),
-        },
-    }
 }
 
 fn testnet_core_payments_genesis() -> core_payments_domain_test_runtime::GenesisConfig {

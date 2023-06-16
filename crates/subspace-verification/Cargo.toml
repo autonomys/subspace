@@ -18,10 +18,10 @@ include = [
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false }
 merlin = { version = "2.0.1", default-features = false }
-scale-info = { version = "2.5.0", default-features = false, features = ["derive"] }
+scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
-sp-arithmetic = { version = "6.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-arithmetic = { version = "16.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }

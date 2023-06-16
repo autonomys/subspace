@@ -50,6 +50,7 @@ pub struct DomainConfiguration<AccountId> {
 /// Build the network service, the network status sinks and an RPC sender.
 ///
 /// Port from `sc_service::build_network` mostly the same with block sync disabled.
+// TODO: Struct for returned value
 #[allow(clippy::type_complexity)]
 pub fn build_network<TBl, TExPool, TImpQu, TCl>(
     params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl>,
@@ -79,6 +80,7 @@ where
 {
     let BuildNetworkParams {
         config,
+        mut net_config,
         client,
         transaction_pool,
         spawn_handle,
@@ -147,7 +149,7 @@ where
             .as_ref()
             .map(|config| config.registry.clone())
             .as_ref(),
-        &config.network,
+        &net_config,
         protocol_id.clone(),
         &config.chain_spec.fork_id().map(ToOwned::to_owned),
         Box::new(DefaultBlockAnnounceValidator),
@@ -168,33 +170,10 @@ where
         .ok()
         .flatten()
         .expect("Genesis block exists; qed");
-    let mut network_params = sc_network::config::Params::<TBl> {
-        role: config.role.clone(),
-        executor: {
-            let spawn_handle = Clone::clone(&spawn_handle);
-            Box::new(move |fut| {
-                spawn_handle.spawn("libp2p-node", Some("networking"), fut);
-            })
-        },
-        network_config: config.network.clone(),
-        genesis_hash,
-        protocol_id: protocol_id.clone(),
-        fork_id: config.chain_spec.fork_id().map(ToOwned::to_owned),
-        metrics_registry: config
-            .prometheus_config
-            .as_ref()
-            .map(|config| config.registry.clone()),
-        block_announce_config,
-        tx,
-        request_response_protocol_configs: vec![
-            block_request_protocol_config,
-            state_request_protocol_config,
-        ],
-    };
 
     // crate transactions protocol and add it to the list of supported protocols of `network_params`
     let transactions_handler_proto = sc_network_transactions::TransactionsHandlerPrototype::new(
-        protocol_id,
+        protocol_id.clone(),
         client
             .block_hash(0u32.into())
             .ok()
@@ -202,12 +181,36 @@ where
             .expect("Genesis block exists; qed"),
         config.chain_spec.fork_id(),
     );
-    network_params
-        .network_config
-        .extra_sets
-        .insert(0, transactions_handler_proto.set_config());
+    net_config.add_notification_protocol(transactions_handler_proto.set_config());
 
-    let has_bootnodes = !network_params.network_config.boot_nodes.is_empty();
+    net_config.add_request_response_protocol(block_request_protocol_config);
+    net_config.add_request_response_protocol(state_request_protocol_config);
+
+    let network_params = sc_network::config::Params::<TBl> {
+        role: config.role.clone(),
+        executor: {
+            let spawn_handle = Clone::clone(&spawn_handle);
+            Box::new(move |fut| {
+                spawn_handle.spawn("libp2p-node", Some("networking"), fut);
+            })
+        },
+        network_config: net_config,
+        genesis_hash,
+        protocol_id,
+        fork_id: config.chain_spec.fork_id().map(ToOwned::to_owned),
+        metrics_registry: config
+            .prometheus_config
+            .as_ref()
+            .map(|config| config.registry.clone()),
+        block_announce_config,
+        tx,
+    };
+
+    let has_bootnodes = !network_params
+        .network_config
+        .network_config
+        .boot_nodes
+        .is_empty();
     let network_mut = sc_network::NetworkWorker::new(network_params)?;
     let network = network_mut.service().clone();
 

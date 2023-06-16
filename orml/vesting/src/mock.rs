@@ -53,10 +53,10 @@ impl pallet_balances::Config for Runtime {
 	type MaxReserves = ();
 	type ReserveIdentifier = [u8; 8];
 	type WeightInfo = ();
-    type FreezeIdentifier = ();
-    type MaxFreezes = ();
-    type HoldIdentifier = ();
-    type MaxHolds = ();
+	type RuntimeHoldReason = [u8; 8];
+	type FreezeIdentifier = [u8; 8];
+	type MaxHolds = ();
+	type MaxFreezes = ();
 }
 
 pub struct EnsureAliceOrBob;

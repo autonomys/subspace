@@ -68,7 +68,6 @@ pub type Moment = u64;
 pub mod opaque {
     use super::BlockNumber;
     use parity_scale_codec::{Decode, Encode};
-    #[cfg(feature = "std")]
     use serde::{Deserialize, Serialize};
     use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
     use sp_runtime::{generic, DigestItem, OpaqueExtrinsic};
@@ -80,10 +79,9 @@ pub mod opaque {
     /// Opaque block type.
 
     /// Abstraction over a substrate block.
-    #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
-    #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-    #[cfg_attr(feature = "std", serde(rename_all = "camelCase"))]
-    #[cfg_attr(feature = "std", serde(deny_unknown_fields))]
+    #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    #[serde(deny_unknown_fields)]
     pub struct Block {
         /// The block header.
         pub header: Header,

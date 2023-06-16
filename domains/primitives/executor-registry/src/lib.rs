@@ -33,7 +33,6 @@ pub trait ExecutorRegistry<AccountId, Balance, StakeWeight> {
     fn key_owner_storage_key(executor_public_key: &ExecutorPublicKey) -> Vec<u8>;
 
     /// Returns `Some(stake_weight)` if the given account is an authority.
-    #[cfg(feature = "std")]
     fn authority_stake_weight(who: &AccountId) -> Option<StakeWeight>;
 
     /// Register an executor without check, only use in benchmark.
@@ -54,7 +53,6 @@ impl<AccountId, Balance, StakeWeight> ExecutorRegistry<AccountId, Balance, Stake
         Vec::new()
     }
 
-    #[cfg(feature = "std")]
     fn authority_stake_weight(_who: &AccountId) -> Option<StakeWeight> {
         None
     }

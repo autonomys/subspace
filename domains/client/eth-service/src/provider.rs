@@ -1,7 +1,6 @@
 use crate::rpc::{create_eth_rpc, EthDeps};
 use crate::service::{
-    new_frontier_partial, spawn_frontier_tasks, EthConfiguration, FrontierBackend,
-    FrontierPartialComponents,
+    new_frontier_partial, spawn_frontier_tasks, EthConfiguration, FrontierPartialComponents,
 };
 use clap::Parser;
 use domain_runtime_primitives::{Balance, Index};
@@ -26,6 +25,7 @@ use sp_api::{ApiExt, BlockT, CallApiAt, ConstructRuntimeApi, Core, ProvideRuntim
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_core::traits::SpawnEssentialNamed;
+use sp_core::H256;
 use sp_runtime::codec::{Decode, Encode};
 use std::error::Error;
 use std::fmt::{Debug, Display};
@@ -87,7 +87,7 @@ where
 impl<Block, Client, BE, TxPool, CA, AccountId, CT, EC>
     RpcProvider<Block, Client, TxPool, CA, BE, AccountId> for EthProvider<CT, EC>
 where
-    Block: BlockT,
+    Block: BlockT<Hash = H256>,
     BE: Backend<Block> + 'static,
     Client: ProvideRuntimeApi<Block>
         + BlockchainEvents<Block>
@@ -125,7 +125,7 @@ where
             Some(base_path) => BasePath::new(base_path.path()),
         };
 
-        let frontier_backend = Arc::new(FrontierBackend::open(
+        let frontier_backend = Arc::new(fc_db::kv::Backend::open(
             client,
             &full_deps.database_source,
             base_path.path(),
@@ -141,6 +141,7 @@ where
             full_deps: full_deps.clone(),
             converter: Some(CT::default()),
             enable_dev_signer: self.eth_config.enable_dev_signer,
+            sync: full_deps.sync.clone(),
             frontier_backend,
             overrides: overrides.clone(),
             block_data_cache: Arc::new(fc_rpc::EthBlockDataCacheTask::new(
@@ -155,6 +156,7 @@ where
             fee_history_cache,
             fee_history_cache_limit,
             execute_gas_limit_multiplier: self.eth_config.execute_gas_limit_multiplier,
+            forced_parent_hashes: None,
         })
     }
 
@@ -178,10 +180,20 @@ where
             essential_task_spawner.clone(),
         )?;
 
+        // Sinks for pubsub notifications.
+        // Everytime a new subscription is created, a new mpsc channel is added to the sink pool.
+        // The MappingSyncWorker sends through the channel on block import and the subscription emits a notification to the subscriber on receiving a message through this channel.
+        // This way we avoid race conditions when using native substrate block import notification stream.
+        let pubsub_notification_sinks: fc_mapping_sync::EthereumBlockNotificationSinks<
+            fc_mapping_sync::EthereumBlockNotification<Block>,
+        > = Default::default();
+        let pubsub_notification_sinks = Arc::new(pubsub_notification_sinks);
+
         let io = create_eth_rpc::<Client, BE, TxPool, CA, CT, Block, EC>(
             io,
             deps.clone(),
             subscription_task_executor,
+            pubsub_notification_sinks.clone(),
         )?;
 
         // spawn essential rpc tasks
@@ -196,6 +208,8 @@ where
                 fee_history_cache: deps.fee_history_cache,
                 fee_history_cache_limit: deps.fee_history_cache_limit,
             },
+            deps.sync,
+            pubsub_notification_sinks,
         );
         Ok(io)
     }

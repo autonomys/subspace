@@ -136,7 +136,7 @@ macro_rules! impl_runtime {
             type WeightInfo = ();
             type FreezeIdentifier = ();
             type MaxFreezes = ();
-            type HoldIdentifier = ();
+            type RuntimeHoldReason = ();
             type MaxHolds = ();
         }
 

@@ -250,7 +250,7 @@ impl pallet_balances::Config for Runtime {
     type ReserveIdentifier = [u8; 8];
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type HoldIdentifier = ();
+    type RuntimeHoldReason = ();
     type MaxHolds = ();
 }
 
@@ -400,6 +400,7 @@ where
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
+    type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

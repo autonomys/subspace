@@ -50,7 +50,7 @@ subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitive
 substrate-bip39 = "0.4.4"
 tempfile = "3.5.0"
 thiserror = "1.0.38"
-tokio = { version = "1.27.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
+tokio = { version = "1.28.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }

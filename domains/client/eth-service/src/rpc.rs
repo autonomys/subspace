@@ -1,5 +1,5 @@
 use domain_service::rpc::FullDeps;
-use fc_db::Backend as FrontierBackend;
+use fc_mapping_sync::{EthereumBlockNotification, EthereumBlockNotificationSinks};
 use fc_rpc::{
     Eth, EthApiServer, EthDevSigner, EthFilter, EthFilterApiServer, EthPubSub, EthPubSubApiServer,
     EthSigner, Net, NetApiServer, Web3, Web3ApiServer,
@@ -12,13 +12,16 @@ use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRP
 use jsonrpsee::RpcModule;
 use sc_client_api::backend::{Backend, StorageProvider};
 use sc_client_api::client::BlockchainEvents;
+use sc_network_sync::SyncingService;
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use sp_core::H256;
 use sp_runtime::traits::Block as BlockT;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub struct DefaultEthConfig<Client, Backend>(std::marker::PhantomData<(Client, Backend)>);
@@ -42,8 +45,10 @@ pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE> {
     pub converter: Option<CT>,
     /// Whether to enable dev signer
     pub enable_dev_signer: bool,
+    /// Chain syncing service
+    pub sync: Arc<SyncingService<Block>>,
     /// Frontier Backend.
-    pub frontier_backend: Arc<FrontierBackend<Block>>,
+    pub frontier_backend: Arc<fc_db::kv::Backend<Block>>,
     /// Ethereum data access overrides.
     pub overrides: Arc<OverrideHandle<Block>>,
     /// Cache for Ethereum block data.
@@ -59,6 +64,8 @@ pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE> {
     /// Maximum allowed gas limit will be ` block.gas_limit * execute_gas_limit_multiplier` when
     /// using eth_call/eth_estimateGas.
     pub execute_gas_limit_multiplier: u64,
+    /// Mandated parent hashes for a given block hash.
+    pub forced_parent_hashes: Option<BTreeMap<H256, H256>>,
 }
 
 impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE> Clone
@@ -69,6 +76,7 @@ impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE> Clone
             full_deps: self.full_deps.clone(),
             converter: self.converter.clone(),
             enable_dev_signer: self.enable_dev_signer,
+            sync: self.sync.clone(),
             frontier_backend: self.frontier_backend.clone(),
             overrides: self.overrides.clone(),
             block_data_cache: self.block_data_cache.clone(),
@@ -77,6 +85,7 @@ impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE> Clone
             fee_history_cache: self.fee_history_cache.clone(),
             fee_history_cache_limit: self.fee_history_cache_limit,
             execute_gas_limit_multiplier: self.execute_gas_limit_multiplier,
+            forced_parent_hashes: self.forced_parent_hashes.clone(),
         }
     }
 }
@@ -86,9 +95,12 @@ pub(crate) fn create_eth_rpc<Client, BE, TxPool, CA, CT, Block, EC: EthConfig<Bl
     mut io: RpcModule<()>,
     deps: EthDeps<Client, TxPool, CA, CT, Block, BE>,
     subscription_task_executor: SubscriptionTaskExecutor,
+    pubsub_notification_sinks: Arc<
+        EthereumBlockNotificationSinks<EthereumBlockNotification<Block>>,
+    >,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
-    Block: BlockT,
+    Block: BlockT<Hash = H256>,
     Client: CallApiAt<Block> + ProvideRuntimeApi<Block>,
     Client::Api:
         BlockBuilderApi<Block> + EthereumRuntimeRPCApi<Block> + ConvertTransactionRuntimeApi<Block>,
@@ -113,6 +125,8 @@ where
         fee_history_cache,
         fee_history_cache_limit,
         execute_gas_limit_multiplier,
+        forced_parent_hashes,
+        ..
     } = deps;
 
     let FullDeps {
@@ -145,6 +159,7 @@ where
             fee_history_cache,
             fee_history_cache_limit,
             execute_gas_limit_multiplier,
+            forced_parent_hashes,
         )
         .replace_config::<EC>()
         .into_rpc(),
@@ -171,6 +186,7 @@ where
             sync,
             subscription_task_executor,
             overrides,
+            pubsub_notification_sinks,
         )
         .into_rpc(),
     )?;

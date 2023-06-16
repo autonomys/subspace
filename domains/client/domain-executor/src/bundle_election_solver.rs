@@ -4,12 +4,12 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::bundle_election::{
     calculate_bundle_election_threshold, derive_bundle_election_solution,
-    is_election_solution_within_threshold, make_local_randomness_transcript_data, well_known_keys,
+    is_election_solution_within_threshold, make_local_randomness_input, well_known_keys,
     BundleElectionSolverParams,
 };
 use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
 use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
-use sp_keystore::{Keystore, KeystorePtr};
+use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
@@ -85,18 +85,16 @@ where
             "Total stake weight mismatches, which must be a bug in the runtime"
         );
 
-        let transcript_data = make_local_randomness_transcript_data(&global_challenge);
+        let input = make_local_randomness_input(&global_challenge).into();
 
         for (index, (authority_id, stake_weight)) in authorities.iter().enumerate() {
-            if let Ok(Some(vrf_signature)) = Keystore::sr25519_vrf_sign(
-                &*self.keystore,
-                ExecutorPublicKey::ID,
-                authority_id.as_ref(),
-                transcript_data.clone(),
-            ) {
+            if let Ok(Some(vrf_signature)) =
+                self.keystore
+                    .sr25519_vrf_sign(ExecutorPublicKey::ID, authority_id.as_ref(), &input)
+            {
                 let election_solution = derive_bundle_election_solution(
                     domain_id,
-                    vrf_signature.output.to_bytes(),
+                    &vrf_signature.output,
                     authority_id,
                     &global_challenge,
                 )
@@ -152,8 +150,8 @@ where
 
                     let proof_of_election = ProofOfElection {
                         domain_id,
-                        vrf_output: vrf_signature.output.to_bytes(),
-                        vrf_proof: vrf_signature.proof.to_bytes(),
+                        vrf_output: vrf_signature.output,
+                        vrf_proof: vrf_signature.proof,
                         executor_public_key: authority_id.clone(),
                         global_challenge,
                         storage_proof,

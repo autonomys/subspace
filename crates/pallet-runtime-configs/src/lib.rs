@@ -22,7 +22,6 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
-    #[cfg(feature = "std")]
     use sp_runtime::traits::Zero;
 
     #[pallet::pallet]
@@ -51,7 +50,6 @@ mod pallet {
         pub confirmation_depth_k: T::BlockNumber,
     }
 
-    #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
         #[inline]
         fn default() -> Self {

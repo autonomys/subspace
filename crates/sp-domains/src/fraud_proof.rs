@@ -1,4 +1,6 @@
-use crate::{BundleHeader, DomainId, SealedBundleHeader};
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+use crate::BundleHeader;
+use crate::{DomainId, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
