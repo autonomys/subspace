@@ -17,7 +17,6 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false }
-merlin = { version = "2.0.1", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
 sp-arithmetic = { version = "16.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
@@ -32,7 +31,6 @@ thiserror = { version = "1.0.38", optional = true }
 default = ["std"]
 std = [
     "codec/std",
-    "merlin/std",
     "scale-info/std",
     "schnorrkel/std",
     "sp-arithmetic/std",

@@ -27,7 +27,7 @@ frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subs
 futures = "0.3.28"
 hex-literal = "0.4.0"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
-log = "0.4.17"
+log = "0.4.19"
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }

@@ -46,5 +46,5 @@ subspace-test-runtime = { version = "0.1.0", path = "../../test/subspace-test-ru
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 substrate-test-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
-tempfile = "3.5.0"
+tempfile = "3.4.0"
 tokio = "1.28.2"
