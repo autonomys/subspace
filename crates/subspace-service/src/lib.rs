@@ -33,7 +33,6 @@ use crate::tx_pre_validator::PrimaryChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
-use dsn::start_dsn_archiver;
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -75,7 +74,6 @@ use sp_session::SessionKeys;
 use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
@@ -200,8 +198,6 @@ pub struct SubspaceConfiguration {
     pub force_new_slot_notifications: bool,
     /// Subspace networking (DSN).
     pub subspace_networking: SubspaceNetworking,
-    /// Max number of segments that can be published concurrently.
-    pub segment_publish_concurrency: NonZeroUsize,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
     /// Use the block request handler implementation from subspace
@@ -552,11 +548,12 @@ where
 
     let segment_header_cache = SegmentHeaderCache::new(client.clone());
 
-    let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
+    let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-        } => (node, bootstrap_nodes),
+            // TODO: Revisit piece cache creation when we get SDK requirements.
+        } => (node, bootstrap_nodes, None),
         SubspaceNetworking::Create {
             config: dsn_config,
             piece_cache_size,
@@ -609,7 +606,7 @@ where
             let (node, mut node_runner) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
-                piece_cache,
+                piece_cache.clone(),
                 segment_header_cache.clone(),
             )?;
 
@@ -638,24 +635,9 @@ where
                 ),
             );
 
-            (node, dsn_config.bootstrap_nodes)
+            (node, dsn_config.bootstrap_nodes, Some(piece_cache))
         }
     };
-
-    let dsn_archiving_fut = start_dsn_archiver(
-        subspace_link
-            .archived_segment_notification_stream()
-            .subscribe(),
-        node.clone(),
-        task_manager.spawn_handle(),
-        config.segment_publish_concurrency,
-    );
-
-    task_manager.spawn_essential_handle().spawn_essential(
-        "dsn-archiver",
-        Some("subspace-networking"),
-        Box::pin(dsn_archiving_fut.in_current_span()),
-    );
 
     let segment_header_archiving_fut = start_segment_header_archiver(
         segment_header_cache.clone(),
@@ -943,6 +925,7 @@ where
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     subspace_link: subspace_link.clone(),
                     segment_headers_provider: segment_header_cache.clone(),
+                    piece_provider: piece_cache.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

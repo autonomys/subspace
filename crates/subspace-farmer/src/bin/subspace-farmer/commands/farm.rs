@@ -1,11 +1,10 @@
 mod dsn;
 
-use crate::commands::farm::dsn::{configure_dsn, start_announcements_processor};
+use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
-use anyhow::{anyhow, Result};
-use futures::channel::mpsc;
+use anyhow::{anyhow, Context, Result};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -15,31 +14,38 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PieceIndexHash, PieceOffset, Record};
+use subspace_core_primitives::{
+    ArchivedHistorySegment, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
     SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
 };
+use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
+use subspace_farmer::utils::piece_cache::PieceCache;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
+use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
+use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, info_span, warn, Instrument};
+use tokio::time::sleep;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
-
-const MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE: NonZeroUsize =
-    NonZeroUsize::new(2000).expect("Not zero; qed");
+const GET_PIECE_MAX_RETRIES_COUNT: u16 = 3;
+const GET_PIECE_DELAY_IN_SECS: u64 = 3;
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -75,6 +81,7 @@ where
 
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = NodeRpcClient::new(&node_rpc_url).await?;
+
     let concurrent_plotting_semaphore = Arc::new(tokio::sync::Semaphore::new(
         farming_args.max_concurrent_plots.get(),
     ));
@@ -85,9 +92,6 @@ where
         .farmer_app_info()
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
-
-    let (provider_records_sender, provider_records_receiver) =
-        mpsc::channel(MAX_CONCURRENT_ANNOUNCEMENTS_QUEUE.get());
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
@@ -112,18 +116,10 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
-            Mutex::new(provider_records_sender),
         )?
     };
 
     let piece_cache = Arc::new(tokio::sync::Mutex::new(piece_cache));
-
-    start_announcements_processor(
-        node.clone(),
-        Arc::clone(&piece_cache),
-        Arc::downgrade(&readers_and_pieces),
-        provider_records_receiver,
-    )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(
@@ -144,9 +140,30 @@ where
     );
     let piece_getter = Arc::new(FarmerPieceGetter::new(
         NodePieceGetter::new(piece_provider),
-        piece_cache,
-        node.clone(),
+        piece_cache.clone(),
     ));
+
+    let last_segment_index = farmer_app_info.protocol_info.history_size.segment_index();
+
+    let _piece_cache_population = run_future_in_dedicated_thread(
+        Box::pin({
+            let piece_cache = piece_cache.clone();
+            let piece_getter = piece_getter.clone();
+
+            populate_pieces_cache(last_segment_index, piece_getter, piece_cache)
+        }),
+        "pieces-cache-population".to_string(),
+    )?;
+
+    let _piece_cache_maintainer = run_future_in_dedicated_thread(
+        Box::pin({
+            let piece_cache = piece_cache.clone();
+            let node_client = node_client.clone();
+
+            fill_piece_cache_from_archived_segments(node_client, piece_cache)
+        }),
+        "pieces-cache-maintainer".to_string(),
+    )?;
 
     let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
     let max_pieces_in_sector = match max_pieces_in_sector {
@@ -430,4 +447,152 @@ fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
     );
 
     Keypair::from(keypair)
+}
+
+/// Populates piece cache on startup. It waits for the new segment index and check all pieces from
+/// previous segments to see if they are already in the cache. If they are not, they are added
+/// from DSN.
+async fn populate_pieces_cache<PG, PC>(
+    segment_index: SegmentIndex,
+    piece_getter: Arc<FarmerPieceGetter<PG, PC>>,
+    piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
+) where
+    PG: PieceGetter + Send + Sync,
+    PC: PieceCache + Send + 'static,
+{
+    debug!(%segment_index, "Started syncing piece cache...");
+    let final_piece_index =
+        u64::from(segment_index.first_piece_index()) + ArchivedHistorySegment::NUM_PIECES as u64;
+
+    // TODO: consider optimizing starting point of this loop
+    let mut piece_index = 0;
+    'outer: while piece_index < final_piece_index {
+        // Scroll to the next piece index to cache.
+        {
+            let piece_cache = piece_cache.lock().await;
+            while !piece_cache
+                .should_cache(&PieceIndex::from(piece_index).hash().to_multihash().into())
+            {
+                piece_index += 1;
+
+                if piece_index >= final_piece_index {
+                    break 'outer;
+                }
+            }
+        }
+
+        let key = PieceIndex::from(piece_index).hash().to_multihash().into();
+
+        let result = piece_getter
+            .get_piece(piece_index.into(), PieceGetterRetryPolicy::Limited(1))
+            .await;
+
+        match result {
+            Ok(Some(piece)) => {
+                debug!(%piece_index, "Added piece to cache.");
+                piece_cache.lock().await.add_piece(key, piece);
+            }
+            Ok(None) => {
+                debug!(%piece_index, "Couldn't find piece.");
+            }
+            Err(err) => {
+                debug!(error=%err, %piece_index, "Failed to get piece for piece cache.");
+            }
+        }
+
+        piece_index += 1;
+    }
+
+    debug!("Finished syncing piece cache.");
+}
+
+/// Subscribes to a new segment index and adds pieces from the segment to the cache if required.
+async fn fill_piece_cache_from_archived_segments(
+    node_client: NodeRpcClient,
+    piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
+) {
+    let segment_headers_notifications = node_client
+        .subscribe_archived_segment_headers()
+        .await
+        .map_err(|err| anyhow::anyhow!(err.to_string()))
+        .context("Failed to subscribe to archived segments");
+
+    match segment_headers_notifications {
+        Ok(mut segment_headers_notifications) => {
+            while let Some(segment_header) = segment_headers_notifications.next().await {
+                let segment_index = segment_header.segment_index();
+
+                debug!(%segment_index, "Starting to process archived segment....");
+
+                for piece_index in segment_index.segment_piece_indexes() {
+                    let key = piece_index.hash().to_multihash().into();
+                    {
+                        if !piece_cache.lock().await.should_cache(&key) {
+                            trace!(%piece_index, ?key, "Piece key will not be included in the cache.");
+
+                            continue;
+                        }
+                    }
+
+                    trace!(%piece_index, ?key, "Piece key will be included in the cache.");
+
+                    // Segment notification will come earlier than node's local cache finishes its
+                    // initialization, so we need to wait for it.
+                    let mut retries_count = 0u16;
+                    'retry: loop {
+                        if retries_count >= GET_PIECE_MAX_RETRIES_COUNT {
+                            debug!(%piece_index, "Max retries number exceeded.");
+
+                            break 'retry;
+                        }
+
+                        retries_count += 1;
+
+                        let piece = node_client.piece(piece_index).await;
+
+                        match piece {
+                            Ok(Some(piece)) => {
+                                {
+                                    piece_cache.lock().await.add_piece(key, piece);
+                                }
+
+                                trace!(%piece_index, "Got piece for archived segment.");
+
+                                break 'retry;
+                            }
+                            Ok(None) => {
+                                debug!(%piece_index, "Can't get piece. Retrying...");
+
+                                sleep(Duration::from_secs(GET_PIECE_DELAY_IN_SECS)).await;
+                            }
+                            Err(err) => {
+                                warn!(
+                                    piece_index = ?piece_index,
+                                    err = ?err,
+                                    "Failed to get piece"
+                                );
+                            }
+                        }
+                    }
+                }
+
+                match node_client
+                    .acknowledge_archived_segment_header(segment_index)
+                    .await
+                {
+                    Ok(()) => {
+                        debug!(%segment_index, "Acknowledged archived segment.");
+                    }
+                    Err(err) => {
+                        error!(%segment_index, ?err, "Failed to acknowledge archived segment.");
+                    }
+                };
+
+                debug!(%segment_index, "Finished processing archived segment.");
+            }
+        }
+        Err(err) => {
+            error!(?err, "Failed to get archived segments notifications.")
+        }
+    }
 }

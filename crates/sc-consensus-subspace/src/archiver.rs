@@ -571,6 +571,7 @@ async fn send_archived_segment_notification(
     archived_segment_notification_sender: &SubspaceNotificationSender<ArchivedSegmentNotification>,
     archived_segment: NewArchivedSegment,
 ) {
+    let segment_index = archived_segment.segment_header.segment_index();
     let (acknowledgement_sender, mut acknowledgement_receiver) =
         tracing_unbounded::<()>("subspace_acknowledgement", 100);
     let archived_segment_notification = ArchivedSegmentNotification {
@@ -581,6 +582,9 @@ async fn send_archived_segment_notification(
     archived_segment_notification_sender.notify(move || archived_segment_notification);
 
     while acknowledgement_receiver.next().await.is_some() {
-        // Wait until all acknowledgements are received
+        debug!(
+            "Archived segment notification acknowledged: {}",
+            segment_index
+        );
     }
 }

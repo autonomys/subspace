@@ -5,21 +5,14 @@ use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
 use crate::SegmentHeaderCache;
 use either::Either;
-use futures::stream::FuturesUnordered;
-use futures::{Stream, StreamExt};
 use sc_client_api::AuxStore;
-use sc_consensus_subspace::ArchivedSegmentNotification;
 use sc_consensus_subspace_rpc::SegmentHeaderProvider;
-use sp_core::traits::SpawnNamed;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
-use subspace_archiving::archiver::NewArchivedSegment;
-use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
-use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
     NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
@@ -29,8 +22,7 @@ use subspace_networking::{
     KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
-use tokio::sync::Semaphore;
-use tracing::{debug, error, info, trace, warn, Instrument};
+use tracing::{debug, error, trace};
 
 /// Provider records cache size
 const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
@@ -246,88 +238,4 @@ where
     };
 
     subspace_networking::create(networking_config).map_err(Into::into)
-}
-
-/// Start an archiver that will listen for archived segments and send it to DSN network using
-/// pub-sub protocol.
-pub(crate) async fn start_dsn_archiver<Spawner>(
-    mut archived_segment_notification_stream: impl Stream<Item = ArchivedSegmentNotification> + Unpin,
-    node: Node,
-    spawner: Spawner,
-    segment_publish_concurrency: NonZeroUsize,
-) where
-    Spawner: SpawnNamed,
-{
-    trace!("Subspace DSN archiver started.");
-
-    let segment_publish_semaphore = Arc::new(Semaphore::new(segment_publish_concurrency.get()));
-
-    let mut last_published_segment_index: Option<SegmentIndex> = None;
-    while let Some(ArchivedSegmentNotification {
-        archived_segment, ..
-    }) = archived_segment_notification_stream.next().await
-    {
-        let segment_index = archived_segment.segment_header.segment_index();
-        let first_piece_index = segment_index.first_piece_index();
-
-        info!(%segment_index, "Processing a segment.");
-
-        // skip repeating publication
-        if let Some(last_published_segment_index) = last_published_segment_index {
-            if last_published_segment_index == segment_index {
-                info!(%segment_index, "Archived segment skipped.");
-                continue;
-            }
-        }
-
-        let publishing_permit = match segment_publish_semaphore.clone().acquire_owned().await {
-            Ok(publishing_permit) => publishing_permit,
-            Err(error) => {
-                warn!(
-                    %segment_index,
-                    %error,
-                    "Semaphore was closed, interrupting publishing"
-                );
-                return;
-            }
-        };
-
-        spawner.spawn(
-            "segment-publishing",
-            Some("subspace-networking"),
-            Box::pin({
-                let node = node.clone();
-
-                async move {
-                    publish_pieces(&node, first_piece_index, segment_index, archived_segment).await;
-
-                    // Release only after publishing is finished
-                    drop(publishing_permit);
-                }
-                .in_current_span()
-            }),
-        );
-
-        last_published_segment_index = Some(segment_index);
-    }
-}
-
-// Publishes pieces-by-sector to DSN in bulk. Supports cancellation.
-pub(crate) async fn publish_pieces(
-    node: &Node,
-    first_piece_index: PieceIndex,
-    segment_index: SegmentIndex,
-    archived_segment: Arc<NewArchivedSegment>,
-) {
-    let pieces_indexes = (first_piece_index..).take(archived_segment.pieces.len());
-
-    let mut pieces_publishing_futures = pieces_indexes
-        .map(|piece_index| announce_single_piece_index_hash_with_backoff(piece_index.hash(), node))
-        .collect::<FuturesUnordered<_>>();
-
-    while pieces_publishing_futures.next().await.is_some() {
-        // empty body
-    }
-
-    info!(%segment_index, "Segment publishing was successful.");
 }

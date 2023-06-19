@@ -7,8 +7,7 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_archiving::archiver::NewArchivedSegment;
-use subspace_core_primitives::{SegmentCommitment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
 };
@@ -107,20 +106,20 @@ impl NodeClient for NodeRpcClient {
             .await?)
     }
 
-    async fn subscribe_archived_segments(
+    async fn subscribe_archived_segment_headers(
         &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = NewArchivedSegment> + Send + 'static>>, RpcError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, RpcError> {
         let subscription = self
             .client
             .subscribe(
-                "subspace_subscribeArchivedSegment",
+                "subspace_subscribeArchivedSegmentHeader",
                 rpc_params![],
-                "subspace_unsubscribeArchivedSegment",
+                "subspace_unsubscribeArchivedSegmentHeader",
             )
             .await?;
 
         Ok(Box::pin(subscription.filter_map(
-            |archived_segment_result| async move { archived_segment_result.ok() },
+            |archived_segment_header_result| async move { archived_segment_header_result.ok() },
         )))
     }
 
@@ -141,6 +140,35 @@ impl NodeClient for NodeRpcClient {
         Ok(self
             .client
             .request("subspace_SegmentHeaders", rpc_params![&segment_indexes])
+            .await?)
+    }
+
+    async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
+        let result: Option<Vec<u8>> = self
+            .client
+            .request("subspace_Piece", rpc_params![&piece_index])
+            .await?;
+
+        if let Some(bytes) = result {
+            let piece = Piece::try_from(bytes.as_slice())
+                .map_err(|_| format!("Cannot convert piece. PieceIndex={}", piece_index))?;
+
+            return Ok(Some(piece));
+        }
+
+        Ok(None)
+    }
+
+    async fn acknowledge_archived_segment_header(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<(), Error> {
+        Ok(self
+            .client
+            .request(
+                "subspace_acknowledgeArchivedSegmentHeader",
+                rpc_params![&segment_index],
+            )
             .await?)
     }
 }

@@ -28,7 +28,9 @@ use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
 };
-use sc_consensus_subspace_rpc::{SegmentHeaderProvider, SubspaceRpc, SubspaceRpcApiServer};
+use sc_consensus_subspace_rpc::{
+    PieceProvider, SegmentHeaderProvider, SubspaceRpc, SubspaceRpcApiServer,
+};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
@@ -44,7 +46,7 @@ use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
-pub struct FullDeps<C, P, RBP> {
+pub struct FullDeps<C, P, RBP, PP> {
     /// The client instance to use.
     pub client: Arc<C>,
     /// Transaction pool instance.
@@ -69,11 +71,13 @@ pub struct FullDeps<C, P, RBP> {
     pub subspace_link: SubspaceLink<Block>,
     /// Segment header provider.
     pub segment_headers_provider: RBP,
+    /// Provides pieces from piece cache.
+    pub piece_provider: Option<PP>,
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P, RPB>(
-    deps: FullDeps<C, P, RPB>,
+pub fn create_full<C, P, RPB, PP>(
+    deps: FullDeps<C, P, RPB, PP>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
@@ -89,6 +93,7 @@ where
         + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
     RPB: SegmentHeaderProvider + Send + Sync + 'static,
+    PP: PieceProvider + Send + Sync + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -103,6 +108,7 @@ where
         dsn_bootstrap_nodes,
         subspace_link,
         segment_headers_provider,
+        piece_provider,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -123,6 +129,7 @@ where
             dsn_bootstrap_nodes,
             subspace_link,
             segment_headers_provider,
+            piece_provider,
         )
         .into_rpc(),
     )?;

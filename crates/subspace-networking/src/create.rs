@@ -270,6 +270,7 @@ where
             .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Providers' settings
             .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
+            // TODO: remove republication after removing all pieces` announcements
             .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)
             // Our records don't expire.
             .set_record_ttl(None)

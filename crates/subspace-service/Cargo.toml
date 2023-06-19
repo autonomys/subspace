@@ -16,7 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.58"
+async-trait = "0.1.68"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 derive_more = "0.99.17"
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }

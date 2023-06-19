@@ -1,17 +1,13 @@
 use crate::DsnArgs;
 use anyhow::Context;
-use futures::channel::mpsc::{Receiver, Sender};
 use futures::StreamExt;
 use parking_lot::Mutex;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use std::time::Instant;
-use std::{fs, io, thread};
 use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
-use subspace_farmer::utils::farmer_provider_record_processor::FarmerProviderRecordProcessor;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
@@ -28,13 +24,8 @@ use subspace_networking::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
-use tokio::runtime::Handle;
-use tracing::{debug, error, info, trace, Instrument, Span};
+use tracing::{debug, error, info, trace, Instrument};
 
-const MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
-    NonZeroUsize::new(20).expect("Not zero; qed");
-const MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING: NonZeroUsize =
-    NonZeroUsize::new(100).expect("Not zero; qed");
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -58,7 +49,6 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
-    provider_records_sender: Mutex<Sender<ProviderRecord>>,
 ) -> Result<
     (
         Node,
@@ -79,21 +69,7 @@ pub(super) fn configure_dsn(
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
     let piece_cache_db_path = base_path.join("piece_cache_db");
-    // TODO: Remove this migration code in the future
-    {
-        let records_cache_db_path = base_path.join("records_cache_db");
-        if records_cache_db_path.exists() {
-            fs::rename(&records_cache_db_path, &piece_cache_db_path)?;
-        }
-    }
     let provider_db_path = base_path.join("providers_db");
-    // TODO: Remove this migration code in the future
-    {
-        let provider_cache_db_path = base_path.join("provider_cache_db");
-        if provider_cache_db_path.exists() {
-            fs::rename(&provider_cache_db_path, &provider_db_path)?;
-        }
-    }
 
     info!(
         db_path = ?provider_db_path,
@@ -136,19 +112,26 @@ pub(super) fn configure_dsn(
         let node_client = node_client.clone();
 
         async move {
-            let archived_segments_notifications = node_client
-                .subscribe_archived_segments()
+            let segment_headers_notifications = node_client
+                .subscribe_archived_segment_headers()
                 .await
                 .map_err(|err| anyhow::anyhow!(err.to_string()))
                 .context("Failed to subscribe to archived segments");
 
-            match archived_segments_notifications {
-                Ok(mut archived_segments_notifications) => {
-                    while let Some(segment) = archived_segments_notifications.next().await {
-                        last_archived_segment_index.store(
-                            u64::from(segment.segment_header.segment_index()),
-                            Ordering::Relaxed,
-                        );
+            match segment_headers_notifications {
+                Ok(mut segment_headers_notifications) => {
+                    while let Some(segment_header) = segment_headers_notifications.next().await {
+                        let segment_index = segment_header.segment_index();
+
+                        last_archived_segment_index
+                            .store(u64::from(segment_index), Ordering::Relaxed);
+
+                        if let Err(err) = node_client
+                            .acknowledge_archived_segment_header(segment_index)
+                            .await
+                        {
+                            error!(?err, %segment_index, "Failed to acknowledge archived segments notifications")
+                        }
                     }
                 }
                 Err(err) => {
@@ -176,40 +159,17 @@ pub(super) fn configure_dsn(
                         expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
                     };
 
-                    let result = match farmer_provider_storage.add_provider(provider_record.clone())
-                    {
-                        Ok(()) => {
-                            if let Err(error) =
-                                provider_records_sender.lock().try_send(provider_record)
-                            {
-                                if !error.is_disconnected() {
-                                    let record = error.into_inner();
-                                    // TODO: This should be made a warning, but due to
-                                    //  https://github.com/libp2p/rust-libp2p/discussions/3411 it'll
-                                    //  take us some time to resolve
-                                    debug!(
-                                        ?record.key,
-                                        ?record.provider,
-                                        "Failed to add provider record to the channel."
-                                    );
-                                }
-                            };
-
-                            Some(PieceAnnouncementResponse::Success)
-                        }
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %peer_id,
-                                ?req,
-                                "Failed to add provider for received key."
-                            );
-
-                            None
-                        }
+                    let result = farmer_provider_storage.add_provider(provider_record);
+                    if let Err(error) = &result {
+                        error!(
+                            %error,
+                            %peer_id,
+                            ?req,
+                            "Failed to add provider for received key."
+                        );
                     };
 
-                    async move { result }
+                    async move { result.map(|_| PieceAnnouncementResponse::Success).ok() }
                 }
             }),
             PieceByHashRequestHandler::create(
@@ -357,44 +317,4 @@ pub(super) fn configure_dsn(
             (node, node_runner, piece_cache)
         })
         .map_err(Into::into)
-}
-
-/// Start processing announcements received by the network node, returns handle that will stop
-/// processing on drop.
-pub(crate) fn start_announcements_processor(
-    node: Node,
-    piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
-    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
-    mut provider_records_receiver: Receiver<ProviderRecord>,
-) -> io::Result<()> {
-    let handle = Handle::current();
-    let span = Span::current();
-    let mut provider_record_processor = FarmerProviderRecordProcessor::new(
-        node,
-        piece_cache,
-        weak_readers_and_pieces.clone(),
-        MAX_CONCURRENT_ANNOUNCEMENTS_PROCESSING,
-        MAX_CONCURRENT_RE_ANNOUNCEMENTS_PROCESSING,
-    );
-
-    // We are working with database internally, better to run in a separate thread
-    thread::Builder::new()
-        .name("ann-processor".to_string())
-        .spawn(move || {
-            let processor_fut = async {
-                while let Some(provider_record) = provider_records_receiver.next().await {
-                    if weak_readers_and_pieces.upgrade().is_none() {
-                        // `ReadersAndPieces` was dropped, nothing left to be done
-                        return;
-                    }
-                    provider_record_processor
-                        .process_provider_record(provider_record)
-                        .await;
-                }
-            };
-
-            handle.block_on(processor_fut.instrument(span));
-        })?;
-
-    Ok(())
 }
