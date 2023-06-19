@@ -125,6 +125,9 @@ pub(crate) enum RelayError {
     #[error("Block body: {0}")]
     BlockBody(String),
 
+    #[error("Block extrinsics not found: {0}")]
+    BlockExtrinsicsNotFound(String),
+
     #[error("Unexpected number of resolved entries: {expected}, {actual}")]
     ResolveMismatch { expected: usize, actual: usize },
 
