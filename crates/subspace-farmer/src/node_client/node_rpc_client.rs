@@ -129,7 +129,7 @@ impl NodeClient for NodeRpcClient {
     ) -> Result<Vec<Option<SegmentCommitment>>, RpcError> {
         Ok(self
             .client
-            .request("subspace_recordsRoots", rpc_params![&segment_indexes])
+            .request("subspace_segmentCommitments", rpc_params![&segment_indexes])
             .await?)
     }
 
@@ -139,14 +139,14 @@ impl NodeClient for NodeRpcClient {
     ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
         Ok(self
             .client
-            .request("subspace_SegmentHeaders", rpc_params![&segment_indexes])
+            .request("subspace_segmentHeaders", rpc_params![&segment_indexes])
             .await?)
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
         let result: Option<Vec<u8>> = self
             .client
-            .request("subspace_Piece", rpc_params![&piece_index])
+            .request("subspace_piece", rpc_params![&piece_index])
             .await?;
 
         if let Some(bytes) = result {

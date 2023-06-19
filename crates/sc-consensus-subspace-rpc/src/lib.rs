@@ -97,19 +97,19 @@ pub trait SubspaceRpcApi {
     )]
     fn subscribe_archived_segment_header(&self);
 
-    #[method(name = "subspace_recordsRoots")]
+    #[method(name = "subspace_segmentCommitments")]
     async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<SegmentCommitment>>>;
 
-    #[method(name = "subspace_SegmentHeaders")]
+    #[method(name = "subspace_segmentHeaders")]
     async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<SegmentHeader>>>;
 
-    #[method(name = "subspace_Piece", blocking)]
+    #[method(name = "subspace_piece", blocking)]
     fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>>;
 
     #[method(name = "subspace_acknowledgeArchivedSegmentHeader")]
