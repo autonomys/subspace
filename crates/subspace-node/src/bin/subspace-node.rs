@@ -293,7 +293,7 @@ fn main() -> Result<(), Error> {
                     .downcast_ref()
                     .cloned();
 
-                let (system_domain_cli, _maybe_core_domain_cli) = SystemDomainCli::new(
+                let system_domain_cli = SystemDomainCli::new(
                     cmd.base
                         .base_path()?
                         .map(|base_path| base_path.path().to_path_buf()),
@@ -421,7 +421,7 @@ fn main() -> Result<(), Error> {
                         .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
                         .downcast_ref()
                         .cloned();
-                    let (system_domain_cli, _) = SystemDomainCli::new(
+                    let system_domain_cli = SystemDomainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -518,7 +518,7 @@ fn main() -> Result<(), Error> {
                             subspace_networking::libp2p::identity::Keypair::from_protobuf_encoding(
                                 &encoded_keypair,
                             )
-                                .expect("Keypair-from-protobuf decoding should succeed.");
+                            .expect("Keypair-from-protobuf decoding should succeed.");
 
                         DsnConfig {
                             keypair,
@@ -548,8 +548,8 @@ fn main() -> Result<(), Error> {
                             piece_cache_size: cli.piece_cache_size.as_u64(),
                         },
                         sync_from_dsn: cli.sync_from_dsn,
-                        enable_subspace_block_relay: cli.enable_subspace_block_relay ||
-                                                    cli.run.is_dev().unwrap_or(false),
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay
+                            || cli.run.is_dev().unwrap_or(false),
                     };
 
                     let partial_components =
@@ -568,12 +568,12 @@ fn main() -> Result<(), Error> {
                         true,
                         SlotProportion::new(3f32 / 4f32),
                     )
-                        .await
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to build a full subspace node: {error:?}"
-                            ))
-                        })?
+                    .await
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to build a full subspace node: {error:?}"
+                        ))
+                    })?
                 };
 
                 StorageMonitorService::try_spawn(
@@ -581,9 +581,9 @@ fn main() -> Result<(), Error> {
                     database_source,
                     &primary_chain_node.task_manager.spawn_essential_handle(),
                 )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
-                    })?;
+                .map_err(|error| {
+                    sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
+                })?;
 
                 // Run an executor node, an optional component of Subspace full node.
                 if !cli.domain_args.is_empty() {
@@ -593,7 +593,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let (system_domain_cli, maybe_core_domain_cli) = SystemDomainCli::new(
+                    let system_domain_cli = SystemDomainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
@@ -665,176 +665,22 @@ fn main() -> Result<(), Error> {
                         executor_streams,
                         xdm_gossip_worker_builder.gossip_msg_sink(),
                     )
-                        .await?;
+                    .await?;
 
-                    xdm_gossip_worker_builder.push_domain_tx_pool_sink(DomainId::SYSTEM, system_domain_node.tx_pool_sink);
+                    xdm_gossip_worker_builder.push_domain_tx_pool_sink(
+                        DomainId::SYSTEM,
+                        system_domain_node.tx_pool_sink,
+                    );
 
                     primary_chain_node
                         .task_manager
                         .add_child(system_domain_node.task_manager);
 
-                    if let Some(core_domain_cli) = maybe_core_domain_cli {
-                        let span = sc_tracing::tracing::info_span!(
-                            sc_tracing::logging::PREFIX_LOG_SPAN,
-                            name = "CoreDomain"
+                    let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
+                        .build::<Block, _, _>(
+                            primary_chain_node.network_service.clone(),
+                            primary_chain_node.sync_service.clone(),
                         );
-                        let _enter = span.enter();
-
-                        let executor_streams = ExecutorStreams {
-                            primary_block_import_throttling_buffer_size,
-                            block_importing_notification_stream:
-                            block_importing_notification_stream(),
-                            imported_block_notification_stream: primary_chain_node
-                                .client
-                                .every_import_notification_stream(),
-                            new_slot_notification_stream: new_slot_notification_stream(),
-                            _phantom: Default::default(),
-                        };
-
-                        match core_domain_cli.domain_id {
-                            DomainId::CORE_PAYMENTS => {
-                                let core_domain_config = core_domain_cli
-                                    .create_domain_configuration::<_, Identity>(tokio_handle)
-                                    .map_err(|error| {
-                                        sc_service::Error::Other(format!(
-                                            "Failed to create core domain configuration: {error:?}"
-                                        ))
-                                    })?;
-
-                                let core_domain_params = domain_service::CoreDomainParams {
-                                    domain_id: core_domain_cli.domain_id,
-                                    core_domain_config,
-                                    system_domain_client: system_domain_node.client.clone(),
-                                    system_domain_sync_service: system_domain_node
-                                        .sync_service
-                                        .clone(),
-                                    system_domain_block_import_notifications: system_domain_node
-                                        .executor
-                                        .import_notification_stream(),
-                                    primary_chain_client: primary_chain_node.client.clone(),
-                                    primary_network_sync_oracle: primary_chain_node
-                                        .sync_service
-                                        .clone(),
-                                    select_chain: primary_chain_node.select_chain.clone(),
-                                    executor_streams,
-                                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
-                                    provider: DefaultProvider,
-                                };
-
-                                let core_domain_node =
-                                    domain_service::new_full_core::<
-                                        DomainBlock,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        core_payments_domain_runtime::RuntimeApi,
-                                        CorePaymentsDomainExecutorDispatch,
-                                        AccountId32,
-                                        _,
-                                    >(core_domain_params)
-                                        .await?;
-
-                                xdm_gossip_worker_builder.push_domain_tx_pool_sink(
-                                    core_domain_cli.domain_id,
-                                    core_domain_node.tx_pool_sink,
-                                );
-                                primary_chain_node
-                                    .task_manager
-                                    .add_child(core_domain_node.task_manager);
-
-                                core_domain_node.network_starter.start_network();
-                            }
-                            DomainId::CORE_EVM => {
-                                let core_domain_config = core_domain_cli
-                                    .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
-                                        tokio_handle,
-                                    )
-                                    .map_err(|error| {
-                                        sc_service::Error::Other(format!(
-                                            "Failed to create core domain configuration: {error:?}"
-                                        ))
-                                    })?;
-
-                                let evm_base_path = BasePath::new(
-                                    core_domain_config
-                                        .service_config
-                                        .base_path
-                                        .config_dir(
-                                            core_domain_config.service_config.chain_spec.id()
-                                        )
-                                );
-                                let eth_provider = EthProvider::<
-                                    core_evm_runtime::TransactionConverter,
-                                    DefaultEthConfig<
-                                        FullClient<
-                                            DomainBlock,
-                                            core_evm_runtime::RuntimeApi,
-                                            CoreEVMDomainExecutorDispatch,
-                                        >,
-                                        FullBackend<DomainBlock>,
-                                    >,
-                                >::new(Some(evm_base_path), core_domain_cli.additional_args());
-                                let core_domain_params = domain_service::CoreDomainParams {
-                                    domain_id: core_domain_cli.domain_id,
-                                    core_domain_config,
-                                    system_domain_client: system_domain_node.client.clone(),
-                                    system_domain_sync_service: system_domain_node.sync_service.clone(),
-                                    system_domain_block_import_notifications: system_domain_node
-                                        .executor
-                                        .import_notification_stream(),
-                                    primary_chain_client: primary_chain_node.client.clone(),
-                                    primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
-                                    select_chain: primary_chain_node.select_chain.clone(),
-                                    executor_streams,
-                                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
-                                    provider: eth_provider,
-                                };
-
-                                let core_domain_node =
-                                    domain_service::new_full_core::<
-                                        DomainBlock,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        _,
-                                        core_evm_runtime::RuntimeApi,
-                                        CoreEVMDomainExecutorDispatch,
-                                        AccountId20,
-                                        _,
-                                    >(core_domain_params)
-                                        .await?;
-
-                                xdm_gossip_worker_builder.push_domain_tx_pool_sink(
-                                    core_domain_cli.domain_id,
-                                    core_domain_node.tx_pool_sink,
-                                );
-                                primary_chain_node
-                                    .task_manager
-                                    .add_child(core_domain_node.task_manager);
-
-                                core_domain_node.network_starter.start_network();
-                            }
-                            core_domain_id => {
-                                return Err(Error::Other(format!(
-                                    "{core_domain_id:?} unimplemented",
-                                )));
-                            }
-                        }
-                    }
-
-                    let cross_domain_message_gossip_worker = xdm_gossip_worker_builder.build::<Block, _, _>(
-                        primary_chain_node.network_service.clone(),
-                        primary_chain_node.sync_service.clone(),
-                    );
 
                     primary_chain_node
                         .task_manager
