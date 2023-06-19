@@ -102,6 +102,7 @@ impl From<oneshot::Canceled> for PutValueError {
     }
 }
 
+/// Defines errors for `get-closest-peers` operation.
 #[derive(Debug, Error)]
 pub enum GetClosestPeersError {
     /// Failed to send command to the node runner
@@ -126,6 +127,7 @@ pub enum CheckConnectedPeersError {
     NodeRunnerDropped,
 }
 
+/// Defines errors for `subscribe` operation.
 #[derive(Debug, Error)]
 pub enum SubscribeError {
     /// Failed to send command to the node runner
@@ -226,6 +228,7 @@ impl From<oneshot::Canceled> for StartLocalAnnouncingError {
     }
 }
 
+/// Defines errors for `send-request` operation.
 #[derive(Debug, Error)]
 pub enum SendRequestError {
     /// Failed to send command to the node runner
@@ -249,23 +252,6 @@ impl From<oneshot::Canceled> for SendRequestError {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum CircuitRelayClientError {
-    /// Expected node to be a circuit relay server, found only client
-    #[error("Expected node to be a circuit relay server, found only client")]
-    ExpectedServer,
-    /// Failed to retrieve memory address, typically means networking was destroyed.
-    #[error("Failed to retrieve memory address")]
-    FailedToRetrieveMemoryAddress,
-}
-
-impl From<oneshot::Canceled> for CircuitRelayClientError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::FailedToRetrieveMemoryAddress
-    }
-}
-
 /// Implementation of a network node on Subspace Network.
 #[derive(Debug, Clone)]
 #[must_use = "Node doesn't do anything if dropped"]
@@ -283,6 +269,7 @@ impl Node {
         self.shared.id
     }
 
+    /// Return a value from the Kademlia network of the DSN.
     pub async fn get_value(
         &self,
         key: Multihash,
@@ -304,6 +291,7 @@ impl Node {
         Ok(result_receiver)
     }
 
+    /// Puts a value into the Kademlia network of the DSN.
     pub async fn put_value(
         &self,
         key: Multihash,
@@ -327,6 +315,7 @@ impl Node {
         Ok(result_receiver)
     }
 
+    /// Subcribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
         let permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
@@ -354,6 +343,7 @@ impl Node {
         })
     }
 
+    /// Subcribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
         let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();

@@ -8,7 +8,9 @@ pub(crate) use providers::{instant_to_micros, micros_to_instant};
 pub use providers::{MemoryProviderStorage, ParityDbProviderStorage, VoidProviderStorage};
 use std::borrow::Cow;
 
+/// A trait for providers storages - wrapper around `provider` functions of the libp2p RecordStore.
 pub trait ProviderStorage {
+    /// Provider record iterator.
     type ProvidedIter<'a>: Iterator<Item = Cow<'a, ProviderRecord>>
     where
         Self: 'a;

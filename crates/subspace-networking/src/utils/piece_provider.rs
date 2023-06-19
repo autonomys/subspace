@@ -1,3 +1,5 @@
+//! Provides methods to retrieve pieces from DSN.
+
 use crate::utils::multihash::ToMultihash;
 use crate::{Node, PieceByHashRequest, PieceByHashResponse};
 use async_trait::async_trait;
@@ -16,8 +18,10 @@ const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(3);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
+/// Validates piece against using its commitment.
 #[async_trait]
 pub trait PieceValidator: Sync + Send {
+    /// Validates piece against using its commitment.
     async fn validate_piece(
         &self,
         source_peer_id: PeerId,
@@ -62,6 +66,7 @@ impl<PV> PieceProvider<PV>
 where
     PV: PieceValidator,
 {
+    /// Creates new piece provider.
     pub fn new(node: Node, piece_validator: Option<PV>) -> Self {
         Self {
             node,
@@ -115,6 +120,7 @@ where
         None
     }
 
+    /// Returns piece by its index. Uses retry policy for error handling.
     pub async fn get_piece(
         &self,
         piece_index: PieceIndex,

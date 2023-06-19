@@ -20,6 +20,7 @@ use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::{debug, trace};
 
+/// Parity DB error type alias.
 pub type ParityDbError = parity_db::Error;
 
 // Defines optional time for address dial failure
@@ -76,6 +77,7 @@ pub struct BootstrappedNetworkingParameters {
 }
 
 impl BootstrappedNetworkingParameters {
+    /// Creates a new instance of `BootstrappedNetworkingParameters`.
     pub fn new(bootstrap_addresses: Vec<Multiaddr>) -> Self {
         Self {
             bootstrap_addresses,
@@ -86,6 +88,7 @@ impl BootstrappedNetworkingParameters {
         convert_multiaddresses(self.bootstrap_addresses.clone())
     }
 
+    /// Returns an instance of `BootstrappedNetworkingParameters` as the `Box` reference.
     pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
         Box::new(self)
     }
@@ -112,11 +115,14 @@ impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
     }
 }
 
+/// Networking parameters persistence errors.
 #[derive(Debug, Error)]
 pub enum NetworkParametersPersistenceError {
+    /// Parity DB error.
     #[error("DB error: {0}")]
     Db(#[from] parity_db::Error),
 
+    /// Serialization error.
     #[error("JSON serialization error: {0}")]
     JsonSerialization(#[from] serde_json::Error),
 }

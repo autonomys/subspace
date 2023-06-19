@@ -8,7 +8,7 @@ use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
-use crate::node::{CircuitRelayClientError, Node};
+use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
@@ -256,6 +256,7 @@ impl<ProviderStorage> Config<ProviderStorage>
 where
     ProviderStorage: provider_storage::ProviderStorage,
 {
+    /// Creates a new [`Config`].
     pub fn new(
         protocol_version: String,
         keypair: identity::Keypair,
@@ -338,9 +339,6 @@ where
 /// Errors that might happen during network creation.
 #[derive(Debug, Error)]
 pub enum CreationError {
-    /// Circuit relay client error.
-    #[error("Circuit relay client error: {0}")]
-    CircuitRelayClient(#[from] CircuitRelayClientError),
     /// Circuit relay client error.
     #[error("Expected relay server node.")]
     RelayServerExpected,
