@@ -45,7 +45,7 @@ use subspace_core_primitives::{BlockNumber, SegmentHeader};
 /// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
 /// Substrate and is not worth it right now.
 /// https://github.com/paritytech/substrate/discussions/14359
-const FINALIZATION_DEPTH_IN_SEGMENTS: usize = 5;
+pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: usize = 5;
 
 fn find_last_archived_block<Block, Client>(
     client: &Client,
@@ -546,7 +546,7 @@ where
                     segment_headers
                         .iter()
                         .flat_map(|(_k, v)| v.iter().rev())
-                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS + 1)
+                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS)
                         .map(|segment_header| segment_header.last_archived_block().number)
                 };
 
