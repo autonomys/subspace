@@ -90,7 +90,7 @@ impl Display for KeypairOutput {
 impl KeypairOutput {
     fn new(keypair: Keypair) -> Self {
         Self {
-            keypair: hex::encode(keypair.encode()),
+            keypair: hex::encode(keypair.to_bytes()),
             peer_id: peer_id_from_keypair(keypair).to_base58(),
         }
     }
@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
             let converted_cache_size =
                 NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
 
-            let decoded_keypair = Keypair::decode(hex::decode(keypair)?.as_mut_slice())?;
+            let decoded_keypair = Keypair::try_from_bytes(hex::decode(keypair)?.as_mut_slice())?;
             let local_peer_id = peer_id_from_keypair(decoded_keypair.clone());
             let keypair = identity::Keypair::from(decoded_keypair);
 

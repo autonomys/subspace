@@ -31,7 +31,7 @@ async fn main() {
             allow_non_global_addresses_in_dht: true,
             ..Config::default()
         };
-        let keypair = config.keypair.clone().into_ed25519().unwrap();
+        let keypair = config.keypair.clone().try_into_ed25519().unwrap();
 
         let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
@@ -104,7 +104,7 @@ async fn main() {
     node.wait_for_connected_peers().await.unwrap();
 
     // Prepare multihash to look for in Kademlia
-    let key = Code::Identity.digest(&expected_kaypair.public().encode());
+    let key = Code::Identity.digest(&expected_kaypair.public().to_bytes());
 
     let peers = node
         .get_closest_peers(key)

@@ -30,7 +30,7 @@ use libp2p::kad::{
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
-use libp2p::yamux::YamuxConfig;
+use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, TransportError};
 use parking_lot::Mutex;
 use std::borrow::Cow;
