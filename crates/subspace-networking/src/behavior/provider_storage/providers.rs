@@ -56,6 +56,7 @@ pub struct MemoryProviderStorage {
 }
 
 impl MemoryProviderStorage {
+    /// Create new memory based provider records storage.
     pub fn new(peer_id: PeerId) -> Self {
         Self {
             inner: Arc::new(Mutex::new(store::MemoryStore::with_config(
@@ -229,6 +230,7 @@ pub struct ParityDbProviderStorage {
 }
 
 impl ParityDbProviderStorage {
+    /// Create new Parity DB based provider records storage.
     pub fn new(
         path: &Path,
         max_items_limit: NonZeroUsize,
@@ -292,6 +294,7 @@ impl ParityDbProviderStorage {
         })
     }
 
+    /// Gets records number in the storage.
     pub fn size(&self) -> usize {
         self.heap.lock().size()
     }

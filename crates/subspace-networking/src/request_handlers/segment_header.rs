@@ -10,11 +10,14 @@ use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 /// Segment header by segment indexes protocol request.
 #[derive(Debug, Clone, Eq, PartialEq, Encode, Decode)]
 pub enum SegmentHeaderRequest {
+    /// Segment headers by segment indexes.
     SegmentIndexes {
+        /// Segment indexes to get.
         segment_indexes: Vec<SegmentIndex>,
     },
     /// Defines how many segment headers to return.
     LastSegmentHeaders {
+        /// Number of segment headers to return.
         segment_header_number: u64,
     },
 }

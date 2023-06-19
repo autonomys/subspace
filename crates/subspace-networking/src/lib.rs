@@ -16,6 +16,7 @@
 //! Networking functionality of Subspace Network, primarily used for DSN (Distributed Storage
 //! Network).
 #![feature(const_option, impl_trait_in_assoc_type, ip, try_blocks)]
+#![warn(missing_docs)]
 
 mod behavior;
 mod create;
@@ -32,8 +33,7 @@ pub use crate::behavior::persistent_parameters::{
     NetworkingParametersManager, ParityDbError,
 };
 pub use crate::node::{
-    CircuitRelayClientError, GetClosestPeersError, Node, SendRequestError, SubscribeError,
-    TopicSubscription,
+    GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
 };
 pub use crate::node_runner::{NodeRunner, KADEMLIA_PROVIDER_TTL_IN_SECS};
 pub use behavior::provider_storage::{

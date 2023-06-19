@@ -1,3 +1,5 @@
+//! Defines multihash codes for Subspace DSN.
+
 use libp2p::multihash::Multihash;
 use std::error::Error;
 use subspace_core_primitives::PieceIndexHash;
@@ -6,9 +8,11 @@ use subspace_core_primitives::PieceIndexHash;
 /// https://github.com/multiformats/multicodec/blob/master/table.csv
 const SUBSPACE_MULTICODEC_NAMESPACE_START: u64 = 0xb39910 + 1000;
 
+/// Subspace Network multihash codes.
 #[derive(Debug, Clone, PartialEq)]
 #[repr(u64)]
 pub enum MultihashCode {
+    /// Piece index hash code.
     PieceIndexHash = SUBSPACE_MULTICODEC_NAMESPACE_START,
 }
 
@@ -31,8 +35,11 @@ impl TryFrom<u64> for MultihashCode {
     }
 }
 
+/// Helper trait for converting to multihash.
 pub trait ToMultihash {
+    /// Convert to multihash by the default multihash code.
     fn to_multihash(&self) -> Multihash;
+    /// Convert to multihash by the specified multihash code.
     fn to_multihash_by_code(&self, code: MultihashCode) -> Multihash;
 }
 

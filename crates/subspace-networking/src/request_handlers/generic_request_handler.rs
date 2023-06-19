@@ -29,7 +29,9 @@ const REQUESTS_BUFFER_SIZE: usize = 50;
 
 /// Generic request with associated response
 pub trait GenericRequest: Encode + Decode + Send + Sync + 'static {
+    /// Defines request-response protocol name.
     const PROTOCOL_NAME: &'static str;
+    /// Specifies log-parameters for tracing.
     const LOG_TARGET: &'static str;
     /// Response type that corresponds to this request
     type Response: Encode + Decode + Send + Sync + 'static;
@@ -46,6 +48,7 @@ pub type RequestHandlerFn<Request> = Arc<
         + 'static,
 >;
 
+/// Defines generic request-response protocol handler.
 pub struct GenericRequestHandler<Request: GenericRequest> {
     request_receiver: mpsc::Receiver<IncomingRequest>,
     request_handler: RequestHandlerFn<Request>,
@@ -53,6 +56,7 @@ pub struct GenericRequestHandler<Request: GenericRequest> {
 }
 
 impl<Request: GenericRequest> GenericRequestHandler<Request> {
+    /// Creates new [`GenericRequestHandler`] by given handler.
     pub fn create<RH, Fut>(request_handler: RH) -> Box<dyn RequestHandler>
     where
         RH: (Fn(PeerId, &Request) -> Fut) + Send + Sync + 'static,

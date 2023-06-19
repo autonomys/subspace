@@ -1,3 +1,5 @@
+//! Provides methods for piece publishing on DSN.
+
 use crate::node::Node;
 use crate::utils::multihash::ToMultihash;
 use crate::{PieceAnnouncementRequest, PieceAnnouncementResponse};
@@ -28,6 +30,7 @@ fn default_backoff() -> ExponentialBackoff {
     }
 }
 
+/// Announce piece to the DSN with backoff policy.
 pub async fn announce_single_piece_index_hash_with_backoff(
     piece_index_hash: PieceIndexHash,
     node: &Node,
@@ -38,6 +41,7 @@ pub async fn announce_single_piece_index_hash_with_backoff(
     .await
 }
 
+/// Announce piece to the DSN by its hash.
 pub async fn announce_single_piece_index_hash(
     piece_index_hash: PieceIndexHash,
     node: &Node,

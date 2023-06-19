@@ -44,7 +44,7 @@ use tracing::{debug, error, trace, warn};
 const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
     NonZeroUsize::new(5).expect("Not zero; qed");
 
-// Defines an expiration interval for item providers in Kademlia network.
+/// Defines an expiration interval for item providers in Kademlia network.
 pub const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 
 enum QueryResultSender {
@@ -169,6 +169,7 @@ where
         }
     }
 
+    /// Drives the main networking future forward.
     pub async fn run(&mut self) {
         loop {
             futures::select! {
