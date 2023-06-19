@@ -6,13 +6,12 @@ use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, ListenerId, TransportError, TransportEvent};
 use libp2p::core::Transport;
 use libp2p::dns::TokioDnsConfig;
-use libp2p::noise::NoiseConfig;
 use libp2p::quic::tokio::Transport as QuicTransport;
 use libp2p::quic::Config as QuicConfig;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
-use libp2p::yamux::YamuxConfig;
+use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{core, identity, noise, PeerId};
 use parking_lot::Mutex;
 use std::io;
@@ -47,13 +46,12 @@ pub(super) fn build_transport(
     };
 
     let tcp_ws_upgraded = {
-        let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-            .into_authentic(keypair)
-            .expect("Signing libp2p-noise static DH keypair failed.");
+        let noise =
+            noise::Config::new(keypair).expect("Signing libp2p-noise static DH keypair failed.");
 
         wrapped_tcp_ws
             .upgrade(core::upgrade::Version::V1Lazy)
-            .authenticate(NoiseConfig::xx(noise_keys).into_authenticated())
+            .authenticate(noise)
             .multiplex(yamux_config)
             .timeout(timeout)
             .boxed()
