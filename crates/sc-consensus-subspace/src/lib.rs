@@ -325,14 +325,7 @@ where
         client.usage_info().chain.genesis_hash
     };
 
-    Ok(SlotDuration::from_millis(
-        client
-            .runtime_api()
-            .slot_duration(block_hash)?
-            .as_millis()
-            .try_into()
-            .expect("Slot duration in ms never exceeds u64; qed"),
-    ))
+    Ok(client.runtime_api().slot_duration(block_hash)?)
 }
 
 /// Parameters for Subspace.

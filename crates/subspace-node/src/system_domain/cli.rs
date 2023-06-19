@@ -192,12 +192,8 @@ impl DefaultConfigurationValues for SystemDomainCli {
         30334
     }
 
-    fn rpc_ws_listen_port() -> u16 {
+    fn rpc_listen_port() -> u16 {
         9945
-    }
-
-    fn rpc_http_listen_port() -> u16 {
-        9934
     }
 
     fn prometheus_listen_port() -> u16 {
@@ -234,16 +230,8 @@ impl CliConfiguration<Self> for SystemDomainCli {
             .or_else(|| self.base_path.clone().map(Into::into)))
     }
 
-    fn rpc_http(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.run_system.rpc_http(default_listen_port)
-    }
-
-    fn rpc_ipc(&self) -> Result<Option<String>> {
-        self.run.run_system.rpc_ipc()
-    }
-
-    fn rpc_ws(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.run_system.rpc_ws(default_listen_port)
+    fn rpc_addr(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
+        self.run.run_system.rpc_addr(default_listen_port)
     }
 
     fn prometheus_config(
@@ -276,8 +264,8 @@ impl CliConfiguration<Self> for SystemDomainCli {
         self.run.run_system.rpc_methods()
     }
 
-    fn rpc_ws_max_connections(&self) -> Result<Option<usize>> {
-        self.run.run_system.rpc_ws_max_connections()
+    fn rpc_max_connections(&self) -> Result<u32> {
+        self.run.run_system.rpc_max_connections()
     }
 
     fn rpc_cors(&self, is_dev: bool) -> Result<Option<Vec<String>>> {

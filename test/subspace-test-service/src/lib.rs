@@ -149,17 +149,15 @@ pub fn node_config(
             offchain_worker: sc_client_api::ExecutionStrategy::NativeWhenPossible,
             other: sc_client_api::ExecutionStrategy::NativeWhenPossible,
         },
-        rpc_http: None,
-        rpc_ws: None,
-        rpc_ipc: None,
-        rpc_max_payload: None,
-        rpc_max_request_size: None,
-        rpc_max_response_size: None,
+        rpc_addr: None,
+        rpc_max_request_size: 0,
+        rpc_max_response_size: 0,
         rpc_id_provider: None,
-        rpc_ws_max_connections: None,
+        rpc_max_subs_per_conn: 0,
+        rpc_port: 0,
+        rpc_max_connections: 0,
         rpc_cors: None,
         rpc_methods: Default::default(),
-        ws_max_out_buffer_capacity: None,
         prometheus_config: None,
         telemetry_endpoints: None,
         default_heap_pages: None,
@@ -171,10 +169,10 @@ pub fn node_config(
         tracing_receiver: Default::default(),
         max_runtime_instances: 8,
         announce_block: true,
-        base_path: Some(base_path),
+        data_path: base_path.path().into(),
+        base_path,
         informant_output_format: Default::default(),
         runtime_cache_size: 2,
-        rpc_max_subs_per_conn: None,
     }
 }
 
@@ -246,12 +244,7 @@ impl MockPrimaryNode {
         );
         let _enter = span.enter();
 
-        let executor = NativeElseWasmExecutor::<TestExecutorDispatch>::new(
-            config.wasm_method,
-            config.default_heap_pages,
-            config.max_runtime_instances,
-            config.runtime_cache_size,
-        );
+        let executor = sc_service::new_native_or_wasm_executor(&config);
 
         let (client, backend, keystore_container, mut task_manager) =
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
@@ -276,7 +269,6 @@ impl MockPrimaryNode {
         let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
             client.clone(),
             executor.clone(),
-            task_manager.spawn_handle(),
             VerifierClient::new(client.clone()),
             domain_extrinsics_builder,
         );
@@ -305,9 +297,12 @@ impl MockPrimaryNode {
 
         let mut block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
 
+        let net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+
         let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
             sc_service::build_network(sc_service::BuildNetworkParams {
                 config: &config,
+                net_config,
                 client: client.clone(),
                 transaction_pool: transaction_pool.clone(),
                 spawn_handle: task_manager.spawn_handle(),

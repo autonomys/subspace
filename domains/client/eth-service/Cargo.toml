@@ -15,26 +15,27 @@ include = [
 clap = { version = "4.2.1", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
 domain-service = { version = "0.1.0", path = "../../service" }
-fc-consensus = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-fc-db = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-fc-mapping-sync = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-fc-rpc = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b", features = ['rpc-binary-search-estimate'] }
-fc-rpc-core = { version = "1.1.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-fc-storage = { version = "1.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b" }
-fp-rpc = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier/", rev = "e60f3f8617cabd3473bd5e197b7c0c1991fbcd9b", features = ['default'] }
+fc-consensus = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4" }
+fc-db = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4" }
+fc-mapping-sync = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4" }
+fc-rpc = { version = "2.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4", features = ['rpc-binary-search-estimate'] }
+fc-rpc-core = { version = "1.1.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4" }
+fc-storage = { version = "1.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4" }
+fp-rpc = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4", features = ['default'] }
 futures = "0.3.28"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
-pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae", default-features = false }
-sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sc-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
+sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 serde = { version = "1.0.159", features = ["derive"] }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-core = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-sp-runtime = { version = "7.0.0", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
-substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "88bb945975301f9b29bad96dc4590c33f1029eae" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-core = { version = "21.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }

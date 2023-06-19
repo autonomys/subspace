@@ -5,7 +5,7 @@ use domain_block_builder::{BlockBuilder, RecordProof};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_core::traits::{CodeExecutor, SpawnNamed};
+use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
@@ -35,7 +35,6 @@ pub enum FraudProofError {
 pub struct FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E> {
     client: Arc<Client>,
     primary_chain_client: Arc<PClient>,
-    spawner: Box<dyn SpawnNamed + Send + Sync>,
     backend: Arc<Backend>,
     code_executor: Arc<E>,
     _phantom: PhantomData<(Block, PBlock)>,
@@ -48,7 +47,6 @@ impl<Block, PBlock, Client, PClient, Backend, E> Clone
         Self {
             client: self.client.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
-            spawner: self.spawner.clone(),
             backend: self.backend.clone(),
             code_executor: self.code_executor.clone(),
             _phantom: self._phantom,
@@ -73,14 +71,12 @@ where
     pub fn new(
         client: Arc<Client>,
         primary_chain_client: Arc<PClient>,
-        spawner: Box<dyn SpawnNamed + Send + Sync>,
         backend: Arc<Backend>,
         code_executor: Arc<E>,
     ) -> Self {
         Self {
             client,
             primary_chain_client,
-            spawner,
             backend,
             code_executor,
             _phantom: Default::default(),
@@ -109,11 +105,7 @@ where
                 .map_err(|_| FraudProofError::InvalidStateRootType)
         };
 
-        let prover = ExecutionProver::new(
-            self.backend.clone(),
-            self.code_executor.clone(),
-            self.spawner.clone() as Box<dyn SpawnNamed>,
-        );
+        let prover = ExecutionProver::new(self.backend.clone(), self.code_executor.clone());
 
         let parent_number = to_number_primitive(*parent_header.number());
 

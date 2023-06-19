@@ -47,7 +47,7 @@ $ git clone https://github.com/subspace/subspace
 $ cd subspace
 
 # Run a primary chain, a system domain and a core domain node in one command:
-$ cargo run --bin subspace-node -- --dev -- --alice --dev --ws-port 5678 -- --domain-id 1 --alice --dev --ws-port 6789
+$ cargo run --bin subspace-node -- --dev -- --alice --dev --rpc-port 5678 -- --domain-id 1 --alice --dev --rpc-port 6789
 
 # Prepare the reward address beforehand and start a farmer in another terminal:
 $ cargo run --bin subspace-farmer -- --base-path tmp-farmer farm --plot-size 100M --reward-address [ADDRESS]

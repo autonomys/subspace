@@ -16,7 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
-use sp_core::traits::{CodeExecutor, SpawnEssentialNamed, SpawnNamed};
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
@@ -41,7 +41,6 @@ pub struct Executor<
 > {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
-    spawner: Box<dyn SpawnNamed + Send + Sync>,
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
@@ -55,7 +54,6 @@ impl<Block, SBlock, PBlock, Client, SClient, PClient, TransactionPool, Backend, 
         Self {
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
-            spawner: self.spawner.clone(),
             transaction_pool: self.transaction_pool.clone(),
             backend: self.backend.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
@@ -165,7 +163,6 @@ where
         let fraud_proof_generator = FraudProofGenerator::new(
             params.client.clone(),
             params.primary_chain_client.clone(),
-            params.spawner.clone(),
             params.backend.clone(),
             params.code_executor,
         );
@@ -245,7 +242,6 @@ where
         Ok(Self {
             primary_chain_client: params.primary_chain_client,
             client: params.client,
-            spawner: params.spawner,
             transaction_pool: params.transaction_pool,
             backend: params.backend,
             fraud_proof_generator,

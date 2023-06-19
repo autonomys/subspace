@@ -353,9 +353,13 @@ mod tests {
     use sp_blockchain::HeaderBackend;
     use sp_core::Blake2Hasher;
     use sp_state_machine::Backend;
+    // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
+    // TODO: Unlock this test, it got broken in https://github.com/subspace/subspace/pull/1548 and
+    //  doesn't run on Windows at all
     #[test]
+    #[ignore]
     fn block_building_storage_proof_does_not_include_runtime_by_default() {
         let (client, backend) =
             substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();

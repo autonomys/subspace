@@ -79,23 +79,6 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
                         // TODO: proper genesis domain config
                         DomainConfig {
                             wasm_runtime_hash: blake2b_256_hash(
-                                system_domain_runtime::CORE_ETH_RELAY_WASM_BUNDLE,
-                            )
-                            .into(),
-                            max_bundle_size: 1024 * 1024,
-                            bundle_slot_probability: (1, 1),
-                            max_bundle_weight: Weight::MAX,
-                            min_operator_stake: 100 * SSC,
-                        },
-                        get_account_id_from_seed("Alice"),
-                        Percent::from_percent(10),
-                    ),
-                    (
-                        get_account_id_from_seed("Alice"),
-                        1_000 * SSC,
-                        // TODO: proper genesis domain config
-                        DomainConfig {
-                            wasm_runtime_hash: blake2b_256_hash(
                                 system_domain_runtime::CORE_EVM_WASM_BUNDLE,
                             )
                             .into(),
@@ -161,23 +144,6 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
                         DomainConfig {
                             wasm_runtime_hash: blake2b_256_hash(
                                 system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
-                            )
-                            .into(),
-                            max_bundle_size: 1024 * 1024,
-                            bundle_slot_probability: (1, 1),
-                            max_bundle_weight: Weight::MAX,
-                            min_operator_stake: 100 * SSC,
-                        },
-                        get_account_id_from_seed("Alice"),
-                        Percent::from_percent(10),
-                    ),
-                    (
-                        get_account_id_from_seed("Alice"),
-                        1_000 * SSC,
-                        // TODO: proper genesis domain config
-                        DomainConfig {
-                            wasm_runtime_hash: blake2b_256_hash(
-                                system_domain_runtime::CORE_ETH_RELAY_WASM_BUNDLE,
                             )
                             .into(),
                             max_bundle_size: 1024 * 1024,
@@ -339,28 +305,6 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
                         DomainConfig {
                             wasm_runtime_hash: blake2b_256_hash(
                                 system_domain_runtime::CORE_PAYMENTS_WASM_BUNDLE,
-                            )
-                            .into(),
-                            max_bundle_size: 4 * 1024 * 1024,
-                            bundle_slot_probability: (1, 1),
-                            max_bundle_weight: Weight::MAX,
-                            min_operator_stake: 100 * SSC,
-                        },
-                        AccountId::from_ss58check(
-                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
-                        )
-                        .expect("Wrong executor account address"),
-                        Percent::from_percent(10),
-                    ),
-                    (
-                        AccountId::from_ss58check(
-                            "5Df6w8CgYY8kTRwCu8bjBsFu46fy4nFa61xk6dUbL6G4fFjQ",
-                        )
-                        .expect("Wrong executor account address"),
-                        1_000 * SSC,
-                        DomainConfig {
-                            wasm_runtime_hash: blake2b_256_hash(
-                                system_domain_runtime::CORE_ETH_RELAY_WASM_BUNDLE,
                             )
                             .into(),
                             max_bundle_size: 4 * 1024 * 1024,

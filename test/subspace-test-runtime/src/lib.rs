@@ -30,7 +30,6 @@ include!(concat!(
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
-use core::time::Duration;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -45,6 +44,7 @@ use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcesso
 use pallet_grandpa_finality_verifier::chain::Chain;
 pub use pallet_subspace::AllowAuthoringBy;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
+use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, SignedVote,
@@ -287,7 +287,7 @@ impl pallet_balances::Config for Runtime {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type HoldIdentifier = ();
+    type RuntimeHoldReason = ();
     type MaxHolds = ();
 }
 
@@ -459,6 +459,7 @@ impl pallet_utility::Config for Runtime {
 impl pallet_sudo::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
+    type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -1072,8 +1073,8 @@ impl_runtime_apis! {
             MAX_PIECES_IN_SECTOR
         }
 
-        fn slot_duration() -> Duration {
-            Duration::from_millis(Subspace::slot_duration())
+        fn slot_duration() -> SlotDuration {
+            SlotDuration::from_millis(Subspace::slot_duration())
         }
 
         fn global_randomnesses() -> GlobalRandomnesses {

@@ -114,6 +114,7 @@ mod pallet {
     use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
+    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -307,20 +308,10 @@ mod pallet {
     }
 
     #[pallet::genesis_config]
-    #[derive(Debug)]
+    #[derive(Debug, frame_support::DefaultNoBound)]
     pub struct GenesisConfig<T: Config> {
         /// Genesis relayers that join the relayer pool.
         pub relayers: Vec<(T::AccountId, RelayerId<T>)>,
-    }
-
-    #[cfg(feature = "std")]
-    impl<T: Config> Default for GenesisConfig<T> {
-        #[inline]
-        fn default() -> Self {
-            Self {
-                relayers: Default::default(),
-            }
-        }
     }
 
     #[pallet::genesis_build]

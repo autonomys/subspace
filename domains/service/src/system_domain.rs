@@ -18,7 +18,7 @@ use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
-    SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
+    SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_utils::mpsc::tracing_unbounded;
@@ -157,7 +157,6 @@ type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> 
         PBlock,
         PClient,
         NativeElseWasmExecutor<Executor>,
-        SpawnTaskHandle,
         Hash,
         VerifierClient<FullClient<Block, RuntimeApi, Executor>, Block>,
         CoreDomainExtrinsicsBuilder<
@@ -231,12 +230,7 @@ where
         })
         .transpose()?;
 
-    let executor = NativeElseWasmExecutor::new(
-        config.wasm_method,
-        config.default_heap_pages,
-        config.max_runtime_instances,
-        config.runtime_cache_size,
-    );
+    let executor = sc_service::new_native_or_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
         config,
@@ -263,7 +257,6 @@ where
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         primary_chain_client.clone(),
         executor.clone(),
-        task_manager.spawn_handle(),
         VerifierClient::new(client.clone()),
         domain_extrinsics_builder.clone(),
     );
@@ -321,7 +314,7 @@ where
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
 pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi, ExecutorDispatch>(
-    mut system_domain_config: DomainConfiguration<AccountId>,
+    system_domain_config: DomainConfiguration<AccountId>,
     primary_chain_client: Arc<PClient>,
     primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     select_chain: &SC,
@@ -378,12 +371,6 @@ where
     // TODO: Do we even need block announcement on system domain node?
     // system_domain_config.announce_block = false;
 
-    system_domain_config
-        .service_config
-        .network
-        .extra_sets
-        .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
-
     let params = new_partial(
         &system_domain_config.service_config,
         primary_chain_client.clone(),
@@ -396,9 +383,18 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
+    let mut net_config = sc_network::config::FullNetworkConfiguration::new(
+        &system_domain_config.service_config.network,
+    );
+
+    net_config.add_notification_protocol(
+        domain_client_executor_gossip::executor_gossip_peers_set_config(),
+    );
+
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         crate::build_network(BuildNetworkParams {
             config: &system_domain_config.service_config,
+            net_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             spawn_handle: task_manager.spawn_handle(),
@@ -470,7 +466,6 @@ where
             code_executor: code_executor.clone(),
             is_authority,
             keystore: params.keystore_container.keystore(),
-            spawner: Box::new(task_manager.spawn_handle()),
             bundle_sender: Arc::new(bundle_sender),
             executor_streams,
             domain_confirmation_depth,
