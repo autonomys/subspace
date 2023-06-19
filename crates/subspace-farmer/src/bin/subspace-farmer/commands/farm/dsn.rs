@@ -125,6 +125,13 @@ pub(super) fn configure_dsn(
 
                         last_archived_segment_index
                             .store(u64::from(segment_index), Ordering::Relaxed);
+
+                        if let Err(err) = node_client
+                            .acknowledge_archived_segment_header(segment_index)
+                            .await
+                        {
+                            error!(?err, %segment_index, "Failed to acknowledge archived segments notifications")
+                        }
                     }
                 }
                 Err(err) => {

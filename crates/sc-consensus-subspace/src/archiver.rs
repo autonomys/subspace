@@ -581,7 +581,7 @@ async fn send_archived_segment_notification(
 
     archived_segment_notification_sender.notify(move || archived_segment_notification);
 
-    if acknowledgement_receiver.next().await.is_some() {
+    while acknowledgement_receiver.next().await.is_some() {
         debug!(
             "Archived segment notification acknowledged: {}",
             segment_index
