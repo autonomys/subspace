@@ -27,6 +27,7 @@ mod slot_worker;
 #[cfg(test)]
 mod tests;
 
+use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
 pub use archiver::create_subspace_archiver;
@@ -1276,8 +1277,10 @@ where
         block_importing_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
-            NonZeroUsize::new(confirmation_depth_k as usize)
-                .expect("Confirmation depth of zero is not supported"),
+            NonZeroUsize::new(
+                (FINALIZATION_DEPTH_IN_SEGMENTS + 1).max(confirmation_depth_k as usize),
+            )
+            .expect("Confirmation depth of zero is not supported"),
         ))),
         kzg,
     };
