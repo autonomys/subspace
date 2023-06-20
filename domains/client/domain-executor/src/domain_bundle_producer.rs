@@ -1,8 +1,8 @@
-use crate::bundle_election_solver::{BundleElectionSolver, PreliminaryBundleSolution};
+use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
 use crate::sortition::TransactionSelector;
-use crate::utils::{to_number_primitive, ExecutorSlotInfo};
+use crate::utils::ExecutorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
 use domain_runtime_primitives::DomainCoreApi;
@@ -10,11 +10,9 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{
-    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
-};
+use sp_domains::{Bundle, DomainId, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader};
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -225,7 +223,7 @@ where
             return Ok(None);
         }
 
-        if let Some(preliminary_bundle_solution) = self
+        if let Some(bundle_solution) = self
             .bundle_election_solver
             .solve_bundle_election_challenge(
                 best_hash,
@@ -235,8 +233,6 @@ where
             )?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
-
-            let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
 
             let proof_of_election = bundle_solution.proof_of_election();
             let bundle_author = proof_of_election.executor_public_key.clone();
@@ -295,38 +291,6 @@ where
             Ok(Some(bundle.into_opaque_bundle()))
         } else {
             Ok(None)
-        }
-    }
-
-    fn construct_bundle_solution(
-        &self,
-        preliminary_bundle_solution: PreliminaryBundleSolution<Block::Hash>,
-    ) -> sp_blockchain::Result<BundleSolution<Block::Hash>> {
-        match preliminary_bundle_solution {
-            PreliminaryBundleSolution::System {
-                authority_stake_weight,
-                authority_witness,
-                proof_of_election,
-            } => Ok(BundleSolution::System {
-                authority_stake_weight,
-                authority_witness,
-                proof_of_election,
-            }),
-            PreliminaryBundleSolution::Core(proof_of_election) => {
-                let core_block_number = to_number_primitive(self.client.info().best_number);
-                let core_block_hash = self.client.info().best_hash;
-                let core_state_root = *self
-                    .client
-                    .header(core_block_hash)?
-                    .expect("Best block header must exist; qed")
-                    .state_root();
-                Ok(BundleSolution::Core {
-                    proof_of_election,
-                    core_block_number,
-                    core_block_hash,
-                    core_state_root,
-                })
-            }
         }
     }
 }
