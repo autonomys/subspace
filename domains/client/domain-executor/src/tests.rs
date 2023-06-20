@@ -1,8 +1,7 @@
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{AccountId, AccountIdConverter, DomainCoreApi, Hash};
-use domain_test_primitives::TimestampApi;
+use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::system_domain_test_runtime::{Address, Header, UncheckedExtrinsic};
-use domain_test_service::Keyring::{Alice, Bob, Charlie, Ferdie};
+use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_executor_common::runtime_blob::RuntimeBlob;
@@ -11,20 +10,18 @@ use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{AsTrieBackend, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
-use sp_core::traits::{FetchRuntimeCode, SpawnEssentialNamed};
+use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{Bundle, DomainId, ExecutorApi};
-use sp_messenger::messages::{ExecutionFee, FeeModel, InitiateChannelParams};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Convert, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use sp_settlement::SettlementApi;
 use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
-use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockPrimaryNode,
 };
@@ -294,56 +291,57 @@ async fn test_executor_full_node_catching_up() {
     );
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
-async fn test_executor_inherent_timestamp_is_set() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
+// TODO: Unlock test when evm domain is supported in DecEx v2.
+// #[substrate_test_utils::test(flavor = "multi_thread")]
+// async fn test_executor_inherent_timestamp_is_set() {
+// let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
+// let mut builder = sc_cli::LoggerBuilder::new("");
+// builder.with_colors(false);
+// let _ = builder.init();
 
-    let tokio_handle = tokio::runtime::Handle::current();
+// let tokio_handle = tokio::runtime::Handle::current();
 
-    // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
+// // Start Ferdie
+// let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+// tokio_handle.clone(),
+// Ferdie,
+// BasePath::new(directory.path().join("ferdie")),
+// );
 
-    // Run Alice (a system domain authority node)
-    let alice = domain_test_service::SystemDomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
-    .await;
+// // Run Alice (a system domain authority node)
+// let alice = domain_test_service::SystemDomainNodeBuilder::new(
+// tokio_handle.clone(),
+// Alice,
+// BasePath::new(directory.path().join("alice")),
+// )
+// .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+// .await;
 
-    // Run Bob who runs the authority node for core domain
-    let bob = domain_test_service::CoreDomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Bob,
-        BasePath::new(directory.path().join("bob")),
-    )
-    .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
-    .await;
+// // Run Bob who runs the authority node for core domain
+// let bob = domain_test_service::CoreDomainNodeBuilder::new(
+// tokio_handle.clone(),
+// Bob,
+// BasePath::new(directory.path().join("bob")),
+// )
+// .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
+// .await;
 
-    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
+// produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
 
-    let primary_api = ferdie.client.runtime_api();
-    let primary_timestamp = primary_api
-        .timestamp(ferdie.client.info().best_hash)
-        .unwrap();
+// let primary_api = ferdie.client.runtime_api();
+// let primary_timestamp = primary_api
+// .timestamp(ferdie.client.info().best_hash)
+// .unwrap();
 
-    let core_api = bob.client.runtime_api();
-    let core_timestamp = core_api.timestamp(bob.client.info().best_hash).unwrap();
+// let core_api = bob.client.runtime_api();
+// let core_timestamp = core_api.timestamp(bob.client.info().best_hash).unwrap();
 
-    assert_eq!(
-        primary_timestamp, core_timestamp,
-        "Timestamp should be preset on Core domain and should match Primary runtime timestamp"
-    );
-}
+// assert_eq!(
+// primary_timestamp, core_timestamp,
+// "Timestamp should be preset on Core domain and should match Primary runtime timestamp"
+// );
+// }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn test_initialize_block_proof_creation_and_verification_should_work() {
@@ -1243,197 +1241,198 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 //     .unwrap();
 // }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
-async fn test_unordered_cross_domains_message_should_work() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
+// TODO: Unlock test when multiple domains are supported in DecEx v2.
+// #[substrate_test_utils::test(flavor = "multi_thread")]
+// async fn test_unordered_cross_domains_message_should_work() {
+// let directory = TempDir::new().expect("Must be able to create temporary directory");
 
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
+// let mut builder = sc_cli::LoggerBuilder::new("");
+// builder.with_colors(false);
+// let _ = builder.init();
 
-    let tokio_handle = tokio::runtime::Handle::current();
+// let tokio_handle = tokio::runtime::Handle::current();
 
-    // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
+// // Start Ferdie
+// let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+// tokio_handle.clone(),
+// Ferdie,
+// BasePath::new(directory.path().join("ferdie")),
+// );
 
-    // Run Alice (a system domain authority node)
-    let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .run_relayer()
-    .build_with_mock_primary_node(Role::Authority, &mut ferdie)
-    .await;
+// // Run Alice (a system domain authority node)
+// let mut alice = domain_test_service::SystemDomainNodeBuilder::new(
+// tokio_handle.clone(),
+// Alice,
+// BasePath::new(directory.path().join("alice")),
+// )
+// .run_relayer()
+// .build_with_mock_primary_node(Role::Authority, &mut ferdie)
+// .await;
 
-    // Run Bob (a core payments domain authority node)
-    let mut bob = domain_test_service::CoreDomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Bob,
-        BasePath::new(directory.path().join("bob")),
-    )
-    .run_relayer()
-    .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
-    .await;
+// // Run Bob (a core payments domain authority node)
+// let mut bob = domain_test_service::CoreDomainNodeBuilder::new(
+// tokio_handle.clone(),
+// Bob,
+// BasePath::new(directory.path().join("bob")),
+// )
+// .run_relayer()
+// .build_core_payments_node(Role::Authority, &mut ferdie, &alice)
+// .await;
 
-    // Run Charlie (a core eth relay domain full node) and don't its relayer worker
-    let charlie = domain_test_service::CoreDomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Charlie,
-        BasePath::new(directory.path().join("charlie")),
-    )
-    .build_core_payments_node(Role::Full, &mut ferdie, &alice)
-    .await;
-    let gossip_msg_sink = ferdie.xdm_gossip_worker_builder().gossip_msg_sink();
+// // Run Charlie (a core eth relay domain full node) and don't its relayer worker
+// let charlie = domain_test_service::CoreDomainNodeBuilder::new(
+// tokio_handle.clone(),
+// Charlie,
+// BasePath::new(directory.path().join("charlie")),
+// )
+// .build_core_payments_node(Role::Full, &mut ferdie, &alice)
+// .await;
+// let gossip_msg_sink = ferdie.xdm_gossip_worker_builder().gossip_msg_sink();
 
-    // Run the cross domain gossip message worker
-    ferdie.start_cross_domain_gossip_message_worker();
+// // Run the cross domain gossip message worker
+// ferdie.start_cross_domain_gossip_message_worker();
 
-    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+// produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
 
-    // Open channel between the system domain and the core payments domain
-    let fee_model = FeeModel {
-        outbox_fee: ExecutionFee {
-            relayer_pool_fee: 2,
-            compute_fee: 0,
-        },
-        inbox_fee: ExecutionFee {
-            relayer_pool_fee: 0,
-            compute_fee: 5,
-        },
-    };
-    bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
-        call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
-            pallet_messenger::Call::initiate_channel {
-                dst_domain_id: DomainId::SYSTEM,
-                params: InitiateChannelParams {
-                    max_outgoing_messages: 1000,
-                    fee_model,
-                },
-            },
-        )),
-    })
-    .await
-    .expect("Failed to construct and send extrinsic");
-    // Wait until channel open
-    produce_blocks_until!(ferdie, alice, bob, charlie, {
-        alice
-            .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
-            .is_some()
-            && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
-    })
-    .await
-    .unwrap();
+// // Open channel between the system domain and the core payments domain
+// let fee_model = FeeModel {
+// outbox_fee: ExecutionFee {
+// relayer_pool_fee: 2,
+// compute_fee: 0,
+// },
+// inbox_fee: ExecutionFee {
+// relayer_pool_fee: 0,
+// compute_fee: 5,
+// },
+// };
+// bob.construct_and_send_extrinsic(pallet_sudo::Call::sudo {
+// call: Box::new(core_payments_domain_test_runtime::RuntimeCall::Messenger(
+// pallet_messenger::Call::initiate_channel {
+// dst_domain_id: DomainId::SYSTEM,
+// params: InitiateChannelParams {
+// max_outgoing_messages: 1000,
+// fee_model,
+// },
+// },
+// )),
+// })
+// .await
+// .expect("Failed to construct and send extrinsic");
+// // Wait until channel open
+// produce_blocks_until!(ferdie, alice, bob, charlie, {
+// alice
+// .get_open_channel_for_domain(DomainId::CORE_PAYMENTS)
+// .is_some()
+// && bob.get_open_channel_for_domain(DomainId::SYSTEM).is_some()
+// })
+// .await
+// .unwrap();
 
-    // Register `charlie` as relayer such that message will assign to it, but as its relayer
-    // is not started these massage won't be relayed.
-    bob.construct_and_send_extrinsic(pallet_messenger::Call::join_relayer_set {
-        relayer_id: Charlie.into(),
-    })
-    .await
-    .expect("Failed to construct and send extrinsic");
-    produce_blocks!(ferdie, alice, bob, charlie, 3)
-        .await
-        .unwrap();
+// // Register `charlie` as relayer such that message will assign to it, but as its relayer
+// // is not started these massage won't be relayed.
+// bob.construct_and_send_extrinsic(pallet_messenger::Call::join_relayer_set {
+// relayer_id: Charlie.into(),
+// })
+// .await
+// .expect("Failed to construct and send extrinsic");
+// produce_blocks!(ferdie, alice, bob, charlie, 3)
+// .await
+// .unwrap();
 
-    // Create cross domain message, only message assigned to `alice` and `bob` will be relayed
-    // and send to tx pool, and these message is unordered because the message assigned to `charlie`
-    // is not relayed.
-    let relayer_id: AccountId = Charlie.into();
-    let alice_transfer_amount = 1;
-    let bob_transfer_amount = 2;
-    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-    let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
-    let mut alice_account_nonce = alice.account_nonce();
-    let mut bob_account_nonce = bob.account_nonce();
-    // Assigne `inbox_response` message to `charlie`
-    for _ in 0..10 {
-        let tx = alice.construct_extrinsic(
-            alice_account_nonce,
-            pallet_transporter::Call::transfer {
-                dst_location: pallet_transporter::Location {
-                    domain_id: DomainId::CORE_PAYMENTS,
-                    account_id: AccountIdConverter::convert(Bob.into()),
-                },
-                amount: alice_transfer_amount,
-            },
-        );
-        alice
-            .send_extrinsic(tx)
-            .await
-            .expect("Failed to send extrinsic");
-        alice_account_nonce += 1;
+// // Create cross domain message, only message assigned to `alice` and `bob` will be relayed
+// // and send to tx pool, and these message is unordered because the message assigned to `charlie`
+// // is not relayed.
+// let relayer_id: AccountId = Charlie.into();
+// let alice_transfer_amount = 1;
+// let bob_transfer_amount = 2;
+// let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+// let pre_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+// let mut alice_account_nonce = alice.account_nonce();
+// let mut bob_account_nonce = bob.account_nonce();
+// // Assigne `inbox_response` message to `charlie`
+// for _ in 0..10 {
+// let tx = alice.construct_extrinsic(
+// alice_account_nonce,
+// pallet_transporter::Call::transfer {
+// dst_location: pallet_transporter::Location {
+// domain_id: DomainId::CORE_PAYMENTS,
+// account_id: AccountIdConverter::convert(Bob.into()),
+// },
+// amount: alice_transfer_amount,
+// },
+// );
+// alice
+// .send_extrinsic(tx)
+// .await
+// .expect("Failed to send extrinsic");
+// alice_account_nonce += 1;
 
-        produce_blocks!(ferdie, alice, bob, charlie, 1)
-            .await
-            .unwrap();
-    }
-    // Assigne `outbox` message to `charlie`
-    for _ in 0..10 {
-        let tx = bob.construct_extrinsic(
-            bob_account_nonce,
-            pallet_transporter::Call::transfer {
-                dst_location: pallet_transporter::Location {
-                    domain_id: DomainId::SYSTEM,
-                    account_id: AccountIdConverter::convert(Alice.into()),
-                },
-                amount: bob_transfer_amount,
-            },
-        );
-        bob.send_extrinsic(tx)
-            .await
-            .expect("Failed to send extrinsic");
-        bob_account_nonce += 1;
+// produce_blocks!(ferdie, alice, bob, charlie, 1)
+// .await
+// .unwrap();
+// }
+// // Assigne `outbox` message to `charlie`
+// for _ in 0..10 {
+// let tx = bob.construct_extrinsic(
+// bob_account_nonce,
+// pallet_transporter::Call::transfer {
+// dst_location: pallet_transporter::Location {
+// domain_id: DomainId::SYSTEM,
+// account_id: AccountIdConverter::convert(Alice.into()),
+// },
+// amount: bob_transfer_amount,
+// },
+// );
+// bob.send_extrinsic(tx)
+// .await
+// .expect("Failed to send extrinsic");
+// bob_account_nonce += 1;
 
-        produce_blocks!(ferdie, alice, bob, charlie, 1)
-            .await
-            .unwrap();
-    }
+// produce_blocks!(ferdie, alice, bob, charlie, 1)
+// .await
+// .unwrap();
+// }
 
-    // Run charlie's relayer worker, the message assigned to `charlie` will be relayed
-    // and send to tx pool now
-    let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages::<
-        _,
-        _,
-        PBlock,
-        _,
-        _,
-        _,
-        _,
-        _,
-    >(
-        relayer_id,
-        charlie.client.clone(),
-        alice.client.clone(),
-        alice.sync_service.clone(),
-        charlie.sync_service.clone(),
-        gossip_msg_sink,
-    );
-    bob.task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking(
-            "core-domain-relayer-charlie",
-            None,
-            Box::pin(relayer_worker),
-        );
+// // Run charlie's relayer worker, the message assigned to `charlie` will be relayed
+// // and send to tx pool now
+// let relayer_worker = domain_client_message_relayer::worker::relay_core_domain_messages::<
+// _,
+// _,
+// PBlock,
+// _,
+// _,
+// _,
+// _,
+// _,
+// >(
+// relayer_id,
+// charlie.client.clone(),
+// alice.client.clone(),
+// alice.sync_service.clone(),
+// charlie.sync_service.clone(),
+// gossip_msg_sink,
+// );
+// bob.task_manager
+// .spawn_essential_handle()
+// .spawn_essential_blocking(
+// "core-domain-relayer-charlie",
+// None,
+// Box::pin(relayer_worker),
+// );
 
-    // Wait until all message are relayed and handled
-    let fee = fee_model.outbox_fee().unwrap() + fee_model.inbox_fee().unwrap();
-    produce_blocks_until!(ferdie, alice, bob, {
-        let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-        let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
+// // Wait until all message are relayed and handled
+// let fee = fee_model.outbox_fee().unwrap() + fee_model.inbox_fee().unwrap();
+// produce_blocks_until!(ferdie, alice, bob, {
+// let post_alice_free_balance = alice.free_balance(alice.key.to_account_id());
+// let post_bob_free_balance = bob.free_balance(bob.key.to_account_id());
 
-        post_alice_free_balance
-            == pre_alice_free_balance - alice_transfer_amount * 10 + bob_transfer_amount * 10
-                - fee * 10
-            && post_bob_free_balance
-                == pre_bob_free_balance - bob_transfer_amount * 10 + alice_transfer_amount * 10
-                    - fee * 10
-    })
-    .await
-    .unwrap();
-}
+// post_alice_free_balance
+// == pre_alice_free_balance - alice_transfer_amount * 10 + bob_transfer_amount * 10
+// - fee * 10
+// && post_bob_free_balance
+// == pre_bob_free_balance - bob_transfer_amount * 10 + alice_transfer_amount * 10
+// - fee * 10
+// })
+// .await
+// .unwrap();
+// }

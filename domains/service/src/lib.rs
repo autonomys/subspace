@@ -1,14 +1,10 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
-mod core_domain;
-mod core_domain_tx_pre_validator;
 pub mod providers;
 pub mod rpc;
 mod system_domain;
 mod system_domain_tx_pre_validator;
 
-pub use self::core_domain::{new_full_core, CoreDomainExecutor, CoreDomainParams, NewFullCore};
-pub use self::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 pub use self::system_domain::{new_full_system, FullPool, NewFullSystem};
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
