@@ -42,7 +42,6 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
-use subspace_wasm_tools::read_core_domain_runtime_blob;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
 
@@ -87,10 +86,6 @@ where
         let new_runtime = {
             if domain_id.is_system() {
                 system_domain_runtime
-            } else if domain_id.is_core() {
-                read_core_domain_runtime_blob(system_domain_runtime.as_ref(), domain_id)
-                    .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?
-                    .into()
             } else {
                 return Err(sp_blockchain::Error::Application(Box::from(format!(
                     "No new runtime code for {domain_id:?}"

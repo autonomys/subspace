@@ -11154,10 +11154,6 @@ dependencies = [
 [[package]]
 name = "subspace-wasm-tools"
 version = "0.1.0"
-dependencies = [
- "sc-executor-common",
- "sp-domains",
-]
 
 [[package]]
 name = "substrate-bip39"

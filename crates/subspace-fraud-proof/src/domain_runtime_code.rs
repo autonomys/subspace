@@ -6,7 +6,6 @@ use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::Block as BlockT;
 use std::borrow::Cow;
 use std::sync::Arc;
-use subspace_wasm_tools::read_core_domain_runtime_blob;
 
 pub(crate) struct RuntimeCodeFetcher<'a> {
     pub(crate) wasm_bundle: &'a [u8],
@@ -49,14 +48,6 @@ where
     let wasm_bundle = {
         if domain_id.is_system() {
             system_wasm_bundle
-        } else if domain_id.is_core() {
-            read_core_domain_runtime_blob(system_wasm_bundle.as_ref(), domain_id)
-                .map_err(|err| {
-                    VerificationError::RuntimeCode(format!(
-                        "failed to read core domain {domain_id:?} runtime blob file, error {err:?}"
-                    ))
-                })?
-                .into()
         } else {
             return Err(VerificationError::RuntimeCode(format!(
                 "No runtime code for {domain_id:?}"
