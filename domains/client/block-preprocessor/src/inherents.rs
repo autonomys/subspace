@@ -20,6 +20,8 @@ use std::sync::Arc;
 
 /// Returns required inherent extrinsics for the domain block based on the primary block.
 /// Note: primary block hash must be used to construct domain block.
+// TODO: Remove once evm domain is supported.
+#[allow(dead_code)]
 pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, PBlock, PClient>(
     primary_client: &Arc<PClient>,
     domain_runtime_api: &DomainRuntimeApi,
