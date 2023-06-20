@@ -77,10 +77,11 @@ impl<B: BlockT> Link<B> for WaitLink<B> {
     }
 }
 
-/// Starts the process of importing blocks.
+/// Starts the process of importing blocks, used for for initial sync on node startup because it
+/// requires [`ImportQueue`] as a dependency.
 ///
 /// Returns number of imported blocks.
-pub async fn import_blocks<B, IQ, C>(
+pub async fn initial_block_import_from_dsn<B, IQ, C>(
     node: &Node,
     client: Arc<C>,
     import_queue: &mut IQ,

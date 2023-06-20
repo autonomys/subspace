@@ -24,7 +24,7 @@ pub mod rpc;
 pub mod segment_headers;
 pub mod tx_pre_validator;
 
-use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
+use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
@@ -715,7 +715,7 @@ where
         // Repeat until no new blocks are imported
         loop {
             let new_imported_blocks =
-                import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
+                initial_block_import_from_dsn(&node, client.clone(), &mut import_queue, false)
                     .await
                     .map_err(|error| {
                         sc_service::Error::Other(format!(
