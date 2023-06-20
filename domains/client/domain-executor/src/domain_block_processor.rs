@@ -278,6 +278,7 @@ where
         let execution_receipt = ExecutionReceipt {
             primary_number: primary_number.into(),
             primary_hash,
+            domain_number: to_number_primitive(header_number).into(),
             domain_hash: header_hash,
             trace,
             trace_root,
