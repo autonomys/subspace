@@ -540,15 +540,20 @@ where
         &self,
         block_hash: &BlockHash<Block>,
     ) -> Result<Vec<(TxHash<Pool>, Extrinsic<Block>)>, RelayError> {
-        let extrinsics = self
+        let maybe_extrinsics = self
             .client
             .block_body(*block_hash)
-            .map_err(|err| RelayError::BlockBody(format!("{block_hash:?}, {err:?}")))?
-            .unwrap_or_default();
-        Ok(extrinsics
-            .into_iter()
-            .map(|extrinsic| (self.transaction_pool.hash_of(&extrinsic), extrinsic))
-            .collect())
+            .map_err(|err| RelayError::BlockBody(format!("{block_hash:?}, {err:?}")))?;
+        if let Some(extrinsics) = maybe_extrinsics {
+            Ok(extrinsics
+                .into_iter()
+                .map(|extrinsic| (self.transaction_pool.hash_of(&extrinsic), extrinsic))
+                .collect())
+        } else {
+            Err(RelayError::BlockExtrinsicsNotFound(format!(
+                "{block_hash:?}"
+            )))
+        }
     }
 
     fn protocol_unit(
