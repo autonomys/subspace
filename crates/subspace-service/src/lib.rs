@@ -624,16 +624,18 @@ where
             }))
             .detach();
 
-            task_manager.spawn_essential_handle().spawn_essential(
-                "node-runner",
-                Some("subspace-networking"),
-                Box::pin(
-                    async move {
-                        node_runner.run().await;
-                    }
-                    .in_current_span(),
-                ),
-            );
+            task_manager
+                .spawn_essential_handle()
+                .spawn_essential_blocking(
+                    "node-runner",
+                    Some("subspace-networking"),
+                    Box::pin(
+                        async move {
+                            node_runner.run().await;
+                        }
+                        .in_current_span(),
+                    ),
+                );
 
             (node, dsn_config.bootstrap_nodes, Some(piece_cache))
         }
@@ -646,11 +648,13 @@ where
             .subscribe(),
     );
 
-    task_manager.spawn_essential_handle().spawn_essential(
-        "segment-header-archiver",
-        Some("subspace-networking"),
-        Box::pin(segment_header_archiving_fut.in_current_span()),
-    );
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "segment-header-archiver",
+            Some("subspace-networking"),
+            Box::pin(segment_header_archiving_fut.in_current_span()),
+        );
 
     let dsn_bootstrap_nodes = {
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
