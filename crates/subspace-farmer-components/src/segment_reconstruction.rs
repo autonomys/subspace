@@ -4,7 +4,7 @@ use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use subspace_archiving::piece_reconstructor::{PiecesReconstructor, ReconstructorError};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{Piece, PieceIndex, RecordedHistorySegment};
+use subspace_core_primitives::{ArchivedHistorySegment, Piece, PieceIndex, RecordedHistorySegment};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
@@ -39,7 +39,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     let semaphore = &semaphore;
     let acquired_pieces_counter = &acquired_pieces_counter;
 
-    let pieces = segment_index
+    let mut received_segment_pieces = segment_index
         .segment_piece_indexes_source_first()
         .map(|piece_index| async move {
             let _permit = match semaphore.acquire().await {
@@ -66,11 +66,13 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
 
             match piece {
                 Ok(piece) => {
-                    if piece.is_some() {
+                    if let Some(piece) = piece {
                         acquired_pieces_counter.fetch_add(1, Ordering::SeqCst);
-                    }
 
-                    piece
+                        Some((piece_index, piece))
+                    } else {
+                        None
+                    }
                 }
                 Err(error) => {
                     debug!(?error, %piece_index, "Failed to get piece");
@@ -78,9 +80,17 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
                 }
             }
         })
-        .collect::<FuturesOrdered<_>>()
-        .collect::<Vec<Option<Piece>>>()
-        .await;
+        .collect::<FuturesOrdered<_>>();
+
+    let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
+    while let Some(maybe_received_piece) = received_segment_pieces.next().await {
+        if let Some((piece_index, received_piece)) = maybe_received_piece {
+            segment_pieces
+                .get_mut(piece_index.position() as usize)
+                .expect("Piece position is by definition within segment; qed")
+                .replace(received_piece);
+        }
+    }
 
     if acquired_pieces_counter.load(Ordering::SeqCst) < required_pieces_number {
         error!(%missing_piece_index, "Recovering missing piece failed.");
@@ -90,7 +100,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
 
     let archiver = PiecesReconstructor::new(kzg).expect("Internal constructor call must succeed.");
 
-    let result = archiver.reconstruct_piece(&pieces, position as usize)?;
+    let result = archiver.reconstruct_piece(&segment_pieces, position as usize)?;
 
     info!(%missing_piece_index, "Recovering missing piece succeeded.");
 

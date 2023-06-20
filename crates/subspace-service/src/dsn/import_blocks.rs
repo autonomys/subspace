@@ -120,13 +120,14 @@ where
     let mut reconstructor =
         Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
-    for segment_index in (SegmentIndex::ZERO..).take(segments_found) {
+    // Skip the first segment, everyone has it locally
+    for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
         let pieces_indices = segment_index.segment_piece_indexes_source_first();
 
-        let mut pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
+        let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
         let mut pieces_received = 0;
 
-        for (piece_index, piece) in pieces_indices.zip(pieces.iter_mut()) {
+        for piece_index in pieces_indices {
             let maybe_piece = piece_provider
                 .get_piece(piece_index, RetryPolicy::Limited(0))
                 .await
@@ -139,7 +140,10 @@ where
             );
 
             if let Some(received_piece) = maybe_piece {
-                piece.replace(received_piece);
+                segment_pieces
+                    .get_mut(piece_index.position() as usize)
+                    .expect("Piece position is by definition within segment; qed")
+                    .replace(received_piece);
 
                 pieces_received += 1;
             }
@@ -151,7 +155,7 @@ where
         }
 
         let reconstructed_contents = reconstructor
-            .add_segment(pieces.as_ref())
+            .add_segment(segment_pieces.as_ref())
             .map_err(|error| sc_service::Error::Other(error.to_string()))?;
 
         for (block_number, block_bytes) in reconstructed_contents.blocks {
