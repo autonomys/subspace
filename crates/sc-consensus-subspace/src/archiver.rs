@@ -546,7 +546,7 @@ where
                     let mut segment_headers = segment_headers.lock();
                     segment_headers.put(block_number + One::one(), new_segment_headers);
 
-                    // Skip last 5 archived segments
+                    // Skip last `FINALIZATION_DEPTH_IN_SEGMENTS` archived segments
                     segment_headers
                         .iter()
                         .flat_map(|(_k, v)| v.iter().rev())
