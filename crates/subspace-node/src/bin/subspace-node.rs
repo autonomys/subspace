@@ -72,42 +72,6 @@ impl NativeExecutionDispatch for SystemDomainExecutorDispatch {
     }
 }
 
-/// Core payments domain executor instance.
-pub struct CorePaymentsDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for CorePaymentsDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        core_payments_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        core_payments_domain_runtime::native_version()
-    }
-}
-
-/// Core evm domain executor instance.
-pub struct CoreEVMDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for crate::CoreEVMDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        core_evm_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        core_evm_runtime::native_version()
-    }
-}
-
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

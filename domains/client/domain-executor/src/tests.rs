@@ -4,7 +4,6 @@ use domain_test_service::system_domain_test_runtime::{Address, Header, Unchecked
 use domain_test_service::Keyring::{Alice, Bob, Ferdie};
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
-use sc_executor_common::runtime_blob::RuntimeBlob;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
@@ -15,7 +14,7 @@ use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{Bundle, DomainId, ExecutorApi};
+use sp_domains::{Bundle, DomainId};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
@@ -25,7 +24,6 @@ use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockPrimaryNode,
 };
-use subspace_wasm_tools::read_core_domain_runtime_blob;
 use tempfile::TempDir;
 
 fn number_of(primary_node: &MockPrimaryNode, block_hash: Hash) -> u32 {
@@ -744,41 +742,6 @@ async fn set_new_code_should_work() {
         panic!("`set_code` not executed, extrinsics in the block: {extrinsics:?}")
     }
     assert_eq!(runtime_code, new_runtime_wasm_blob);
-}
-
-#[substrate_test_utils::test(flavor = "multi_thread")]
-async fn extract_core_domain_wasm_bundle_in_system_domain_runtime_should_work() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let ferdie = MockPrimaryNode::run_mock_primary_node(
-        tokio_handle,
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    let system_domain_bundle = ferdie
-        .client
-        .runtime_api()
-        .system_domain_wasm_bundle(ferdie.client.info().best_hash)
-        .unwrap();
-
-    let core_payments_runtime_blob =
-        read_core_domain_runtime_blob(system_domain_bundle.as_ref(), DomainId::CORE_PAYMENTS)
-            .unwrap();
-
-    let core_payments_blob = RuntimeBlob::new(&core_payments_runtime_blob).unwrap();
-    let core_payments_version = sc_executor::read_embedded_version(&core_payments_blob)
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(core_payments_version, core_payments_domain_runtime::VERSION);
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]

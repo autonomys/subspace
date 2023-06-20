@@ -43,7 +43,7 @@ pub fn create_runtime_bundle_inclusion_file(
             "DEP_{}_WASM_FILE",
             runtime_crate_name.replace('-', "_").to_ascii_uppercase()
         ))
-        .expect("Must be set by dependency")
+        .unwrap_or_else(|_| panic!("{runtime_crate_name:?} Must be set by dependency"))
     });
 
     env::set_var("SUBSPACE_WASM_BUNDLE_PATH", &execution_wasm_bundle_path);

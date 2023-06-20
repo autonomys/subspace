@@ -66,7 +66,6 @@ pub fn node_config(
 
     let domain_name = match domain_id {
         DomainId::SYSTEM => "SystemDomain",
-        DomainId::CORE_PAYMENTS => "CorePaymentsDomain",
         _ => panic!("{domain_id:?} unimplemented"),
     };
 

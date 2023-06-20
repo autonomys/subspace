@@ -1450,88 +1450,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
 
 [[package]]
-name = "core-payments-domain-runtime"
-version = "0.1.0"
-dependencies = [
- "domain-pallet-executive",
- "domain-runtime-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-messenger",
- "pallet-sudo",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "pallet-transporter",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-io",
- "sp-messenger",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-runtime-primitives",
- "subspace-wasm-tools",
- "substrate-wasm-builder",
-]
-
-[[package]]
-name = "core-payments-domain-test-runtime"
-version = "0.1.0"
-dependencies = [
- "domain-pallet-executive",
- "domain-runtime-primitives",
- "domain-test-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
- "pallet-messenger",
- "pallet-sudo",
- "pallet-timestamp",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "pallet-transporter",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-io",
- "sp-messenger",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-runtime-primitives",
- "subspace-wasm-tools",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "core2"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2308,8 +2226,6 @@ dependencies = [
 name = "domain-client-executor"
 version = "0.1.0"
 dependencies = [
- "core-payments-domain-runtime",
- "core-payments-domain-test-runtime",
  "crossbeam",
  "domain-block-builder",
  "domain-block-preprocessor",
@@ -2558,7 +2474,6 @@ name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "core-payments-domain-test-runtime",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-runtime-primitives",
@@ -10854,7 +10769,6 @@ dependencies = [
  "bytesize",
  "clap",
  "core-evm-runtime",
- "core-payments-domain-runtime",
  "cross-domain-message-gossip",
  "dirs",
  "domain-client-executor",
@@ -11504,7 +11418,6 @@ dependencies = [
 name = "system-domain-runtime"
 version = "0.1.0"
 dependencies = [
- "core-payments-domain-runtime",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "frame-benchmarking",
@@ -11547,7 +11460,6 @@ dependencies = [
 name = "system-domain-test-runtime"
 version = "0.1.0"
 dependencies = [
- "core-payments-domain-runtime",
  "domain-pallet-executive",
  "domain-runtime-primitives",
  "domain-test-primitives",

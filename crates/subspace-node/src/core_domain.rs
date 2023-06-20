@@ -1,5 +1,4 @@
 pub(crate) mod core_evm_chain_spec;
-pub(crate) mod core_payments_chain_spec;
 
 use core_evm_runtime::AccountId as AccountId20;
 use sp_core::crypto::AccountId32;

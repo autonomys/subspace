@@ -19,7 +19,6 @@ substrate-wasm-builder = { git = "https://github.com/subspace/substrate", rev = 
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"]}
-core-payments-domain-runtime = { version = "0.1.0", path = "../../../runtime/core-payments", default-features = false }
 domain-pallet-executive = { version = "0.1.0", path = "../../../pallets/executive", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../../primitives/runtime", default-features = false }
 domain-test-primitives = { version = "0.1.0", path = "../../primitives", default-features = false }
@@ -63,7 +62,6 @@ default = [
 ]
 std = [
 	"codec/std",
-	"core-payments-domain-runtime/std",
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
 	"domain-test-primitives/std",
