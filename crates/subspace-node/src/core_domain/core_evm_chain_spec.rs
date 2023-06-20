@@ -16,6 +16,9 @@
 
 //! Core EVM domain configurations.
 
+// TODO: support running core-evm again after the cleanup.
+#![allow(dead_code)]
+
 use crate::chain_spec_utils::chain_spec_properties;
 use crate::AccountId32ToAccountId20Converter;
 use core_evm_runtime::{

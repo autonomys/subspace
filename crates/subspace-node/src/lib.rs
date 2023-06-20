@@ -26,7 +26,7 @@ pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::system_domain::cli::{Subcommand as SystemDomainSubcommand, SystemDomainCli};
 use bytesize::ByteSize;
 use clap::Parser;
-pub use core_domain::cli::AccountId32ToAccountId20Converter;
+pub use core_domain::AccountId32ToAccountId20Converter;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;

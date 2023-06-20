@@ -16,6 +16,9 @@
 
 //! Core payments domain configurations.
 
+// TODO: remove
+#![allow(dead_code)]
+
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use core_payments_domain_runtime::{
     AccountId, BalancesConfig, GenesisConfig, MessengerConfig, SudoConfig, SystemConfig,
