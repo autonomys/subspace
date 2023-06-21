@@ -140,8 +140,12 @@ where
             }
         }
 
-        // Add bundles from the new block of the best fork
-        for enacted_block in enacted {
+        // Add bundles from the new block of the best fork, only need to process at most the last K
+        // blocks as the result of other blocks will be dumpped immediately, this also help to prevent
+        // the bundle validator from stuck on some pruned blocks because these blocks will be skip as
+        // the chain grows.
+        let needless_block = enacted.len().saturating_sub(self.confirm_depth_k);
+        for enacted_block in enacted.iter().skip(needless_block) {
             let bundles = self.successfully_submitted_bundles_at(enacted_block.hash)?;
             bundle_stored_in_last_k.push_front(BlockBundle::new(
                 enacted_block.hash,
