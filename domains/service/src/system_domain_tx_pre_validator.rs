@@ -6,36 +6,30 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
-use sp_domains::transaction::{
-    InvalidTransactionCode, PreValidationObject, PreValidationObjectApi,
-};
+use sp_domains::transaction::PreValidationObjectApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_fraud_proof::VerifyFraudProof;
 use subspace_transaction_pool::PreValidateTransaction;
 
-pub struct SystemDomainTxPreValidator<Block, PBlock, Client, Verifier, PClient, SRE> {
+pub struct SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed>,
-    fraud_proof_verifier: Verifier,
     primary_chain_client: Arc<PClient>,
     state_root_extractor: SRE,
     _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
-impl<Block, PBlock, Client, Verifier, PClient, SRE> Clone
-    for SystemDomainTxPreValidator<Block, PBlock, Client, Verifier, PClient, SRE>
+impl<Block, PBlock, Client, PClient, SRE> Clone
+    for SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 where
-    Verifier: Clone,
     SRE: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
             spawner: self.spawner.clone(),
-            fraud_proof_verifier: self.fraud_proof_verifier.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
             state_root_extractor: self.state_root_extractor.clone(),
             _phantom_data: self._phantom_data,
@@ -43,20 +37,18 @@ where
     }
 }
 
-impl<Block, PBlock, Client, Verifier, PClient, SRE>
-    SystemDomainTxPreValidator<Block, PBlock, Client, Verifier, PClient, SRE>
+impl<Block, PBlock, Client, PClient, SRE>
+    SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 {
     pub fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed>,
-        fraud_proof_verifier: Verifier,
         primary_chain_client: Arc<PClient>,
         state_root_extractor: SRE,
     ) -> Self {
         Self {
             client,
             spawner,
-            fraud_proof_verifier,
             primary_chain_client,
             state_root_extractor,
             _phantom_data: Default::default(),
@@ -65,8 +57,8 @@ impl<Block, PBlock, Client, Verifier, PClient, SRE>
 }
 
 #[async_trait::async_trait]
-impl<Block, PBlock, Client, Verifier, PClient, SRE> PreValidateTransaction
-    for SystemDomainTxPreValidator<Block, PBlock, Client, Verifier, PClient, SRE>
+impl<Block, PBlock, Client, PClient, SRE> PreValidateTransaction
+    for SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -74,7 +66,6 @@ where
     NumberFor<PBlock>: From<NumberFor<Block>>,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
     Client::Api: PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: SettlementApi<PBlock, Block::Hash>,
     SRE: StateRootExtractor<Block> + Send + Sync,
@@ -93,37 +84,6 @@ where
             &uxt,
         )? {
             return Err(TxPoolError::ImmediatelyDropped.into());
-        }
-
-        let pre_validation_object = self
-            .client
-            .runtime_api()
-            .extract_pre_validation_object(at, uxt.clone())
-            .map_err(|err| sc_transaction_pool::error::Error::Blockchain(err.into()))?;
-
-        match pre_validation_object {
-            PreValidationObject::Null | PreValidationObject::Bundle(_) => {
-                // No pre-validation is required.
-            }
-            PreValidationObject::FraudProof(fraud_proof) => {
-                if fraud_proof.domain_id().is_system() {
-                    tracing::debug!(target: "txpool", "Unexpected system domain fraud proof: {fraud_proof:?}");
-                    return Err(TxPoolError::InvalidTransaction(
-                        InvalidTransactionCode::FraudProof.into(),
-                    )
-                    .into());
-                }
-                subspace_fraud_proof::validate_fraud_proof_in_tx_pool(
-                    &self.spawner,
-                    self.fraud_proof_verifier.clone(),
-                    fraud_proof,
-                )
-                .await
-                .map_err(|err| {
-                    tracing::debug!(target: "txpool", error = ?err, "Invalid fraud proof");
-                    TxPoolError::InvalidTransaction(InvalidTransactionCode::FraudProof.into())
-                })?;
-            }
         }
 
         Ok(())

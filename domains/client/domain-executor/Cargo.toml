@@ -45,8 +45,6 @@ thiserror = "1.0.38"
 tokio = { version = "1.28.2", features = ["macros"] }
 
 [dev-dependencies]
-core-payments-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/core-payments" }
-core-payments-domain-runtime = { version = "0.1.0", path = "../../runtime/core-payments" }
 domain-client-message-relayer = { version = "0.1.0", path = "../relayer" }
 domain-test-primitives = { version = "0.1.0", path = "../../test/primitives" }
 domain-test-service = { version = "0.1.0", path = "../../test/service" }

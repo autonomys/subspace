@@ -19,7 +19,6 @@
 #![warn(missing_docs)]
 
 pub mod chain_spec;
-pub mod core_domain;
 pub mod system_domain;
 
 use domain_runtime_primitives::opaque::Block;
@@ -44,7 +43,6 @@ use sp_runtime::codec::Encode;
 use sp_runtime::generic;
 use sp_runtime::traits::Dispatchable;
 
-pub use core_domain::*;
 pub use sp_keyring::Sr25519Keyring as Keyring;
 pub use system_domain::*;
 pub use system_domain_test_runtime;
@@ -68,7 +66,6 @@ pub fn node_config(
 
     let domain_name = match domain_id {
         DomainId::SYSTEM => "SystemDomain",
-        DomainId::CORE_PAYMENTS => "CorePaymentsDomain",
         _ => panic!("{domain_id:?} unimplemented"),
     };
 

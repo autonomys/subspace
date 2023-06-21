@@ -20,14 +20,10 @@ pub mod runtime_api_full;
 pub mod runtime_api_light;
 pub mod xdm_verifier;
 
-use crate::inherents::construct_inherent_extrinsics;
 use crate::runtime_api::{
-    CoreBundleConstructor, InherentExtrinsicConstructor, SetCodeConstructor, SignerExtractor,
-    StateRootExtractor,
+    CoreBundleConstructor, SetCodeConstructor, SignerExtractor, StateRootExtractor,
 };
-use crate::xdm_verifier::{
-    verify_xdm_with_primary_chain_client, verify_xdm_with_system_domain_client,
-};
+use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use rand::seq::SliceRandom;
@@ -37,7 +33,6 @@ use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, ExecutorApi, OpaqueBundles};
-use sp_messenger::MessengerApi;
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_settlement::SettlementApi;
@@ -47,8 +42,6 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
-use subspace_wasm_tools::read_core_domain_runtime_blob;
-use system_runtime_primitives::SystemDomainApi;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
 
@@ -93,10 +86,6 @@ where
         let new_runtime = {
             if domain_id.is_system() {
                 system_domain_runtime
-            } else if domain_id.is_core() {
-                read_core_domain_runtime_blob(system_domain_runtime.as_ref(), domain_id)
-                    .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?
-                    .into()
             } else {
                 return Err(sp_blockchain::Error::Application(Box::from(format!(
                     "No new runtime code for {domain_id:?}"
@@ -359,159 +348,6 @@ where
                     Err(err) => {
                         tracing::error!(
                             target = "system_domain_xdm_filter",
-                            "failed to verify extrinsic: {}",
-                            err
-                        );
-                        false
-                    }
-                }
-            })
-            .collect()
-    }
-}
-
-pub struct CoreDomainBlockPreprocessor<Block, PBlock, SBlock, PClient, SClient, RuntimeApi> {
-    domain_id: DomainId,
-    runtime_api: RuntimeApi,
-    system_domain_client: Arc<SClient>,
-    primary_chain_client: Arc<PClient>,
-    _phantom_data: PhantomData<(Block, PBlock, SBlock)>,
-}
-
-impl<Block, PBlock, SBlock, PClient, SClient, RuntimeApi: Clone> Clone
-    for CoreDomainBlockPreprocessor<Block, PBlock, SBlock, PClient, SClient, RuntimeApi>
-{
-    fn clone(&self) -> Self {
-        Self {
-            domain_id: self.domain_id,
-            runtime_api: self.runtime_api.clone(),
-            system_domain_client: self.system_domain_client.clone(),
-            primary_chain_client: self.primary_chain_client.clone(),
-            _phantom_data: self._phantom_data,
-        }
-    }
-}
-
-impl<Block, PBlock, SBlock, PClient, SClient, RuntimeApi>
-    CoreDomainBlockPreprocessor<Block, PBlock, SBlock, PClient, SClient, RuntimeApi>
-where
-    Block: BlockT,
-    PBlock: BlockT,
-    SBlock: BlockT,
-    SBlock::Hash: From<Block::Hash>,
-    NumberFor<SBlock>: From<NumberFor<Block>>,
-    RuntimeApi: SignerExtractor<Block>
-        + SetCodeConstructor<Block>
-        + StateRootExtractor<Block>
-        + InherentExtrinsicConstructor<Block>,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
-    SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + 'static,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + MessengerApi<SBlock, NumberFor<SBlock>>
-        + SettlementApi<SBlock, Block::Hash>,
-{
-    pub fn new(
-        domain_id: DomainId,
-        runtime_api: RuntimeApi,
-        primary_chain_client: Arc<PClient>,
-        system_domain_client: Arc<SClient>,
-    ) -> Self {
-        Self {
-            domain_id,
-            runtime_api,
-            system_domain_client,
-            primary_chain_client,
-            _phantom_data: Default::default(),
-        }
-    }
-
-    pub fn preprocess_primary_block_for_verifier(
-        &self,
-        primary_hash: PBlock::Hash,
-    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
-        // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
-        let domain_hash = Default::default();
-        Ok(self
-            .preprocess_primary_block(primary_hash, domain_hash)?
-            .into_iter()
-            .map(|ext| ext.encode())
-            .collect())
-    }
-
-    pub fn preprocess_primary_block(
-        &self,
-        primary_hash: PBlock::Hash,
-        domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<Vec<Block::Extrinsic>> {
-        let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
-            prepare_domain_block_elements::<Block, PBlock, _>(
-                self.domain_id,
-                &*self.primary_chain_client,
-                primary_hash,
-            )?;
-
-        let core_bundles = self
-            .primary_chain_client
-            .runtime_api()
-            .extract_core_bundles(primary_hash, primary_extrinsics, self.domain_id)?;
-
-        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(core_bundles);
-
-        let extrinsics = deduplicate_and_shuffle_extrinsics(
-            domain_hash,
-            &self.runtime_api,
-            extrinsics,
-            shuffling_seed,
-        )
-        .map(|extrinsics| self.filter_invalid_xdm_extrinsics(domain_hash, extrinsics))?;
-
-        // fetch inherent extrinsics
-        let inherent_extrinsics = construct_inherent_extrinsics(
-            &self.primary_chain_client,
-            &self.runtime_api,
-            primary_hash,
-            domain_hash,
-        )?;
-
-        let mut extrinsics: Vec<Block::Extrinsic> = inherent_extrinsics
-            .into_iter()
-            .chain(extrinsics.into_iter())
-            .collect();
-
-        if let Some(new_runtime) = maybe_new_runtime {
-            let encoded_set_code = self
-                .runtime_api
-                .construct_set_code_extrinsic(domain_hash, new_runtime.to_vec())?;
-            let set_code_extrinsic = Block::Extrinsic::decode(&mut encoded_set_code.as_slice())
-                .map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to decode `set_code` extrinsic: {err}"
-                    )))
-                })?;
-            extrinsics.push(set_code_extrinsic);
-        }
-
-        Ok(extrinsics)
-    }
-
-    fn filter_invalid_xdm_extrinsics(
-        &self,
-        at: Block::Hash,
-        exts: Vec<Block::Extrinsic>,
-    ) -> Vec<Block::Extrinsic> {
-        exts.into_iter()
-            .filter(|ext| {
-                match verify_xdm_with_system_domain_client::<_, Block, SBlock, PBlock, _>(
-                    &self.system_domain_client,
-                    at,
-                    ext,
-                    &self.runtime_api,
-                ) {
-                    Ok(valid) => valid,
-                    Err(err) => {
-                        tracing::error!(
-                            target = "core_domain_xdm_filter",
                             "failed to verify extrinsic: {}",
                             err
                         );

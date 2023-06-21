@@ -26,7 +26,7 @@ pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 pub use crate::system_domain::cli::{Subcommand as SystemDomainSubcommand, SystemDomainCli};
 use bytesize::ByteSize;
 use clap::Parser;
-pub use core_domain::cli::AccountId32ToAccountId20Converter;
+pub use core_domain::AccountId32ToAccountId20Converter;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
@@ -235,10 +235,7 @@ pub struct Cli {
     /// The command-line arguments provided first will be passed to the embedded primary node,
     /// while the arguments provided after `--` will be passed to the system domain node.
     ///
-    /// If you want to run a core domain node, specify the core domain node arguments after
-    /// the system domain node arguments with an extra `--`.
-    ///
-    /// subspace-node [primarychain-args] -- [system-domain-args] -- [core-domain-args]
+    /// subspace-node [primarychain-args] -- [system-domain-args]
     #[arg(raw = true)]
     pub domain_args: Vec<String>,
 

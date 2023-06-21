@@ -1,18 +1,14 @@
 //! Chain specification for the domain test runtime.
 use crate::Keyring::{Alice, Bob, Charlie, Dave, Eve, Ferdie};
-use domain_runtime_primitives::{AccountId, Balance, Hash, Signature};
-use frame_support::weights::Weight;
+use domain_runtime_primitives::{AccountId, Signature};
 use sc_service::{ChainSpec, ChainType, GenericChainSpec};
 use sp_application_crypto::UncheckedFrom;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::{DomainId, ExecutorPublicKey};
 use sp_runtime::traits::{IdentifyAccount, Verify};
-use sp_runtime::Percent;
 use subspace_runtime_primitives::SSC;
 
 type AccountPublic = <Signature as Verify>::Signer;
-
-type DomainConfig = sp_domains::DomainConfig<Hash, Balance, Weight>;
 
 /// Helper function to generate an account ID from seed.
 pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId
@@ -53,9 +49,6 @@ pub fn get_chain_spec(domain_id: DomainId) -> Box<dyn ChainSpec> {
     }
     match domain_id {
         DomainId::SYSTEM => Box::new(chain_spec_from_genesis!(testnet_system_genesis)),
-        DomainId::CORE_PAYMENTS => {
-            Box::new(chain_spec_from_genesis!(testnet_core_payments_genesis))
-        }
         _ => panic!("{domain_id:?} unimplemented"),
     }
 }
@@ -75,30 +68,6 @@ fn endowed_accounts() -> Vec<AccountId> {
         get_account_id_from_seed::<sr25519::Public>("Eve//stash"),
         get_account_id_from_seed::<sr25519::Public>("Ferdie//stash"),
     ]
-}
-
-fn testnet_core_payments_genesis() -> core_payments_domain_test_runtime::GenesisConfig {
-    core_payments_domain_test_runtime::GenesisConfig {
-        system: core_payments_domain_test_runtime::SystemConfig {
-            code: core_payments_domain_test_runtime::WASM_BINARY
-                .expect("WASM binary was not build, please build it!")
-                .to_vec(),
-        },
-        transaction_payment: Default::default(),
-        balances: core_payments_domain_test_runtime::BalancesConfig {
-            balances: endowed_accounts()
-                .iter()
-                .cloned()
-                .map(|k| (k, 1_000_000 * SSC))
-                .collect(),
-        },
-        messenger: core_payments_domain_test_runtime::MessengerConfig {
-            relayers: vec![(Bob.to_account_id(), Bob.to_account_id())],
-        },
-        sudo: core_payments_domain_test_runtime::SudoConfig {
-            key: Some(Bob.to_account_id()),
-        },
-    }
 }
 
 fn testnet_system_genesis() -> system_domain_test_runtime::GenesisConfig {
@@ -141,42 +110,7 @@ fn testnet_system_genesis() -> system_domain_test_runtime::GenesisConfig {
             ],
             slot_probability: (1, 1),
         },
-        domain_registry: system_domain_test_runtime::DomainRegistryConfig {
-            // Although the following executors has a small executor stake it can produce bundle for the domain in each slot
-            // as long as it is the only executor of the domain.
-            domains: vec![
-                // The domain config of the core payments domain
-                (
-                    Bob.to_account_id(),
-                    1_000 * SSC,
-                    // TODO: proper genesis domain config
-                    DomainConfig {
-                        wasm_runtime_hash: Hash::zero(),
-                        max_bundle_size: 1024 * 1024,
-                        bundle_slot_probability: (1, 1),
-                        max_bundle_weight: Weight::MAX,
-                        min_operator_stake: SSC,
-                    },
-                    Bob.to_account_id(),
-                    Percent::one(),
-                ),
-                // The domain config of the core eth relay domain
-                (
-                    Charlie.to_account_id(),
-                    1_000 * SSC,
-                    // TODO: proper genesis domain config
-                    DomainConfig {
-                        wasm_runtime_hash: Hash::zero(),
-                        max_bundle_size: 1024 * 1024,
-                        bundle_slot_probability: (1, 1),
-                        max_bundle_weight: Weight::MAX,
-                        min_operator_stake: SSC,
-                    },
-                    Charlie.to_account_id(),
-                    Percent::one(),
-                ),
-            ],
-        },
+        domain_registry: system_domain_test_runtime::DomainRegistryConfig::default(),
         messenger: system_domain_test_runtime::MessengerConfig {
             relayers: vec![(Alice.to_account_id(), Alice.to_account_id())],
         },

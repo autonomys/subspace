@@ -8,7 +8,7 @@ use sp_domains::bundle_election::{
     BundleElectionSolverParams,
 };
 use sp_domains::merkle_tree::{authorities_merkle_tree, Witness};
-use sp_domains::{DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
+use sp_domains::{BundleSolution, DomainId, ExecutorPublicKey, ProofOfElection, StakeWeight};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_runtime::RuntimeAppPublic;
@@ -35,15 +35,6 @@ impl<Block, SBlock, PBlock, SClient> Clone
     }
 }
 
-pub(super) enum PreliminaryBundleSolution<DomainHash> {
-    System {
-        authority_stake_weight: StakeWeight,
-        authority_witness: Witness,
-        proof_of_election: ProofOfElection<DomainHash>,
-    },
-    Core(ProofOfElection<DomainHash>),
-}
-
 impl<Block, SBlock, PBlock, SClient> BundleElectionSolver<Block, SBlock, PBlock, SClient>
 where
     Block: BlockT,
@@ -66,7 +57,7 @@ where
         best_number: NumberFor<SBlock>,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<PreliminaryBundleSolution<Block::Hash>>> {
+    ) -> sp_blockchain::Result<Option<BundleSolution<Block::Hash>>> {
         let BundleElectionSolverParams {
             authorities,
             total_stake_weight,
@@ -117,22 +108,6 @@ where
                         let storage_keys = well_known_keys::system_bundle_election_storage_keys();
                         self.system_domain_client
                             .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
-                    } else if domain_id.is_core() {
-                        let storage_keys = self
-                            .system_domain_client
-                            .runtime_api()
-                            .core_bundle_election_storage_keys(
-                                best_hash,
-                                domain_id,
-                                authority_id.clone(),
-                            )?
-                            .ok_or_else(|| {
-                                sp_blockchain::Error::Backend(
-                                    "Empty core bundle election storage keys".to_string(),
-                                )
-                            })?;
-                        self.system_domain_client
-                            .read_proof(best_hash, &mut storage_keys.iter().map(|s| s.as_slice()))?
                     } else {
                         return Err(sp_blockchain::Error::Application(Box::from(
                             "Only system and core domain are supported".to_string(),
@@ -171,13 +146,11 @@ where
                             proof: merkle_tree.proof(&[index]).to_bytes(),
                         };
 
-                        PreliminaryBundleSolution::System {
+                        BundleSolution::System {
                             authority_stake_weight: *stake_weight,
                             authority_witness,
                             proof_of_election,
                         }
-                    } else if domain_id.is_core() {
-                        PreliminaryBundleSolution::Core(proof_of_election)
                     } else {
                         unreachable!("Open domain has been handled above")
                     };

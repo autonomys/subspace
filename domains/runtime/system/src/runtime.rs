@@ -34,10 +34,6 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{SHANNON, SSC};
 
-// Make various WASM runtimes available.
-include!(concat!(env!("OUT_DIR"), "/core_payments_wasm_bundle.rs"));
-include!(concat!(env!("OUT_DIR"), "/core_evm_wasm_bundle.rs"));
-
 /// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 

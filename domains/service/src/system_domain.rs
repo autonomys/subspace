@@ -37,8 +37,6 @@ use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use subspace_fraud_proof::domain_extrinsics_builder::CoreDomainExtrinsicsBuilder;
-use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
@@ -130,50 +128,10 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
         Block,
         PBlock,
         FullClient<Block, RuntimeApi, Executor>,
-        FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
         PClient,
         RuntimeApiFull<FullClient<Block, RuntimeApi, Executor>>,
     >,
 >;
-
-type InvalidTransactionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier<
-        PBlock,
-        PClient,
-        Hash,
-        NativeElseWasmExecutor<Executor>,
-        VerifierClient<FullClient<Block, RuntimeApi, Executor>, Block>,
-        CoreDomainExtrinsicsBuilder<
-            PBlock,
-            Block,
-            PClient,
-            FullClient<Block, RuntimeApi, Executor>,
-            NativeElseWasmExecutor<Executor>,
-        >,
-    >;
-
-type InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
-        PBlock,
-        PClient,
-        NativeElseWasmExecutor<Executor>,
-        Hash,
-        VerifierClient<FullClient<Block, RuntimeApi, Executor>, Block>,
-        CoreDomainExtrinsicsBuilder<
-            PBlock,
-            Block,
-            PClient,
-            FullClient<Block, RuntimeApi, Executor>,
-            NativeElseWasmExecutor<Executor>,
-        >,
-    >;
-
-type FraudProofVerifier<PBlock, PClient, RuntimeApi, Executor> =
-    subspace_fraud_proof::ProofVerifier<
-        Block,
-        InvalidTransactionProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
-        InvalidStateTransitionProofVerifier<PBlock, PClient, RuntimeApi, Executor>,
-    >;
 
 /// Constructs a partial system domain node.
 #[allow(clippy::type_complexity)]
@@ -248,36 +206,9 @@ where
         telemetry
     });
 
-    let domain_extrinsics_builder = CoreDomainExtrinsicsBuilder::<PBlock, Block, _, _, _>::new(
-        primary_chain_client.clone(),
-        client.clone(),
-        Arc::new(executor.clone()),
-    );
-
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        primary_chain_client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-        domain_extrinsics_builder.clone(),
-    );
-
-    let invalid_transaction_proof_verifier =
-        InvalidTransactionProofVerifier::<PBlock, _, _, _>::new(
-            primary_chain_client.clone(),
-            Arc::new(executor.clone()),
-            VerifierClient::new(client.clone()),
-            domain_extrinsics_builder,
-        );
-
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
-
     let system_domain_tx_pre_validator = SystemDomainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
-        proof_verifier,
         primary_chain_client,
         RuntimeApiFull::new(client.clone()),
     );

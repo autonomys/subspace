@@ -1,6 +1,3 @@
-use sc_executor_common::error::WasmError;
-use sc_executor_common::runtime_blob::RuntimeBlob;
-use sp_domains::DomainId;
 use std::path::PathBuf;
 use std::{env, fs};
 
@@ -43,7 +40,7 @@ pub fn create_runtime_bundle_inclusion_file(
             "DEP_{}_WASM_FILE",
             runtime_crate_name.replace('-', "_").to_ascii_uppercase()
         ))
-        .expect("Must be set by dependency")
+        .unwrap_or_else(|_| panic!("{runtime_crate_name:?} Must be set by dependency"))
     });
 
     env::set_var("SUBSPACE_WASM_BUNDLE_PATH", &execution_wasm_bundle_path);
@@ -89,21 +86,4 @@ pub fn create_runtime_bundle_inclusion_file(
     // Ensure this build script is re-run when runtime wasm contents changes.
     // This will ensure the inclusion file will be updated with updated WASM contents.
     println!("cargo:rerun-if-changed={execution_wasm_bundle_path}");
-}
-
-/// Read the core domain runtime blob from the system domain runtime blob.
-pub fn read_core_domain_runtime_blob(
-    system_domain_bundle: &[u8],
-    core_domain_id: DomainId,
-) -> Result<Vec<u8>, WasmError> {
-    let system_runtime_blob = RuntimeBlob::new(system_domain_bundle)?;
-
-    let section_contents_name = core_domain_id.link_section_name();
-    let embedded_runtime_blob = system_runtime_blob
-        .custom_section_contents(&section_contents_name)
-        .ok_or_else(|| {
-            WasmError::Other(format!("Custom section {section_contents_name} not found"))
-        })?;
-
-    Ok(embedded_runtime_blob.to_vec())
 }

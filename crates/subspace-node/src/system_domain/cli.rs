@@ -14,7 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
 use domain_runtime_primitives::AccountId;
 use domain_service::DomainConfiguration;
@@ -55,9 +54,6 @@ pub struct DomainCli {
     /// Optional relayer address to relay messages on behalf.
     #[clap(long)]
     pub relayer_id: Option<String>,
-
-    #[clap(raw = true)]
-    pub core_domain_args: Vec<String>,
 }
 
 pub struct SystemDomainCli {
@@ -79,28 +75,15 @@ impl SystemDomainCli {
         mut base_path: Option<PathBuf>,
         chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
         domain_args: impl Iterator<Item = String>,
-    ) -> (Self, Option<CoreDomainCli>) {
+    ) -> Self {
         let domain_cli =
             DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
 
-        let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
-            let core_domain_cli = CoreDomainCli::new(
-                base_path.clone(),
-                domain_cli.core_domain_args.clone().into_iter(),
-            );
-            Some(core_domain_cli)
-        } else {
-            None
-        };
-
-        (
-            Self {
-                base_path: base_path.as_mut().map(|path| path.join("system")),
-                chain_spec,
-                run: domain_cli,
-            },
-            maybe_core_domain_cli,
-        )
+        Self {
+            base_path: base_path.as_mut().map(|path| path.join("system")),
+            chain_spec,
+            run: domain_cli,
+        }
     }
 
     /// Creates domain configuration from system domain cli.
