@@ -390,9 +390,11 @@ where
                         *entry += 1;
                     })
                     .or_insert(1);
-                if shared.connected_peers_count.fetch_add(1, Ordering::SeqCst)
-                    >= CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
-                {
+                let num_established_peer_connections = shared
+                    .num_established_peer_connections
+                    .fetch_add(1, Ordering::SeqCst)
+                    + 1;
+                if num_established_peer_connections > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get() {
                     // The peer count exceeded the threshold, bump up the quota.
                     if let Err(error) = shared
                         .kademlia_tasks_semaphore
@@ -407,6 +409,10 @@ where
                         warn!(%error, "Failed to expand regular concurrent tasks");
                     }
                 }
+                shared
+                    .handlers
+                    .num_established_peer_connections_change
+                    .call_simple(&num_established_peer_connections);
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
@@ -445,8 +451,11 @@ where
                         }
                     };
                 }
-                if shared.connected_peers_count.fetch_sub(1, Ordering::SeqCst)
-                    > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
+                let num_established_peer_connections = shared
+                    .num_established_peer_connections
+                    .fetch_sub(1, Ordering::SeqCst)
+                    - 1;
+                if num_established_peer_connections == CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The previous peer count was over the threshold, reclaim the quota.
                     if let Err(error) = shared
@@ -462,6 +471,10 @@ where
                         warn!(%error, "Failed to shrink regular concurrent tasks");
                     }
                 }
+                shared
+                    .handlers
+                    .num_established_peer_connections_change
+                    .call_simple(&num_established_peer_connections);
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {
                 if let Some(peer_id) = &peer_id {
@@ -469,7 +482,11 @@ where
                     if let Some(shared) = self.shared_weak.upgrade() {
                         // One peer is possibly a node peer is connected to, hence expecting more
                         // than one for online status
-                        if shared.connected_peers_count.load(Ordering::Relaxed) > 1 {
+                        if shared
+                            .num_established_peer_connections
+                            .load(Ordering::Relaxed)
+                            > 1
+                        {
                             let should_temporary_ban = match &error {
                                 DialError::Transport(addresses) => {
                                     // Ignoring other errors, those are likely temporary ban errors

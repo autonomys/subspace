@@ -539,4 +539,15 @@ impl Node {
     pub fn on_new_listener(&self, callback: HandlerFn<Multiaddr>) -> HandlerId {
         self.shared.handlers.new_listener.add(callback)
     }
+
+    /// Callback is called when number of established peer connections changes.
+    pub fn on_num_established_peer_connections_change(
+        &self,
+        callback: HandlerFn<usize>,
+    ) -> HandlerId {
+        self.shared
+            .handlers
+            .num_established_peer_connections_change
+            .add(callback)
+    }
 }
