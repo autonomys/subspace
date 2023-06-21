@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
     permissions:
       contents: write
       packages: write
@@ -84,38 +84,38 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ubuntu-20.04
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
-          - os: ubuntu-20.04
+            rustflags: "-C target-cpu=x86-64-v2"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
-          - os: ubuntu-20.04
+            rustflags: "-C target-cpu=skylake"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
-            rustflags: '-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8'
-          - os: macos-12
+            rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
-            rustflags: ''
-          - os: macos-12
+            rustflags: ""
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
-            rustflags: '--cfg aes_armv8'
-          - os: windows-2022
+            rustflags: "--cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
-          - os: windows-2022
+            rustflags: "-C target-cpu=x86-64-v2"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
+            rustflags: "-C target-cpu=skylake"
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
@@ -133,7 +133,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
+        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -141,6 +141,8 @@ jobs:
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
+        # Doesn't exist on self-hosted runners
+        continue-on-error: true
 
       - name: AArch64 cross-compile packages
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
@@ -176,26 +178,42 @@ jobs:
           cp ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-node ${{ env.PRODUCTION_TARGET }}/macos-binaries
           ditto -c -k --rsrc ${{ env.PRODUCTION_TARGET }}/macos-binaries subspace-binaries.zip
           echo "Notarizing"
-          xcrun altool --notarize-app --primary-bundle-id binaries-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-binaries.zip
-          # TODO: Wait for notarization before stapling
-          # echo "Stapling farmer"
-          # xcrun stapler staple ${{ env.PRODUCTION_TARGET }}/subspace-farmer
-          # echo "Stapling node"
-          # xcrun stapler staple ${{ env.PRODUCTION_TARGET }}/subspace-node
+          brew update
+          brew install mitchellh/gon/gon
+          cat << EOF > gon.hcl
+          source = ["subspace-binaries.zip"]
+          bundle_id = "${{ secrets.MACOS_BUNDLE_ID }}"
+          sign {
+            application_identity = "${{ secrets.MACOS_IDENTITY }}"
+          }
+          apple_id {
+              username = "${{ secrets.MACOS_APPLE_ID }}"
+              password = "${{ secrets.MACOS_APP_PW }}"
+          }
+          EOF
+          gon -log-level=info -log-json gon.hcl
+
+          # Notarize the ZIP using notarytool
+          xcrun notarytool submit subspace-binaries.zip --apple-id "${{ secrets.MACOS_APPLE_ID }}" --password "${{ secrets.MACOS_APP_PW }}" --team-id "${{ secrets.MACOS_TEAM_ID }}" --wait
+
+          # // todo stapling for macOS artifacts
+          # Staple the zip package
+          # xcrun stapler staple subspace-binaries.zip
+
           echo "Done!"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
-        uses: skymatic/code-sign-action@cfcc1c15b32938bab6dea25192045b6d2989e4d0 # @v1.1.0
+        uses: skymatic/code-sign-action@500ce4f8261ca9bd8f85978c1652b34fb511bdf4 # @v2.0.1
         with:
           certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
           password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
           certificatesha1: 'FCA030AC3840FAED48ADC5A8F734ACFCC857DF37'
           folder: '${{ env.PRODUCTION_TARGET }}'
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
 
       - name: Prepare executables for uploading (Ubuntu)

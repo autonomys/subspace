@@ -37,14 +37,14 @@ env:
 
 jobs:
   cargo-fmt:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
+        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -65,10 +65,7 @@ jobs:
   cargo-clippy:
     strategy:
       matrix:
-        os:
-          - ubuntu-22.04
-          - macos-12
-          - windows-2022
+        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-12", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -84,7 +81,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
+        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -92,6 +89,8 @@ jobs:
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
+        # Doesn't exist on self-hosted runners
+        continue-on-error: true
 
       - name: Configure cache
         uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
@@ -108,13 +107,13 @@ jobs:
           args: --locked --all-targets -- -D warnings
 
   cargo-docs:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
     steps:
       - name: Checkout
         uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
+        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -134,10 +133,7 @@ jobs:
   cargo-test:
     strategy:
       matrix:
-        os:
-          - ubuntu-22.04
-          - macos-12
-          - windows-2022
+        os: ${{ fromJson(github.repository_owner == 'subspace' && '[["self-hosted", "ubuntu-20.04-x86-64"], ["self-hosted", "macos-12-arm64"], ["self-hosted", "windows-server-2022-x86-64"]]' || '["ubuntu-22.04", "macos-12", "windows-2022"]') }}
 
     runs-on: ${{ matrix.os }}
 
@@ -153,7 +149,7 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
+        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -161,6 +157,8 @@ jobs:
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
+        # Doesn't exist on self-hosted runners
+        continue-on-error: true
 
       - name: Configure cache
         uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
