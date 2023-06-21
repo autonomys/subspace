@@ -365,36 +365,39 @@ where
     pub(crate) fn on_domain_block_processed(
         &self,
         primary_hash: PBlock::Hash,
-        domain_block_result: DomainBlockResult<Block, PBlock>,
+        domain_block_result: Option<DomainBlockResult<Block, PBlock>>,
         head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<()> {
-        let DomainBlockResult {
-            header_hash,
-            header_number: _,
-            execution_receipt,
-        } = domain_block_result;
+        let domain_hash = match domain_block_result {
+            Some(DomainBlockResult {
+                header_hash,
+                header_number: _,
+                execution_receipt,
+            }) => {
+                crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+                    &*self.client,
+                    head_receipt_number,
+                    &execution_receipt,
+                )?;
 
-        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
-            &*self.client,
-            head_receipt_number,
-            &execution_receipt,
-        )?;
+                // Notify the imported domain block when the receipt processing is done.
+                let domain_import_notification = DomainBlockImportNotification {
+                    domain_block_hash: header_hash,
+                    primary_block_hash: primary_hash,
+                };
+                self.import_notification_sinks.lock().retain(|sink| {
+                    sink.unbounded_send(domain_import_notification.clone())
+                        .is_ok()
+                });
 
-        crate::aux_schema::track_domain_hash_to_primary_hash(
-            &*self.client,
-            header_hash,
-            primary_hash,
-        )?;
-
-        // Notify the imported domain block when the receipt processing is done.
-        let domain_import_notification = DomainBlockImportNotification {
-            domain_block_hash: header_hash,
-            primary_block_hash: primary_hash,
+                header_hash
+            }
+            None => {
+                // TODO: No new domain block produced, thus this primary block should map to the same
+                // domain block as its parent block
+                unimplemented!()
+            }
         };
-        self.import_notification_sinks.lock().retain(|sink| {
-            sink.unbounded_send(domain_import_notification.clone())
-                .is_ok()
-        });
 
         Ok(())
     }

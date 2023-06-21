@@ -407,7 +407,7 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, 
     }
 }
 
-impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
+impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(
         primary_number: Number,

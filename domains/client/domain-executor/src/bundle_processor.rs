@@ -11,7 +11,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, One};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -148,9 +148,12 @@ where
             let mut domain_parent = initial_parent;
 
             for primary_info in primary_imports {
-                domain_parent = self
+                if let Some(next_domain_parent) = self
                     .process_bundles_at((primary_info.hash, primary_info.number), domain_parent)
-                    .await?;
+                    .await?
+                {
+                    domain_parent = next_domain_parent;
+                }
             }
         }
 
@@ -161,7 +164,7 @@ where
         &self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_info: (Block::Hash, NumberFor<Block>),
-    ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)> {
+    ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
@@ -170,9 +173,31 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        let extrinsics = self
+        // TODO: Retrieve using consensus chain runtime API
+        let head_receipt_number = parent_number;
+        // let head_receipt_number = self
+        // .primary_chain_client
+        // .runtime_api()
+        // .head_receipt_number(primary_hash, self.domain_id)?
+        // .into();
+
+        let extrinsics = match self
             .domain_block_preprocessor
-            .preprocess_primary_block(primary_hash, parent_hash)?;
+            .preprocess_primary_block(primary_hash, parent_hash)?
+        {
+            Some(exts) => exts,
+            None => {
+                tracing::debug!(
+                    "No domain bundle contains in primary block {primary_info:?}, skip building domain block"
+                );
+                self.domain_block_processor.on_domain_block_processed(
+                    primary_hash,
+                    None,
+                    head_receipt_number,
+                )?;
+                return Ok(None);
+            }
+        };
 
         let domain_block_result = self
             .domain_block_processor
@@ -183,14 +208,6 @@ where
                 Digest::default(),
             )
             .await?;
-
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = domain_block_result.header_number - One::one();
-        // let head_receipt_number = self
-        // .primary_chain_client
-        // .runtime_api()
-        // .head_receipt_number(primary_hash, self.domain_id)?
-        // .into();
 
         assert!(
             domain_block_result.header_number > head_receipt_number,
@@ -204,13 +221,13 @@ where
 
         self.domain_block_processor.on_domain_block_processed(
             primary_hash,
-            domain_block_result,
+            Some(domain_block_result),
             head_receipt_number,
         )?;
 
         self.domain_receipts_checker
             .check_state_transition(primary_hash)?;
 
-        Ok(built_block_info)
+        Ok(Some(built_block_info))
     }
 }
