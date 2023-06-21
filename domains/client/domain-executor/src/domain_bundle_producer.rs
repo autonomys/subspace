@@ -17,7 +17,6 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
-use system_runtime_primitives::SystemDomainApi;
 
 type OpaqueBundle<Block, PBlock> =
     sp_domains::OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
@@ -126,8 +125,7 @@ where
         + BlockBackend<SBlock>
         + ProvideRuntimeApi<SBlock>
         + ProofProvider<SBlock>,
-    SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    SClient::Api: DomainCoreApi<SBlock>,
     PClient: HeaderBackend<PBlock>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,

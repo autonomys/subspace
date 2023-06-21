@@ -397,9 +397,9 @@ fn subspace_genesis_config(
         },
         domains: DomainsConfig {
             runtime_name_and_runtime_code: Some((
-                b"system".to_vec(),
-                system_domain_runtime::WASM_BINARY
-                    .unwrap_or_else(|| panic!("System domain runtime not available"))
+                b"evm".to_vec(),
+                core_evm_runtime::WASM_BINARY
+                    .unwrap_or_else(|| panic!("EVM domain runtime not available"))
                     .to_owned(),
             )),
         },

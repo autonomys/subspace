@@ -12,7 +12,6 @@ use sp_core::H256;
 use sp_domains::Bundle;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::sync::Arc;
-use system_runtime_primitives::SystemDomainApi;
 
 /// Gossip message validator for system domain.
 pub struct SystemGossipMessageValidator<
@@ -83,7 +82,6 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     PClient: HeaderBackend<PBlock> + 'static,
@@ -178,7 +176,6 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     Backend: sc_client_api::Backend<Block> + 'static,

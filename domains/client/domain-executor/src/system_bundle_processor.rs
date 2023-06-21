@@ -2,7 +2,7 @@ use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, 
 use crate::{SystemDomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::SystemDomainBlockPreprocessor;
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
@@ -16,7 +16,6 @@ use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
 use sp_runtime::{Digest, DigestItem};
 use sp_settlement::SettlementApi;
 use std::sync::Arc;
-use system_runtime_primitives::SystemDomainApi;
 
 type SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = ReceiptsChecker<
     Block,
@@ -29,7 +28,7 @@ type SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = R
     PBlock,
 >;
 
-pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -42,11 +41,11 @@ where
         SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>,
     system_domain_block_preprocessor:
         SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, Client>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E, BI> Clone
+    for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -64,8 +63,8 @@ where
     }
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E>
-    SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, PBlock, Client, PClient, Backend, E, BI>
+    SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -78,11 +77,11 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
+        + MessengerApi<Block, NumberFor<Block>>
+        + InherentExtrinsicApi<Block>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-        + MessengerApi<Block, NumberFor<Block>>,
-    for<'b> &'b Client: BlockImport<
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    for<'b> &'b BI: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
@@ -110,14 +109,7 @@ where
             Backend,
             E,
         >,
-        domain_block_processor: DomainBlockProcessor<
-            Block,
-            PBlock,
-            Client,
-            PClient,
-            Backend,
-            Client,
-        >,
+        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
     ) -> Self {
         let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(
             primary_chain_client.clone(),

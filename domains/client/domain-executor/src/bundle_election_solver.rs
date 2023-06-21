@@ -15,7 +15,6 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use system_runtime_primitives::SystemDomainApi;
 
 pub(super) struct BundleElectionSolver<Block, SBlock, PBlock, SClient> {
     system_domain_client: Arc<SClient>,
@@ -41,7 +40,6 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
     SClient: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SClient::Api: SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
 {
     pub(super) fn new(system_domain_client: Arc<SClient>, keystore: KeystorePtr) -> Self {
         Self {
@@ -58,14 +56,13 @@ where
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<BundleSolution<Block::Hash>>> {
+        // TODO: dummy bundle election
+
         let BundleElectionSolverParams {
             authorities,
             total_stake_weight,
             slot_probability,
-        } = self
-            .system_domain_client
-            .runtime_api()
-            .bundle_election_solver_params(best_hash, domain_id)?;
+        } = BundleElectionSolverParams::empty();
 
         assert!(
             total_stake_weight

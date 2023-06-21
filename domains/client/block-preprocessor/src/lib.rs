@@ -20,15 +20,15 @@ pub mod runtime_api_full;
 pub mod runtime_api_light;
 pub mod xdm_verifier;
 
-use crate::runtime_api::{
-    CoreBundleConstructor, SetCodeConstructor, SignerExtractor, StateRootExtractor,
-};
+use crate::inherents::construct_inherent_extrinsics;
+use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor};
 use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -244,10 +244,10 @@ where
     PBlock: BlockT,
     PBlock::Hash: From<Block::Hash>,
     NumberFor<PBlock>: From<NumberFor<Block>>,
-    RuntimeApi: CoreBundleConstructor<PBlock, Block>
-        + SignerExtractor<Block>
+    RuntimeApi: SignerExtractor<Block>
         + StateRootExtractor<Block>
-        + SetCodeConstructor<Block>,
+        + SetCodeConstructor<Block>
+        + InherentExtrinsicConstructor<Block>,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -294,26 +294,25 @@ where
             .runtime_api()
             .extract_system_bundles(primary_hash, primary_extrinsics)?;
 
-        let origin_system_extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
+        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
 
-        let extrinsics = self
-            .runtime_api
-            .construct_submit_core_bundle_extrinsics(domain_hash, core_bundles)?
-            .into_iter()
-            .map(|uxt| {
-                <<Block as BlockT>::Extrinsic>::decode(&mut uxt.as_slice())
-                    .expect("Internally constructed extrinsic must be valid; qed")
-            })
-            .chain(origin_system_extrinsics)
-            .collect::<Vec<_>>();
-
-        let mut extrinsics = deduplicate_and_shuffle_extrinsics(
+        let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
             &self.runtime_api,
             extrinsics,
             shuffling_seed,
         )
         .map(|exts| self.filter_invalid_xdm_extrinsics(domain_hash, exts))?;
+
+        // Fetch inherent extrinsics
+        let mut extrinsics = construct_inherent_extrinsics(
+            &self.primary_chain_client,
+            &self.runtime_api,
+            primary_hash,
+            domain_hash,
+        )?;
+
+        extrinsics.extend(extrinsics_in_bundle);
 
         if let Some(new_runtime) = maybe_new_runtime {
             let encoded_set_code = self

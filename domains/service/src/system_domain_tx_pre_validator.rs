@@ -6,7 +6,6 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
-use sp_domains::transaction::PreValidationObjectApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
@@ -65,7 +64,6 @@ where
     PBlock::Hash: From<Block::Hash>,
     NumberFor<PBlock>: From<NumberFor<Block>>,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
-    Client::Api: PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
     PClient::Api: SettlementApi<PBlock, Block::Hash>,
     SRE: StateRootExtractor<Block> + Send + Sync,

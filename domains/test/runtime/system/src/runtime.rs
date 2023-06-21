@@ -32,7 +32,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON, SSC};
 
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -744,6 +744,12 @@ impl_runtime_apis! {
             Some(storage_keys)
         }
 
+    }
+
+    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
+            todo!("Remove the entire system domain test runtime, this is merely added to make everything compile")
+        }
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {

@@ -1,9 +1,10 @@
 //! Utilities used for testing with the system domain.
 #![warn(missing_docs)]
 use crate::{construct_extrinsic_generic, node_config};
+use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::ExecutorStreams;
 use domain_runtime_primitives::{AccountId, Balance};
-use domain_service::{DomainConfiguration, FullPool};
+use domain_service::{DomainConfiguration, FullClient, FullPool};
 use domain_test_primitives::OnchainStateApi;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use sc_client_api::{BlockchainEvents, HeaderBackend};
@@ -22,6 +23,7 @@ use sp_keyring::Sr25519Keyring;
 use sp_messenger::messages::ChannelId;
 use sp_runtime::OpaqueExtrinsic;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_test_service::MockPrimaryNode;
@@ -44,6 +46,7 @@ pub type SClient = TFullClient<
 /// System domain code executor for the test service.
 pub type SystemCodeExecutor = sc_executor::NativeElseWasmExecutor<SystemDomainExecutorDispatch>;
 
+// TODO: generic DomainExecutor
 /// System domain executor for the test service.
 pub type SystemExecutor = domain_client_executor::SystemExecutor<
     Block,
@@ -58,6 +61,12 @@ pub type SystemExecutor = domain_client_executor::SystemExecutor<
     >,
     Backend,
     SystemCodeExecutor,
+    DomainBlockImport<
+        Arc<
+            FullClient<Block, system_domain_test_runtime::RuntimeApi, SystemDomainExecutorDispatch>,
+        >,
+    >,
+    // Arc<FullClient<Block, system_domain_test_runtime::RuntimeApi, SystemDomainExecutorDispatch>>,
 >;
 
 type SystemGossipMessageValidator = domain_client_executor::SystemGossipMessageValidator<
@@ -124,29 +133,37 @@ async fn run_executor_with_mock_primary_node(
             .client
             .every_import_notification_stream(),
         new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
-        _phantom: Default::default(),
+        _phantom: PhantomData::<PBlock>::default(),
     };
     let gossip_msg_sink = mock_primary_node
         .xdm_gossip_worker_builder()
         .gossip_msg_sink();
-    let system_domain_node = domain_service::new_full_system::<
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        system_domain_test_runtime::RuntimeApi,
-        SystemDomainExecutorDispatch,
-    >(
-        system_domain_config,
-        mock_primary_node.client.clone(),
-        mock_primary_node.sync_service.clone(),
-        &mock_primary_node.select_chain,
+
+    let domain_params = domain_service::DomainParams {
+        domain_id: DomainId::SYSTEM,
+        domain_config: system_domain_config,
+        primary_chain_client: mock_primary_node.client.clone(),
+        primary_network_sync_oracle: mock_primary_node.sync_service.clone(),
+        select_chain: mock_primary_node.select_chain.clone(),
         executor_streams,
-        gossip_msg_sink,
-    )
-    .await?;
+        gossip_message_sink: gossip_msg_sink,
+        provider: domain_service::providers::DefaultProvider,
+    };
+
+    let system_domain_node = todo!("Migrate system domain test runtime to evm runtime");
+    // let system_domain_node = domain_service::new_full_system::<
+    // _,
+    // _,
+    // _,
+    // _,
+    // _,
+    // _,
+    // system_domain_test_runtime::RuntimeApi,
+    // SystemDomainExecutorDispatch,
+    // _,
+    // _,
+    // >(domain_params)
+    // .await?;
 
     let domain_service::NewFullSystem {
         task_manager,
@@ -160,6 +177,7 @@ async fn run_executor_with_mock_primary_node(
         executor,
         gossip_message_validator,
         tx_pool_sink,
+        ..
     } = system_domain_node;
 
     if role.is_authority() {

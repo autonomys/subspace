@@ -5,7 +5,7 @@ pub mod rpc;
 mod system_domain;
 mod system_domain_tx_pre_validator;
 
-pub use self::system_domain::{new_full_system, FullPool, NewFullSystem};
+pub use self::system_domain::{new_full_system, DomainParams, FullPool, NewFullSystem};
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider};
