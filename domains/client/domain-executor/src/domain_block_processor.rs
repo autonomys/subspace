@@ -132,11 +132,13 @@ where
         let best_number = self.client.info().best_number;
 
         let primary_hash_for_best_domain_hash =
-            crate::aux_schema::primary_hash_for(&*self.backend, best_hash)?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Primary hash for domain hash #{best_number},{best_hash} not found"
-                ))
-            })?;
+            crate::aux_schema::latest_primary_hash_for(&*self.client, &best_hash)?.ok_or_else(
+                || {
+                    sp_blockchain::Error::Backend(format!(
+                        "Primary hash for domain hash #{best_number},{best_hash} not found"
+                    ))
+                },
+            )?;
 
         let primary_from = primary_hash_for_best_domain_hash;
         let primary_to = primary_hash;
@@ -179,19 +181,28 @@ where
                 );
             }
             (false, false) => {
-                let common_block_number = route.common_block().number.into();
-                let parent_header = self
-                    .client
-                    .header(self.client.hash(common_block_number)?.ok_or_else(|| {
+                let (common_block_number, common_block_hash) =
+                    (route.common_block().number, route.common_block().hash);
+
+                // Get the domain block that driving from the common primary block and use it as
+                // the initial domain parent block
+                let domain_block_hash: Block::Hash = crate::aux_schema::best_domain_hash_for(
+                    &*self.client,
+                    &common_block_hash,
+                )?
+                .ok_or_else(
+                    || {
                         sp_blockchain::Error::Backend(format!(
-                            "Header for #{common_block_number} not found"
+                            "Domain hash driving from primary block #{common_block_number},{common_block_hash} not found"
                         ))
-                    })?)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header for #{common_block_number} not found"
-                        ))
-                    })?;
+                    },
+                )?;
+                let parent_header = self.client.header(domain_block_hash)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Domain block header for #{:?} not found",
+                        domain_block_hash
+                    ))
+                })?;
 
                 Ok(Some(PendingPrimaryBlocks {
                     initial_parent: (parent_header.hash(), *parent_header.number()),
@@ -393,11 +404,38 @@ where
                 header_hash
             }
             None => {
-                // TODO: No new domain block produced, thus this primary block should map to the same
+                // No new domain block produced, thus this primary block should map to the same
                 // domain block as its parent block
-                unimplemented!()
+                let primary_header =
+                    self.primary_chain_client
+                        .header(primary_hash)?
+                        .ok_or_else(|| {
+                            sp_blockchain::Error::Backend(format!(
+                                "Primary block header for #{primary_hash:?} not found"
+                            ))
+                        })?;
+                if !primary_header.number().is_one() {
+                    crate::aux_schema::best_domain_hash_for(
+                        &*self.client,
+                        primary_header.parent_hash(),
+                    )?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Domain hash for #{:?} not found",
+                            primary_header.parent_hash()
+                        ))
+                    })?
+                } else {
+                    self.client.info().genesis_hash
+                }
             }
         };
+
+        crate::aux_schema::track_domain_hash_and_primary_hash(
+            &*self.client,
+            domain_hash,
+            primary_hash,
+        )?;
 
         Ok(())
     }

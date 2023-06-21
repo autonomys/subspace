@@ -25,7 +25,25 @@ const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
 
 /// domain_block_hash => primary_block_hash
+///
+/// Updated only when there is a new domain block produced
 const PRIMARY_HASH: &[u8] = b"primary_hash";
+
+/// domain_block_hash => latest_primary_block_hash
+///
+/// Updated whenever primary block is processed, the `latest_primary_block_hash` is the block
+/// hash of the processed primary block, and the `domain_block_hash` is the best hash of domain
+/// branch driving from the processed primary block if there is no new domain block produced
+/// the same `domain_block_hash` will be inserted with a different `latest_primary_block_hash`
+const LATEST_PRIMARY_HASH: &[u8] = b"latest_primary_hash";
+
+/// primary_block_hash => best_domain_block_hash
+///
+/// Updated whenever primary block is processed, the `best_domain_block_hash` is the best hash
+/// of domain branch driving from the processed primary block, if there is no new domain block
+/// produced the `best_domain_block_hash` will be the same as the processed primary block's
+/// parent block
+const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 
 /// Prune the execution receipts when they reach this number.
 const PRUNING_DEPTH: BlockNumber = 1000;
@@ -66,6 +84,7 @@ where
 {
     let block_number = execution_receipt.primary_number;
     let primary_hash = execution_receipt.primary_hash;
+    let domain_hash = execution_receipt.domain_hash;
 
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
     let mut hashes_at_block_number =
@@ -109,6 +128,11 @@ where
                 execution_receipt_key(primary_hash).as_slice(),
                 execution_receipt.encode().as_slice(),
             ),
+            // TODO: prune the stale mappings.
+            (
+                (PRIMARY_HASH, domain_hash).encode().as_slice(),
+                primary_hash.encode().as_slice(),
+            ),
             (
                 block_number_key.as_slice(),
                 hashes_at_block_number.encode().as_slice(),
@@ -123,6 +147,26 @@ where
             .map(|k| &k[..])
             .collect::<Vec<&[u8]>>()[..],
     )
+}
+
+/// Load the execution receipt for given domain block hash.
+pub(super) fn load_execution_receipt_by_domain_hash<Backend, Hash, Number, PHash>(
+    backend: &Backend,
+    domain_hash: Hash,
+) -> ClientResult<Option<ExecutionReceipt<Number, PHash, Hash>>>
+where
+    Backend: AuxStore,
+    Hash: Encode + Decode,
+    Number: Decode,
+    PHash: Encode + Decode,
+{
+    match primary_hash_for::<Backend, Hash, PHash>(backend, domain_hash)? {
+        Some(primary_block_hash) => load_decode(
+            backend,
+            execution_receipt_key(primary_block_hash).as_slice(),
+        ),
+        None => Ok(None),
+    }
 }
 
 /// Load the execution receipt for given primary block hash.
@@ -142,24 +186,62 @@ where
     )
 }
 
-pub(super) fn track_domain_hash_to_primary_hash<Backend, Hash, PHash>(
+pub(super) fn track_domain_hash_and_primary_hash<Backend, Hash, PHash>(
     backend: &Backend,
-    domain_hash: Hash,
-    primary_hash: PHash,
+    best_domain_hash: Hash,
+    latest_primary_hash: PHash,
 ) -> ClientResult<()>
 where
     Backend: AuxStore,
-    Hash: Encode,
+    Hash: Clone + Encode,
     PHash: Encode,
 {
     // TODO: prune the stale mappings.
 
     backend.insert_aux(
-        &[(
-            (PRIMARY_HASH, domain_hash).encode().as_slice(),
-            primary_hash.encode().as_slice(),
-        )],
+        &[
+            (
+                (LATEST_PRIMARY_HASH, best_domain_hash.clone())
+                    .encode()
+                    .as_slice(),
+                latest_primary_hash.encode().as_slice(),
+            ),
+            (
+                (BEST_DOMAIN_HASH, latest_primary_hash).encode().as_slice(),
+                best_domain_hash.encode().as_slice(),
+            ),
+        ],
         vec![],
+    )
+}
+
+pub(super) fn best_domain_hash_for<Backend, Hash, PHash>(
+    backend: &Backend,
+    primary_hash: &PHash,
+) -> ClientResult<Option<Hash>>
+where
+    Backend: AuxStore,
+    Hash: Decode,
+    PHash: Encode,
+{
+    load_decode(
+        backend,
+        (BEST_DOMAIN_HASH, primary_hash).encode().as_slice(),
+    )
+}
+
+pub(super) fn latest_primary_hash_for<Backend, Hash, PHash>(
+    backend: &Backend,
+    domain_hash: &Hash,
+) -> ClientResult<Option<PHash>>
+where
+    Backend: AuxStore,
+    Hash: Encode,
+    PHash: Decode,
+{
+    load_decode(
+        backend,
+        (LATEST_PRIMARY_HASH, domain_hash).encode().as_slice(),
     )
 }
 
