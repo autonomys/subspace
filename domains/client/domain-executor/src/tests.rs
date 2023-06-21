@@ -725,7 +725,7 @@ async fn set_new_code_should_work() {
     alice
         .executor
         .clone()
-        .process_bundles((primary_hash, primary_number))
+        .process_bundles((primary_hash, primary_number, true))
         .await;
 
     let best_hash = alice.client.info().best_hash;

@@ -4,9 +4,10 @@ use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
-use sc_consensus::BlockImport;
+use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
+use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
@@ -124,9 +125,9 @@ where
     // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, bool),
     ) -> sp_blockchain::Result<()> {
-        let (primary_hash, primary_number) = primary_info;
+        let (primary_hash, primary_number, is_new_best) = primary_info;
 
         tracing::debug!("Processing imported primary block #{primary_number},{primary_hash}");
 
@@ -154,6 +155,30 @@ where
                 {
                     domain_parent = next_domain_parent;
                 }
+            }
+
+            // The domain branch driving from the best primary branch should also be the best domain branch even
+            // if it is no the longest domain branch. Thus re-import the tip of the best domain branch to make it
+            // the new best block if it isn't.
+            //
+            // Note: this may cause the best domain fork switch to a shorter fork or in some case the best domain
+            // block become the ancestor block of the current best block.
+            let domain_tip = domain_parent.0;
+            if is_new_best && self.client.info().best_hash != domain_tip {
+                let header = self.client.header(domain_tip)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
+                })?;
+                let block_import_params = {
+                    let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+                    import_block.import_existing = true;
+                    import_block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
+                    import_block.state_action = StateAction::Skip;
+                    import_block
+                };
+                self.domain_block_processor
+                    .import_domain_block(block_import_params)
+                    .await?;
+                assert_eq!(domain_tip, self.client.info().best_hash);
             }
         }
 

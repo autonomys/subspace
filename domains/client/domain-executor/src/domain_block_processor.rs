@@ -219,20 +219,11 @@ where
         extrinsics: Vec<Block::Extrinsic>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
-        let primary_number = to_number_primitive(primary_number);
-
-        if to_number_primitive(parent_number) + 1 != primary_number {
-            return Err(sp_blockchain::Error::Application(Box::from(format!(
-                "Wrong domain parent block #{parent_number},{parent_hash} for \
-                primary block #{primary_number},{primary_hash}, the number of new \
-                domain block must match the number of corresponding primary block."
-            ))));
-        }
-
         // Although the domain block intuitively ought to use the same fork choice
         // from the corresponding primary block, it's fine to forcibly always use
-        // the longest chain for simplicity as we manually build all the domain
-        // branches by literally following the primary chain branches anyway.
+        // the longest chain for simplicity as we do not know whether or not the
+        // domain block is the new best block here, and we will manually reset the
+        // new best domain block to the correct one after processing the primary blocks
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
@@ -287,7 +278,7 @@ where
         );
 
         let execution_receipt = ExecutionReceipt {
-            primary_number: primary_number.into(),
+            primary_number,
             primary_hash,
             domain_number: to_number_primitive(header_number).into(),
             domain_hash: header_hash,
@@ -340,6 +331,20 @@ where
             import_block.fork_choice = Some(fork_choice);
             import_block
         };
+        self.import_domain_block(block_import_params).await?;
+
+        Ok((header_hash, header_number, state_root))
+    }
+
+    pub(crate) async fn import_domain_block(
+        &self,
+        block_import_params: BlockImportParams<Block, sp_api::TransactionFor<Client, Block>>,
+    ) -> Result<(), sp_blockchain::Error> {
+        let (header_number, header_hash, parent_hash) = (
+            *block_import_params.header.number(),
+            block_import_params.header.hash(),
+            *block_import_params.header.parent_hash(),
+        );
 
         let import_result = (&*self.block_import)
             .import_block(block_import_params)
@@ -370,7 +375,7 @@ where
             }
         }
 
-        Ok((header_hash, header_number, state_root))
+        Ok(())
     }
 
     pub(crate) fn on_domain_block_processed(
