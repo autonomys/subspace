@@ -19,12 +19,6 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-// Make `system-domain-test-runtime` WASM runtime available.
-include!(concat!(
-    env!("OUT_DIR"),
-    "/test_system_domain_wasm_bundle.rs"
-));
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -1232,7 +1226,7 @@ impl_runtime_apis! {
         }
 
         fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
-            TEST_DOMAIN_WASM_BUNDLE.into()
+            Domains::system_domain_runtime_code().into()
         }
 
         fn timestamp() -> Moment{

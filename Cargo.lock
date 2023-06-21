@@ -10904,7 +10904,6 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
- "system-domain-runtime",
 ]
 
 [[package]]
@@ -11018,6 +11017,7 @@ dependencies = [
  "subspace-solving",
  "subspace-test-runtime",
  "subspace-transaction-pool",
+ "system-domain-test-runtime",
  "zeroize",
 ]
 
@@ -11069,7 +11069,6 @@ dependencies = [
  "subspace-verification",
  "subspace-wasm-tools",
  "substrate-wasm-builder",
- "system-domain-test-runtime",
 ]
 
 [[package]]

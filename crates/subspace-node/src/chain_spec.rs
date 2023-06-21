@@ -24,8 +24,8 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
-    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
+    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
@@ -410,6 +410,14 @@ fn subspace_genesis_config(
             enable_executor,
             enable_transfer,
             confirmation_depth_k,
+        },
+        domains: DomainsConfig {
+            runtime_name_and_runtime_code: Some((
+                b"system".to_vec(),
+                system_domain_runtime::WASM_BINARY
+                    .unwrap_or_else(|| panic!("System domain runtime not available"))
+                    .to_owned(),
+            )),
         },
     }
 }

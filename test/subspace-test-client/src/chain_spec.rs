@@ -5,8 +5,8 @@ use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, GenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, SSC, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, SubspaceConfig, SudoConfig,
+    SystemConfig, VestingConfig, SSC, WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
@@ -90,5 +90,13 @@ fn create_genesis_config(
             allow_authoring_by: AllowAuthoringBy::Anyone,
         },
         vesting: VestingConfig { vesting },
+        domains: DomainsConfig {
+            runtime_name_and_runtime_code: Some((
+                b"system".to_vec(),
+                system_domain_test_runtime::WASM_BINARY
+                    .unwrap_or_else(|| panic!("System domain test runtime not available"))
+                    .to_owned(),
+            )),
+        },
     }
 }

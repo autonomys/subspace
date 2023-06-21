@@ -41,12 +41,15 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
 
+pub type RuntimeId = u32;
+
 #[frame_support::pallet]
 mod pallet {
+    use super::RuntimeId;
     use crate::weights::WeightInfo;
-    use frame_support::pallet_prelude::*;
+    use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::weights::Weight;
-    use frame_support::PalletError;
+    use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use pallet_settlement::{Error as SettlementError, FraudProofError};
     use sp_core::H256;
@@ -72,9 +75,23 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
+    #[derive(DebugNoBound, Encode, Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound)]
+    #[scale_info(skip_type_params(T))]
+    pub struct RuntimeObject<T: Config> {
+        pub runtime_name: Vec<u8>,
+        pub created_at: T::BlockNumber,
+        pub updated_at: T::BlockNumber,
+        pub runtime_upgrades: u32,
+        pub domain_runtime_code: Vec<u8>,
+    }
+
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
     pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type RuntimeRegistry<T> =
+        StorageMap<_, Identity, RuntimeId, RuntimeObject<T>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -224,6 +241,33 @@ mod pallet {
         }
     }
 
+    #[pallet::genesis_config]
+    #[derive(Default)]
+    pub struct GenesisConfig {
+        pub runtime_name_and_runtime_code: Option<(Vec<u8>, Vec<u8>)>,
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+        fn build(&self) {
+            if let Some((runtime_name, runtime_code)) = &self.runtime_name_and_runtime_code {
+                // Register the genesis domain runtime
+                RuntimeRegistry::<T>::insert(
+                    0u32,
+                    RuntimeObject {
+                        runtime_name: runtime_name.clone(),
+                        created_at: Zero::zero(),
+                        updated_at: Zero::zero(),
+                        runtime_upgrades: 0u32,
+                        domain_runtime_code: runtime_code.clone(),
+                    },
+                );
+
+                // Instantiate the genesis domain
+            }
+        }
+    }
+
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -342,6 +386,12 @@ mod pallet {
 impl<T: Config> Pallet<T> {
     pub fn successful_bundles() -> Vec<H256> {
         SuccessfulBundles::<T>::get()
+    }
+
+    pub fn system_domain_runtime_code() -> Vec<u8> {
+        RuntimeRegistry::<T>::get(0u32)
+            .expect("System domain runtime must be registered at genesis")
+            .domain_runtime_code
     }
 
     /// Returns the block number of the latest receipt.

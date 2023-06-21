@@ -25,9 +25,6 @@ mod fees;
 mod object_mapping;
 mod signed_extensions;
 
-// Make system domain WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/system_domain_wasm_bundle.rs"));
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -131,7 +128,7 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 1000;
+const SLOT_DURATION: u64 = 2000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
@@ -825,7 +822,7 @@ impl_runtime_apis! {
         }
 
         fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
-            SYSTEM_DOMAIN_WASM_BUNDLE.into()
+            Domains::system_domain_runtime_code().into()
         }
 
         fn timestamp() -> Moment{
