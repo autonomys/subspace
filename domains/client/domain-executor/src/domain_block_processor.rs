@@ -235,8 +235,9 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        if let Some(to_finalize_block_number) =
-            header_number.checked_sub(&self.domain_confirmation_depth)
+        if let Some(to_finalize_block_number) = primary_number
+            .into()
+            .checked_sub(&self.domain_confirmation_depth)
         {
             if to_finalize_block_number > self.client.info().finalized_number {
                 let to_finalize_block_hash =
@@ -548,6 +549,12 @@ where
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
+            // TODO: check genesis receipt and fix https://github.com/subspace/subspace/issues/1301 to
+            // produce fraud proof accordingly
+            if execution_receipt.domain_number.is_zero() {
+                continue;
+            }
+
             let primary_block_hash = execution_receipt.primary_hash;
 
             let local_receipt = crate::aux_schema::load_execution_receipt::<

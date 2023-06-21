@@ -10,8 +10,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
-use sp_domains::{BundleHeader, BundleSolution};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating};
+use sp_domains::{BundleHeader, BundleSolution, ExecutionReceipt};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
@@ -168,16 +168,16 @@ where
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
 
-        let load_receipt = |primary_block_hash, block_number| {
-            crate::aux_schema::load_execution_receipt::<
+        let load_receipt = |domain_hash, block_number| {
+            crate::aux_schema::load_execution_receipt_by_domain_hash::<
                 _,
                 Block::Hash,
                 NumberFor<PBlock>,
                 PBlock::Hash,
-            >(&*self.client, primary_block_hash)?
+            >(&*self.client, domain_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
-                    "Receipt of primary block #{block_number},{primary_block_hash} not found"
+                    "Receipt of domain block #{block_number},{domain_hash} not found"
                 ))
             })
         };
@@ -201,15 +201,18 @@ where
 
         let receipt_number = (head_receipt_number + One::one()).min(available_best_receipt_number);
 
-        let primary_block_hash = self
-            .primary_chain_client
-            .hash(receipt_number.into())?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Primary block hash for #{receipt_number:?} not found"
-                ))
-            })?;
+        if receipt_number.is_zero() {
+            return Ok(ExecutionReceipt::genesis(
+                self.primary_chain_client.info().genesis_hash,
+            ));
+        }
 
-        load_receipt(primary_block_hash, receipt_number)
+        let domain_hash = self.client.hash(receipt_number)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!(
+                "Domain block hash for #{receipt_number:?} not found"
+            ))
+        })?;
+
+        load_receipt(domain_hash, receipt_number)
     }
 }

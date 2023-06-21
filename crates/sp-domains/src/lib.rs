@@ -427,6 +427,17 @@ impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Ha
             trace_root: Default::default(),
         }
     }
+
+    pub fn genesis(primary_genesis_hash: Hash) -> ExecutionReceipt<Number, Hash, DomainHash> {
+        ExecutionReceipt {
+            primary_number: Zero::zero(),
+            primary_hash: primary_genesis_hash,
+            domain_number: Zero::zero(),
+            domain_hash: Default::default(),
+            trace: Default::default(),
+            trace_root: Default::default(),
+        }
+    }
 }
 
 /// List of [`OpaqueBundle`].
