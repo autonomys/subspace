@@ -241,7 +241,7 @@ where
                 Ok(Ok(downloaded))
             }
             Err(error) => {
-                warn!(
+                trace!(
                     target: LOG_TARGET,
                     "relay::download_block: peer = {who:?}, err = {error:?}"
                 );
@@ -333,7 +333,7 @@ where
                 );
             }
             Err(err) => {
-                warn!(
+                trace!(
                     target: LOG_TARGET,
                     "relay::consensus server: request processing error: {peer}:  {err:?}"
                 );
