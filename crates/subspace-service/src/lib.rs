@@ -546,7 +546,9 @@ where
         other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
     } = partial_components;
 
-    let segment_header_cache = SegmentHeaderCache::new(client.clone());
+    let segment_header_cache = SegmentHeaderCache::new(client.clone()).map_err(|error| {
+        Error::Other(format!("Failed to instantiate segment header cache: {error}").into())
+    })?;
 
     let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
