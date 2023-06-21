@@ -527,6 +527,23 @@ impl MockPrimaryNode {
             .await
     }
 
+    /// Remove all tx from the tx pool
+    pub fn clear_tx_pool(&self) -> Result<(), Box<dyn Error>> {
+        let txs: Vec<_> = self
+            .transaction_pool
+            .ready()
+            .map(|t| self.transaction_pool.hash_of(&t.data))
+            .collect();
+        self.transaction_pool
+            .pool()
+            .prune_known(&BlockId::Hash(self.client.info().best_hash), txs.as_slice())?;
+        self.transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&BlockId::Number(self.client.info().best_number))?;
+        Ok(())
+    }
+
     /// Remove a ready transaction from transaction pool.
     pub async fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
         self.transaction_pool.pool().prune_known(
