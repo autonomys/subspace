@@ -734,7 +734,7 @@ where
             imported_blocks += new_imported_blocks;
 
             info!(
-                "🎉 Imported {} blocks, best #{}/#{}",
+                "🎉 Imported {} blocks from DSN, current best #{}/#{}",
                 imported_blocks,
                 client.info().best_number,
                 client.info().best_hash
@@ -742,8 +742,8 @@ where
         }
 
         info!(
-            "🎉 Imported {} blocks, best #{}/#{}, check against reliable sources to make sure it is a \
-            block on canonical chain",
+            "🎉 Imported {} blocks from DSN, best #{}/#{}, check against reliable sources to make \
+            sure it is a block on canonical chain",
             imported_blocks,
             client.info().best_number,
             client.info().best_hash

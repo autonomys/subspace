@@ -179,6 +179,11 @@ where
         .iter()
         .map(SegmentHeader::segment_commitment)
         .collect::<Vec<_>>();
+
+    if segment_commitments.is_empty() {
+        return Ok(0);
+    }
+
     let segments_found = segment_commitments.len();
     let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
