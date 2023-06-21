@@ -19,8 +19,10 @@ mod segment_headers;
 
 use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
 use crate::dsn::import_blocks::segment_headers::SegmentHeaderHandler;
+use futures::FutureExt;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
+use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
 use sc_service::ImportQueue;
 use sc_tracing::tracing::{debug, info, trace};
@@ -77,26 +79,103 @@ impl<B: BlockT> Link<B> for WaitLink<B> {
     }
 }
 
-/// Starts the process of importing blocks.
+/// Starts the process of importing blocks, used for for initial sync on node startup because it
+/// requires [`ImportQueue`] as a dependency.
 ///
 /// Returns number of imported blocks.
-pub async fn import_blocks<B, IQ, C>(
+pub async fn initial_block_import_from_dsn<Block, IQ, Client>(
     node: &Node,
-    client: Arc<C>,
+    client: Arc<Client>,
     import_queue: &mut IQ,
     force: bool,
 ) -> Result<u64, sc_service::Error>
 where
-    C: HeaderBackend<B> + BlockBackend<B> + Send + Sync + 'static,
-    B: BlockT,
-    IQ: ImportQueue<B> + 'static,
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    IQ: ImportQueue<Block> + 'static,
+{
+    let mut link = WaitLink::new();
+    let mut import_queue_service = import_queue.service();
+
+    let import_blocks_fut =
+        import_blocks_from_dsn(node, client.as_ref(), import_queue_service.as_mut(), force);
+    let drive_import_queue_fut = async {
+        let mut last_imported_blocks = link.imported_blocks;
+        loop {
+            futures::future::poll_fn(|ctx| {
+                import_queue.poll_actions(ctx, &mut link);
+
+                if last_imported_blocks == link.imported_blocks && link.error.is_none() {
+                    // Nothing changed yet, wait for waker to be called
+                    Poll::Pending
+                } else {
+                    last_imported_blocks = link.imported_blocks;
+                    Poll::Ready(())
+                }
+            })
+            .await;
+
+            if let Some(WaitLinkError { error, hash }) = &link.error {
+                return Err::<(), sc_service::Error>(sc_service::Error::Other(format!(
+                    "Stopping block import after #{} blocks on {} because of an error: {}",
+                    link.imported_blocks, hash, error
+                )));
+            }
+        }
+    };
+
+    let downloaded_blocks = futures::select! {
+        maybe_downloaded_blocks = import_blocks_fut.fuse() => {
+            maybe_downloaded_blocks?
+        }
+        result = drive_import_queue_fut.fuse() => {
+            if let Err(error) = result {
+                return Err(error);
+            } else {
+                unreachable!();
+            }
+        }
+    };
+
+    while link.imported_blocks < downloaded_blocks {
+        futures::future::poll_fn(|ctx| {
+            import_queue.poll_actions(ctx, &mut link);
+
+            Poll::Ready(())
+        })
+        .await;
+
+        if let Some(WaitLinkError { error, hash }) = &link.error {
+            return Err(sc_service::Error::Other(format!(
+                "Stopping block import after #{} blocks on {} because of an error: {}",
+                link.imported_blocks, hash, error
+            )));
+        }
+    }
+
+    Ok(downloaded_blocks)
+}
+
+/// Starts the process of importing blocks.
+///
+/// Returns number of downloaded blocks.
+pub async fn import_blocks_from_dsn<Block, IQS, Client>(
+    node: &Node,
+    client: &Client,
+    import_queue_service: &mut IQS,
+    force: bool,
+) -> Result<u64, sc_service::Error>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    IQS: ImportQueueService<Block> + ?Sized,
 {
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
     let segment_commitments = SegmentHeaderHandler::new(node.clone())
         .get_segment_headers()
         .await
-        .map_err(|error| sc_service::Error::Other(error.to_string()))?
+        .map_err(|error| error.to_string())?
         .iter()
         .map(SegmentHeader::segment_commitment)
         .collect::<Vec<_>>();
@@ -115,10 +194,8 @@ where
     debug!("Connected to peers.");
 
     let best_block_number = client.info().best_number;
-    let mut link = WaitLink::new();
-    let mut imported_blocks = 0;
-    let mut reconstructor =
-        Reconstructor::new().map_err(|error| sc_service::Error::Other(error.to_string()))?;
+    let mut downloaded_blocks = 0;
+    let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
 
     // Skip the first segment, everyone has it locally
     for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
@@ -130,8 +207,7 @@ where
         for piece_index in pieces_indices {
             let maybe_piece = piece_provider
                 .get_piece(piece_index, RetryPolicy::Limited(0))
-                .await
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+                .await?;
 
             trace!(
                 ?piece_index,
@@ -156,7 +232,7 @@ where
 
         let reconstructed_contents = reconstructor
             .add_segment(segment_pieces.as_ref())
-            .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+            .map_err(|error| error.to_string())?;
 
         for (block_number, block_bytes) in reconstructed_contents.blocks {
             {
@@ -180,16 +256,16 @@ where
                 }
             }
 
-            let block = B::decode(&mut block_bytes.as_slice())
-                .map_err(|error| sc_service::Error::Other(error.to_string()))?;
+            let block =
+                Block::decode(&mut block_bytes.as_slice()).map_err(|error| error.to_string())?;
 
             let (header, extrinsics) = block.deconstruct();
             let hash = header.hash();
 
             // import queue handles verification and importing it into the client.
-            import_queue.service_ref().import_blocks(
+            import_queue_service.import_blocks(
                 BlockOrigin::NetworkInitialSync,
-                vec![IncomingBlock::<B> {
+                vec![IncomingBlock::<Block> {
                     hash,
                     header: Some(header),
                     body: Some(extrinsics),
@@ -203,43 +279,13 @@ where
                 }],
             );
 
-            imported_blocks += 1;
+            downloaded_blocks += 1;
 
-            if imported_blocks % 1000 == 0 {
+            if downloaded_blocks % 1000 == 0 {
                 info!("Imported block {}", block_number);
             }
         }
-
-        futures::future::poll_fn(|ctx| {
-            import_queue.poll_actions(ctx, &mut link);
-
-            Poll::Ready(())
-        })
-        .await;
-
-        if let Some(WaitLinkError { error, hash }) = &link.error {
-            return Err(sc_service::Error::Other(format!(
-                "Stopping block import after #{} blocks on {} because of an error: {}",
-                link.imported_blocks, hash, error
-            )));
-        }
     }
 
-    while link.imported_blocks < imported_blocks {
-        futures::future::poll_fn(|ctx| {
-            import_queue.poll_actions(ctx, &mut link);
-
-            Poll::Ready(())
-        })
-        .await;
-
-        if let Some(WaitLinkError { error, hash }) = &link.error {
-            return Err(sc_service::Error::Other(format!(
-                "Stopping block import after #{} blocks on {} because of an error: {}",
-                link.imported_blocks, hash, error
-            )));
-        }
-    }
-
-    Ok(imported_blocks)
+    Ok(downloaded_blocks)
 }

@@ -24,7 +24,7 @@ pub mod rpc;
 pub mod segment_headers;
 pub mod tx_pre_validator;
 
-use crate::dsn::import_blocks::import_blocks as import_blocks_from_dsn;
+use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
@@ -624,16 +624,18 @@ where
             }))
             .detach();
 
-            task_manager.spawn_essential_handle().spawn_essential(
-                "node-runner",
-                Some("subspace-networking"),
-                Box::pin(
-                    async move {
-                        node_runner.run().await;
-                    }
-                    .in_current_span(),
-                ),
-            );
+            task_manager
+                .spawn_essential_handle()
+                .spawn_essential_blocking(
+                    "node-runner",
+                    Some("subspace-networking"),
+                    Box::pin(
+                        async move {
+                            node_runner.run().await;
+                        }
+                        .in_current_span(),
+                    ),
+                );
 
             (node, dsn_config.bootstrap_nodes, Some(piece_cache))
         }
@@ -646,11 +648,13 @@ where
             .subscribe(),
     );
 
-    task_manager.spawn_essential_handle().spawn_essential(
-        "segment-header-archiver",
-        Some("subspace-networking"),
-        Box::pin(segment_header_archiving_fut.in_current_span()),
-    );
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking(
+            "segment-header-archiver",
+            Some("subspace-networking"),
+            Box::pin(segment_header_archiving_fut.in_current_span()),
+        );
 
     let dsn_bootstrap_nodes = {
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
@@ -715,7 +719,7 @@ where
         // Repeat until no new blocks are imported
         loop {
             let new_imported_blocks =
-                import_blocks_from_dsn(&node, client.clone(), &mut import_queue, false)
+                initial_block_import_from_dsn(&node, client.clone(), &mut import_queue, false)
                     .await
                     .map_err(|error| {
                         sc_service::Error::Other(format!(

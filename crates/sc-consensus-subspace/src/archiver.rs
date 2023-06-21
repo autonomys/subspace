@@ -357,6 +357,10 @@ fn finalize_block<Block, Backend, Client>(
     Backend: BackendT<Block>,
     Client: LockImportRun<Block, Backend> + Finalizer<Block, Backend>,
 {
+    if number.is_zero() {
+        // Block zero is finalized already and generates unnecessary warning if called again
+        return;
+    }
     // We don't have anything useful to do with this result yet, the only source of errors was
     // logged already inside
     let _result: Result<_, sp_blockchain::Error> = client.lock_import_and_run(|import_op| {

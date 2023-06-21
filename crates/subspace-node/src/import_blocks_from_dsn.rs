@@ -23,7 +23,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::{BootstrappedNetworkingParameters, Config, PieceByHashRequestHandler};
-use subspace_service::dsn::import_blocks::import_blocks;
+use subspace_service::dsn::import_blocks::initial_block_import_from_dsn;
 
 /// The `import-blocks-from-network` command used to import blocks from Subspace Network DSN.
 #[derive(Debug, Parser)]
@@ -86,7 +86,8 @@ impl ImportBlocksFromDsnCmd {
         // Repeat until no new blocks are imported
         loop {
             let new_imported_blocks =
-                import_blocks(&node, Arc::clone(&client), &mut import_queue, false).await?;
+                initial_block_import_from_dsn(&node, Arc::clone(&client), &mut import_queue, false)
+                    .await?;
 
             if new_imported_blocks == 0 {
                 break;
