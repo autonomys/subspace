@@ -938,8 +938,6 @@ where
             pre_digest.solution.sector_index,
         );
 
-        // TODO: Derive `pre_digest.solution.piece_offset` from local challenge instead
-
         let piece_index = sector_id.derive_piece_index(
             pre_digest.solution.piece_offset,
             pre_digest.solution.history_size,
