@@ -61,10 +61,8 @@ pub(super) async fn start_worker<
     is_authority: bool,
     bundle_producer: DomainBundleProducer<
         Block,
-        Block,
         PBlock,
         PBlock,
-        Client,
         Client,
         PClient,
         DomainParentChain<Block, PBlock, PClient>,
