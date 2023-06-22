@@ -4,10 +4,7 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
-use domain_client_executor::{
-    EssentialExecutorParams, Executor, ExecutorStreams, SystemDomainParentChain,
-};
-use domain_client_executor_gossip::ExecutorGossipParams;
+use domain_client_executor::{EssentialExecutorParams, Executor, ExecutorStreams};
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, Hash, InherentExtrinsicApi};
@@ -60,18 +57,6 @@ pub type DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI
     DomainBlockImport<BI>,
 >;
 
-type GossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
-    domain_client_executor::SystemGossipMessageValidator<
-        Block,
-        PBlock,
-        FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        PClient,
-        FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
-        FullBackend<Block>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        SystemDomainParentChain<Block, PBlock, PClient>,
-    >;
-
 /// Domain full node along with some other components.
 pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch, AccountId, BI>
 where
@@ -122,8 +107,6 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor: DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI>,
-    pub gossip_message_validator:
-        GossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
     _phantom_data: PhantomData<AccountId>,
@@ -444,7 +427,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
+    let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
     let domain_confirmation_depth = primary_chain_client
         .runtime_api()
@@ -471,22 +454,6 @@ where
         },
     )
     .await?;
-
-    let gossip_message_validator = GossipMessageValidator::new(
-        SystemDomainParentChain::<Block, PBlock, _>::new(primary_chain_client),
-        client.clone(),
-        Box::new(task_manager.spawn_handle()),
-        transaction_pool.clone(),
-        executor.fraud_proof_generator(),
-    );
-    let executor_gossip =
-        domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-            network: network_service.clone(),
-            sync: sync_service.clone(),
-            executor: gossip_message_validator.clone(),
-            bundle_receiver,
-        });
-    spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
 
     if let Some(relayer_id) = domain_config.maybe_relayer_id {
         tracing::info!(?domain_id, ?relayer_id, "Starting domain relayer");
@@ -526,7 +493,6 @@ where
         rpc_handlers,
         network_starter,
         executor,
-        gossip_message_validator,
         tx_pool_sink: msg_sender,
         _phantom_data: Default::default(),
     };

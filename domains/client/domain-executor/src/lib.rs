@@ -91,10 +91,8 @@ mod domain_worker;
 mod domain_worker_starter;
 mod executor;
 mod fraud_proof;
-mod gossip_message_validator;
 mod parent_chain;
 mod sortition;
-mod system_gossip_message_validator;
 // TODO: Unlock once domain test infra is workable again.
 // #[cfg(test)]
 // mod tests;
@@ -102,7 +100,6 @@ mod utils;
 
 pub use self::executor::Executor;
 pub use self::parent_chain::{CoreDomainParentChain, SystemDomainParentChain};
-pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;
