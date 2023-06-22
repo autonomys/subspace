@@ -16,16 +16,11 @@
 
 //! Subspace node implementation.
 
-// TODO: remove
-#![allow(dead_code, unused_imports)]
-
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_executor::ExecutorStreams;
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::AccountId as AccountId32;
-use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::AccountId as AccountId20;
 use frame_benchmarking_cli::BenchmarkCmd;
@@ -37,12 +32,9 @@ use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
-use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
-use sp_runtime::traits::Identity;
-use std::any::TypeId;
 use subspace_node::{
     AccountId32ToAccountId20Converter, Cli, DomainCli, DomainSubcommand, ExecutorDispatch,
     Subcommand,
