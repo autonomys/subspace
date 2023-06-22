@@ -219,14 +219,14 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     shuffled_extrinsics
 }
 
-pub struct SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi> {
+pub struct DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi> {
     primary_chain_client: Arc<PClient>,
     runtime_api: RuntimeApi,
     _phantom_data: PhantomData<(Block, PBlock)>,
 }
 
 impl<Block, PBlock, PClient, RuntimeApi: Clone> Clone
-    for SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
+    for DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
 {
     fn clone(&self) -> Self {
         Self {
@@ -237,8 +237,7 @@ impl<Block, PBlock, PClient, RuntimeApi: Clone> Clone
     }
 }
 
-impl<Block, PBlock, PClient, RuntimeApi>
-    SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
+impl<Block, PBlock, PClient, RuntimeApi> DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -289,7 +288,7 @@ where
                 primary_hash,
             )?;
 
-        let (system_bundles, core_bundles) = self
+        let (system_bundles, _core_bundles) = self
             .primary_chain_client
             .runtime_api()
             .extract_system_bundles(primary_hash, primary_extrinsics)?;

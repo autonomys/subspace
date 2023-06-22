@@ -2,7 +2,7 @@
 //! primary block and provides the implementation for both system domain and core domain.
 
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
-use domain_block_preprocessor::SystemDomainBlockPreprocessor;
+use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::opaque::Block;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sp_api::ProvideRuntimeApi;
@@ -72,7 +72,7 @@ where
     ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
         let system_runtime_api_light =
             RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
-        let domain_extrinsics = SystemDomainBlockPreprocessor::<Block, _, _, _>::new(
+        let domain_extrinsics = DomainBlockPreprocessor::<Block, _, _, _>::new(
             self.primary_chain_client.clone(),
             system_runtime_api_light,
         )

@@ -1,7 +1,7 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, ReceiptsChecker};
 use crate::{DomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
-use domain_block_preprocessor::SystemDomainBlockPreprocessor;
+use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::BlockImport;
@@ -17,7 +17,7 @@ use sp_runtime::{Digest, DigestItem};
 use sp_settlement::SettlementApi;
 use std::sync::Arc;
 
-type SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = ReceiptsChecker<
+type DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = ReceiptsChecker<
     Block,
     Client,
     PBlock,
@@ -37,10 +37,9 @@ where
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: KeystorePtr,
-    system_domain_receipts_checker:
-        SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>,
-    system_domain_block_preprocessor:
-        SystemDomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
+    domain_receipts_checker: DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>,
+    domain_block_preprocessor:
+        DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
 }
 
@@ -56,8 +55,8 @@ where
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
-            system_domain_receipts_checker: self.system_domain_receipts_checker.clone(),
-            system_domain_block_preprocessor: self.system_domain_block_preprocessor.clone(),
+            domain_receipts_checker: self.domain_receipts_checker.clone(),
+            domain_block_preprocessor: self.domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
         }
     }
@@ -101,17 +100,10 @@ where
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
-        system_domain_receipts_checker: SystemDomainReceiptsChecker<
-            Block,
-            PBlock,
-            Client,
-            PClient,
-            Backend,
-            E,
-        >,
+        domain_receipts_checker: DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>,
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
     ) -> Self {
-        let system_domain_block_preprocessor = SystemDomainBlockPreprocessor::new(
+        let domain_block_preprocessor = DomainBlockPreprocessor::new(
             primary_chain_client.clone(),
             RuntimeApiFull::new(client.clone()),
         );
@@ -120,8 +112,8 @@ where
             client,
             backend,
             keystore,
-            system_domain_receipts_checker,
-            system_domain_block_preprocessor,
+            domain_receipts_checker,
+            domain_block_preprocessor,
             domain_block_processor,
         }
     }
@@ -176,7 +168,7 @@ where
         );
 
         let extrinsics = self
-            .system_domain_block_preprocessor
+            .domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
         let logs = if primary_number == One::one() {
@@ -229,7 +221,7 @@ where
             head_receipt_number,
         )?;
 
-        self.system_domain_receipts_checker
+        self.domain_receipts_checker
             .check_state_transition(primary_hash)?;
 
         Ok(built_block_info)
