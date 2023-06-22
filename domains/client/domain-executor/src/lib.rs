@@ -99,7 +99,7 @@ mod sortition;
 mod utils;
 
 pub use self::executor::Executor;
-pub use self::parent_chain::{CoreDomainParentChain, SystemDomainParentChain};
+pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;

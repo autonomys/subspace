@@ -17,7 +17,7 @@
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
-use crate::parent_chain::SystemDomainParentChain;
+use crate::parent_chain::DomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::{ExecutorStreams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
@@ -67,7 +67,7 @@ pub(super) async fn start_worker<
         Client,
         Client,
         PClient,
-        SystemDomainParentChain<Block, PBlock, PClient>,
+        DomainParentChain<Block, PBlock, PClient>,
         TransactionPool,
     >,
     bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,

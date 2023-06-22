@@ -1,5 +1,5 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, ReceiptsChecker};
-use crate::{SystemDomainParentChain, TransactionFor};
+use crate::{DomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::SystemDomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
@@ -24,7 +24,7 @@ type SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = R
     PClient,
     Backend,
     E,
-    SystemDomainParentChain<Block, PBlock, PClient>,
+    DomainParentChain<Block, PBlock, PClient>,
     PBlock,
 >;
 
