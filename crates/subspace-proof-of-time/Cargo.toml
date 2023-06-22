@@ -1,0 +1,19 @@
+[package]
+name = "subspace-proof-of-time"
+description = "Subspace proof of time implementation"
+license = "Apache-2.0"
+version = "0.1.0"
+authors = ["Rahul Subramaniyam <rahulksnv@gmail.com>"]
+edition = "2021"
+include = [
+    "/src",
+    "/Cargo.toml",
+]
+
+[dependencies]
+aes = "0.8.3"
+rayon = "1.7.0"
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+thiserror = "1.0.38"
