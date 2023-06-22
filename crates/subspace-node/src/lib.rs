@@ -18,15 +18,14 @@
 
 mod chain_spec;
 mod chain_spec_utils;
-mod core_domain;
+mod domain;
 mod import_blocks_from_dsn;
-mod system_domain;
 
+pub use crate::domain::cli::{DomainCli, Subcommand as DomainSubcommand};
+pub use crate::domain::AccountId32ToAccountId20Converter;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::system_domain::cli::{DomainCli, Subcommand as DomainSubcommand};
 use bytesize::ByteSize;
 use clap::Parser;
-pub use core_domain::AccountId32ToAccountId20Converter;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
@@ -159,9 +158,9 @@ pub enum Subcommand {
     /// Db meta columns information.
     ChainInfo(sc_cli::ChainInfoCmd),
 
-    /// Run executor sub-commands.
+    /// Run domain sub-commands.
     #[clap(subcommand)]
-    Executor(system_domain::cli::Subcommand),
+    Domain(domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]

@@ -367,7 +367,7 @@ fn main() -> Result<(), Error> {
                 }
             })?;
         }
-        Some(Subcommand::Executor(executor_cmd)) => match executor_cmd {
+        Some(Subcommand::Domain(domain_cmd)) => match domain_cmd {
             DomainSubcommand::Benchmark(cmd) => {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|primary_chain_config| {

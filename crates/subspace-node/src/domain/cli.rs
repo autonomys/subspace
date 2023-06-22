@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::core_domain::core_evm_chain_spec;
+use crate::domain::evm_chain_spec;
 use clap::Parser;
 use domain_service::DomainConfiguration;
 use sc_cli::{
@@ -63,6 +63,7 @@ pub struct DomainCli {
 }
 
 impl DomainCli {
+    // TODO: proper base_path
     /// Constructs a new instance of [`DomainCli`].
     ///
     /// If no explicit base path for the system domain, the default value will be `base_path/system`.
@@ -113,7 +114,7 @@ impl DomainCli {
 
 impl SubstrateCli for DomainCli {
     fn impl_name() -> String {
-        "Subspace Executor".into()
+        "Subspace Domain".into()
     }
 
     fn impl_version() -> String {
@@ -127,7 +128,7 @@ impl SubstrateCli for DomainCli {
     }
 
     fn description() -> String {
-        "Subspace Executor".into()
+        "Subspace Domain".into()
     }
 
     fn author() -> String {
@@ -143,8 +144,8 @@ impl SubstrateCli for DomainCli {
     }
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
-        // TODO: add domain_id
-        core_evm_chain_spec::load_chain_spec(id)
+        // TODO: Load chain spec properly
+        evm_chain_spec::load_chain_spec(id)
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {

@@ -14,10 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Core EVM domain configurations.
-
-// TODO: support running core-evm again after the cleanup.
-#![allow(dead_code)]
+//! EVM domain configurations.
 
 use crate::chain_spec_utils::chain_spec_properties;
 use crate::AccountId32ToAccountId20Converter;
