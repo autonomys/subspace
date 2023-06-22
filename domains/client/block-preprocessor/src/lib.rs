@@ -73,27 +73,25 @@ where
         sp_blockchain::Error::Backend(format!("BlockHeader of {block_hash:?} unavailable"))
     })?;
 
+    // TODO: Upgrade the domain runtime properly.
+    // This works under the assumption that the consensus chain runtime upgrade triggers a domain
+    // runtime upgrade, which is no longer valid.
     let maybe_new_runtime = if header
         .digest()
         .logs
         .iter()
         .any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
     {
-        let system_domain_runtime = primary_chain_client
+        let new_domain_runtime = primary_chain_client
             .runtime_api()
-            .system_domain_wasm_bundle(block_hash)?;
-
-        let new_runtime = {
-            if domain_id.is_system() {
-                system_domain_runtime
-            } else {
-                return Err(sp_blockchain::Error::Application(Box::from(format!(
+            .domain_runtime_code(block_hash, domain_id)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(Box::from(format!(
                     "No new runtime code for {domain_id:?}"
-                ))));
-            }
-        };
+                )))
+            })?;
 
-        Some(new_runtime)
+        Some(new_domain_runtime.into())
     } else {
         None
     };
@@ -288,12 +286,12 @@ where
                 primary_hash,
             )?;
 
-        let (system_bundles, _core_bundles) = self
+        let bundles = self
             .primary_chain_client
             .runtime_api()
-            .extract_system_bundles(primary_hash, primary_extrinsics)?;
+            .extract_successful_bundles(primary_hash, primary_extrinsics)?;
 
-        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(system_bundles);
+        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,

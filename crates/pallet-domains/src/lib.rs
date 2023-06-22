@@ -70,6 +70,7 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
+    // TODO: Proper RuntimeObject
     #[derive(DebugNoBound, Encode, Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound)]
     #[scale_info(skip_type_params(T))]
     pub struct RuntimeObject<T: Config> {
@@ -189,11 +190,9 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
 
-            // Only process the system domain receipts.
-            if domain_id.is_system() {
-                pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
-                    .map_err(Error::<T>::from)?;
-            }
+            // TODO: Implement the receipts processing v2.
+            pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
+                .map_err(Error::<T>::from)?;
 
             let bundle_hash = opaque_bundle.hash();
 
@@ -383,10 +382,9 @@ impl<T: Config> Pallet<T> {
         SuccessfulBundles::<T>::get()
     }
 
-    pub fn system_domain_runtime_code() -> Vec<u8> {
-        RuntimeRegistry::<T>::get(0u32)
-            .expect("System domain runtime must be registered at genesis")
-            .domain_runtime_code
+    pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
+        // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
+        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.domain_runtime_code)
     }
 
     /// Returns the block number of the latest receipt.

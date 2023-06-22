@@ -60,7 +60,6 @@ use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
-use sp_std::borrow::Cow;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -797,20 +796,10 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn extract_system_bundles(
+        fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> (
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-        ) {
-            crate::domains::extract_system_bundles(extrinsics)
-        }
-
-        fn extract_core_bundles(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
-            crate::domains::extract_core_bundles(extrinsics, domain_id)
+            crate::domains::extract_successful_bundles(extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
@@ -821,8 +810,8 @@ impl_runtime_apis! {
             crate::domains::extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
-            Domains::system_domain_runtime_code().into()
+        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+            Domains::domain_runtime_code(domain_id)
         }
 
         fn timestamp() -> Moment{

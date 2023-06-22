@@ -9,45 +9,15 @@ use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
 use subspace_verification::derive_randomness;
 
-pub(crate) fn extract_system_bundles(
+pub(crate) fn extract_successful_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> (
-    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-) {
-    let successful_bundles = Domains::successful_bundles();
-    let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if successful_bundles.contains(&opaque_bundle.hash()) =>
-            {
-                if opaque_bundle.domain_id().is_system() {
-                    Some((Some(opaque_bundle), None))
-                } else {
-                    Some((None, Some(opaque_bundle)))
-                }
-            }
-            _ => None,
-        })
-        .unzip();
-    (
-        system_bundles.into_iter().flatten().collect(),
-        core_bundles.into_iter().flatten().collect(),
-    )
-}
-
-pub(crate) fn extract_core_bundles(
-    extrinsics: Vec<UncheckedExtrinsic>,
-    domain_id: DomainId,
 ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
     let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if opaque_bundle.domain_id() == domain_id
-                    && successful_bundles.contains(&opaque_bundle.hash()) =>
+                if successful_bundles.contains(&opaque_bundle.hash()) =>
             {
                 Some(opaque_bundle)
             }
