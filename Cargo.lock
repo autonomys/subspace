@@ -6237,30 +6237,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-domain-registry"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "log",
- "pallet-balances",
- "pallet-executor-registry",
- "pallet-settlement",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-core",
- "sp-domain-digests",
- "sp-domains",
- "sp-executor-registry",
- "sp-io",
- "sp-runtime",
- "sp-std",
- "sp-trie",
-]
-
-[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
@@ -6364,26 +6340,6 @@ dependencies = [
  "fp-evm",
  "ripemd",
  "sp-io",
-]
-
-[[package]]
-name = "pallet-executor-registry"
-version = "0.1.0"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "pallet-balances",
- "parity-scale-codec",
- "scale-info",
- "sp-arithmetic",
- "sp-core",
- "sp-domains",
- "sp-executor-registry",
- "sp-io",
- "sp-runtime",
- "sp-std",
- "subspace-core-primitives",
 ]
 
 [[package]]
