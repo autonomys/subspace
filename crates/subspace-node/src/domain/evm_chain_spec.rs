@@ -18,7 +18,7 @@
 
 use crate::chain_spec_utils::chain_spec_properties;
 use crate::AccountId32ToAccountId20Converter;
-use core_evm_runtime::{
+use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
     Precompiles, SudoConfig, SystemConfig, WASM_BINARY,
 };

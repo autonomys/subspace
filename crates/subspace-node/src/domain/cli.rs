@@ -149,7 +149,7 @@ impl SubstrateCli for DomainCli {
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &core_evm_runtime::VERSION
+        &evm_domain_runtime::VERSION
     }
 }
 

@@ -17,7 +17,7 @@
 pub(crate) mod cli;
 pub(crate) mod evm_chain_spec;
 
-use core_evm_runtime::AccountId as AccountId20;
+use evm_domain_runtime::AccountId as AccountId20;
 use sp_core::crypto::AccountId32;
 use sp_core::{ByteArray, H160};
 use sp_runtime::traits::Convert;

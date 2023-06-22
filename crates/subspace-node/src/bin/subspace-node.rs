@@ -19,7 +19,6 @@
 // TODO: remove
 #![allow(dead_code, unused_imports)]
 
-use core_evm_runtime::AccountId as AccountId20;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_executor::ExecutorStreams;
 use domain_eth_service::provider::EthProvider;
@@ -28,6 +27,7 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::AccountId as AccountId32;
 use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
+use evm_domain_runtime::AccountId as AccountId20;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -63,11 +63,11 @@ impl NativeExecutionDispatch for crate::CoreEVMDomainExecutorDispatch {
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        core_evm_runtime::api::dispatch(method, data)
+        evm_domain_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        core_evm_runtime::native_version()
+        evm_domain_runtime::native_version()
     }
 }
 
@@ -597,11 +597,11 @@ fn main() -> Result<(), Error> {
                     );
 
                     let eth_provider = EthProvider::<
-                        core_evm_runtime::TransactionConverter,
+                        evm_domain_runtime::TransactionConverter,
                         DefaultEthConfig<
                             FullClient<
                                 DomainBlock,
-                                core_evm_runtime::RuntimeApi,
+                                evm_domain_runtime::RuntimeApi,
                                 CoreEVMDomainExecutorDispatch,
                             >,
                             FullBackend<DomainBlock>,
@@ -628,7 +628,7 @@ fn main() -> Result<(), Error> {
                         _,
                         _,
                         _,
-                        core_evm_runtime::RuntimeApi,
+                        evm_domain_runtime::RuntimeApi,
                         CoreEVMDomainExecutorDispatch,
                         AccountId20,
                         _,
