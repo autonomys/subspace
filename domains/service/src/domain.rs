@@ -5,7 +5,7 @@ use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
-    EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, Executor,
+    EssentialExecutorParams, Executor, ExecutorStreams, SystemDomainParentChain,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;

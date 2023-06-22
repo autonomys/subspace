@@ -28,7 +28,7 @@ type SystemDomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = R
     PBlock,
 >;
 
-pub(crate) struct SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -45,7 +45,7 @@ where
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E, BI> Clone
-    for SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+    for BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -64,7 +64,7 @@ where
 }
 
 impl<Block, PBlock, Client, PClient, Backend, E, BI>
-    SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+    BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,

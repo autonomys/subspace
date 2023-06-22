@@ -83,6 +83,7 @@
 
 mod aux_schema;
 mod bundle_election_solver;
+mod bundle_processor;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
@@ -93,7 +94,6 @@ mod fraud_proof;
 mod gossip_message_validator;
 mod parent_chain;
 mod sortition;
-mod system_bundle_processor;
 mod system_gossip_message_validator;
 // TODO: Unlock once domain test infra is workable again.
 // #[cfg(test)]

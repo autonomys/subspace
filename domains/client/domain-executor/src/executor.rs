@@ -1,9 +1,9 @@
+use crate::bundle_processor::BundleProcessor;
 use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::SystemDomainParentChain;
-use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::{active_leaves, DomainImportNotifications, EssentialExecutorParams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
@@ -36,7 +36,7 @@ where
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
-    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
+    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
     domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
 }
 
@@ -170,7 +170,7 @@ where
             _phantom: std::marker::PhantomData,
         };
 
-        let bundle_processor = SystemBundleProcessor::new(
+        let bundle_processor = BundleProcessor::new(
             params.primary_chain_client.clone(),
             params.client.clone(),
             params.backend.clone(),
