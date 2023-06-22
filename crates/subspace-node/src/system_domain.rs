@@ -14,5 +14,4 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-pub(crate) mod chain_spec;
 pub(crate) mod cli;

@@ -44,33 +44,14 @@ use sp_domains::DomainId;
 use sp_runtime::traits::Identity;
 use std::any::TypeId;
 use subspace_node::{
-    AccountId32ToAccountId20Converter, Cli, DomainCli, ExecutorDispatch, Subcommand,
-    SystemDomainSubcommand,
+    AccountId32ToAccountId20Converter, Cli, DomainCli, DomainSubcommand, ExecutorDispatch,
+    Subcommand,
 };
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
-use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
 type PosTable = ChiaTable;
-
-/// System domain executor instance.
-pub struct SystemDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for SystemDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        system_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        system_domain_runtime::native_version()
-    }
-}
 
 /// Core evm domain executor instance.
 pub struct CoreEVMDomainExecutorDispatch;
@@ -387,7 +368,7 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Some(Subcommand::Executor(executor_cmd)) => match executor_cmd {
-            SystemDomainSubcommand::Benchmark(cmd) => {
+            DomainSubcommand::Benchmark(cmd) => {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|primary_chain_config| {
                     let domain_cli = DomainCli::new(
@@ -414,7 +395,7 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, SystemDomainExecutorDispatch>(
+                            cmd.run::<DomainBlock, CoreEVMDomainExecutorDispatch>(
                                 domain_config.service_config,
                             )
                         }

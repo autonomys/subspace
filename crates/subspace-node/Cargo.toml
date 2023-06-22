@@ -64,7 +64,6 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
-system-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/system" }
 thiserror = "1.0.38"
 tokio = "1.28.2"
 
@@ -80,6 +79,5 @@ runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-benchmarking-cli/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
-	"system-domain-runtime/runtime-benchmarks",
 	"core-evm-runtime/runtime-benchmarks",
 ]

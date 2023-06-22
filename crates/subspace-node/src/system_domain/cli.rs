@@ -16,8 +16,6 @@
 
 use crate::core_domain::core_evm_chain_spec;
 use clap::Parser;
-use core_evm_runtime::AccountId as AccountId20;
-use domain_runtime_primitives::AccountId;
 use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -25,14 +23,11 @@ use sc_cli::{
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
-use sc_subspace_chain_specs::ExecutionChainSpec;
-use serde_json::Value;
-use sp_core::crypto::{AccountId32, Ss58Codec};
+use sp_core::crypto::AccountId32;
 use sp_runtime::traits::Convert;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -153,7 +148,7 @@ impl SubstrateCli for DomainCli {
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &system_domain_runtime::VERSION
+        &core_evm_runtime::VERSION
     }
 }
 
