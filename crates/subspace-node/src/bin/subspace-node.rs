@@ -258,7 +258,7 @@ fn main() -> Result<(), Error> {
                 )
                 .map_err(|error| {
                     sc_service::Error::Other(format!(
-                        "Failed to create system domain configuration: {error:?}"
+                        "Failed to create domain configuration: {error:?}"
                     ))
                 })?;
 
@@ -375,7 +375,7 @@ fn main() -> Result<(), Error> {
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
-                                "Failed to create system domain configuration: {error:?}"
+                                "Failed to create domain configuration: {error:?}"
                             ))
                         })?;
                     match cmd {
@@ -523,7 +523,7 @@ fn main() -> Result<(), Error> {
                 if !cli.domain_args.is_empty() {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
-                        name = "SystemDomain"
+                        name = "Domain"
                     );
                     let _enter = span.enter();
 
@@ -540,7 +540,7 @@ fn main() -> Result<(), Error> {
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
-                                "Failed to create system domain configuration: {error:?}"
+                                "Failed to create domain configuration: {error:?}"
                             ))
                         })?;
 
@@ -613,7 +613,7 @@ fn main() -> Result<(), Error> {
                         provider: eth_provider,
                     };
 
-                    let system_domain_node = domain_service::new_full_system::<
+                    let domain_node = domain_service::new_full_system::<
                         _,
                         _,
                         _,
@@ -627,14 +627,12 @@ fn main() -> Result<(), Error> {
                     >(domain_params)
                     .await?;
 
-                    xdm_gossip_worker_builder.push_domain_tx_pool_sink(
-                        DomainId::SYSTEM,
-                        system_domain_node.tx_pool_sink,
-                    );
+                    xdm_gossip_worker_builder
+                        .push_domain_tx_pool_sink(DomainId::SYSTEM, domain_node.tx_pool_sink);
 
                     primary_chain_node
                         .task_manager
-                        .add_child(system_domain_node.task_manager);
+                        .add_child(domain_node.task_manager);
 
                     let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                         .build::<Block, _, _>(
@@ -651,7 +649,7 @@ fn main() -> Result<(), Error> {
                             Box::pin(cross_domain_message_gossip_worker.run()),
                         );
 
-                    system_domain_node.network_starter.start_network();
+                    domain_node.network_starter.start_network();
                 }
 
                 primary_chain_node.network_starter.start_network();

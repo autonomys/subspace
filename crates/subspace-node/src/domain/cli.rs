@@ -54,10 +54,10 @@ pub struct DomainCli {
     #[clap(long)]
     pub relayer_id: Option<String>,
 
-    /// The base path that should be used by the system domain.
+    /// The base path that should be used by the domain.
     pub base_path: Option<PathBuf>,
 
-    /// Additional args for core domain.
+    /// Additional args for domain.
     #[clap(raw = true)]
     additional_args: Vec<String>,
 }
@@ -66,8 +66,8 @@ impl DomainCli {
     // TODO: proper base_path
     /// Constructs a new instance of [`DomainCli`].
     ///
-    /// If no explicit base path for the system domain, the default value will be `base_path/system`.
-    pub fn new(mut base_path: Option<PathBuf>, domain_args: impl Iterator<Item = String>) -> Self {
+    /// If no explicit base path for the domain, the default value will be `base_path/system`.
+    pub fn new(_base_path: Option<PathBuf>, domain_args: impl Iterator<Item = String>) -> Self {
         let mut cli =
             DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
 
@@ -82,7 +82,7 @@ impl DomainCli {
             .chain(self.additional_args.clone())
     }
 
-    /// Creates domain configuration from Core domain cli.
+    /// Creates domain configuration from domain cli.
     pub fn create_domain_configuration<AccountId, CA>(
         &self,
         tokio_handle: tokio::runtime::Handle,
