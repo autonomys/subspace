@@ -5,7 +5,7 @@ use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
-    EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
+    EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, Executor,
 };
 use domain_client_executor_gossip::ExecutorGossipParams;
 use domain_client_message_relayer::GossipMessageSink;
@@ -49,7 +49,7 @@ use substrate_frame_rpc_system::AccountNonceApi;
 
 type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
 
-pub type DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI> = SystemExecutor<
+pub type DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI> = Executor<
     Block,
     PBlock,
     FullClient<Block, RuntimeApi, ExecutorDispatch>,
@@ -452,7 +452,7 @@ where
         .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
         .into();
 
-    let executor = SystemExecutor::new(
+    let executor = Executor::new(
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         EssentialExecutorParams {
