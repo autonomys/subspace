@@ -14,9 +14,6 @@ type FraudProofFor<ParentChainBlock> =
 
 /// Trait for interacting between the domain and its corresponding parent chain, i.e. retrieving
 /// the necessary info from the parent chain or submit extrinsics to the parent chain.
-///
-/// - The parent chain of System Domain => Primary Chain
-/// - The parent chain of Core Domain => System Domain
 pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
     fn best_hash(&self) -> ParentChainBlock::Hash;
 
@@ -58,7 +55,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
     ) -> Result<(), sp_api::ApiError>;
 }
 
-/// The parent chain of the system domain
+/// The parent chain of the domain.
 pub struct DomainParentChain<Block, PBlock, PClient> {
     primary_chain_client: Arc<PClient>,
     _phantom: PhantomData<(Block, PBlock)>,

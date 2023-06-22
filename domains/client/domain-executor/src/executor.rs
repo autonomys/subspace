@@ -25,7 +25,8 @@ use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
-/// System domain executor.
+// TODO: rename everything to Operator?
+/// Domain executor.
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,

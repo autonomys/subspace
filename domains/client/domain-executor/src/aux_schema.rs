@@ -175,6 +175,8 @@ where
     load_decode(backend, (PRIMARY_HASH, domain_hash).encode().as_slice())
 }
 
+// TODO: Unlock once domain test infra is workable again.
+#[allow(dead_code)]
 pub(super) fn target_receipt_is_pruned(
     head_receipt_number: BlockNumber,
     target_block: BlockNumber,
