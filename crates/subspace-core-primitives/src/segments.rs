@@ -104,6 +104,11 @@ impl From<SegmentIndex> for HistorySize {
 }
 
 impl HistorySize {
+    /// Create new instance.
+    pub const fn new(value: NonZeroU64) -> Self {
+        Self(value)
+    }
+
     /// Size of blockchain history in pieces.
     pub const fn in_pieces(&self) -> NonZeroU64 {
         self.0.saturating_mul(

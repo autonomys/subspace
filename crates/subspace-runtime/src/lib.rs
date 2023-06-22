@@ -42,6 +42,7 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::mem;
+use core::num::NonZeroU64;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -163,6 +164,14 @@ const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
 /// This impacts solution range for votes in consensus.
 const EXPECTED_VOTES_PER_BLOCK: u32 = 9;
 
+/// Number of latest archived segments that are considered "recent history".
+const RECENT_SEGMENTS: HistorySize = HistorySize::new(NonZeroU64::new(5).expect("Not zero; qed"));
+/// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
+    HistorySize::new(NonZeroU64::new(1).expect("Not zero; qed")),
+    HistorySize::new(NonZeroU64::new(10).expect("Not zero; qed")),
+);
+
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
@@ -241,6 +250,8 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
+    pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = RECENT_HISTORY_FRACTION;
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
@@ -262,6 +273,8 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;

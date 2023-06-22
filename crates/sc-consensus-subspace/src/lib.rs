@@ -404,6 +404,7 @@ where
         + BlockchainEvents<Block>
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = ClientError>
+        + AuxStore
         + Send
         + Sync
         + 'static,
@@ -938,9 +939,20 @@ where
             pre_digest.solution.sector_index,
         );
 
+        let chain_constants = get_chain_constants(self.client.as_ref())?;
+        // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
+        //  should (though we don't support fast sync yet, so doesn't matter in
+        //  practice)
+        let max_pieces_in_sector = self
+            .client
+            .runtime_api()
+            .max_pieces_in_sector(parent_hash)?;
         let piece_index = sector_id.derive_piece_index(
             pre_digest.solution.piece_offset,
             pre_digest.solution.history_size,
+            max_pieces_in_sector,
+            chain_constants.recent_segments(),
+            chain_constants.recent_history_fraction(),
         );
         let segment_index = piece_index.segment_index();
 
@@ -981,14 +993,10 @@ where
                 global_randomness: subspace_digest_items.global_randomness,
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
-                    // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
-                    //  should (though we don't support fast sync yet, so doesn't matter in
-                    //  practice)
-                    max_pieces_in_sector: self
-                        .client
-                        .runtime_api()
-                        .max_pieces_in_sector(parent_hash)?,
+                    max_pieces_in_sector,
                     segment_commitment,
+                    recent_segments: chain_constants.recent_segments(),
+                    recent_history_fraction: chain_constants.recent_history_fraction(),
                 }),
             },
             &self.subspace_link.kzg,

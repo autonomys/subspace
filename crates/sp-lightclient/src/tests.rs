@@ -20,7 +20,7 @@ use sp_runtime::testing::H256;
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
 use std::iter;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -55,6 +55,11 @@ fn default_test_constants() -> ChainConstants<Header> {
         era_duration: 20,
         slot_probability: (1, 6),
         storage_bound: Default::default(),
+        recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
+        recent_history_fraction: (
+            HistorySize::from(NonZeroU64::new(1).unwrap()),
+            HistorySize::from(NonZeroU64::new(10).unwrap()),
+        ),
     }
 }
 
@@ -92,6 +97,11 @@ impl FarmerParameters {
             history_size: HistorySize::from(SegmentIndex::ZERO),
             max_pieces_in_sector: 1,
             sector_expiration: SegmentIndex::ONE,
+            recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
+            recent_history_fraction: (
+                HistorySize::from(NonZeroU64::new(1).unwrap()),
+                HistorySize::from(NonZeroU64::new(10).unwrap()),
+            ),
         };
 
         Self {
