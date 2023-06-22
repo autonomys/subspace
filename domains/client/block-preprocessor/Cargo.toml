@@ -30,7 +30,6 @@ sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/subs
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
 subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
-system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime" }
 tracing = "0.1.37"
 
 [dev-dependencies]

@@ -2151,7 +2151,6 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-wasm-tools",
- "system-runtime-primitives",
  "tracing",
 ]
 
@@ -2223,7 +2222,6 @@ dependencies = [
  "subspace-wasm-tools",
  "substrate-test-runtime-client",
  "substrate-test-utils",
- "system-runtime-primitives",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2270,7 +2268,6 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "sp-settlement",
- "system-runtime-primitives",
  "tracing",
 ]
 
@@ -2401,7 +2398,6 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
- "system-runtime-primitives",
  "tracing",
 ]
 
@@ -9692,15 +9688,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-executor-registry"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-domains",
- "sp-std",
-]
-
-[[package]]
 name = "sp-externalities"
 version = "0.19.0"
 source = "git+https://github.com/subspace/substrate?rev=28e33f78a3aa8ac4c6753108bc0471273ff6bf6f#28e33f78a3aa8ac4c6753108bc0471273ff6bf6f"
@@ -10613,7 +10600,6 @@ dependencies = [
  "subspace-test-service",
  "subspace-wasm-tools",
  "substrate-test-utils",
- "system-runtime-primitives",
  "tempfile",
  "tokio",
  "tracing",
@@ -11300,18 +11286,6 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
-]
-
-[[package]]
-name = "system-runtime-primitives"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]

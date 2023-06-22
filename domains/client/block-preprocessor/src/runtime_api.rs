@@ -1,6 +1,5 @@
 use domain_runtime_primitives::opaque::AccountId;
 use sp_api::{ApiError, BlockT};
-use sp_domains::OpaqueBundle;
 use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_runtime::traits::NumberFor;
 
@@ -18,15 +17,6 @@ pub trait StateRootExtractor<Block: BlockT> {
         at: Block::Hash,
         ext: &Block::Extrinsic,
     ) -> Result<ExtractedStateRoots<Block>, ApiError>;
-}
-
-/// Trait to extract core domain bundles from the given set of core domain extrinsics.
-pub trait CoreBundleConstructor<PBlock: BlockT, Block: BlockT> {
-    fn construct_submit_core_bundle_extrinsics(
-        &self,
-        at: Block::Hash,
-        opaque_bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-    ) -> Result<Vec<Vec<u8>>, ApiError>;
 }
 
 /// Trait to construct inherent extrinsics

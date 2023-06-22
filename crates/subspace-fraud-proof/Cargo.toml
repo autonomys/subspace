@@ -30,7 +30,6 @@ sp-settlement = { version = "0.1.0", path = "../sp-settlement" }
 sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sp-trie = { version = "22.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 subspace-wasm-tools = { version = "0.1.0", path = "../subspace-wasm-tools" }
-system-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/system-runtime" }
 tracing = "0.1.37"
 
 [dev-dependencies]
