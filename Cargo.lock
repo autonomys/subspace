@@ -2233,8 +2233,6 @@ dependencies = [
  "domain-client-executor-gossip",
  "domain-client-message-relayer",
  "domain-runtime-primitives",
- "domain-test-primitives",
- "domain-test-service",
  "futures",
  "futures-timer",
  "num-traits",
@@ -2276,7 +2274,6 @@ dependencies = [
  "subspace-wasm-tools",
  "substrate-test-runtime-client",
  "substrate-test-utils",
- "system-domain-test-runtime",
  "system-runtime-primitives",
  "tempfile",
  "thiserror",
@@ -2456,74 +2453,6 @@ dependencies = [
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "system-runtime-primitives",
- "tracing",
-]
-
-[[package]]
-name = "domain-test-primitives"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-domains",
- "sp-messenger",
- "subspace-runtime-primitives",
-]
-
-[[package]]
-name = "domain-test-service"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "domain-client-consensus-relay-chain",
- "domain-client-executor",
- "domain-runtime-primitives",
- "domain-service",
- "domain-test-primitives",
- "frame-support",
- "frame-system",
- "frame-system-rpc-runtime-api",
- "futures",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc",
- "rand 0.8.5",
- "sc-client-api",
- "sc-consensus",
- "sc-consensus-slots",
- "sc-executor",
- "sc-network",
- "sc-network-sync",
- "sc-rpc",
- "sc-service",
- "sc-tracing",
- "sc-transaction-pool",
- "sc-utils",
- "sp-api",
- "sp-application-crypto",
- "sp-arithmetic",
- "sp-block-builder",
- "sp-blockchain",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-keyring",
- "sp-messenger",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-timestamp",
- "sp-transaction-pool",
- "subspace-networking",
- "subspace-proof-of-space",
- "subspace-runtime-primitives",
- "subspace-service",
- "subspace-test-client",
- "subspace-test-runtime",
- "subspace-test-service",
- "substrate-frame-rpc-system",
- "substrate-test-client",
- "system-domain-test-runtime",
- "tokio",
  "tracing",
 ]
 
@@ -10702,7 +10631,6 @@ dependencies = [
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
- "domain-test-service",
  "frame-support",
  "futures",
  "hash-db 0.16.0",
@@ -11016,7 +10944,6 @@ dependencies = [
  "subspace-solving",
  "subspace-test-runtime",
  "subspace-transaction-pool",
- "system-domain-test-runtime",
  "zeroize",
 ]
 
@@ -11417,51 +11344,6 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
-]
-
-[[package]]
-name = "system-domain-test-runtime"
-version = "0.1.0"
-dependencies = [
- "domain-pallet-executive",
- "domain-runtime-primitives",
- "domain-test-primitives",
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "frame-system-benchmarking",
- "frame-system-rpc-runtime-api",
- "hex-literal",
- "log",
- "pallet-balances",
- "pallet-domain-registry",
- "pallet-executor-registry",
- "pallet-messenger",
- "pallet-settlement",
- "pallet-sudo",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "pallet-transporter",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-block-builder",
- "sp-core",
- "sp-domains",
- "sp-inherents",
- "sp-io",
- "sp-messenger",
- "sp-offchain",
- "sp-runtime",
- "sp-session",
- "sp-settlement",
- "sp-std",
- "sp-transaction-pool",
- "sp-version",
- "subspace-runtime-primitives",
- "subspace-wasm-tools",
- "substrate-wasm-builder",
- "system-runtime-primitives",
 ]
 
 [[package]]
