@@ -182,7 +182,7 @@ where
         spawn_essential.spawn_essential_blocking(
             "system-executor-worker",
             None,
-            crate::system_domain_worker::start_worker(
+            crate::domain_worker_starter::start_worker(
                 spawn_essential.clone(),
                 params.primary_chain_client.clone(),
                 params.client.clone(),
