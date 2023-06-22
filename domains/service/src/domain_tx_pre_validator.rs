@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_transaction_pool::PreValidateTransaction;
 
-pub struct SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE> {
+pub struct DomainTxPreValidator<Block, PBlock, Client, PClient, SRE> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed>,
     primary_chain_client: Arc<PClient>,
@@ -21,7 +21,7 @@ pub struct SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE> {
 }
 
 impl<Block, PBlock, Client, PClient, SRE> Clone
-    for SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
+    for DomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 where
     SRE: Clone,
 {
@@ -37,7 +37,7 @@ where
 }
 
 impl<Block, PBlock, Client, PClient, SRE>
-    SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
+    DomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 {
     pub fn new(
         client: Arc<Client>,
@@ -57,7 +57,7 @@ impl<Block, PBlock, Client, PClient, SRE>
 
 #[async_trait::async_trait]
 impl<Block, PBlock, Client, PClient, SRE> PreValidateTransaction
-    for SystemDomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
+    for DomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 where
     Block: BlockT,
     PBlock: BlockT,

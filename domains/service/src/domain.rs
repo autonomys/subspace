@@ -1,5 +1,5 @@
+use crate::domain_tx_pre_validator::DomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
-use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
@@ -60,7 +60,7 @@ pub type DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI
     DomainBlockImport<BI>,
 >;
 
-type SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
+type GossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
     domain_client_executor::SystemGossipMessageValidator<
         Block,
         PBlock,
@@ -72,17 +72,9 @@ type SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>
         SystemDomainParentChain<Block, PBlock, PClient>,
     >;
 
-/// System domain full node along with some other components.
-pub struct NewFullSystem<
-    C,
-    CodeExecutor,
-    PBlock,
-    PClient,
-    RuntimeApi,
-    ExecutorDispatch,
-    AccountId,
-    BI,
-> where
+/// Domain full node along with some other components.
+pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch, AccountId, BI>
+where
     Block: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>>,
@@ -131,7 +123,7 @@ pub struct NewFullSystem<
     /// Executor.
     pub executor: DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI>,
     pub gossip_message_validator:
-        SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+        GossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
     _phantom_data: PhantomData<AccountId>,
@@ -140,7 +132,7 @@ pub struct NewFullSystem<
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
     Block,
     FullClient<Block, RuntimeApi, Executor>,
-    SystemDomainTxPreValidator<
+    DomainTxPreValidator<
         Block,
         PBlock,
         FullClient<Block, RuntimeApi, Executor>,
@@ -149,7 +141,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_
     >,
 >;
 
-/// Constructs a partial system domain node.
+/// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient, BIMP>(
     config: &ServiceConfiguration,
@@ -221,7 +213,7 @@ where
         telemetry
     });
 
-    let system_domain_tx_pre_validator = SystemDomainTxPreValidator::new(
+    let domain_tx_pre_validator = DomainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         primary_chain_client,
@@ -232,7 +224,7 @@ where
         config,
         &task_manager,
         client.clone(),
-        system_domain_tx_pre_validator,
+        domain_tx_pre_validator,
     );
 
     let block_import = Arc::new(DomainBlockImport::new(BlockImportProvider::block_import(
@@ -273,10 +265,10 @@ where
     pub provider: Provider,
 }
 
-/// Start a node with the given system domain `Configuration` and consensus chain `Configuration`.
+/// Start a node with the given domain `Configuration` and consensus chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
-pub async fn new_full_system<
+pub async fn new_full<
     PBlock,
     PClient,
     SC,
@@ -290,7 +282,7 @@ pub async fn new_full_system<
 >(
     domain_params: DomainParams<PBlock, PClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>,
 ) -> sc_service::error::Result<
-    NewFullSystem<
+    NewFull<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
         PBlock,
@@ -353,7 +345,7 @@ where
             FullChainApiWrapper<
                 Block,
                 FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                SystemDomainTxPreValidator<
+                DomainTxPreValidator<
                     Block,
                     PBlock,
                     FullClient<Block, RuntimeApi, ExecutorDispatch>,
@@ -368,7 +360,7 @@ where
 {
     let DomainParams {
         domain_id,
-        mut domain_config,
+        domain_config,
         primary_chain_client,
         primary_network_sync_oracle,
         select_chain,
@@ -377,7 +369,7 @@ where
         provider,
     } = domain_params;
 
-    // TODO: Do we even need block announcement on system domain node?
+    // TODO: Do we even need block announcement on domain node?
     // domain_config.announce_block = false;
 
     let params = new_partial(
@@ -452,7 +444,7 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream", 100);
+    let (bundle_sender, bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
     let domain_confirmation_depth = primary_chain_client
         .runtime_api()
@@ -480,7 +472,7 @@ where
     )
     .await?;
 
-    let gossip_message_validator = SystemGossipMessageValidator::new(
+    let gossip_message_validator = GossipMessageValidator::new(
         SystemDomainParentChain::<Block, PBlock, _>::new(primary_chain_client),
         client.clone(),
         Box::new(task_manager.spawn_handle()),
@@ -494,17 +486,10 @@ where
             executor: gossip_message_validator.clone(),
             bundle_receiver,
         });
-    spawn_essential.spawn_essential_blocking(
-        "system-domain-gossip",
-        None,
-        Box::pin(executor_gossip),
-    );
+    spawn_essential.spawn_essential_blocking("domain-gossip", None, Box::pin(executor_gossip));
 
     if let Some(relayer_id) = domain_config.maybe_relayer_id {
-        tracing::info!(
-            "Starting system domain relayer with relayer_id[{:?}]",
-            relayer_id
-        );
+        tracing::info!(?domain_id, ?relayer_id, "Starting domain relayer");
         let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
             relayer_id,
             client.clone(),
@@ -512,17 +497,13 @@ where
             gossip_message_sink.clone(),
         );
 
-        spawn_essential.spawn_essential_blocking(
-            "system-domain-relayer",
-            None,
-            Box::pin(relayer_worker),
-        );
+        spawn_essential.spawn_essential_blocking("domain-relayer", None, Box::pin(relayer_worker));
     }
 
-    let (msg_sender, msg_receiver) = tracing_unbounded("system_domain_message_channel", 100);
+    let (msg_sender, msg_receiver) = tracing_unbounded("domain_message_channel", 100);
 
-    // start cross domain message listener for system domain
-    let system_domain_listener = cross_domain_message_gossip::start_domain_message_listener(
+    // start cross domain message listener for domain
+    let domain_listener = cross_domain_message_gossip::start_domain_message_listener(
         DomainId::SYSTEM,
         client.clone(),
         params.transaction_pool.clone(),
@@ -530,12 +511,12 @@ where
     );
 
     spawn_essential.spawn_essential_blocking(
-        "system-domain-message-listener",
+        "domain-message-listener",
         None,
-        Box::pin(system_domain_listener),
+        Box::pin(domain_listener),
     );
 
-    let new_full = NewFullSystem {
+    let new_full = NewFull {
         task_manager,
         client,
         backend,

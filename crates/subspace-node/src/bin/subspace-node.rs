@@ -613,7 +613,7 @@ fn main() -> Result<(), Error> {
                         provider: eth_provider,
                     };
 
-                    let domain_node = domain_service::new_full_system::<
+                    let domain_node = domain_service::new_full::<
                         _,
                         _,
                         _,
