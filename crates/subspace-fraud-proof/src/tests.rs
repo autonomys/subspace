@@ -1,4 +1,4 @@
-use crate::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
+use crate::domain_extrinsics_builder::DomainExtrinsicsBuilder;
 use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
 use crate::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use crate::verifier_api::VerifierApi;
@@ -255,19 +255,14 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
-        ferdie.client.clone(),
-        Arc::new(ferdie.executor.clone()),
-    );
+    let domain_extrinsics_builder =
+        DomainExtrinsicsBuilder::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone()));
 
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
         ferdie.executor.clone(),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
-        SystemDomainExtrinsicsBuilder::new(
-            ferdie.client.clone(),
-            Arc::new(ferdie.executor.clone()),
-        ),
+        DomainExtrinsicsBuilder::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone())),
     );
 
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
@@ -555,16 +550,11 @@ async fn invalid_execution_proof_should_not_work() {
         ferdie.client.clone(),
         ferdie.executor.clone(),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
-        SystemDomainExtrinsicsBuilder::new(
-            ferdie.client.clone(),
-            Arc::new(ferdie.executor.clone()),
-        ),
+        DomainExtrinsicsBuilder::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone())),
     );
 
-    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
-        ferdie.client.clone(),
-        Arc::new(ferdie.executor.clone()),
-    );
+    let domain_extrinsics_builder =
+        DomainExtrinsicsBuilder::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone()));
 
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         ferdie.client.clone(),
@@ -715,10 +705,8 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
 
     let good_invalid_transaction_proof = extract_fraud_proof_from_tx_pool();
 
-    let domain_extrinsics_builder = SystemDomainExtrinsicsBuilder::new(
-        ferdie.client.clone(),
-        Arc::new(ferdie.executor.clone()),
-    );
+    let domain_extrinsics_builder =
+        DomainExtrinsicsBuilder::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone()));
 
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         ferdie.client.clone(),
