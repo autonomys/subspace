@@ -41,3 +41,8 @@ sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/subs
 sp-core = { version = "21.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+
+[build-dependencies]
+# This is such that we don't depend on host's OpenSSL for builds, OpenSSL dependency comes from `fc-db`
+# In build-dependencies because it is also used in proc macros 🤦
+openssl = { version = "0.10.55", features = ["vendored"] }

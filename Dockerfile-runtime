@@ -19,9 +19,7 @@ RUN \
         llvm \
         clang \
         cmake \
-        make \
-        pkg-config \
-        libssl-dev && \
+        make && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
 
 RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
