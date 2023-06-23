@@ -55,16 +55,35 @@ where
     const KEY_PREFIX: &[u8] = b"segment-headers-cache";
 
     /// Create new instance.
-    pub fn new(aux_store: Arc<AS>) -> Self {
-        Self {
+    pub fn new(aux_store: Arc<AS>) -> Result<Self, Box<dyn Error>> {
+        let instance = Self {
             aux_store,
             max_segment_index: Default::default(),
+        };
+
+        // Crude way to find last segment index without checking every index
+        // TODO: Binary search would be more efficient in the inner loop, but I'm lazy right now
+        'outer: for segment_index in (SegmentIndex::ZERO..).step_by(100) {
+            if instance.get_segment_header(segment_index)?.is_none() {
+                for segment_index in (SegmentIndex::ZERO..segment_index).rev() {
+                    if instance.get_segment_header(segment_index)?.is_some()
+                        || segment_index == SegmentIndex::ZERO
+                    {
+                        instance
+                            .max_segment_index
+                            .store(u64::from(segment_index), Ordering::Release);
+                        break 'outer;
+                    }
+                }
+            }
         }
+
+        Ok(instance)
     }
 
     /// Returns last observed segment index.
     pub fn max_segment_index(&self) -> SegmentIndex {
-        SegmentIndex::from(self.max_segment_index.load(Ordering::Relaxed))
+        SegmentIndex::from(self.max_segment_index.load(Ordering::Acquire))
     }
 
     /// Add segment header to cache (likely as the result of archiving)
@@ -78,21 +97,11 @@ where
 
         self.aux_store.insert_aux(&insert_data, &Vec::new())?;
         self.max_segment_index
-            .store(u64::from(segment_header.segment_index()), Ordering::Relaxed);
+            .store(u64::from(segment_header.segment_index()), Ordering::Release);
 
         Ok(())
     }
 
-    fn key(segment_index: SegmentIndex) -> Vec<u8> {
-        Self::key_from_bytes(&u64::from(segment_index).to_le_bytes())
-    }
-
-    fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {
-        (Self::KEY_PREFIX, bytes).encode()
-    }
-}
-
-impl<AS: AuxStore> SegmentHeaderProvider for SegmentHeaderCache<AS> {
     /// Get segment header from storage
     fn get_segment_header(
         &self,
@@ -105,5 +114,26 @@ impl<AS: AuxStore> SegmentHeaderProvider for SegmentHeaderCache<AS> {
                 SegmentHeader::decode(&mut segment_header.as_slice())
                     .expect("Always correct segment header unless DB is corrupted; qed")
             }))
+    }
+
+    fn key(segment_index: SegmentIndex) -> Vec<u8> {
+        Self::key_from_bytes(&u64::from(segment_index).to_le_bytes())
+    }
+
+    fn key_from_bytes(bytes: &[u8]) -> Vec<u8> {
+        (Self::KEY_PREFIX, bytes).encode()
+    }
+}
+
+impl<AS> SegmentHeaderProvider for SegmentHeaderCache<AS>
+where
+    AS: AuxStore,
+{
+    /// Get segment header from storage
+    fn get_segment_header(
+        &self,
+        segment_index: SegmentIndex,
+    ) -> Result<Option<SegmentHeader>, Box<dyn Error>> {
+        self.get_segment_header(segment_index)
     }
 }

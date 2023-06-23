@@ -22,6 +22,7 @@ mod metrics;
 pub mod piece_cache;
 pub mod rpc;
 pub mod segment_headers;
+mod sync_from_dsn;
 pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::initial_block_import_from_dsn;
@@ -44,7 +45,7 @@ use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
     BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend, StateBackendFor,
 };
-use sc_consensus::{BlockImport, DefaultImportQueue};
+use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
@@ -52,6 +53,7 @@ use sc_consensus_subspace::{
     RewardSigningNotification, SubspaceLink, SubspaceParams,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_network::NetworkService;
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -445,7 +447,7 @@ where
     /// Chain selection rule.
     pub select_chain: FullSelectChain,
     /// Network service.
-    pub network_service: Arc<sc_network::NetworkService<Block, <Block as BlockT>::Hash>>,
+    pub network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
@@ -546,7 +548,9 @@ where
         other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
     } = partial_components;
 
-    let segment_header_cache = SegmentHeaderCache::new(client.clone());
+    let segment_header_cache = SegmentHeaderCache::new(client.clone()).map_err(|error| {
+        Error::Other(format!("Failed to instantiate segment header cache: {error}").into())
+    })?;
 
     let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -713,6 +717,7 @@ where
         .spawn_essential_handle()
         .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
+    // TODO: This prevents SIGINT from working properly
     if config.sync_from_dsn {
         let mut imported_blocks = 0;
 
@@ -734,22 +739,25 @@ where
             imported_blocks += new_imported_blocks;
 
             info!(
-                "🎉 Imported {} blocks, best #{}/#{}",
+                "🎉 Imported {} blocks from DSN, current best #{}/#{}",
                 imported_blocks,
                 client.info().best_number,
                 client.info().best_hash
             );
         }
 
-        info!(
-            "🎉 Imported {} blocks, best #{}/#{}, check against reliable sources to make sure it is a \
-            block on canonical chain",
-            imported_blocks,
-            client.info().best_number,
-            client.info().best_hash
-        );
+        if imported_blocks > 0 {
+            info!(
+                "🎉 Imported {} blocks from DSN, best #{}/#{}, check against reliable sources to \
+                make sure it is a block on canonical chain",
+                imported_blocks,
+                client.info().best_number,
+                client.info().best_hash
+            );
+        }
     }
 
+    let import_queue_service = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
     let block_relay = if config.enable_subspace_block_relay {
         Some(build_consensus_relay(
@@ -775,8 +783,31 @@ where
             warp_sync_params: None,
             block_relay,
         })?;
+
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
+    }
+    if config.sync_from_dsn {
+        let (observer, worker) = sync_from_dsn::create_observer_and_worker(
+            Arc::clone(&network_service),
+            node.clone(),
+            Arc::clone(&client),
+            import_queue_service,
+        );
+        task_manager
+            .spawn_handle()
+            .spawn("observer", Some("sync-from-dsn"), observer);
+        task_manager
+            .spawn_essential_handle()
+            .spawn_essential_blocking(
+                "worker",
+                Some("sync-from-dsn"),
+                Box::pin(async move {
+                    if let Err(error) = worker.await {
+                        error!(%error, "Sync from DSN exited with an error");
+                    }
+                }),
+            );
     }
 
     let sync_oracle = sync_service.clone();

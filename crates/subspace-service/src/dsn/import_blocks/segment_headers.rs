@@ -24,7 +24,9 @@ impl SegmentHeaderHandler {
     pub async fn get_segment_headers(&self) -> Result<Vec<SegmentHeader>, Box<dyn Error>> {
         trace!("Getting segment headers...");
 
-        let (mut last_segment_header, peers) = self.get_last_segment_header().await?;
+        let Some((mut last_segment_header, peers)) = self.get_last_segment_header().await? else {
+            return Ok(Vec::new());
+        };
         debug!(
             "Getting segment headers starting from segment_index={}",
             last_segment_header.segment_index()
@@ -72,13 +74,13 @@ impl SegmentHeaderHandler {
         Ok(all_segment_headers)
     }
 
-    /// Return last segment header known to DSN and peers voted for it. We ask several peers for the
-    /// highest segment header known to them. Target segment header should be known to the majority
-    /// of the peer set with minimum initial size of [`SEGMENT_HEADER_CONSENSUS_INITIAL_NODES`]
-    /// peers.
+    /// Return last segment header known to DSN and agreed on by majority of the peer set with
+    /// minimum initial size of [`SEGMENT_HEADER_CONSENSUS_INITIAL_NODES`] peers.
+    ///
+    /// `Ok(None)` is returned when no peers were found.
     async fn get_last_segment_header(
         &self,
-    ) -> Result<(SegmentHeader, Vec<PeerId>), Box<dyn Error>> {
+    ) -> Result<Option<(SegmentHeader, Vec<PeerId>)>, Box<dyn Error>> {
         for (root_block_consensus_nodes, retry_attempt) in (1
             ..=SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
             .rev()
@@ -186,10 +188,10 @@ impl SegmentHeaderHandler {
                 }
             }
 
-            return Ok((best_segment_header, most_peers));
+            return Ok(Some((best_segment_header, most_peers)));
         }
 
-        Err("No peers found to sync from".into())
+        Ok(None)
     }
 
     /// Validates segment headers and related segment indexes.

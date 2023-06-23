@@ -30,6 +30,7 @@ use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use std::sync::Arc;
 use std::task::Poll;
+use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
@@ -37,6 +38,9 @@ use subspace_core_primitives::{
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
+
+/// How long to wait for peers before giving up
+const WAIT_FOR_PEERS_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct WaitLinkError<B: BlockT> {
     error: BlockImportError,
@@ -156,6 +160,10 @@ where
     Ok(downloaded_blocks)
 }
 
+// TODO: Handle situation where block we are about to import is already included in chain and
+//  further sync from DSN is not necessary
+// TODO: Only download segment headers starting with the first segment that node doesn't have rather
+//  than from genesis
 /// Starts the process of importing blocks.
 ///
 /// Returns number of downloaded blocks.
@@ -170,15 +178,35 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
-    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
-    //  in multiple files)
-    let segment_commitments = SegmentHeaderHandler::new(node.clone())
+    debug!("Waiting for connected peers...");
+    if node
+        .wait_for_connected_peers(WAIT_FOR_PEERS_TIMEOUT)
+        .await
+        .is_err()
+    {
+        info!("Was not able to find any DSN peers, cancelling sync from DSN");
+        return Ok(0);
+    }
+    debug!("Connected to peers.");
+
+    let segment_headers = SegmentHeaderHandler::new(node.clone())
         .get_segment_headers()
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+
+    debug!("Found {} segment headers", segment_headers.len());
+
+    if segment_headers.is_empty() {
+        return Ok(0);
+    }
+
+    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
+    //  in multiple files)
+    let segment_commitments = segment_headers
         .iter()
         .map(SegmentHeader::segment_commitment)
         .collect::<Vec<_>>();
+
     let segments_found = segment_commitments.len();
     let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
@@ -188,10 +216,6 @@ where
             segment_commitments,
         )),
     );
-
-    debug!("Waiting for connected peers...");
-    let _ = node.wait_for_connected_peers().await;
-    debug!("Connected to peers.");
 
     let best_block_number = client.info().best_number;
     let mut downloaded_blocks = 0;
