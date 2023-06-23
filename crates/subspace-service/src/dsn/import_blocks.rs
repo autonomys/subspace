@@ -179,7 +179,8 @@ where
     IQS: ImportQueueService<Block> + ?Sized,
 {
     debug!("Waiting for connected peers...");
-    if tokio::time::timeout(WAIT_FOR_PEERS_TIMEOUT, node.wait_for_connected_peers())
+    if node
+        .wait_for_connected_peers(WAIT_FOR_PEERS_TIMEOUT)
         .await
         .is_err()
     {

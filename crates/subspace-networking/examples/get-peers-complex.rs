@@ -101,7 +101,9 @@ async fn main() {
         node_runner.run().await;
     });
 
-    node.wait_for_connected_peers().await.unwrap();
+    node.wait_for_connected_peers(Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Prepare multihash to look for in Kademlia
     let key = Code::Identity.digest(&expected_kaypair.public().to_bytes());

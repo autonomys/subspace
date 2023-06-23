@@ -122,6 +122,9 @@ impl From<oneshot::Canceled> for GetClosestPeersError {
 
 #[derive(Debug, Error)]
 pub enum CheckConnectedPeersError {
+    /// Did not connect within provided timeout window.
+    #[error("Did not connect within provided timeout window")]
+    Timeout,
     /// Node runner was dropped, impossible to check connected peers.
     #[error("Node runner was dropped, impossible to check connected peers")]
     NodeRunnerDropped,
@@ -412,31 +415,39 @@ impl Node {
 
     // TODO: add timeout
     /// Waits for peers connection to the swarm and for Kademlia address registration.
-    pub async fn wait_for_connected_peers(&self) -> Result<(), CheckConnectedPeersError> {
-        loop {
-            trace!("Starting 'CheckConnectedPeers' request.");
+    pub async fn wait_for_connected_peers(
+        &self,
+        timeout: Duration,
+    ) -> Result<(), CheckConnectedPeersError> {
+        let mut command_sender = self.shared.command_sender.clone();
+        let fut = async move {
+            loop {
+                trace!("Starting 'CheckConnectedPeers' request.");
 
-            let (result_sender, result_receiver) = oneshot::channel();
+                let (result_sender, result_receiver) = oneshot::channel();
 
-            self.shared
-                .command_sender
-                .clone()
-                .send(Command::CheckConnectedPeers { result_sender })
-                .await
-                .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
+                command_sender
+                    .send(Command::CheckConnectedPeers { result_sender })
+                    .await
+                    .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
 
-            let connected_peers_present = result_receiver
-                .await
-                .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
+                let connected_peers_present = result_receiver
+                    .await
+                    .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
 
-            trace!("'CheckConnectedPeers' request returned {connected_peers_present}");
+                trace!("'CheckConnectedPeers' request returned {connected_peers_present}");
 
-            if connected_peers_present {
-                return Ok(());
+                if connected_peers_present {
+                    return Ok(());
+                }
+
+                sleep(Duration::from_millis(50)).await;
             }
+        };
 
-            sleep(Duration::from_millis(50)).await;
-        }
+        tokio::time::timeout(timeout, fut)
+            .await
+            .map_err(|_timeout| CheckConnectedPeersError::Timeout)?
     }
 
     /// Start local announcing item by its key. Saves key to the local storage.

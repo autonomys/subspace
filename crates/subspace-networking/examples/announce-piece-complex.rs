@@ -78,7 +78,9 @@ async fn main() {
         node_runner.run().await;
     });
 
-    node.wait_for_connected_peers().await.unwrap();
+    node.wait_for_connected_peers(Duration::from_secs(5))
+        .await
+        .unwrap();
 
     let piece_index = PieceIndex::ONE;
     let piece_index_hash = piece_index.hash();
