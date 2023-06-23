@@ -14,14 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Core EVM domain configurations.
-
-// TODO: support running core-evm again after the cleanup.
-#![allow(dead_code)]
+//! EVM domain configurations.
 
 use crate::chain_spec_utils::chain_spec_properties;
 use crate::AccountId32ToAccountId20Converter;
-use core_evm_runtime::{
+use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
     Precompiles, SudoConfig, SystemConfig, WASM_BINARY,
 };
@@ -62,7 +59,7 @@ pub fn development_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Development",
         // ID
-        "core_evm_domain_dev",
+        "evm_domain_dev",
         ChainType::Development,
         move || {
             testnet_genesis(
@@ -93,7 +90,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Name
         "Local Testnet",
         // ID
-        "core_evm_domain_local_testnet",
+        "evm_domain_local_testnet",
         ChainType::Local,
         move || {
             testnet_genesis(
@@ -109,7 +106,7 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("core-evm-local"),
+        Some("evm-local"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -121,9 +118,9 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
 pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3d Core EVM Domain",
+        "Subspace Gemini 3d EVM Domain",
         // ID
-        "subspace_gemini_3d_core_evm_domain",
+        "subspace_gemini_3d_evm_domain",
         ChainType::Live,
         move || {
             let sudo_account = AccountId::from_str("f31e60022e290708c17d6997c34de6a30d09438f")
@@ -146,7 +143,7 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3d-core-evm-domain"),
+        Some("subspace-gemini-3d-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -158,9 +155,9 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
 pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Devnet Core EVM Domain",
+        "Subspace Devnet EVM Domain",
         // ID
-        "subspace_devnet_core_evm_domain",
+        "subspace_devnet_evm_domain",
         ChainType::Custom("Testnet".to_string()),
         move || {
             let sudo_account = AccountId::from_str("b66a91845249464309fad766fd0ece8144547736")
@@ -187,7 +184,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-devnet-core-evm-domain"),
+        Some("subspace-devnet-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),

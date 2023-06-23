@@ -1,11 +1,11 @@
+use crate::bundle_processor::BundleProcessor;
 use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
-use crate::parent_chain::SystemDomainParentChain;
-use crate::system_bundle_processor::SystemBundleProcessor;
+use crate::parent_chain::DomainParentChain;
 use crate::{active_leaves, DomainImportNotifications, EssentialExecutorParams, TransactionFor};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
@@ -24,10 +24,10 @@ use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use system_runtime_primitives::SystemDomainApi;
 
-/// System domain executor.
-pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+// TODO: rename everything to Operator?
+/// Domain executor.
+pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -37,12 +37,12 @@ where
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
-    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, Client>,
+    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
+    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
-    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI> Clone
+    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -60,8 +60,8 @@ where
     }
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
-    Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
+impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
+    Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
@@ -75,11 +75,11 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
+        + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b Client: sc_consensus::BlockImport<
+    for<'b> &'b BI: sc_consensus::BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
@@ -97,6 +97,7 @@ where
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
+    BI: Send + Sync + 'static,
 {
     /// Create a new instance.
     pub async fn new<SC, IBNS, CIBNS, NSNS>(
@@ -113,7 +114,7 @@ where
             IBNS,
             CIBNS,
             NSNS,
-            Client,
+            BI,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
@@ -125,7 +126,7 @@ where
         let active_leaves =
             active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
 
-        let parent_chain = SystemDomainParentChain::new(params.primary_chain_client.clone());
+        let parent_chain = DomainParentChain::new(params.primary_chain_client.clone());
 
         let domain_bundle_proposer = DomainBundleProposer::new(
             params.client.clone(),
@@ -135,7 +136,6 @@ where
 
         let bundle_producer = DomainBundleProducer::new(
             DomainId::SYSTEM,
-            params.client.clone(),
             params.client.clone(),
             parent_chain.clone(),
             domain_bundle_proposer,
@@ -170,7 +170,7 @@ where
             _phantom: std::marker::PhantomData,
         };
 
-        let bundle_processor = SystemBundleProcessor::new(
+        let bundle_processor = BundleProcessor::new(
             params.primary_chain_client.clone(),
             params.client.clone(),
             params.backend.clone(),
@@ -182,7 +182,7 @@ where
         spawn_essential.spawn_essential_blocking(
             "system-executor-worker",
             None,
-            crate::system_domain_worker::start_worker(
+            crate::domain_worker_starter::start_worker(
                 spawn_essential.clone(),
                 params.primary_chain_client.clone(),
                 params.client.clone(),

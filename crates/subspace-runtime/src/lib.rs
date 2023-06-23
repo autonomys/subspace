@@ -25,9 +25,6 @@ mod fees;
 mod object_mapping;
 mod signed_extensions;
 
-// Make system domain WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/system_domain_wasm_bundle.rs"));
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -63,7 +60,6 @@ use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
-use sp_std::borrow::Cow;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -131,7 +127,7 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 1000;
+const SLOT_DURATION: u64 = 2000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
@@ -800,20 +796,10 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn extract_system_bundles(
+        fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> (
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-        ) {
-            crate::domains::extract_system_bundles(extrinsics)
-        }
-
-        fn extract_core_bundles(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
-            crate::domains::extract_core_bundles(extrinsics, domain_id)
+            crate::domains::extract_successful_bundles(extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
@@ -824,8 +810,8 @@ impl_runtime_apis! {
             crate::domains::extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
-            SYSTEM_DOMAIN_WASM_BUNDLE.into()
+        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+            Domains::domain_runtime_code(domain_id)
         }
 
         fn timestamp() -> Moment{

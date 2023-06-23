@@ -6,7 +6,7 @@ use crate::utils::ExecutorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
 use domain_runtime_primitives::DomainCoreApi;
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
+use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
@@ -17,69 +17,50 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
-use system_runtime_primitives::SystemDomainApi;
 
 type OpaqueBundle<Block, PBlock> =
     sp_domains::OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
 
 pub(super) struct DomainBundleProducer<
     Block,
-    SBlock,
     PBlock,
     ParentChainBlock,
     Client,
-    SClient,
     PClient,
     ParentChain,
     TransactionPool,
 > where
     Block: BlockT,
-    SBlock: BlockT,
     PBlock: BlockT,
 {
     domain_id: DomainId,
-    system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, PBlock>>,
     keystore: KeystorePtr,
-    bundle_election_solver: BundleElectionSolver<Block, SBlock, PBlock, SClient>,
+    bundle_election_solver: BundleElectionSolver<Block, PBlock>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
-impl<
-        Block,
-        SBlock,
-        PBlock,
-        ParentChainBlock,
-        Client,
-        SClient,
-        PClient,
-        ParentChain,
-        TransactionPool,
-    > Clone
+impl<Block, PBlock, ParentChainBlock, Client, PClient, ParentChain, TransactionPool> Clone
     for DomainBundleProducer<
         Block,
-        SBlock,
         PBlock,
         ParentChainBlock,
         Client,
-        SClient,
         PClient,
         ParentChain,
         TransactionPool,
     >
 where
     Block: BlockT,
-    SBlock: BlockT,
     PBlock: BlockT,
     ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            system_domain_client: self.system_domain_client.clone(),
             client: self.client.clone(),
             parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
@@ -91,43 +72,24 @@ where
     }
 }
 
-impl<
-        Block,
-        SBlock,
-        PBlock,
-        ParentChainBlock,
-        Client,
-        SClient,
-        PClient,
-        ParentChain,
-        TransactionPool,
-    >
+impl<Block, PBlock, ParentChainBlock, Client, PClient, ParentChain, TransactionPool>
     DomainBundleProducer<
         Block,
-        SBlock,
         PBlock,
         ParentChainBlock,
         Client,
-        SClient,
         PClient,
         ParentChain,
         TransactionPool,
     >
 where
     Block: BlockT,
-    SBlock: BlockT,
     PBlock: BlockT,
     ParentChainBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<PBlock>>,
     NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
-    SClient: HeaderBackend<SBlock>
-        + BlockBackend<SBlock>
-        + ProvideRuntimeApi<SBlock>
-        + ProofProvider<SBlock>,
-    SClient::Api: DomainCoreApi<SBlock>
-        + SystemDomainApi<SBlock, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     PClient: HeaderBackend<PBlock>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
@@ -135,7 +97,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
-        system_domain_client: Arc<SClient>,
         client: Arc<Client>,
         parent_chain: ParentChain,
         domain_bundle_proposer: DomainBundleProposer<
@@ -148,13 +109,9 @@ where
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::<Block, SBlock, PBlock, SClient>::new(
-            system_domain_client.clone(),
-            keystore.clone(),
-        );
+        let bundle_election_solver = BundleElectionSolver::<Block, PBlock>::new(keystore.clone());
         Self {
             domain_id,
-            system_domain_client,
             client,
             parent_chain,
             bundle_sender,
@@ -174,9 +131,6 @@ where
             slot,
             global_challenge,
         } = slot_info;
-
-        let best_hash = self.system_domain_client.info().best_hash;
-        let best_number = self.system_domain_client.info().best_number;
 
         let best_receipt_is_written = crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(
             &*self.client,
@@ -225,12 +179,7 @@ where
 
         if let Some(bundle_solution) = self
             .bundle_election_solver
-            .solve_bundle_election_challenge(
-                best_hash,
-                best_number,
-                self.domain_id,
-                global_challenge,
-            )?
+            .solve_bundle_election_challenge(self.domain_id, global_challenge)?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 

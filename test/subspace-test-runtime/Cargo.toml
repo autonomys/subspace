@@ -56,7 +56,6 @@ sp-version = { version = "22.0.0", default-features = false, git = "https://gith
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../../crates/subspace-verification" }
-system-domain-test-runtime = { version = "0.1.0", default-features = false, path = "../../domains/test/runtime/system" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
@@ -71,7 +70,6 @@ default = ["std"]
 std = [
 	"codec/std",
 	"domain-runtime-primitives/std",
-	"system-domain-test-runtime/std",
 	"frame-executive/std",
 	"frame-support/std",
 	"frame-system/std",

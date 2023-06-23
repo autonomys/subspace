@@ -52,8 +52,7 @@ where
 }
 
 /// Specialized `ChainSpec` for the consensus runtime.
-pub type ConsensusChainSpec<GenesisConfig, ExecutionGenesisConfig> =
-    SerializableChainSpec<GenesisConfig, ChainSpecExtensions<ExecutionGenesisConfig>>;
+pub type ConsensusChainSpec<GenesisConfig> = SerializableChainSpec<GenesisConfig>;
 
 /// Specialized `ChainSpec` for the execution runtime.
 pub type ExecutionChainSpec<ExecutionGenesisConfig, Ext = NoExtension> =

@@ -17,18 +17,16 @@
 //! Subspace chain configurations.
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
-use crate::system_domain;
-use sc_service::ChainType;
-use sc_subspace_chain_specs::{ChainSpecExtensions, ConsensusChainSpec};
+use sc_service::{ChainType, NoExtension};
+use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, GenesisConfig, RuntimeConfigsConfig, SubspaceConfig,
-    SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
+    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
-use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
@@ -83,8 +81,7 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3d_compiled(
-) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+pub fn gemini_3d_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace Gemini 3d",
@@ -165,24 +162,19 @@ pub fn gemini_3d_compiled(
         // Properties
         Some(chain_spec_properties()),
         // Extensions
-        ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::gemini_3d_config(),
-        },
+        NoExtension::None,
     ))
 }
 
-pub fn gemini_3d_config(
-) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+pub fn gemini_3d_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     Err("Wrong release for Gemini 3d. Use the release prefixed with `gemini-3d`".to_string())
 }
 
-pub fn devnet_config(
-) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+pub fn devnet_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC)
 }
 
-pub fn devnet_config_compiled(
-) -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String> {
+pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace Dev network",
@@ -259,14 +251,11 @@ pub fn devnet_config_compiled(
         // Properties
         Some(chain_spec_properties()),
         // Extensions
-        ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::devnet_config(),
-        },
+        NoExtension::None,
     ))
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String>
-{
+pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -308,14 +297,11 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGene
         // Properties
         Some(chain_spec_properties()),
         // Extensions
-        ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::development_config(),
-        },
+        NoExtension::None,
     ))
 }
 
-pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGenesisConfig>, String>
-{
+pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -365,9 +351,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig, SystemDomainGe
         // Properties
         Some(chain_spec_properties()),
         // Extensions
-        ChainSpecExtensions {
-            execution_chain_spec: system_domain::chain_spec::local_testnet_config(),
-        },
+        NoExtension::None,
     ))
 }
 
@@ -410,6 +394,14 @@ fn subspace_genesis_config(
             enable_executor,
             enable_transfer,
             confirmation_depth_k,
+        },
+        domains: DomainsConfig {
+            runtime_name_and_runtime_code: Some((
+                b"evm".to_vec(),
+                evm_domain_runtime::WASM_BINARY
+                    .unwrap_or_else(|| panic!("EVM domain runtime not available"))
+                    .to_owned(),
+            )),
         },
     }
 }

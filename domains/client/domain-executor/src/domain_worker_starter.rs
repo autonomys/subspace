@@ -14,13 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
+use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
-use crate::parent_chain::SystemDomainParentChain;
-use crate::system_bundle_processor::SystemBundleProcessor;
+use crate::parent_chain::DomainParentChain;
 use crate::utils::{BlockInfo, ExecutorSlotInfo};
 use crate::{ExecutorStreams, TransactionFor};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
@@ -39,7 +39,6 @@ use sp_runtime::traits::{HashFor, NumberFor};
 use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
-use system_runtime_primitives::SystemDomainApi;
 use tracing::Instrument;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -54,6 +53,7 @@ pub(super) async fn start_worker<
     CIBNS,
     NSNS,
     E,
+    BI,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     primary_chain_client: Arc<PClient>,
@@ -61,16 +61,14 @@ pub(super) async fn start_worker<
     is_authority: bool,
     bundle_producer: DomainBundleProducer<
         Block,
-        Block,
         PBlock,
         PBlock,
-        Client,
         Client,
         PClient,
-        SystemDomainParentChain<Block, PBlock, PClient>,
+        DomainParentChain<Block, PBlock, PClient>,
         TransactionPool,
     >,
-    bundle_processor: SystemBundleProcessor<Block, PBlock, Client, PClient, Backend, E>,
+    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
     executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<PBlock>>,
 ) where
@@ -87,14 +85,15 @@ pub(super) async fn start_worker<
         + 'static,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
+        + InherentExtrinsicApi<Block>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b Client: BlockImport<
+    for<'b> &'b BI: BlockImport<
         Block,
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
+    BI: Send + Sync + 'static,
     PClient: HeaderBackend<PBlock>
         + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
         + BlockBackend<PBlock>

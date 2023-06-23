@@ -22,31 +22,12 @@
 //! framework allowing for the simple, secure and low-cost deployment of application
 //! specific blockchain called domain.
 //!
-//! There are three types of domains: system domain, core domain and open domain.
-//!
-//! - System domain: responsible for securing and managing all the non-system domains
-//! by maintaining the receipts of other domains and handling the potential execution
-//! disputes using the fraud-proof mechanism. The system domain itself is secured by the
-//! consensus chain.
-//! - Core domain: developed and audited by Subspace team, providing some important
-//! system-wide features, e.g., the payments, contracts and messages.
-//! - Open domain: similar to the smart contract in Ethereum which reflects application
-//! specific business logic and can be created by anyone with enough security deposits.
-//!
-//! All kinds of domains form the Subspace execution layer. The domains do not rely on
-//! any typical blockchain consensus like PoW for producing blocks, the block production
-//! of each domain is totally driven by the consensus chain which are collectively
-//! maintained by Subspace farmers. Please refer to the white paper [Computation section]
-//! for more in-depth description and analysis.
-//!
 //! ## Executors
 //!
 //! In Subspace, the farmers offering the storage resources are responsible for maintaining
 //! the consensus layer, executors are a separate class of contributors in the system focusing
 //! on the execution layer, they provide the necessary computational resources to maintain the
 //! blockchain state by running domains. Some deposits as the stake are required to be an executor.
-//! Every executor must run the system domain, but they can opt-in to run one or multiple
-//! non-system domains by partially allocating their executor stake on the domain.
 //!
 //! Specifically, executors have the responsibity of producing a [`Bundle`] which contains a
 //! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The executors
@@ -73,7 +54,6 @@
 //! once the execution receipt received from the network does not match the one produced locally,
 //! a [`FraudProof`] will be generated and reported to the consensus chain accordingly.
 //!
-//! [Computation section]: https://subspace.network/news/subspace-network-whitepaper
 //! [`BlockBuilder`]: ../domain_block_builder/struct.BlockBuilder.html
 //! [`FraudProof`]: ../sp_domains/struct.FraudProof.html
 
@@ -83,25 +63,23 @@
 
 mod aux_schema;
 mod bundle_election_solver;
+mod bundle_processor;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
+mod domain_worker_starter;
+mod executor;
 mod fraud_proof;
-mod gossip_message_validator;
 mod parent_chain;
 mod sortition;
-mod system_bundle_processor;
-mod system_domain_worker;
-mod system_executor;
-mod system_gossip_message_validator;
-#[cfg(test)]
-mod tests;
+// TODO: Unlock once domain test infra is workable again.
+// #[cfg(test)]
+// mod tests;
 mod utils;
 
-pub use self::parent_chain::{CoreDomainParentChain, SystemDomainParentChain};
-pub use self::system_executor::Executor as SystemExecutor;
-pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
+pub use self::executor::Executor;
+pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;

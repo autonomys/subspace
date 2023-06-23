@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::domain::evm_chain_spec;
 use clap::Parser;
-use domain_runtime_primitives::AccountId;
 use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -23,12 +23,11 @@ use sc_cli::{
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
-use sc_subspace_chain_specs::ExecutionChainSpec;
-use serde_json::Value;
-use sp_core::crypto::Ss58Codec;
+use sp_core::crypto::AccountId32;
+use sp_runtime::traits::Convert;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
+use std::str::FromStr;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -49,56 +48,58 @@ pub enum Subcommand {
 pub struct DomainCli {
     /// Run a node.
     #[clap(flatten)]
-    pub run_system: SubstrateRunCmd,
+    pub run: SubstrateRunCmd,
 
     /// Optional relayer address to relay messages on behalf.
     #[clap(long)]
     pub relayer_id: Option<String>,
-}
 
-pub struct SystemDomainCli {
-    /// Run a node.
-    pub run: DomainCli,
-
-    /// The base path that should be used by the system domain.
+    /// The base path that should be used by the domain.
     pub base_path: Option<PathBuf>,
 
-    /// Specification of the system domain derived from primary chain spec.
-    pub chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
+    /// Additional args for domain.
+    #[clap(raw = true)]
+    additional_args: Vec<String>,
 }
 
-impl SystemDomainCli {
-    /// Constructs a new instance of [`SystemDomainCli`].
+impl DomainCli {
+    // TODO: proper base_path
+    /// Constructs a new instance of [`DomainCli`].
     ///
-    /// If no explicit base path for the system domain, the default value will be `base_path/system`.
-    pub fn new(
-        mut base_path: Option<PathBuf>,
-        chain_spec: ExecutionChainSpec<SystemDomainGenesisConfig>,
-        domain_args: impl Iterator<Item = String>,
-    ) -> Self {
-        let domain_cli =
+    /// If no explicit base path for the domain, the default value will be `base_path/system`.
+    pub fn new(_base_path: Option<PathBuf>, domain_args: impl Iterator<Item = String>) -> Self {
+        let mut cli =
             DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
 
-        Self {
-            base_path: base_path.as_mut().map(|path| path.join("system")),
-            chain_spec,
-            run: domain_cli,
-        }
+        cli.base_path.as_mut().map(|path| path.join("system"));
+
+        cli
     }
 
-    /// Creates domain configuration from system domain cli.
-    pub fn create_domain_configuration(
+    pub fn additional_args(&self) -> impl Iterator<Item = String> {
+        [Self::executable_name()]
+            .into_iter()
+            .chain(self.additional_args.clone())
+    }
+
+    /// Creates domain configuration from domain cli.
+    pub fn create_domain_configuration<AccountId, CA>(
         &self,
         tokio_handle: tokio::runtime::Handle,
-    ) -> sc_cli::Result<DomainConfiguration<AccountId>> {
+    ) -> sc_cli::Result<DomainConfiguration<AccountId>>
+    where
+        CA: Convert<AccountId32, AccountId>,
+        AccountId: FromStr,
+    {
         // if is dev, use the known key ring to start relayer
-        let maybe_relayer_id = if self.shared_params().is_dev() && self.run.relayer_id.is_none() {
+        let maybe_relayer_id = if self.shared_params().is_dev() && self.relayer_id.is_none() {
             self.run
-                .run_system
                 .get_keyring()
-                .map(|kr| kr.to_account_id())
-        } else if let Some(relayer_id) = self.run.relayer_id.clone() {
-            Some(AccountId::from_ss58check(&relayer_id).map_err(sc_cli::Error::InvalidUri)?)
+                .map(|kr| CA::convert(kr.to_account_id()))
+        } else if let Some(relayer_id) = self.relayer_id.clone() {
+            Some(AccountId::from_str(&relayer_id).map_err(|_err| {
+                sc_cli::Error::Input(format!("Invalid Relayer Id: {relayer_id}"))
+            })?)
         } else {
             None
         };
@@ -111,9 +112,9 @@ impl SystemDomainCli {
     }
 }
 
-impl SubstrateCli for SystemDomainCli {
+impl SubstrateCli for DomainCli {
     fn impl_name() -> String {
-        "Subspace Executor".into()
+        "Subspace Domain".into()
     }
 
     fn impl_version() -> String {
@@ -127,7 +128,7 @@ impl SubstrateCli for SystemDomainCli {
     }
 
     fn description() -> String {
-        "Subspace Executor".into()
+        "Subspace Domain".into()
     }
 
     fn author() -> String {
@@ -142,35 +143,17 @@ impl SubstrateCli for SystemDomainCli {
         2022
     }
 
-    fn load_spec(&self, _id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
-        let mut chain_spec = self.chain_spec.clone();
-
-        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
-        // chain spec
-        if !self.run.run_system.network_params.bootnodes.is_empty() {
-            let mut chain_spec_value: Value = serde_json::from_str(&chain_spec.as_json(true)?)
-                .map_err(|error| error.to_string())?;
-            if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
-                if let Some(boot_nodes) = boot_nodes.as_array_mut() {
-                    boot_nodes.clear();
-                }
-            }
-            // Such mess because native serialization of the chain spec serializes it twice, see
-            // docs on `sc_subspace_chain_specs::utils::SerializableChainSpec`.
-            chain_spec = serde_json::to_string(&chain_spec_value.to_string())
-                .and_then(|chain_spec_string| serde_json::from_str(&chain_spec_string))
-                .map_err(|error| error.to_string())?;
-        }
-
-        Ok(Box::new(chain_spec))
+    fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
+        // TODO: Load chain spec properly
+        evm_chain_spec::load_chain_spec(id)
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &system_domain_runtime::VERSION
+        &evm_domain_runtime::VERSION
     }
 }
 
-impl DefaultConfigurationValues for SystemDomainCli {
+impl DefaultConfigurationValues for DomainCli {
     fn p2p_listen_port() -> u16 {
         30334
     }
@@ -184,21 +167,21 @@ impl DefaultConfigurationValues for SystemDomainCli {
     }
 }
 
-impl CliConfiguration<Self> for SystemDomainCli {
+impl CliConfiguration<Self> for DomainCli {
     fn shared_params(&self) -> &SharedParams {
-        self.run.run_system.shared_params()
+        self.run.shared_params()
     }
 
     fn import_params(&self) -> Option<&ImportParams> {
-        self.run.run_system.import_params()
+        self.run.import_params()
     }
 
     fn network_params(&self) -> Option<&NetworkParams> {
-        self.run.run_system.network_params()
+        self.run.network_params()
     }
 
     fn keystore_params(&self) -> Option<&KeystoreParams> {
-        self.run.run_system.keystore_params()
+        self.run.keystore_params()
     }
 
     fn base_path(&self) -> Result<Option<BasePath>> {
@@ -214,7 +197,7 @@ impl CliConfiguration<Self> for SystemDomainCli {
     }
 
     fn rpc_addr(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
-        self.run.run_system.rpc_addr(default_listen_port)
+        self.run.rpc_addr(default_listen_port)
     }
 
     fn prometheus_config(
@@ -222,67 +205,65 @@ impl CliConfiguration<Self> for SystemDomainCli {
         default_listen_port: u16,
         chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<PrometheusConfig>> {
-        self.run
-            .run_system
-            .prometheus_config(default_listen_port, chain_spec)
+        self.run.prometheus_config(default_listen_port, chain_spec)
     }
 
     fn chain_id(&self, is_dev: bool) -> Result<String> {
-        self.run.run_system.chain_id(is_dev)
+        self.run.chain_id(is_dev)
     }
 
     fn role(&self, is_dev: bool) -> Result<sc_service::Role> {
-        self.run.run_system.role(is_dev)
+        self.run.role(is_dev)
     }
 
     fn transaction_pool(&self, is_dev: bool) -> Result<sc_service::config::TransactionPoolOptions> {
-        self.run.run_system.transaction_pool(is_dev)
+        self.run.transaction_pool(is_dev)
     }
 
     fn trie_cache_maximum_size(&self) -> Result<Option<usize>> {
-        self.run.run_system.trie_cache_maximum_size()
+        self.run.trie_cache_maximum_size()
     }
 
     fn rpc_methods(&self) -> Result<sc_service::config::RpcMethods> {
-        self.run.run_system.rpc_methods()
+        self.run.rpc_methods()
     }
 
     fn rpc_max_connections(&self) -> Result<u32> {
-        self.run.run_system.rpc_max_connections()
+        self.run.rpc_max_connections()
     }
 
     fn rpc_cors(&self, is_dev: bool) -> Result<Option<Vec<String>>> {
-        self.run.run_system.rpc_cors(is_dev)
+        self.run.rpc_cors(is_dev)
     }
 
     fn default_heap_pages(&self) -> Result<Option<u64>> {
-        self.run.run_system.default_heap_pages()
+        self.run.default_heap_pages()
     }
 
     fn force_authoring(&self) -> Result<bool> {
-        self.run.run_system.force_authoring()
+        self.run.force_authoring()
     }
 
     fn disable_grandpa(&self) -> Result<bool> {
-        self.run.run_system.disable_grandpa()
+        self.run.disable_grandpa()
     }
 
     fn max_runtime_instances(&self) -> Result<Option<usize>> {
-        self.run.run_system.max_runtime_instances()
+        self.run.max_runtime_instances()
     }
 
     fn announce_block(&self) -> Result<bool> {
-        self.run.run_system.announce_block()
+        self.run.announce_block()
     }
 
     fn dev_key_seed(&self, is_dev: bool) -> Result<Option<String>> {
-        self.run.run_system.dev_key_seed(is_dev)
+        self.run.dev_key_seed(is_dev)
     }
 
     fn telemetry_endpoints(
         &self,
         chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<sc_telemetry::TelemetryEndpoints>> {
-        self.run.run_system.telemetry_endpoints(chain_spec)
+        self.run.telemetry_endpoints(chain_spec)
     }
 }

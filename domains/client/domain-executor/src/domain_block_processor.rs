@@ -33,7 +33,7 @@ where
     pub execution_receipt: ExecutionReceiptFor<PBlock, Block::Hash>,
 }
 
-/// A common component shared between the system and core domain bundle processor.
+/// An abstracted domain block processor.
 pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
 where
     Block: BlockT,

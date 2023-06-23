@@ -60,7 +60,6 @@ sp-version = { version = "22.0.0", default-features = false, git = "https://gith
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../subspace-verification" }
-system-domain-runtime = { version = "0.1.0", default-features = false, path = "../../domains/runtime/system" }
 
 [build-dependencies]
 subspace-wasm-tools = { version = "0.1.0", path = "../subspace-wasm-tools" }
@@ -116,7 +115,6 @@ std = [
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
 	"subspace-verification/std",
-	"system-domain-runtime/std",
 	"substrate-wasm-builder",
 ]
 runtime-benchmarks = [
@@ -133,6 +131,5 @@ runtime-benchmarks = [
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-utility/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
-	"system-domain-runtime/runtime-benchmarks",
 ]
 do-not-enforce-cost-of-storage = []

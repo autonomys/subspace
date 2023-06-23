@@ -1,3 +1,5 @@
+//! Shared domain worker functions.
+
 use crate::utils::{to_number_primitive, BlockInfo, ExecutorSlotInfo};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};

@@ -18,7 +18,7 @@ impl<'a> FetchRuntimeCode for RuntimeCodeFetcher<'a> {
 }
 
 pub(crate) struct DomainRuntimeCode {
-    pub(crate) wasm_bundle: Cow<'static, [u8]>,
+    pub(crate) wasm_bundle: Vec<u8>,
 }
 
 impl DomainRuntimeCode {
@@ -40,20 +40,13 @@ where
     PClient: ProvideRuntimeApi<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Hash>,
 {
-    let system_wasm_bundle = primary_chain_client
+    let wasm_bundle = primary_chain_client
         .runtime_api()
-        .system_domain_wasm_bundle(at)
-        .map_err(VerificationError::RuntimeApi)?;
-
-    let wasm_bundle = {
-        if domain_id.is_system() {
-            system_wasm_bundle
-        } else {
-            return Err(VerificationError::RuntimeCode(format!(
-                "No runtime code for {domain_id:?}"
-            )));
-        }
-    };
+        .domain_runtime_code(at, domain_id)
+        .map_err(VerificationError::RuntimeApi)?
+        .ok_or_else(|| {
+            VerificationError::RuntimeCode(format!("No runtime code for {domain_id:?}"))
+        })?;
 
     Ok(DomainRuntimeCode { wasm_bundle })
 }

@@ -16,18 +16,13 @@
 
 //! Subspace node implementation.
 
-// TODO: remove
-#![allow(dead_code, unused_imports)]
-
-use core_evm_runtime::AccountId as AccountId20;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_executor::ExecutorStreams;
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::AccountId as AccountId32;
-use domain_service::providers::DefaultProvider;
 use domain_service::{FullBackend, FullClient};
+use evm_domain_runtime::AccountId as AccountId20;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -37,38 +32,34 @@ use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
 use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
-use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainId;
-use sp_runtime::traits::Identity;
-use std::any::TypeId;
 use subspace_node::{
-    AccountId32ToAccountId20Converter, Cli, ExecutorDispatch, Subcommand, SystemDomainCli,
-    SystemDomainSubcommand,
+    AccountId32ToAccountId20Converter, Cli, DomainCli, DomainSubcommand, ExecutorDispatch,
+    Subcommand,
 };
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
-use system_domain_runtime::GenesisConfig as ExecutionGenesisConfig;
 
 type PosTable = ChiaTable;
 
-/// System domain executor instance.
-pub struct SystemDomainExecutorDispatch;
+/// Core evm domain executor instance.
+pub struct CoreEVMDomainExecutorDispatch;
 
-impl NativeExecutionDispatch for SystemDomainExecutorDispatch {
+impl NativeExecutionDispatch for crate::CoreEVMDomainExecutorDispatch {
     #[cfg(feature = "runtime-benchmarks")]
     type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
     #[cfg(not(feature = "runtime-benchmarks"))]
     type ExtendHostFunctions = ();
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        system_domain_runtime::api::dispatch(method, data)
+        evm_domain_runtime::api::dispatch(method, data)
     }
 
     fn native_version() -> sc_executor::NativeVersion {
-        system_domain_runtime::native_version()
+        evm_domain_runtime::native_version()
     }
 }
 
@@ -253,35 +244,25 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(&cmd.base)?;
 
             runner.sync_run(|primary_chain_config| {
-                let maybe_system_domain_chain_spec = primary_chain_config
-                    .chain_spec
-                    .extensions()
-                    .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
-                    .downcast_ref()
-                    .cloned();
-
-                let system_domain_cli = SystemDomainCli::new(
+                let domain_cli = DomainCli::new(
                     cmd.base
                         .base_path()?
                         .map(|base_path| base_path.path().to_path_buf()),
-                    maybe_system_domain_chain_spec.ok_or_else(|| {
-                        "Primary chain spec must contain system domain chain spec".to_string()
-                    })?,
                     cli.domain_args.into_iter(),
                 );
 
-                let system_domain_config = SubstrateCli::create_configuration(
-                    &system_domain_cli,
-                    &system_domain_cli,
+                let domain_config = SubstrateCli::create_configuration(
+                    &domain_cli,
+                    &domain_cli,
                     primary_chain_config.tokio_handle.clone(),
                 )
                 .map_err(|error| {
                     sc_service::Error::Other(format!(
-                        "Failed to create system domain configuration: {error:?}"
+                        "Failed to create domain configuration: {error:?}"
                     ))
                 })?;
 
-                cmd.run(primary_chain_config, system_domain_config)
+                cmd.run(primary_chain_config, domain_config)
             })?;
         }
         Some(Subcommand::Revert(cmd)) => {
@@ -378,30 +359,23 @@ fn main() -> Result<(), Error> {
                 }
             })?;
         }
-        Some(Subcommand::Executor(executor_cmd)) => match executor_cmd {
-            SystemDomainSubcommand::Benchmark(cmd) => {
+        Some(Subcommand::Domain(domain_cmd)) => match domain_cmd {
+            DomainSubcommand::Benchmark(cmd) => {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|primary_chain_config| {
-                    let maybe_system_domain_chain_spec = primary_chain_config
-                        .chain_spec
-                        .extensions()
-                        .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
-                        .downcast_ref()
-                        .cloned();
-                    let system_domain_cli = SystemDomainCli::new(
+                    let domain_cli = DomainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
-                        maybe_system_domain_chain_spec.ok_or_else(|| {
-                            "Primary chain spec must contain system domain chain spec".to_string()
-                        })?,
                         cli.domain_args.into_iter(),
                     );
-                    let system_domain_config = system_domain_cli
-                        .create_domain_configuration(primary_chain_config.tokio_handle)
+                    let domain_config = domain_cli
+                        .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
+                            primary_chain_config.tokio_handle,
+                        )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
-                                "Failed to create system domain configuration: {error:?}"
+                                "Failed to create domain configuration: {error:?}"
                             ))
                         })?;
                     match cmd {
@@ -413,8 +387,8 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, SystemDomainExecutorDispatch>(
-                                system_domain_config.service_config,
+                            cmd.run::<DomainBlock, CoreEVMDomainExecutorDispatch>(
+                                domain_config.service_config,
                             )
                         }
                         _ => todo!("Not implemented"),
@@ -429,13 +403,6 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|primary_chain_config| async move {
                 let tokio_handle = primary_chain_config.tokio_handle.clone();
                 let database_source = primary_chain_config.database.clone();
-
-                let maybe_system_domain_chain_spec = primary_chain_config
-                    .chain_spec
-                    .extensions()
-                    .get_any(TypeId::of::<ExecutionChainSpec<ExecutionGenesisConfig>>())
-                    .downcast_ref()
-                    .cloned();
 
                 // TODO: proper value
                 let primary_block_import_throttling_buffer_size = 10;
@@ -556,25 +523,24 @@ fn main() -> Result<(), Error> {
                 if !cli.domain_args.is_empty() {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
-                        name = "SystemDomain"
+                        name = "Domain"
                     );
                     let _enter = span.enter();
 
-                    let system_domain_cli = SystemDomainCli::new(
+                    let domain_cli = DomainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
-                        maybe_system_domain_chain_spec.ok_or_else(|| {
-                            "Primary chain spec must contain system domain chain spec".to_string()
-                        })?,
                         cli.domain_args.into_iter(),
                     );
 
-                    let system_domain_config = system_domain_cli
-                        .create_domain_configuration(tokio_handle.clone())
+                    let domain_config = domain_cli
+                        .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
+                            tokio_handle.clone(),
+                        )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
-                                "Failed to create system domain configuration: {error:?}"
+                                "Failed to create domain configuration: {error:?}"
                             ))
                         })?;
 
@@ -615,33 +581,58 @@ fn main() -> Result<(), Error> {
                         _phantom: Default::default(),
                     };
 
-                    let system_domain_node = domain_service::new_full_system::<
-                        _,
-                        _,
-                        _,
-                        _,
-                        _,
-                        _,
-                        system_domain_runtime::RuntimeApi,
-                        SystemDomainExecutorDispatch,
-                    >(
-                        system_domain_config,
-                        primary_chain_node.client.clone(),
-                        primary_chain_node.sync_service.clone(),
-                        &primary_chain_node.select_chain,
+                    let evm_base_path = BasePath::new(
+                        domain_config
+                            .service_config
+                            .base_path
+                            .config_dir(domain_config.service_config.chain_spec.id()),
+                    );
+
+                    let eth_provider = EthProvider::<
+                        evm_domain_runtime::TransactionConverter,
+                        DefaultEthConfig<
+                            FullClient<
+                                DomainBlock,
+                                evm_domain_runtime::RuntimeApi,
+                                CoreEVMDomainExecutorDispatch,
+                            >,
+                            FullBackend<DomainBlock>,
+                        >,
+                    >::new(
+                        Some(evm_base_path), domain_cli.additional_args()
+                    );
+
+                    let domain_params = domain_service::DomainParams {
+                        domain_id: DomainId::SYSTEM,
+                        domain_config,
+                        primary_chain_client: primary_chain_node.client.clone(),
+                        primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
+                        select_chain: primary_chain_node.select_chain.clone(),
                         executor_streams,
-                        xdm_gossip_worker_builder.gossip_msg_sink(),
-                    )
+                        gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                        provider: eth_provider,
+                    };
+
+                    let domain_node = domain_service::new_full::<
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        _,
+                        evm_domain_runtime::RuntimeApi,
+                        CoreEVMDomainExecutorDispatch,
+                        AccountId20,
+                        _,
+                    >(domain_params)
                     .await?;
 
-                    xdm_gossip_worker_builder.push_domain_tx_pool_sink(
-                        DomainId::SYSTEM,
-                        system_domain_node.tx_pool_sink,
-                    );
+                    xdm_gossip_worker_builder
+                        .push_domain_tx_pool_sink(DomainId::SYSTEM, domain_node.tx_pool_sink);
 
                     primary_chain_node
                         .task_manager
-                        .add_child(system_domain_node.task_manager);
+                        .add_child(domain_node.task_manager);
 
                     let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                         .build::<Block, _, _>(
@@ -658,7 +649,7 @@ fn main() -> Result<(), Error> {
                             Box::pin(cross_domain_message_gossip_worker.run()),
                         );
 
-                    system_domain_node.network_starter.start_network();
+                    domain_node.network_starter.start_network();
                 }
 
                 primary_chain_node.network_starter.start_network();

@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Subspace Labs, Inc.
+// Copyright (C) 2023 Subspace Labs, Inc.
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This program is free software: you can redistribute it and/or modify
@@ -14,5 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-pub(crate) mod chain_spec;
 pub(crate) mod cli;
+pub(crate) mod evm_chain_spec;
+
+use evm_domain_runtime::AccountId as AccountId20;
+use sp_core::crypto::AccountId32;
+use sp_core::{ByteArray, H160};
+use sp_runtime::traits::Convert;
+
+pub struct AccountId32ToAccountId20Converter;
+
+impl Convert<AccountId32, AccountId20> for AccountId32ToAccountId20Converter {
+    fn convert(acc: AccountId32) -> AccountId20 {
+        // Using the full hex key, truncating to the first 20 bytes (the first 40 hex chars)
+        H160::from_slice(&acc.as_slice()[0..20]).into()
+    }
+}

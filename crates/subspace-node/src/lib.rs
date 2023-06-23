@@ -18,15 +18,14 @@
 
 mod chain_spec;
 mod chain_spec_utils;
-mod core_domain;
+mod domain;
 mod import_blocks_from_dsn;
-mod system_domain;
 
+pub use crate::domain::cli::{DomainCli, Subcommand as DomainSubcommand};
+pub use crate::domain::AccountId32ToAccountId20Converter;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
-pub use crate::system_domain::cli::{Subcommand as SystemDomainSubcommand, SystemDomainCli};
 use bytesize::ByteSize;
 use clap::Parser;
-pub use core_domain::AccountId32ToAccountId20Converter;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
 use sc_service::ChainSpec;
@@ -61,7 +60,7 @@ impl NativeExecutionDispatch for ExecutorDispatch {
     }
 }
 
-/// This `purge-chain` command used to remove both consensus chain and system domain.
+/// This `purge-chain` command used to remove both consensus chain and domain.
 #[derive(Debug, Clone, Parser)]
 #[group(skip)]
 pub struct PurgeChainCmd {
@@ -75,10 +74,10 @@ impl PurgeChainCmd {
     pub fn run(
         &self,
         primary_chain_config: sc_service::Configuration,
-        system_domain_config: sc_service::Configuration,
+        domain_config: sc_service::Configuration,
     ) -> sc_cli::Result<()> {
         let db_paths = vec![
-            system_domain_config
+            domain_config
                 .database
                 .path()
                 .expect("No custom database used here; qed"),
@@ -159,9 +158,9 @@ pub enum Subcommand {
     /// Db meta columns information.
     ChainInfo(sc_cli::ChainInfoCmd),
 
-    /// Run executor sub-commands.
+    /// Run domain sub-commands.
     #[clap(subcommand)]
-    Executor(system_domain::cli::Subcommand),
+    Domain(domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
@@ -233,9 +232,9 @@ pub struct Cli {
     /// Domain arguments
     ///
     /// The command-line arguments provided first will be passed to the embedded primary node,
-    /// while the arguments provided after `--` will be passed to the system domain node.
+    /// while the arguments provided after `--` will be passed to the domain node.
     ///
-    /// subspace-node [primarychain-args] -- [system-domain-args]
+    /// subspace-node [primarychain-args] -- [domain-args]
     #[arg(raw = true)]
     pub domain_args: Vec<String>,
 

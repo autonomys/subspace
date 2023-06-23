@@ -1,11 +1,11 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+mod domain;
+mod domain_tx_pre_validator;
 pub mod providers;
 pub mod rpc;
-mod system_domain;
-mod system_domain_tx_pre_validator;
 
-pub use self::system_domain::{new_full_system, FullPool, NewFullSystem};
+pub use self::domain::{new_full, DomainParams, FullPool, NewFull};
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider};

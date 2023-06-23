@@ -34,7 +34,6 @@ use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
 use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
-use sp_std::borrow::Cow;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::crypto::blake2b_256_hash;
@@ -319,51 +318,23 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
 
 /// Domain bundle election solution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum BundleSolution<DomainHash> {
-    /// System domain bundle election.
-    System {
-        /// Authority's stake weight.
-        authority_stake_weight: StakeWeight,
-        /// Authority membership witness.
-        authority_witness: Witness,
-        /// Proof of election
-        proof_of_election: ProofOfElection<DomainHash>,
-    },
-    /// Core domain bundle election.
-    Core {
-        /// Proof of election.
-        proof_of_election: ProofOfElection<DomainHash>,
-        /// Number of the core domain block at which the proof of election was created.
-        core_block_number: BlockNumber,
-        /// Block hash corresponding to the `core_block_number` above.
-        core_block_hash: DomainHash,
-        /// Core domain state root corresponding to the `core_block_hash` above.
-        core_state_root: DomainHash,
-    },
+pub struct BundleSolution<DomainHash> {
+    /// Authority's stake weight.
+    authority_stake_weight: StakeWeight,
+    /// Authority membership witness.
+    authority_witness: Witness,
+    /// Proof of election
+    proof_of_election: ProofOfElection<DomainHash>,
 }
 
 impl<DomainHash> BundleSolution<DomainHash> {
     pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
-        match self {
-            Self::System {
-                proof_of_election, ..
-            }
-            | Self::Core {
-                proof_of_election, ..
-            } => proof_of_election,
-        }
+        &self.proof_of_election
     }
 
     /// Returns the hash of the block on top of which the solution was created.
     pub fn creation_block_hash(&self) -> &DomainHash {
-        match self {
-            Self::System {
-                proof_of_election, ..
-            } => &proof_of_election.system_block_hash,
-            Self::Core {
-                core_block_hash, ..
-            } => core_block_hash,
-        }
+        &self.proof_of_election.system_block_hash
     }
 }
 
@@ -372,21 +343,10 @@ impl<DomainHash: Default> BundleSolution<DomainHash> {
     pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
         let proof_of_election = ProofOfElection::dummy(domain_id, executor_public_key);
 
-        if domain_id.is_system() {
-            Self::System {
-                authority_stake_weight: Default::default(),
-                authority_witness: Default::default(),
-                proof_of_election,
-            }
-        } else if domain_id.is_core() {
-            Self::Core {
-                proof_of_election,
-                core_block_number: Default::default(),
-                core_block_hash: Default::default(),
-                core_state_root: Default::default(),
-            }
-        } else {
-            panic!("Open domain unsupported");
+        Self {
+            authority_stake_weight: Default::default(),
+            authority_witness: Default::default(),
+            proof_of_election,
         }
     }
 }
@@ -422,14 +382,11 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
 
     /// Consumes [`Bundle`] to extract the inner executor public key.
     pub fn into_executor_public_key(self) -> ExecutorPublicKey {
-        match self.sealed_header.header.bundle_solution {
-            BundleSolution::System {
-                proof_of_election, ..
-            }
-            | BundleSolution::Core {
-                proof_of_election, ..
-            } => proof_of_election.executor_public_key,
-        }
+        self.sealed_header
+            .header
+            .bundle_solution
+            .proof_of_election
+            .executor_public_key
     }
 }
 
@@ -547,15 +504,9 @@ sp_api::decl_runtime_apis! {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 
-        /// Extract the system bundles from the given extrinsics.
-        fn extract_system_bundles(
+        /// Extract the bundles stored successfully from the given extrinsics.
+        fn extract_successful_bundles(
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> (OpaqueBundles<Block, DomainHash>, OpaqueBundles<Block, DomainHash>);
-
-        /// Extract the core bundles from the given extrinsics.
-        fn extract_core_bundles(
-            extrinsics: Vec<Block::Extrinsic>,
-            domain_id: DomainId,
         ) -> OpaqueBundles<Block, DomainHash>;
 
         /// Returns the hash of successfully submitted bundles.
@@ -564,8 +515,8 @@ sp_api::decl_runtime_apis! {
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 
-        /// WASM bundle for system domain runtime.
-        fn system_domain_wasm_bundle() -> Cow<'static, [u8]>;
+        /// Returns the WASM bundle for given `domain_id`.
+        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
 
         // Returns the current timestamp at given height
         fn timestamp() -> Moment;

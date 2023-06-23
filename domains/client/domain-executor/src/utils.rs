@@ -1,4 +1,3 @@
-use codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
@@ -48,15 +47,6 @@ where
     block_number
         .try_into()
         .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"))
-}
-
-/// Converts the block hash from the generic type `B1::Hash` to `B2::Hash`.
-pub(crate) fn translate_block_hash_type<B1, B2>(block_hash: B1::Hash) -> B2::Hash
-where
-    B1: BlockT,
-    B2: BlockT,
-{
-    B2::Hash::decode(&mut block_hash.encode().as_slice()).unwrap()
 }
 
 pub type DomainImportNotificationSinks<Block, PBlock> =
