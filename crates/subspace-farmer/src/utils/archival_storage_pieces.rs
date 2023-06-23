@@ -3,8 +3,8 @@ use parking_lot::Mutex;
 use std::collections::hash_map::DefaultHasher;
 use std::sync::Arc;
 use subspace_core_primitives::PieceIndex;
+use subspace_networking::{PeerInfo, PeerInfoProvider, PeerRole};
 
-//TODO: make this configurable
 pub const DEFAULT_CAPACITY: usize = (1 << 20) - 1;
 
 #[derive(Clone)]
@@ -34,5 +34,17 @@ impl ArchivalStoragePieces {
         }
 
         Ok(())
+    }
+}
+
+impl PeerInfoProvider for ArchivalStoragePieces {
+    fn peer_info(&self) -> PeerInfo {
+        let exported_filter = self.cuckoo_filter.lock().export();
+        let data = serde_scale::to_vec(&exported_filter).expect("Serialization always works.");
+
+        PeerInfo {
+            role: PeerRole::Farmer,
+            data: Some(data),
+        }
     }
 }

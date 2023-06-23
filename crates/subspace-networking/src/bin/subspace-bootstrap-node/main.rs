@@ -186,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
                     provider_storage,
                     ConstantPeerInfoProvider::new(PeerInfo {
                         role: PeerRole::BootstrapNode,
+                        data: None,
                     }),
                 )
             };

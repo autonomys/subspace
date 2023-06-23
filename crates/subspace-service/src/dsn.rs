@@ -137,6 +137,7 @@ where
         provider_storage.clone(),
         ConstantPeerInfoProvider::new(PeerInfo {
             role: PeerRole::Node,
+            data: None,
         }),
     );
 

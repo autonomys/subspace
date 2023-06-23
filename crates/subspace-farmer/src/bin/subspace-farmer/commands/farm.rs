@@ -94,6 +94,8 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    let archival_storage_pieces = ArchivalStoragePieces::default();
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -117,6 +119,7 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
+            archival_storage_pieces.clone(),
         )?
     };
 
@@ -289,8 +292,6 @@ where
     readers_and_pieces
         .lock()
         .replace(ReadersAndPieces::new(piece_readers, plotted_pieces));
-
-    let archival_storage_pieces = ArchivalStoragePieces::default();
 
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()

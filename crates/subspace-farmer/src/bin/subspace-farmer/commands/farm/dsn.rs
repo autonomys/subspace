@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::SegmentIndex;
+use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
@@ -18,8 +19,8 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
-    create, peer_id, Config, ConstantPeerInfoProvider, NetworkingParametersManager, Node,
-    NodeRunner, ParityDbProviderStorage, PeerInfo, PeerRole, PieceAnnouncementRequestHandler,
+    create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
+    ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
     PieceAnnouncementResponse, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
     ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
     SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
@@ -49,12 +50,13 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
+    archival_storage_pieces: ArchivalStoragePieces,
 ) -> Result<
     (
         Node,
         NodeRunner<
             FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>,
-            ConstantPeerInfoProvider,
+            impl PeerInfoProvider,
         >,
         FarmerPieceCache,
     ),
@@ -148,9 +150,7 @@ pub(super) fn configure_dsn(
         protocol_prefix,
         keypair,
         farmer_provider_storage.clone(),
-        ConstantPeerInfoProvider::new(PeerInfo {
-            role: PeerRole::Farmer,
-        }),
+        archival_storage_pieces,
     );
     let config = Config {
         reserved_peers,

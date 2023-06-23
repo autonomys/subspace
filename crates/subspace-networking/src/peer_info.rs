@@ -20,12 +20,15 @@ use tracing::debug;
 /// Peer info data
 pub struct PeerInfo {
     pub role: PeerRole,
+    // TODO: consider having a type-safe data structure for this bound to PeerRole
+    pub data: Option<Vec<u8>>,
 }
 
 impl Default for PeerInfo {
     fn default() -> Self {
         PeerInfo {
             role: PeerRole::Client,
+            data: None,
         }
     }
 }
