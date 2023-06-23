@@ -14,9 +14,9 @@ It is recommended to follow general farming instructions that explain how to run
 
 Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
 
-Prost library from libp2p dependency needs CMake, also LLVM/Clang and `libssl-dev` (for `fc-db`) is necessary:
+Prost library from libp2p dependency needs CMake, also LLVM/Clang, `make` and `perl` (last for OpenSSL for `fc-db`) are necessary:
 ```bash
-sudo apt-get install llvm clang cmake libssl-dev
+sudo apt-get install llvm clang cmake make perl
 ```
 
 Then build the farmer using Cargo:
