@@ -793,6 +793,7 @@ where
             node.clone(),
             Arc::clone(&client),
             import_queue_service,
+            sync_service.clone(),
         );
         task_manager
             .spawn_handle()
