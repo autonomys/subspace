@@ -67,6 +67,7 @@ async fn create_observer<Block, Client>(
     Block: BlockT,
     Client: BlockchainEvents<Block> + Send + Sync + 'static,
 {
+    // Separate reactive observer for Subspace networking that is not a future
     let _handler_id = node.on_num_established_peer_connections_change({
         // Assuming node is online by default
         let was_online = AtomicBool::new(false);
