@@ -55,14 +55,22 @@ where
     fn successfully_submitted_bundles_at(
         &self,
         block_hash: Block::Hash,
+        block_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<HashSet<Hash>> {
-        let bundle_hashes: HashSet<_> = self
+        match self
             .client
             .runtime_api()
-            .successful_bundle_hashes(block_hash)?
-            .into_iter()
-            .collect();
-        Ok(bundle_hashes)
+            .successful_bundle_hashes(block_hash)
+        {
+            Ok(bundle_hashes) => Ok(bundle_hashes.into_iter().collect()),
+            Err(err) => {
+                tracing::error!(
+                    %err,
+                    "Failed to calling runtime api bundles at block {block_hash:?}#{block_number:?}"
+                );
+                Err(err.into())
+            }
+        }
     }
 
     /// Initialize recent stored bundle from the last K block
@@ -96,7 +104,7 @@ where
             }
         }
         for (hash, number) in blocks {
-            let bundles = self.successfully_submitted_bundles_at(hash)?;
+            let bundles = self.successfully_submitted_bundles_at(hash, number)?;
             bundle_stored_in_last_k.push_front(BlockBundle::new(hash, number, bundles));
         }
         Ok(())
@@ -146,7 +154,8 @@ where
         // the chain grows.
         let needless_block = enacted.len().saturating_sub(self.confirm_depth_k);
         for enacted_block in enacted.iter().skip(needless_block) {
-            let bundles = self.successfully_submitted_bundles_at(enacted_block.hash)?;
+            let bundles =
+                self.successfully_submitted_bundles_at(enacted_block.hash, enacted_block.number)?;
             bundle_stored_in_last_k.push_front(BlockBundle::new(
                 enacted_block.hash,
                 enacted_block.number,
@@ -274,13 +283,19 @@ where
         }
     }
 
-    pub fn update_recent_stored_bundles(&mut self, new_best_hash: Block::Hash) {
+    pub fn update_recent_stored_bundles(
+        &mut self,
+        new_best_hash: Block::Hash,
+        block_number: NumberFor<Block>,
+    ) {
         if let Err(err) = self.bundle_stored_in_last_k.update_with(|bundles| {
             self.bundle_collector
                 .on_new_best_block(new_best_hash, bundles)
         }) {
             tracing::error!(
                 %err,
+                ?new_best_hash,
+                ?block_number,
                 "Failed to update recent stored bundles for bundle-validator"
             );
         }
