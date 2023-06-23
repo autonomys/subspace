@@ -151,7 +151,9 @@ where
         challenge: &'a Challenge,
     ) -> impl Iterator<Item = Quality> + 'a
     where
-        EvaluatableUsize<{ mem::size_of::<Challenge>() + K as usize * 2 }>: Sized,
+        EvaluatableUsize<
+            { mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize) },
+        >: Sized,
     {
         let last_5_challenge_bits = challenge[challenge.len() - 1] & 0b00011111;
 
@@ -211,7 +213,8 @@ where
                     .get(usize::from(right_position))
                     .expect("Internally generated pointers must be correct; qed");
 
-                let mut buffer = [0; mem::size_of::<Challenge>() + K as usize * 2];
+                let mut buffer =
+                    [0; mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize)];
 
                 buffer[..mem::size_of::<Challenge>()].copy_from_slice(challenge);
                 buffer.copy_bits_from(
@@ -314,7 +317,9 @@ where
     ) -> Option<Quality>
     where
         EvaluatableUsize<{ (K as usize * 2).div_ceil(u8::BITS as usize) }>: Sized,
-        EvaluatableUsize<{ mem::size_of::<Challenge>() + K as usize * 2 }>: Sized,
+        EvaluatableUsize<
+            { mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize) },
+        >: Sized,
     {
         let last_5_challenge_bits = challenge[challenge.len() - 1] & 0b00011111;
 
@@ -351,7 +356,8 @@ where
                 y.starts_with(&challenge.view_bits::<Msb0>()[..usize::from(K)])
             })
             .map(|_| {
-                let mut buffer = [0; mem::size_of::<Challenge>() + K as usize * 2];
+                let mut buffer =
+                    [0; mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize)];
 
                 buffer[..mem::size_of::<Challenge>()].copy_from_slice(challenge);
                 let mut quality_index = 0_usize.to_be_bytes();
