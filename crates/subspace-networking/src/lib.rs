@@ -38,7 +38,8 @@ pub use crate::node::{
 };
 pub use crate::node_runner::{NodeRunner, KADEMLIA_PROVIDER_TTL_IN_SECS};
 pub use crate::peer_info::{
-    Config as PeerInfoConfig, ConstantPeerInfoProvider, PeerInfo, PeerInfoProvider, PeerRole,
+    Config as PeerInfoConfig, ConstantPeerInfoProvider, Notification, NotificationHandler,
+    PeerInfo, PeerInfoProvider, PeerRole,
 };
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,

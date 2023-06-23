@@ -232,7 +232,7 @@ pub struct Config<ProviderStorage, PeerInfoProvider> {
     pub metrics: Option<Metrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
-
+    /// Specifies a source for peer information.
     pub peer_info_provider: PeerInfoProvider,
 }
 

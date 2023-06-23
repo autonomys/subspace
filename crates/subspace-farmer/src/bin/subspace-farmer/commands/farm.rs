@@ -94,6 +94,7 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    // TODO: calculate proper capacity
     let archival_storage_pieces = ArchivalStoragePieces::default();
 
     let (node, mut node_runner, piece_cache) = {
@@ -360,7 +361,8 @@ where
                         }
 
                         if let Err(err) = archival_storage_pieces.add_pieces(&new_pieces) {
-                            error!(
+                            // TODO: change to error when we calculate how much space we need
+                            debug!(
                                 %err,
                                 %disk_farm_index,
                                 %sector_index,
