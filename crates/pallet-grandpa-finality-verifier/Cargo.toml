@@ -10,7 +10,7 @@ description = "Pallet to verify GRANDPA finality proofs for Substrate based chai
 readme = "README.md"
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false }
+codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false }
 finality-grandpa = { version = "0.16.1", default-features = false }
 log = { version = "0.4.19", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }

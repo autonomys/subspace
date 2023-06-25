@@ -27,7 +27,7 @@ futures = "0.3.28"
 hex = "0.4.3"
 jsonrpsee = { version = "0.16.2", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
-parity-scale-codec = "3.4.0"
+parity-scale-codec = "3.6.1"
 parking_lot = "0.12.1"
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
