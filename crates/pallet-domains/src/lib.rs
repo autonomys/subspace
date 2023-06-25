@@ -51,7 +51,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{DomainId, ExecutorPublicKey, OpaqueBundle};
-    use sp_runtime::traits::{One, Zero};
+    use sp_runtime::traits::Zero;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
@@ -264,28 +264,10 @@ mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            let parent_number = block_number - One::one();
-            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
-
-            pallet_settlement::PrimaryBlockHash::<T>::insert(
-                DomainId::SYSTEM,
-                parent_number,
-                parent_hash,
-            );
-
-            // The genesis block hash is not finalized until the genesis block building is done,
-            // hence the genesis receipt is initialized after the genesis building.
-            if parent_number.is_zero() {
-                pallet_settlement::Pallet::<T>::initialize_genesis_receipt(
-                    DomainId::SYSTEM,
-                    parent_hash,
-                );
-            }
-
+        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
 
-            T::DbWeight::get().writes(2)
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -385,16 +367,6 @@ impl<T: Config> Pallet<T> {
     pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
         // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
         RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.domain_runtime_code)
-    }
-
-    /// Returns the block number of the latest receipt.
-    pub fn head_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
-    }
-
-    /// Returns the block number of the oldest receipt still being tracked in the state.
-    pub fn oldest_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
     }
 
     fn pre_dispatch_submit_bundle(

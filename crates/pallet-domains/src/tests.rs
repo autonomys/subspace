@@ -17,6 +17,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
+// TODO: Remove when DomainRegistry is usable.
+const DOMAIN_ID: DomainId = DomainId::new(0);
+
 frame_support::construct_runtime!(
     pub struct Test
     where
@@ -170,7 +173,7 @@ fn submit_fraud_proof_should_work() {
         .map(|n| {
             let primary_hash = Hash::random();
             (
-                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                create_dummy_bundle(DOMAIN_ID, n, primary_hash),
                 primary_hash,
             )
         })
@@ -194,7 +197,7 @@ fn submit_fraud_proof_should_work() {
     new_test_ext().execute_with(|| {
         (0usize..256usize).for_each(|index| {
             let block_hash = block_hashes[index];
-            PrimaryBlockHash::<Test>::insert(DomainId::SYSTEM, (index + 1) as u64, block_hash);
+            PrimaryBlockHash::<Test>::insert(DOMAIN_ID, (index + 1) as u64, block_hash);
 
             assert_ok!(Domains::submit_bundle(
                 RuntimeOrigin::none(),
@@ -202,8 +205,8 @@ fn submit_fraud_proof_should_work() {
             ));
 
             let receipt_hash = dummy_bundles[index].clone().receipt.hash();
-            assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
-            let mut votes = ReceiptVotes::<Test>::iter_prefix((DomainId::SYSTEM, block_hash));
+            assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_some());
+            let mut votes = ReceiptVotes::<Test>::iter_prefix((DOMAIN_ID, block_hash));
             assert_eq!(votes.next(), Some((receipt_hash, 1)));
             assert_eq!(votes.next(), None);
         });
@@ -213,30 +216,28 @@ fn submit_fraud_proof_should_work() {
             RuntimeOrigin::none(),
             dummy_proof(DomainId::new(100))
         ));
-        assert_eq!(Domains::head_receipt_number(), 256);
+        assert_eq!(Settlement::head_receipt_number(DOMAIN_ID), 256);
         let receipt_hash = dummy_bundles[255].clone().receipt.hash();
-        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
+        assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_some());
 
         assert_ok!(Domains::submit_fraud_proof(
             RuntimeOrigin::none(),
-            dummy_proof(DomainId::SYSTEM)
+            dummy_proof(DOMAIN_ID)
         ));
-        assert_eq!(Settlement::head_receipt_number(DomainId::SYSTEM), 99);
+        assert_eq!(Settlement::head_receipt_number(DOMAIN_ID), 99);
         let receipt_hash = dummy_bundles[98].clone().receipt.hash();
-        assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_some());
+        assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_some());
         // Receipts for block [100, 256] should be removed as being invalid.
         (100..=256).for_each(|block_number| {
             let receipt_hash = dummy_bundles[block_number as usize - 1]
                 .clone()
                 .receipt
                 .hash();
-            assert!(Settlement::receipts(DomainId::SYSTEM, receipt_hash).is_none());
+            assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_none());
             let block_hash = block_hashes[block_number as usize - 1];
-            assert!(
-                ReceiptVotes::<Test>::iter_prefix((DomainId::SYSTEM, block_hash))
-                    .next()
-                    .is_none()
-            );
+            assert!(ReceiptVotes::<Test>::iter_prefix((DOMAIN_ID, block_hash))
+                .next()
+                .is_none());
         });
     });
 }
@@ -267,14 +268,14 @@ fn test_stale_bundle_should_be_rejected() {
     ConfirmationDepthK::set(1);
     new_test_ext().execute_with(|| {
         // Create a bundle at genesis block -> #1
-        let bundle0 = create_dummy_bundle(DomainId::SYSTEM, 0, System::parent_hash());
+        let bundle0 = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
         System::initialize(&1, &System::parent_hash(), &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(1);
         assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
 
         // Create a bundle at block #1 -> #2
         let block_hash1 = Hash::random();
-        let bundle1 = create_dummy_bundle(DomainId::SYSTEM, 1, block_hash1);
+        let bundle1 = create_dummy_bundle(DOMAIN_ID, 1, block_hash1);
         System::initialize(&2, &block_hash1, &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(2);
         assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
@@ -284,14 +285,14 @@ fn test_stale_bundle_should_be_rejected() {
     ConfirmationDepthK::set(2);
     new_test_ext().execute_with(|| {
         // Create a bundle at genesis block -> #1
-        let bundle0 = create_dummy_bundle(DomainId::SYSTEM, 0, System::parent_hash());
+        let bundle0 = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
         System::initialize(&1, &System::parent_hash(), &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(1);
         assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
 
         // Create a bundle at block #1 -> #2
         let block_hash1 = Hash::random();
-        let bundle1 = create_dummy_bundle(DomainId::SYSTEM, 1, block_hash1);
+        let bundle1 = create_dummy_bundle(DOMAIN_ID, 1, block_hash1);
         System::initialize(&2, &block_hash1, &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(2);
         assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
@@ -299,7 +300,7 @@ fn test_stale_bundle_should_be_rejected() {
 
         // Create a bundle at block #2 -> #3
         let block_hash2 = Hash::random();
-        let bundle2 = create_dummy_bundle(DomainId::SYSTEM, 2, block_hash2);
+        let bundle2 = create_dummy_bundle(DOMAIN_ID, 2, block_hash2);
         System::initialize(&3, &block_hash2, &Default::default());
         <Domains as Hooks<BlockNumber>>::on_initialize(3);
         assert_stale!(pallet_domains::Pallet::<Test>::validate_bundle(&bundle0));
@@ -313,7 +314,7 @@ fn test_stale_bundle_should_be_rejected() {
         .map(|n| {
             let primary_hash = Hash::random();
             (
-                create_dummy_bundle(DomainId::SYSTEM, n, primary_hash),
+                create_dummy_bundle(DOMAIN_ID, n, primary_hash),
                 primary_hash,
             )
         })
