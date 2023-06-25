@@ -434,6 +434,7 @@ where
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         EssentialExecutorParams {
+            domain_id,
             primary_chain_client: primary_chain_client.clone(),
             primary_network_sync_oracle,
             client: client.clone(),

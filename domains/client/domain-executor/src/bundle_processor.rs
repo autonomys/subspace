@@ -8,12 +8,11 @@ use sc_consensus::BlockImport;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::CodeExecutor;
-use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, One, Zero};
-use sp_runtime::{Digest, DigestItem};
+use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::Digest;
 use sp_settlement::SettlementApi;
 use std::sync::Arc;
 
@@ -33,6 +32,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
 {
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
@@ -51,6 +51,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
@@ -96,6 +97,7 @@ where
     E: CodeExecutor,
 {
     pub(crate) fn new(
+        domain_id: DomainId,
         primary_chain_client: Arc<PClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
@@ -108,6 +110,7 @@ where
             RuntimeApiFull::new(client.clone()),
         );
         Self {
+            domain_id,
             primary_chain_client,
             client,
             backend,
@@ -171,38 +174,20 @@ where
             .domain_block_preprocessor
             .preprocess_primary_block(primary_hash, parent_hash)?;
 
-        let logs = if primary_number == One::one() {
-            // Manually inject the genesis block info.
-            vec![
-                DigestItem::primary_block_info::<NumberFor<PBlock>, _>((
-                    Zero::zero(),
-                    self.primary_chain_client.info().genesis_hash,
-                )),
-                DigestItem::primary_block_info((primary_number, primary_hash)),
-            ]
-        } else {
-            vec![DigestItem::primary_block_info((
-                primary_number,
-                primary_hash,
-            ))]
-        };
-
-        let digests = Digest { logs };
-
         let domain_block_result = self
             .domain_block_processor
             .process_domain_block(
                 (primary_hash, primary_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                digests,
+                Digest::default(),
             )
             .await?;
 
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(primary_hash, DomainId::SYSTEM)?
+            .head_receipt_number(primary_hash, self.domain_id)?
             .into();
 
         assert!(

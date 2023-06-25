@@ -7,11 +7,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
-use sp_runtime::{Digest, DigestItem};
+use sp_runtime::Digest;
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -132,16 +131,7 @@ where
         )
         .map_err(|_| FraudProofError::InvalidStateRootType)?;
 
-        let digest = if domain_id.is_system() {
-            Digest {
-                logs: vec![DigestItem::primary_block_info::<NumberFor<Block>, _>((
-                    block_number.into(),
-                    local_receipt.primary_hash,
-                ))],
-            }
-        } else {
-            Default::default()
-        };
+        let digest = Digest::default();
 
         // TODO: abstract the execution proof impl to be reusable in the test.
         let invalid_state_transition_proof = if local_trace_index == 0 {
