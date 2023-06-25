@@ -1,4 +1,3 @@
-use crate::domain_tx_pre_validator::DomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
@@ -64,7 +63,6 @@ where
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>>,
     PBlock::Hash: From<Hash>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
     PClient: HeaderBackend<PBlock>
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
@@ -78,15 +76,16 @@ where
         + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
         + Metadata<Block>
+        + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
+        + TaggedTransactionQueue<Block>
+        + TransactionPaymentRuntimeApi<Block, Balance>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + TaggedTransactionQueue<Block>
-        + AccountNonceApi<Block, AccountId, Nonce>
-        + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, AccountId, NumberFor<Block>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -112,35 +111,39 @@ where
     _phantom_data: PhantomData<AccountId>,
 }
 
-pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
-    Block,
-    FullClient<Block, RuntimeApi, Executor>,
-    DomainTxPreValidator<
+type DomainTxPreValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
+    crate::domain_tx_pre_validator::DomainTxPreValidator<
         Block,
         PBlock,
-        FullClient<Block, RuntimeApi, Executor>,
+        FullClient<Block, RuntimeApi, ExecutorDispatch>,
         PClient,
-        RuntimeApiFull<FullClient<Block, RuntimeApi, Executor>>,
-    >,
->;
+        RuntimeApiFull<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
+    >;
+
+pub type FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
+    subspace_transaction_pool::FullPool<
+        Block,
+        FullClient<Block, RuntimeApi, ExecutorDispatch>,
+        DomainTxPreValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    >;
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, ExecutionDispatch, PBlock, PClient, BIMP>(
+fn new_partial<RuntimeApi, ExecutorDispatch, PBlock, PClient, BIMP>(
     config: &ServiceConfiguration,
     primary_chain_client: Arc<PClient>,
     block_import_provider: &BIMP,
 ) -> Result<
     PartialComponents<
-        FullClient<Block, RuntimeApi, ExecutionDispatch>,
+        FullClient<Block, RuntimeApi, ExecutorDispatch>,
         FullBackend<Block>,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>,
-        FullPool<PBlock, PClient, RuntimeApi, ExecutionDispatch>,
+        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
+        FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
-            NativeElseWasmExecutor<ExecutionDispatch>,
+            NativeElseWasmExecutor<ExecutorDispatch>,
             Arc<DomainBlockImport<BIMP::BI>>,
         ),
     >,
@@ -157,15 +160,15 @@ where
         + Sync
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
         + 'static,
     RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
-    ExecutionDispatch: NativeExecutionDispatch + 'static,
-    BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutionDispatch>>,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
+    BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -248,9 +251,7 @@ where
     pub provider: Provider,
 }
 
-/// Start a node with the given domain `Configuration` and consensus chain `Configuration`.
-///
-/// This is the actual implementation that is abstract over the executor and the runtime api.
+/// Builds service for a domain full node.
 pub async fn new_full<
     PBlock,
     PClient,
@@ -328,13 +329,7 @@ where
             FullChainApiWrapper<
                 Block,
                 FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                DomainTxPreValidator<
-                    Block,
-                    PBlock,
-                    FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                    PClient,
-                    RuntimeApiFull<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-                >,
+                DomainTxPreValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
             >,
             TFullBackend<Block>,
             AccountId,
@@ -461,7 +456,7 @@ where
             relayer_id,
             client.clone(),
             sync_service.clone(),
-            gossip_message_sink.clone(),
+            gossip_message_sink,
         );
 
         spawn_essential.spawn_essential_blocking("domain-relayer", None, Box::pin(relayer_worker));
@@ -469,9 +464,9 @@ where
 
     let (msg_sender, msg_receiver) = tracing_unbounded("domain_message_channel", 100);
 
-    // start cross domain message listener for domain
+    // Start cross domain message listener for domain
     let domain_listener = cross_domain_message_gossip::start_domain_message_listener(
-        DomainId::SYSTEM,
+        domain_id,
         client.clone(),
         params.transaction_pool.clone(),
         msg_receiver,
