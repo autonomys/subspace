@@ -44,10 +44,10 @@ use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
 
-/// Core evm domain executor instance.
-pub struct CoreEVMDomainExecutorDispatch;
+/// EVM domain executor instance.
+pub struct EVMDomainExecutorDispatch;
 
-impl NativeExecutionDispatch for crate::CoreEVMDomainExecutorDispatch {
+impl NativeExecutionDispatch for crate::EVMDomainExecutorDispatch {
     #[cfg(feature = "runtime-benchmarks")]
     type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
     #[cfg(not(feature = "runtime-benchmarks"))]
@@ -386,7 +386,7 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, CoreEVMDomainExecutorDispatch>(
+                            cmd.run::<DomainBlock, EVMDomainExecutorDispatch>(
                                 domain_config.service_config,
                             )
                         }
@@ -593,7 +593,7 @@ fn main() -> Result<(), Error> {
                             FullClient<
                                 DomainBlock,
                                 evm_domain_runtime::RuntimeApi,
-                                CoreEVMDomainExecutorDispatch,
+                                EVMDomainExecutorDispatch,
                             >,
                             FullBackend<DomainBlock>,
                         >,
@@ -620,7 +620,7 @@ fn main() -> Result<(), Error> {
                         _,
                         _,
                         evm_domain_runtime::RuntimeApi,
-                        CoreEVMDomainExecutorDispatch,
+                        EVMDomainExecutorDispatch,
                         AccountId20,
                         _,
                     >(domain_params)
