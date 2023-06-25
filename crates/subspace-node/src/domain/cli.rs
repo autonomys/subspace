@@ -160,12 +160,21 @@ impl SubstrateCli for DomainCli {
     }
 
     fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
-        // TODO: Load chain spec properly
-        evm_chain_spec::load_chain_spec(id)
+        // TODO: Fetch the runtime name of `self.domain_id` properly.
+        let runtime_name = "evm";
+        match runtime_name {
+            "evm" => evm_chain_spec::load_chain_spec(id),
+            unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
+        }
     }
 
     fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &evm_domain_runtime::VERSION
+        // TODO: Fetch the runtime name of `self.domain_id` properly.
+        let runtime_name = "evm";
+        match runtime_name {
+            "evm" => &evm_domain_runtime::VERSION,
+            unknown_name => unreachable!("Unknown runtime: {unknown_name}"),
+        }
     }
 }
 
