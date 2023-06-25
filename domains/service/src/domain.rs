@@ -131,6 +131,7 @@ pub type FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, ExecutorDispatch, PBlock, PClient, BIMP>(
     config: &ServiceConfiguration,
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     block_import_provider: &BIMP,
 ) -> Result<
@@ -200,6 +201,7 @@ where
     });
 
     let domain_tx_pre_validator = DomainTxPreValidator::new(
+        domain_id,
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         primary_chain_client,
@@ -352,6 +354,7 @@ where
 
     let params = new_partial(
         &domain_config.service_config,
+        domain_id,
         primary_chain_client.clone(),
         &provider,
     )?;

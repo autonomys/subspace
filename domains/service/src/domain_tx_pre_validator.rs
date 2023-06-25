@@ -6,6 +6,7 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
+use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
@@ -13,6 +14,7 @@ use std::sync::Arc;
 use subspace_transaction_pool::PreValidateTransaction;
 
 pub struct DomainTxPreValidator<Block, PBlock, Client, PClient, SRE> {
+    domain_id: DomainId,
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed>,
     primary_chain_client: Arc<PClient>,
@@ -27,6 +29,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             client: self.client.clone(),
             spawner: self.spawner.clone(),
             primary_chain_client: self.primary_chain_client.clone(),
@@ -40,12 +43,14 @@ impl<Block, PBlock, Client, PClient, SRE>
     DomainTxPreValidator<Block, PBlock, Client, PClient, SRE>
 {
     pub fn new(
+        domain_id: DomainId,
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed>,
         primary_chain_client: Arc<PClient>,
         state_root_extractor: SRE,
     ) -> Self {
         Self {
+            domain_id,
             client,
             spawner,
             primary_chain_client,
@@ -76,6 +81,7 @@ where
         uxt: Block::Extrinsic,
     ) -> TxPoolResult<()> {
         if !verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, SRE>(
+            self.domain_id,
             &self.primary_chain_client,
             at,
             &self.state_root_extractor,

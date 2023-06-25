@@ -106,6 +106,7 @@ where
         domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
     ) -> Self {
         let domain_block_preprocessor = DomainBlockPreprocessor::new(
+            domain_id,
             primary_chain_client.clone(),
             RuntimeApiFull::new(client.clone()),
         );
