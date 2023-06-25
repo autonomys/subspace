@@ -1,17 +1,14 @@
 use crate::{self as pallet_domains};
+use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
-use frame_support::{assert_ok, parameter_types};
-use pallet_settlement::{PrimaryBlockHash, ReceiptVotes};
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
     ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
-use sp_trie::StorageProof;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -165,81 +162,6 @@ fn create_dummy_bundle_with_receipts(
         primary_hash,
         receipt,
     )
-}
-
-#[test]
-fn submit_fraud_proof_should_work() {
-    let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1u64..=256u64)
-        .map(|n| {
-            let primary_hash = Hash::random();
-            (
-                create_dummy_bundle(DOMAIN_ID, n, primary_hash),
-                primary_hash,
-            )
-        })
-        .unzip();
-
-    let dummy_proof = |domain_id| {
-        FraudProof::InvalidStateTransition(InvalidStateTransitionProof {
-            domain_id,
-            bad_receipt_hash: Hash::random(),
-            parent_number: 99,
-            primary_parent_hash: block_hashes[98],
-            pre_state_root: H256::random(),
-            post_state_root: H256::random(),
-            proof: StorageProof::empty(),
-            execution_phase: ExecutionPhase::FinalizeBlock {
-                total_extrinsics: 0,
-            },
-        })
-    };
-
-    new_test_ext().execute_with(|| {
-        (0usize..256usize).for_each(|index| {
-            let block_hash = block_hashes[index];
-            PrimaryBlockHash::<Test>::insert(DOMAIN_ID, (index + 1) as u64, block_hash);
-
-            assert_ok!(Domains::submit_bundle(
-                RuntimeOrigin::none(),
-                dummy_bundles[index].clone(),
-            ));
-
-            let receipt_hash = dummy_bundles[index].clone().receipt.hash();
-            assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_some());
-            let mut votes = ReceiptVotes::<Test>::iter_prefix((DOMAIN_ID, block_hash));
-            assert_eq!(votes.next(), Some((receipt_hash, 1)));
-            assert_eq!(votes.next(), None);
-        });
-
-        // non-system domain fraud proof should be ignored
-        assert_ok!(Domains::submit_fraud_proof(
-            RuntimeOrigin::none(),
-            dummy_proof(DomainId::new(100))
-        ));
-        assert_eq!(Settlement::head_receipt_number(DOMAIN_ID), 256);
-        let receipt_hash = dummy_bundles[255].clone().receipt.hash();
-        assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_some());
-
-        assert_ok!(Domains::submit_fraud_proof(
-            RuntimeOrigin::none(),
-            dummy_proof(DOMAIN_ID)
-        ));
-        assert_eq!(Settlement::head_receipt_number(DOMAIN_ID), 99);
-        let receipt_hash = dummy_bundles[98].clone().receipt.hash();
-        assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_some());
-        // Receipts for block [100, 256] should be removed as being invalid.
-        (100..=256).for_each(|block_number| {
-            let receipt_hash = dummy_bundles[block_number as usize - 1]
-                .clone()
-                .receipt
-                .hash();
-            assert!(Settlement::receipts(DOMAIN_ID, receipt_hash).is_none());
-            let block_hash = block_hashes[block_number as usize - 1];
-            assert!(ReceiptVotes::<Test>::iter_prefix((DOMAIN_ID, block_hash))
-                .next()
-                .is_none());
-        });
-    });
 }
 
 #[test]

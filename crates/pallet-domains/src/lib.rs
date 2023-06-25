@@ -172,14 +172,10 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        // TODO: proper weight
+        #[allow(deprecated)]
         #[pallet::call_index(0)]
-        #[pallet::weight(
-            if opaque_bundle.domain_id().is_system() {
-                T::WeightInfo::submit_system_bundle()
-            } else {
-                T::WeightInfo::submit_core_bundle()
-            }
-        )]
+        #[pallet::weight(Weight::from_all(10_000))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -226,10 +222,8 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id().is_system() {
-                pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
-                    .map_err(Error::<T>::from)?;
-            }
+            pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
+                .map_err(Error::<T>::from)?;
 
             Ok(())
         }
@@ -290,19 +284,7 @@ mod pallet {
                 Call::submit_bundle { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
-                Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        Err(TransactionValidityError::Invalid(
-                            InvalidTransactionCode::FraudProof.into(),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
+                Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -332,13 +314,6 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        return InvalidTransactionCode::FraudProof.into();
-                    }
                     if let Err(e) =
                         pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {

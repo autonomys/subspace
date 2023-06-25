@@ -125,8 +125,6 @@ impl core::ops::Sub<u32> for DomainId {
 const OPEN_DOMAIN_ID_START: u32 = 100;
 
 impl DomainId {
-    pub const SYSTEM: Self = Self::new(0);
-
     pub const CORE_DOMAIN_ID_START: Self = Self::new(1);
 
     pub const CORE_PAYMENTS: Self = Self::new(1);
@@ -136,11 +134,6 @@ impl DomainId {
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)
-    }
-
-    /// Returns `true` if a domain is a system domain.
-    pub fn is_system(&self) -> bool {
-        self.0 == Self::SYSTEM.0
     }
 
     /// Returns `true` if a domain is a core domain.
