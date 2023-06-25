@@ -24,8 +24,10 @@ use sc_cli::{
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
 use sp_core::crypto::AccountId32;
+use sp_domains::DomainId;
 use sp_runtime::traits::Convert;
 use std::net::SocketAddr;
+use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -44,18 +46,22 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
+fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
+    s.parse::<u32>().map(Into::into)
+}
+
 #[derive(Debug, Parser)]
 pub struct DomainCli {
-    /// Run a node.
+    /// Run a domain node.
     #[clap(flatten)]
     pub run: SubstrateRunCmd,
+
+    #[clap(long, value_parser = parse_domain_id)]
+    pub domain_id: DomainId,
 
     /// Optional relayer address to relay messages on behalf.
     #[clap(long)]
     pub relayer_id: Option<String>,
-
-    /// The base path that should be used by the domain.
-    pub base_path: Option<PathBuf>,
 
     /// Additional args for domain.
     #[clap(raw = true)]
@@ -63,15 +69,25 @@ pub struct DomainCli {
 }
 
 impl DomainCli {
-    // TODO: proper base_path
     /// Constructs a new instance of [`DomainCli`].
-    ///
-    /// If no explicit base path for the domain, the default value will be `base_path/system`.
-    pub fn new(_base_path: Option<PathBuf>, domain_args: impl Iterator<Item = String>) -> Self {
+    pub fn new(
+        consensus_base_path: Option<PathBuf>,
+        domain_args: impl Iterator<Item = String>,
+    ) -> Self {
         let mut cli =
             DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
 
-        cli.base_path.as_mut().map(|path| path.join("system"));
+        // Use `consensus_base_path/domain-{domain_id}` as the domain base path if it's not
+        // specified explicitly but there is an explicit consensus base path.
+        match consensus_base_path {
+            Some(c_path) if cli.run.shared_params.base_path.is_none() => {
+                cli.run
+                    .shared_params
+                    .base_path
+                    .replace(c_path.join(format!("domain-{}", u32::from(cli.domain_id))));
+            }
+            _ => {}
+        }
 
         cli
     }
@@ -185,15 +201,7 @@ impl CliConfiguration<Self> for DomainCli {
     }
 
     fn base_path(&self) -> Result<Option<BasePath>> {
-        Ok(self
-            .shared_params()
-            .base_path()?
-            .as_mut()
-            .map(|base_path| {
-                let path: PathBuf = base_path.path().to_path_buf();
-                BasePath::new(path.join("system"))
-            })
-            .or_else(|| self.base_path.clone().map(Into::into)))
+        self.shared_params().base_path()
     }
 
     fn rpc_addr(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {

@@ -34,7 +34,6 @@ use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::DomainId;
 use subspace_node::{
     AccountId32ToAccountId20Converter, Cli, DomainCli, DomainSubcommand, ExecutorDispatch,
     Subcommand,
@@ -603,7 +602,7 @@ fn main() -> Result<(), Error> {
                     );
 
                     let domain_params = domain_service::DomainParams {
-                        domain_id: DomainId::SYSTEM,
+                        domain_id: domain_cli.domain_id,
                         domain_config,
                         primary_chain_client: primary_chain_node.client.clone(),
                         primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
@@ -628,7 +627,7 @@ fn main() -> Result<(), Error> {
                     .await?;
 
                     xdm_gossip_worker_builder
-                        .push_domain_tx_pool_sink(DomainId::SYSTEM, domain_node.tx_pool_sink);
+                        .push_domain_tx_pool_sink(domain_cli.domain_id, domain_node.tx_pool_sink);
 
                     primary_chain_node
                         .task_manager
