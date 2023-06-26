@@ -43,7 +43,7 @@ pub(crate) fn runtime_version(code: &[u8]) -> Result<RuntimeVersion, Error> {
 /// Upgrades current runtime with new runtime.
 // TODO: we can use upstream's `can_set_code` after some adjustments
 pub(crate) fn can_upgrade_code(
-    current_version: RuntimeVersion,
+    current_version: &RuntimeVersion,
     update_code: &[u8],
 ) -> Result<RuntimeVersion, Error> {
     let new_version = runtime_version(update_code)?;
@@ -101,7 +101,7 @@ pub(crate) fn do_upgrade_runtime<T: Config>(
             .as_mut()
             .ok_or(Error::MissingRuntimeObject)?;
 
-        let new_runtime_version = can_upgrade_code(runtime_obj.version.clone(), &code)?;
+        let new_runtime_version = can_upgrade_code(&runtime_obj.version, &code)?;
         let runtime_hash = T::Hashing::hash(&code);
 
         runtime_obj.code = code;
