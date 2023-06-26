@@ -31,7 +31,7 @@ use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
-pub use archiver::create_subspace_archiver;
+pub use archiver::{create_subspace_archiver, SegmentHeadersStore};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
