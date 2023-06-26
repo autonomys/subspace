@@ -35,7 +35,7 @@ use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex,
+    ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -45,6 +45,10 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// How long to wait for peers before giving up
 const WAIT_FOR_PEERS_TIMEOUT: Duration = Duration::from_secs(10);
+/// How many blocks to queue before pausing and waiting for blocks to be imported
+const QUEUED_BLOCKS_LIMIT: BlockNumber = 1_000;
+/// Time to wait for blocks to import if import is too slow
+const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 
 struct WaitLinkError<B: BlockT> {
     error: BlockImportError,
@@ -225,7 +229,6 @@ where
         )),
     );
 
-    let best_block_number = client.info().best_number;
     let mut downloaded_blocks = 0;
     let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
 
@@ -279,6 +282,7 @@ where
 
         let mut blocks_to_import = Vec::with_capacity(reconstructed_contents.blocks.len());
 
+        let best_block_number = client.info().best_number;
         for (block_number, block_bytes) in reconstructed_contents.blocks {
             {
                 let block_number = block_number.into();
@@ -298,6 +302,11 @@ where
                     }
 
                     continue;
+                }
+
+                // Limit number of queued blocks for import
+                while block_number - best_block_number >= QUEUED_BLOCKS_LIMIT.into() {
+                    tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
                 }
             }
 
@@ -323,7 +332,7 @@ where
             downloaded_blocks += 1;
 
             if downloaded_blocks % 1000 == 0 {
-                info!("Imported block {}", block_number);
+                info!("Imported block {} from DSN", block_number);
             }
         }
 
