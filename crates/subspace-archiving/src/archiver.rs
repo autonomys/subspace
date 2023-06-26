@@ -248,6 +248,7 @@ pub struct Archiver {
 }
 
 impl Archiver {
+    // TODO: Make erasure coding an explicit argument
     /// Create a new instance with specified record size and recorded history segment size.
     ///
     /// Note: this is the only way to instantiate object archiver, while block archiver can be
