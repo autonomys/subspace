@@ -24,6 +24,7 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod runtime_registry;
 pub mod weights;
 
 use frame_support::traits::Get;
@@ -36,11 +37,11 @@ use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
 
-pub type RuntimeId = u32;
-
 #[frame_support::pallet]
 mod pallet {
-    use super::RuntimeId;
+    use crate::runtime_registry::{
+        do_register_runtime, do_upgrade_runtime, Error as RuntimeRegistryError, RuntimeObject,
+    };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::weights::Weight;
@@ -50,8 +51,10 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{DomainId, ExecutorPublicKey, OpaqueBundle};
-    use sp_runtime::traits::{One, Zero};
+    use sp_domains::{
+        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
+    };
+    use sp_runtime::traits::{BlockNumberProvider, One, Zero};
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
@@ -70,24 +73,17 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    // TODO: Proper RuntimeObject
-    #[derive(DebugNoBound, Encode, Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound)]
-    #[scale_info(skip_type_params(T))]
-    pub struct RuntimeObject<T: Config> {
-        pub runtime_name: Vec<u8>,
-        pub created_at: T::BlockNumber,
-        pub updated_at: T::BlockNumber,
-        pub runtime_upgrades: u32,
-        pub domain_runtime_code: Vec<u8>,
-    }
-
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
     pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
 
+    /// Stores the next runtime id.
     #[pallet::storage]
-    pub(super) type RuntimeRegistry<T> =
-        StorageMap<_, Identity, RuntimeId, RuntimeObject<T>, OptionQuery>;
+    pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type RuntimeRegistry<T: Config> =
+        StorageMap<_, Identity, RuntimeId, RuntimeObject<T::BlockNumber, T::Hash>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -149,6 +145,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<RuntimeRegistryError> for Error<T> {
+        fn from(err: RuntimeRegistryError) -> Self {
+            Error::RuntimeRegistry(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Can not find the block hash of given primary block number.
@@ -157,6 +159,8 @@ mod pallet {
         Bundle(BundleError),
         /// Invalid fraud proof.
         FraudProof(FraudProofError),
+        /// Runtime registry specific errors
+        RuntimeRegistry(RuntimeRegistryError),
     }
 
     #[pallet::event]
@@ -167,6 +171,13 @@ mod pallet {
             domain_id: DomainId,
             bundle_hash: H256,
             bundle_author: ExecutorPublicKey,
+        },
+        DomainRuntimeCreated {
+            runtime_id: RuntimeId,
+            runtime_type: RuntimeType,
+        },
+        DomainRuntimeUpgraded {
+            runtime_id: RuntimeId,
         },
     }
 
@@ -233,31 +244,68 @@ mod pallet {
 
             Ok(())
         }
+
+        #[pallet::call_index(2)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn register_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_name: Vec<u8>,
+            runtime_type: RuntimeType,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            let runtime_id =
+                do_register_runtime::<T>(runtime_name, runtime_type.clone(), code, block_number)
+                    .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainRuntimeCreated {
+                runtime_id,
+                runtime_type,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(3)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn upgrade_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_id: RuntimeId,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            do_upgrade_runtime::<T>(runtime_id, code, block_number).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainRuntimeUpgraded { runtime_id });
+
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
     #[derive(Default)]
     pub struct GenesisConfig {
-        pub runtime_name_and_runtime_code: Option<(Vec<u8>, Vec<u8>)>,
+        pub genesis_domain_runtime: Option<GenesisDomainRuntime>,
     }
 
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
-            if let Some((runtime_name, runtime_code)) = &self.runtime_name_and_runtime_code {
+            if let Some(genesis_domain_runtime) = &self.genesis_domain_runtime {
                 // Register the genesis domain runtime
-                RuntimeRegistry::<T>::insert(
-                    0u32,
-                    RuntimeObject {
-                        runtime_name: runtime_name.clone(),
-                        created_at: Zero::zero(),
-                        updated_at: Zero::zero(),
-                        runtime_upgrades: 0u32,
-                        domain_runtime_code: runtime_code.clone(),
-                    },
-                );
-
-                // Instantiate the genesis domain
+                do_register_runtime::<T>(
+                    genesis_domain_runtime.name.clone(),
+                    genesis_domain_runtime.runtime_type.clone(),
+                    genesis_domain_runtime.code.clone(),
+                    Zero::zero(),
+                )
+                .expect("Genesis runtime registration must always succeed");
             }
         }
     }
@@ -384,7 +432,7 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
         // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
-        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.domain_runtime_code)
+        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
     }
 
     /// Returns the block number of the latest receipt.
