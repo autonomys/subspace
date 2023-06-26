@@ -73,9 +73,8 @@ mod executor;
 mod fraud_proof;
 mod parent_chain;
 mod sortition;
-// TODO: Unlock once domain test infra is workable again.
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 mod utils;
 
 pub use self::executor::Executor;

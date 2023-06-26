@@ -390,11 +390,10 @@ where
     Ok(None)
 }
 
-/* TODO: Unlock once domain test infra is workable again.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain_test_service::system_domain_test_runtime::Block;
+    use domain_test_service::evm_domain_test_runtime::Block;
     use sc_client_api::backend::NewBlockState;
     use sc_client_api::{Backend, BlockImportOperation};
     use sp_core::hash::H256;
@@ -759,4 +758,3 @@ mod tests {
         assert!(bad_receipts_at(30).is_none());
     }
 }
-*/
