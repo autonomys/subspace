@@ -1,6 +1,4 @@
 //! Runtime registry for domains
-// TODO: remove once connected
-#![allow(dead_code)]
 
 use crate::pallet::{NextRuntimeId, RuntimeRegistry};
 use crate::Config;
@@ -19,6 +17,8 @@ pub enum Error {
     InvalidSpecName,
     SpecVersionNeedsToIncrease,
     MaxRuntimeId,
+    MissingRuntimeObject,
+    MaxRuntimeUpgrades,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -93,14 +93,42 @@ pub(crate) fn do_register_runtime<T: Config>(
     Ok(runtime_id)
 }
 
+pub(crate) fn do_upgrade_runtime<T: Config>(
+    runtime_id: RuntimeId,
+    code: Vec<u8>,
+    at: T::BlockNumber,
+) -> Result<(), Error> {
+    RuntimeRegistry::<T>::try_mutate(runtime_id, |maybe_runtime_object| {
+        let runtime_obj = maybe_runtime_object
+            .as_mut()
+            .ok_or(Error::MissingRuntimeObject)?;
+
+        let new_runtime_version = can_upgrade_code(runtime_obj.version.clone(), &code)?;
+        let runtime_hash = T::Hashing::hash(&code);
+
+        runtime_obj.code = code;
+        runtime_obj.version = new_runtime_version;
+        runtime_obj.hash = runtime_hash;
+        runtime_obj.runtime_upgrades = runtime_obj
+            .runtime_upgrades
+            .checked_add(1)
+            .ok_or(Error::MaxRuntimeUpgrades)?;
+        runtime_obj.updated_at = at;
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::pallet::RuntimeRegistry;
+    use crate::pallet::{NextRuntimeId, RuntimeRegistry};
+    use crate::runtime_registry::{Error as RuntimeRegistryError, RuntimeObject};
     use crate::tests::{new_test_ext, Test};
+    use crate::Error;
     use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::dispatch::RawOrigin;
     use sp_domains::RuntimeType;
+    use sp_runtime::DispatchError;
     use sp_version::RuntimeVersion;
 
     struct ReadRuntimeVersion(Vec<u8>);
@@ -143,7 +171,97 @@ mod tests {
 
             assert_ok!(res);
             let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
-            assert_eq!(runtime_obj.version, version)
+            assert_eq!(runtime_obj.version, version);
+            assert_eq!(NextRuntimeId::<Test>::get(), 1)
+        })
+    }
+
+    #[test]
+    fn upgrade_domain_runtime() {
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            RuntimeRegistry::<Test>::insert(
+                0,
+                RuntimeObject {
+                    runtime_name: b"evm".to_vec(),
+                    runtime_type: Default::default(),
+                    runtime_upgrades: 0,
+                    hash: Default::default(),
+                    code: vec![1, 2, 3, 4],
+                    version: RuntimeVersion {
+                        spec_name: "test".into(),
+                        spec_version: 1,
+                        impl_version: 1,
+                        transaction_version: 1,
+                        ..Default::default()
+                    },
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                },
+            );
+
+            NextRuntimeId::<Test>::set(1);
+        });
+
+        let test_data = vec![
+            (
+                "test1",
+                1,
+                Err(Error::<Test>::RuntimeRegistry(
+                    RuntimeRegistryError::InvalidSpecName,
+                )),
+            ),
+            (
+                "test",
+                1,
+                Err(Error::<Test>::RuntimeRegistry(
+                    RuntimeRegistryError::SpecVersionNeedsToIncrease,
+                )),
+            ),
+            ("test", 2, Ok(())),
+        ];
+
+        for (spec_name, spec_version, expected) in test_data.into_iter() {
+            let version = RuntimeVersion {
+                spec_name: spec_name.into(),
+                spec_version,
+                impl_version: 1,
+                transaction_version: 1,
+                ..Default::default()
+            };
+            let read_runtime_version = ReadRuntimeVersion(version.encode());
+            ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
+                read_runtime_version,
+            ));
+
+            ext.execute_with(|| {
+                frame_system::Pallet::<Test>::set_block_number(100u64);
+                let res = crate::Pallet::<Test>::upgrade_domain_runtime(
+                    RawOrigin::Root.into(),
+                    0,
+                    vec![6, 7, 8, 9],
+                );
+
+                assert_eq!(res, expected.map_err(DispatchError::from))
+            })
+        }
+
+        // verify upgrade
+        ext.execute_with(|| {
+            let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
+            assert_eq!(
+                runtime_obj.version,
+                RuntimeVersion {
+                    spec_name: "test".into(),
+                    spec_version: 2,
+                    impl_version: 1,
+                    transaction_version: 1,
+                    ..Default::default()
+                }
+            );
+            assert_eq!(runtime_obj.runtime_upgrades, 1);
+            assert_eq!(runtime_obj.code, vec![6, 7, 8, 9]);
+            assert!(runtime_obj.updated_at > runtime_obj.created_at);
         })
     }
 }

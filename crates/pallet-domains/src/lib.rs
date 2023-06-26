@@ -40,7 +40,7 @@ use sp_std::vec::Vec;
 #[frame_support::pallet]
 mod pallet {
     use crate::runtime_registry::{
-        do_register_runtime, Error as RuntimeRegistryError, RuntimeObject,
+        do_register_runtime, do_upgrade_runtime, Error as RuntimeRegistryError, RuntimeObject,
     };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
@@ -176,6 +176,9 @@ mod pallet {
             runtime_id: RuntimeId,
             runtime_type: RuntimeType,
         },
+        DomainRuntimeUpgraded {
+            runtime_id: RuntimeId,
+        },
     }
 
     #[pallet::call]
@@ -262,6 +265,24 @@ mod pallet {
                 runtime_id,
                 runtime_type,
             });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(3)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn upgrade_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_id: RuntimeId,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            do_upgrade_runtime::<T>(runtime_id, code, block_number).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainRuntimeUpgraded { runtime_id });
 
             Ok(())
         }
