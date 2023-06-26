@@ -101,8 +101,13 @@ where
     let mut link = WaitLink::new();
     let mut import_queue_service = import_queue.service();
 
-    let import_blocks_fut =
-        import_blocks_from_dsn(node, client.as_ref(), import_queue_service.as_mut(), force);
+    let import_blocks_fut = import_blocks_from_dsn(
+        node,
+        client.as_ref(),
+        import_queue_service.as_mut(),
+        BlockOrigin::NetworkInitialSync,
+        force,
+    );
     let drive_import_queue_fut = async {
         let mut last_imported_blocks = link.imported_blocks;
         loop {
@@ -171,6 +176,7 @@ pub async fn import_blocks_from_dsn<Block, IQS, Client>(
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
+    block_origin: BlockOrigin,
     force: bool,
 ) -> Result<u64, sc_service::Error>
 where
@@ -288,7 +294,7 @@ where
 
             // import queue handles verification and importing it into the client.
             import_queue_service.import_blocks(
-                BlockOrigin::NetworkInitialSync,
+                block_origin,
                 vec![IncomingBlock::<Block> {
                     hash,
                     header: Some(header),
