@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::Node;
-use tracing::{info, trace};
+use tracing::{info, trace, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN.
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -186,14 +186,17 @@ where
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        import_blocks_from_dsn(
+        if let Err(error) = import_blocks_from_dsn(
             node,
             client,
             import_queue_service,
             BlockOrigin::NetworkBroadcast,
             false,
         )
-        .await?;
+        .await
+        {
+            warn!(%error, "Error when syncing blocks from DSN");
+        }
     }
 
     Ok(())
