@@ -266,6 +266,20 @@ impl From<PieceOffset> for u16 {
     }
 }
 
+impl From<PieceOffset> for u32 {
+    #[inline]
+    fn from(original: PieceOffset) -> Self {
+        Self::from(original.0)
+    }
+}
+
+impl From<PieceOffset> for u64 {
+    #[inline]
+    fn from(original: PieceOffset) -> Self {
+        Self::from(original.0)
+    }
+}
+
 impl From<PieceOffset> for usize {
     #[inline]
     fn from(original: PieceOffset) -> Self {

@@ -782,10 +782,36 @@ impl SectorId {
         &self,
         piece_offset: PieceOffset,
         history_size: HistorySize,
+        max_pieces_in_sector: u16,
+        recent_segments: HistorySize,
+        recent_history_fraction: (HistorySize, HistorySize),
     ) -> PieceIndex {
-        let piece_index =
-            U256::from_le_bytes(blake2b_256_hash_with_key(&self.0, &piece_offset.to_bytes()))
-                % U256::from(history_size.in_pieces().get());
+        let recent_segments_in_pieces = recent_segments.in_pieces().get();
+        // Recent history must be at most `recent_history_fraction` of all history to use separate
+        // policy for recent pieces
+        let min_history_size_in_pieces = recent_segments_in_pieces
+            * recent_history_fraction.1.in_pieces().get()
+            / recent_history_fraction.0.in_pieces().get();
+        let input_hash =
+            U256::from_le_bytes(blake2b_256_hash_with_key(&self.0, &piece_offset.to_bytes()));
+        let history_size_in_pieces = history_size.in_pieces().get();
+        let num_interleaved_pieces = 1.max(
+            u64::from(max_pieces_in_sector) * recent_history_fraction.0.in_pieces().get()
+                / recent_history_fraction.1.in_pieces().get()
+                * 2,
+        );
+
+        let piece_index = if history_size_in_pieces > min_history_size_in_pieces
+            && u64::from(piece_offset) < num_interleaved_pieces
+            && u16::from(piece_offset) % 2 == 1
+        {
+            // For odd piece offsets at the beginning of the sector pick pieces at random from
+            // recent history only
+            input_hash % U256::from(recent_segments_in_pieces)
+                + U256::from(history_size_in_pieces - recent_segments_in_pieces)
+        } else {
+            input_hash % U256::from(history_size_in_pieces)
+        };
 
         PieceIndex::from(u64::try_from(piece_index).expect(
             "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",

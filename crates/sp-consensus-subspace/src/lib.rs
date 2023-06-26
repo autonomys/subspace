@@ -317,6 +317,10 @@ pub enum ChainConstants {
         era_duration: BlockNumber,
         /// Slot probability.
         slot_probability: (u64, u64),
+        /// Number of latest archived segments that are considered "recent history".
+        recent_segments: HistorySize,
+        /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+        recent_history_fraction: (HistorySize, HistorySize),
     },
 }
 
@@ -351,6 +355,23 @@ impl ChainConstants {
             slot_probability, ..
         } = self;
         *slot_probability
+    }
+
+    /// Number of latest archived segments that are considered "recent history".
+    pub fn recent_segments(&self) -> HistorySize {
+        let Self::V0 {
+            recent_segments, ..
+        } = self;
+        *recent_segments
+    }
+
+    /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+    pub fn recent_history_fraction(&self) -> (HistorySize, HistorySize) {
+        let Self::V0 {
+            recent_history_fraction,
+            ..
+        } = self;
+        *recent_history_fraction
     }
 }
 
