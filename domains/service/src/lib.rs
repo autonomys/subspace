@@ -29,6 +29,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Zero};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Domain full client.
@@ -87,10 +88,12 @@ where
     } = params;
 
     if client.requires_full_sync() {
-        match config.network.sync_mode {
-            SyncMode::Fast { .. } => return Err("Fast sync doesn't work for archive nodes".into()),
+        match config.network.sync_mode.load(Ordering::Acquire) {
+            SyncMode::LightState { .. } => {
+                return Err("Fast sync doesn't work for archive nodes".into())
+            }
             SyncMode::Warp => return Err("Warp sync doesn't work for archive nodes".into()),
-            SyncMode::Full => {}
+            SyncMode::Full | SyncMode::Paused => {}
         }
     }
 
