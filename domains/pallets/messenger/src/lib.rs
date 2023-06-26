@@ -731,8 +731,9 @@ mod pallet {
             dst_domain_id: DomainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
+            // TODO: system domain and core domain have been removed.
             // ensure domain is either system domain or core domain
-            ensure!(dst_domain_id.is_core(), Error::<T>::InvalidDomain,);
+            // ensure!(dst_domain_id.is_core(), Error::<T>::InvalidDomain,);
 
             let channel_id = NextChannelId::<T>::get(dst_domain_id);
             let next_channel_id = channel_id

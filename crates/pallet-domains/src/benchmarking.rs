@@ -67,7 +67,7 @@ mod benchmarks {
     #[benchmark]
     fn submit_core_bundle() {
         let bundle = create_dummy_bundle_with_receipts_generic(
-            DomainId::CORE_PAYMENTS,
+            DomainId::from(1u32),
             2u32.into(),
             Default::default(),
             ExecutionReceipt::dummy(1u32.into(), block_hash_n::<T>(1)),

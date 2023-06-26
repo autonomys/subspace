@@ -346,7 +346,8 @@ parameter_types! {
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
-    pub const CoreDomainId: DomainId = DomainId::CORE_EVM;
+    // TODO: Proper value
+    pub const CoreDomainId: DomainId = DomainId::new(3u32);
 }
 
 impl pallet_messenger::Config for Runtime {

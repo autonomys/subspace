@@ -122,28 +122,10 @@ impl core::ops::Sub<u32> for DomainId {
     }
 }
 
-const OPEN_DOMAIN_ID_START: u32 = 100;
-
 impl DomainId {
-    pub const CORE_DOMAIN_ID_START: Self = Self::new(1);
-
-    pub const CORE_PAYMENTS: Self = Self::new(1);
-
-    pub const CORE_EVM: Self = Self::new(3);
-
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)
-    }
-
-    /// Returns `true` if a domain is a core domain.
-    pub fn is_core(&self) -> bool {
-        self.0 >= Self::CORE_DOMAIN_ID_START.0 && self.0 < OPEN_DOMAIN_ID_START
-    }
-
-    /// Returns `true` if a domain is an open domain.
-    pub fn is_open(&self) -> bool {
-        self.0 >= OPEN_DOMAIN_ID_START
     }
 
     /// Converts the inner integer to little-endian bytes.
