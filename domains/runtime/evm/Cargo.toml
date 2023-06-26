@@ -111,8 +111,6 @@ std = [
 	"subspace-runtime-primitives/std",
 	"substrate-wasm-builder",
 ]
-# Internal implementation detail, enabled during building of wasm blob.
-wasm-builder = []
 runtime-benchmarks = [
 	'hex-literal',
 	"sp-runtime/runtime-benchmarks",
