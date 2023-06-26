@@ -22,11 +22,7 @@ pub enum Error {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct RuntimeObject<Number, Hash>
-where
-    Number: Encode + Decode + Clone,
-    Hash: Encode + Decode + Clone,
-{
+pub struct RuntimeObject<Number, Hash> {
     pub runtime_name: Vec<u8>,
     pub runtime_type: RuntimeType,
     pub runtime_upgrades: u32,
@@ -45,6 +41,7 @@ pub(crate) fn runtime_version(code: &[u8]) -> Result<RuntimeVersion, Error> {
 }
 
 /// Upgrades current runtime with new runtime.
+// TODO: we can use upstream's `can_set_code` after some adjustments
 pub(crate) fn can_upgrade_code(
     current_version: RuntimeVersion,
     update_code: &[u8],
@@ -93,6 +90,7 @@ pub(crate) fn do_register_runtime<T: Config>(
     Ok(runtime_id)
 }
 
+// TODO: upgrade after a delay instead of immediately
 pub(crate) fn do_upgrade_runtime<T: Config>(
     runtime_id: RuntimeId,
     code: Vec<u8>,
