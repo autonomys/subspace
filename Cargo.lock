@@ -2150,7 +2150,6 @@ dependencies = [
  "sp-state-machine",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-wasm-tools",
  "tracing",
 ]
 
@@ -2219,7 +2218,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
- "subspace-wasm-tools",
  "substrate-test-runtime-client",
  "substrate-test-utils",
  "tempfile",
@@ -2766,7 +2764,6 @@ dependencies = [
  "sp-transaction-pool",
  "sp-version",
  "subspace-runtime-primitives",
- "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -10598,7 +10595,6 @@ dependencies = [
  "subspace-test-client",
  "subspace-test-runtime",
  "subspace-test-service",
- "subspace-wasm-tools",
  "substrate-test-utils",
  "tempfile",
  "tokio",
@@ -10771,7 +10767,6 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-verification",
- "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -10935,7 +10930,6 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "subspace-verification",
- "subspace-wasm-tools",
  "substrate-wasm-builder",
 ]
 
@@ -11028,10 +11022,6 @@ dependencies = [
  "subspace-solving",
  "thiserror",
 ]
-
-[[package]]
-name = "subspace-wasm-tools"
-version = "0.1.0"
 
 [[package]]
 name = "substrate-bip39"

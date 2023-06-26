@@ -8,6 +8,4 @@ fn main() {
             .import_memory()
             .build();
     }
-
-    subspace_wasm_tools::export_wasm_bundle_path();
 }
