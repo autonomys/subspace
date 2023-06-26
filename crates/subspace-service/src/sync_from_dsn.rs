@@ -3,16 +3,16 @@ use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_network::{NetworkBlock, NetworkPeers, NetworkService};
-use sc_network_sync::SyncingService;
+use sc_network::{NetworkPeers, NetworkService};
 use sp_api::BlockT;
 use sp_blockchain::HeaderBackend;
+use sp_consensus::BlockOrigin;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::Node;
-use tracing::{info, trace};
+use tracing::{info, trace, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN.
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -33,7 +33,6 @@ pub(super) fn create_observer_and_worker<Block, Client>(
     node: Node,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
-    sync_service: Arc<SyncingService<Block>>,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -55,14 +54,7 @@ where
         async move { create_observer(network_service.as_ref(), &node, client.as_ref(), tx).await }
     };
     let worker_fut = async move {
-        create_worker(
-            &node,
-            client.as_ref(),
-            import_queue_service.as_mut(),
-            sync_service,
-            rx,
-        )
-        .await
+        create_worker(&node, client.as_ref(), import_queue_service.as_mut(), rx).await
     };
     (observer_fut, worker_fut)
 }
@@ -174,7 +166,6 @@ async fn create_worker<Block, IQS, Client>(
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
-    sync_service: Arc<SyncingService<Block>>,
     mut notifications: mpsc::Receiver<NotificationReason>,
 ) -> Result<(), sc_service::Error>
 where
@@ -195,9 +186,17 @@ where
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        import_blocks_from_dsn(node, client, import_queue_service, false).await?;
-        let info = client.info();
-        sync_service.new_best_block_imported(info.best_hash, info.best_number);
+        if let Err(error) = import_blocks_from_dsn(
+            node,
+            client,
+            import_queue_service,
+            BlockOrigin::NetworkBroadcast,
+            false,
+        )
+        .await
+        {
+            warn!(%error, "Error when syncing blocks from DSN");
+        }
     }
 
     Ok(())
