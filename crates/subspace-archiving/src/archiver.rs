@@ -379,11 +379,17 @@ impl Archiver {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
-                    update_record_commitments(
-                        &mut self.incremental_record_commitments,
-                        &segment,
-                        &self.kzg,
-                    );
+                    let existing_commitments = self.incremental_record_commitments.len();
+                    let bytes_committed_to = existing_commitments * RawRecord::SIZE;
+                    // Run incremental archiver only when there is at least two records to archive,
+                    // otherwise we're wasting CPU cycles encoding segment over and over again
+                    if segment_size - bytes_committed_to >= RawRecord::SIZE * 2 {
+                        update_record_commitments(
+                            &mut self.incremental_record_commitments,
+                            &segment,
+                            &self.kzg,
+                        );
+                    }
 
                     let Segment::V0 { items } = segment;
                     // Push all of the items back into the buffer, we don't have enough data yet
