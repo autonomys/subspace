@@ -400,6 +400,7 @@ fn subspace_genesis_config(
             genesis_domain_runtime: Some(sp_domains::GenesisDomainRuntime {
                 name: b"evm".to_vec(),
                 runtime_type: RuntimeType::Evm,
+                runtime_version: evm_domain_runtime::VERSION,
                 code: evm_domain_runtime::WASM_BINARY
                     .unwrap_or_else(|| panic!("EVM domain runtime not available"))
                     .to_owned(),

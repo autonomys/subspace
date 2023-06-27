@@ -29,6 +29,7 @@ use parity_scale_codec::MaxEncodedLen;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
+use sp_api::RuntimeVersion;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
@@ -470,6 +471,7 @@ where
 pub struct GenesisDomainRuntime {
     pub name: Vec<u8>,
     pub runtime_type: RuntimeType,
+    pub runtime_version: RuntimeVersion,
     pub code: Vec<u8>,
 }
 
