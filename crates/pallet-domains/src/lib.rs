@@ -54,7 +54,7 @@ mod pallet {
     use sp_domains::{
         DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
     };
-    use sp_runtime::traits::{BlockNumberProvider, One, Zero};
+    use sp_runtime::traits::{BlockNumberProvider, Zero};
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
@@ -183,14 +183,10 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        // TODO: proper weight
+        #[allow(deprecated)]
         #[pallet::call_index(0)]
-        #[pallet::weight(
-            if opaque_bundle.domain_id().is_system() {
-                T::WeightInfo::submit_system_bundle()
-            } else {
-                T::WeightInfo::submit_core_bundle()
-            }
-        )]
+        #[pallet::weight(Weight::from_all(10_000))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -237,10 +233,8 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id().is_system() {
-                pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
-                    .map_err(Error::<T>::from)?;
-            }
+            pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
+                .map_err(Error::<T>::from)?;
 
             Ok(())
         }
@@ -312,28 +306,10 @@ mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            let parent_number = block_number - One::one();
-            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
-
-            pallet_settlement::PrimaryBlockHash::<T>::insert(
-                DomainId::SYSTEM,
-                parent_number,
-                parent_hash,
-            );
-
-            // The genesis block hash is not finalized until the genesis block building is done,
-            // hence the genesis receipt is initialized after the genesis building.
-            if parent_number.is_zero() {
-                pallet_settlement::Pallet::<T>::initialize_genesis_receipt(
-                    DomainId::SYSTEM,
-                    parent_hash,
-                );
-            }
-
+        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
 
-            T::DbWeight::get().writes(2)
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -356,19 +332,7 @@ mod pallet {
                 Call::submit_bundle { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
-                Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        Err(TransactionValidityError::Invalid(
-                            InvalidTransactionCode::FraudProof.into(),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
+                Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -398,13 +362,6 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        return InvalidTransactionCode::FraudProof.into();
-                    }
                     if let Err(e) =
                         pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
@@ -433,16 +390,6 @@ impl<T: Config> Pallet<T> {
     pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
         // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
         RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
-    }
-
-    /// Returns the block number of the latest receipt.
-    pub fn head_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
-    }
-
-    /// Returns the block number of the oldest receipt still being tracked in the state.
-    pub fn oldest_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
     }
 
     fn pre_dispatch_submit_bundle(

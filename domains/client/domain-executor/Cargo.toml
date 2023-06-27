@@ -38,7 +38,6 @@ sp-trie = { version = "22.0.0", git = "https://github.com/subspace/substrate", r
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-fraud-proof = { version = "0.1.0", path = "../../../crates/subspace-fraud-proof" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
 tracing = "0.1.37"
 thiserror = "1.0.38"
 tokio = { version = "1.28.2", features = ["macros"] }

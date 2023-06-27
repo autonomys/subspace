@@ -218,6 +218,7 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
 }
 
 pub struct DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi> {
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     runtime_api: RuntimeApi,
     _phantom_data: PhantomData<(Block, PBlock)>,
@@ -228,6 +229,7 @@ impl<Block, PBlock, PClient, RuntimeApi: Clone> Clone
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             runtime_api: self.runtime_api.clone(),
             _phantom_data: self._phantom_data,
@@ -253,8 +255,13 @@ where
         + 'static,
     PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash>,
 {
-    pub fn new(primary_chain_client: Arc<PClient>, runtime_api: RuntimeApi) -> Self {
+    pub fn new(
+        domain_id: DomainId,
+        primary_chain_client: Arc<PClient>,
+        runtime_api: RuntimeApi,
+    ) -> Self {
         Self {
+            domain_id,
             primary_chain_client,
             runtime_api,
             _phantom_data: Default::default(),
@@ -281,7 +288,7 @@ where
     ) -> sp_blockchain::Result<Vec<Block::Extrinsic>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
             prepare_domain_block_elements::<Block, PBlock, _>(
-                DomainId::SYSTEM,
+                self.domain_id,
                 &*self.primary_chain_client,
                 primary_hash,
             )?;
@@ -335,6 +342,7 @@ where
         exts.into_iter()
             .filter(|ext| {
                 match verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, _>(
+                    self.domain_id,
                     &self.primary_chain_client,
                     at,
                     &self.runtime_api,

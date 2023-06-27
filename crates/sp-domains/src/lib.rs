@@ -122,47 +122,15 @@ impl core::ops::Sub<u32> for DomainId {
     }
 }
 
-const OPEN_DOMAIN_ID_START: u32 = 100;
-
 impl DomainId {
-    pub const SYSTEM: Self = Self::new(0);
-
-    pub const CORE_DOMAIN_ID_START: Self = Self::new(1);
-
-    pub const CORE_PAYMENTS: Self = Self::new(1);
-
-    pub const CORE_EVM: Self = Self::new(3);
-
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)
     }
 
-    /// Returns `true` if a domain is a system domain.
-    pub fn is_system(&self) -> bool {
-        self.0 == Self::SYSTEM.0
-    }
-
-    /// Returns `true` if a domain is a core domain.
-    pub fn is_core(&self) -> bool {
-        self.0 >= Self::CORE_DOMAIN_ID_START.0 && self.0 < OPEN_DOMAIN_ID_START
-    }
-
-    /// Returns `true` if a domain is an open domain.
-    pub fn is_open(&self) -> bool {
-        self.0 >= OPEN_DOMAIN_ID_START
-    }
-
     /// Converts the inner integer to little-endian bytes.
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
-    }
-
-    /// Returns the section name when a core domain wasm blob is embedded into the system domain
-    /// runtime via the `link_section` attribute.
-    #[cfg(feature = "std")]
-    pub fn link_section_name(&self) -> String {
-        format!("runtime_blob_{}", self.0)
     }
 }
 

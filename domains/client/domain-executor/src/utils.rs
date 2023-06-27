@@ -28,17 +28,6 @@ where
     pub number: NumberFor<Block>,
 }
 
-// TODO: unify this with trait bounds set directly on block traits.
-// Maybe we dont need these translations.?
-/// Converts the block number from the generic type `N1` to `N2`.
-pub(crate) fn translate_number_type<N1, N2>(block_number: N1) -> N2
-where
-    N1: TryInto<BlockNumber>,
-    N2: From<BlockNumber>,
-{
-    N2::from(to_number_primitive(block_number))
-}
-
 /// Converts a generic block number to a concrete primitive block number.
 pub(crate) fn to_number_primitive<N>(block_number: N) -> BlockNumber
 where
