@@ -28,7 +28,9 @@ use schnorrkel::SignatureError;
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, blake2b_256_hash_list};
+use subspace_core_primitives::crypto::{
+    blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
+};
 use subspace_core_primitives::{
     Blake2b256Hash, BlockNumber, BlockWeight, HistorySize, PublicKey, Randomness, Record,
     RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
@@ -101,15 +103,18 @@ fn calculate_solution_distance(
             .next()
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
-    let sector_slot_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
-        *sector_slot_challenge
-            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-            .next()
-            .expect("Solution range is smaller in size than sector slot challenge; qed"),
-    );
+    let sector_slot_challenge_with_audit_chunk =
+        blake2b_256_hash_with_key(&audit_chunk.to_le_bytes(), sector_slot_challenge.as_ref());
+    let sector_slot_challenge_with_audit_chunk_as_solution_range: SolutionRange =
+        SolutionRange::from_le_bytes(
+            *sector_slot_challenge_with_audit_chunk
+                .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+                .next()
+                .expect("Solution range is smaller in size than blake2b-256 hash; qed"),
+        );
     subspace_core_primitives::bidirectional_distance(
         &global_challenge_as_solution_range,
-        &(audit_chunk ^ sector_slot_challenge_as_solution_range),
+        &sector_slot_challenge_with_audit_chunk_as_solution_range,
     )
 }
 
