@@ -16,7 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
 frame-executive = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
@@ -56,14 +56,12 @@ sp-version = { version = "22.0.0", default-features = false, git = "https://gith
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../crates/subspace-runtime-primitives" }
 subspace-verification = { version = "0.1.0", default-features = false, path = "../../crates/subspace-verification" }
-system-domain-test-runtime = { version = "0.1.0", default-features = false, path = "../../domains/test/runtime/system" }
 
 # Used for the node template's RPCs
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 
 [build-dependencies]
-subspace-wasm-tools = { version = "0.1.0", path = "../../crates/subspace-wasm-tools" }
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", optional = true }
 
 [features]
@@ -71,7 +69,6 @@ default = ["std"]
 std = [
 	"codec/std",
 	"domain-runtime-primitives/std",
-	"system-domain-test-runtime/std",
 	"frame-executive/std",
 	"frame-support/std",
 	"frame-system/std",

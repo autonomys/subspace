@@ -211,7 +211,7 @@ where
             storage_proof.clone(),
             &state_root,
             self.executor.clone(),
-            domain_runtime_code.wasm_bundle,
+            domain_runtime_code.wasm_bundle.into(),
             extrinsic.clone(),
         )?;
 

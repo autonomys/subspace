@@ -1,3 +1,10 @@
+//! This crate is intended to provide the feature of gossiping bundles over the domain subnet.
+//! However, it's unused at present as it's not yet fully implemented.
+//!
+//! We may enable this feature in the future:
+//! 1. Implement the [`GossipMessageHandler`] somewhere.
+//! 2. Run the gossip worker using `start_gossip_worker` when building the service.
+
 mod worker;
 
 use self::worker::GossipWorker;

@@ -15,13 +15,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 fn main() {
-    subspace_wasm_tools::create_runtime_bundle_inclusion_file(
-        "system-domain-test-runtime",
-        "TEST_DOMAIN_WASM_BUNDLE",
-        None,
-        "test_system_domain_wasm_bundle.rs",
-    );
-
     #[cfg(feature = "std")]
     {
         substrate_wasm_builder::WasmBuilder::new()

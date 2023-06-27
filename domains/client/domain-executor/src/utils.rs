@@ -1,4 +1,3 @@
-use codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
@@ -29,17 +28,6 @@ where
     pub number: NumberFor<Block>,
 }
 
-// TODO: unify this with trait bounds set directly on block traits.
-// Maybe we dont need these translations.?
-/// Converts the block number from the generic type `N1` to `N2`.
-pub(crate) fn translate_number_type<N1, N2>(block_number: N1) -> N2
-where
-    N1: TryInto<BlockNumber>,
-    N2: From<BlockNumber>,
-{
-    N2::from(to_number_primitive(block_number))
-}
-
 /// Converts a generic block number to a concrete primitive block number.
 pub(crate) fn to_number_primitive<N>(block_number: N) -> BlockNumber
 where
@@ -48,15 +36,6 @@ where
     block_number
         .try_into()
         .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"))
-}
-
-/// Converts the block hash from the generic type `B1::Hash` to `B2::Hash`.
-pub(crate) fn translate_block_hash_type<B1, B2>(block_hash: B1::Hash) -> B2::Hash
-where
-    B1: BlockT,
-    B2: BlockT,
-{
-    B2::Hash::decode(&mut block_hash.encode().as_slice()).unwrap()
 }
 
 pub type DomainImportNotificationSinks<Block, PBlock> =

@@ -19,17 +19,12 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-// Make `system-domain-test-runtime` WASM runtime available.
-include!(concat!(
-    env!("OUT_DIR"),
-    "/test_system_domain_wasm_bundle.rs"
-));
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
+use core::num::NonZeroU64;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -64,7 +59,6 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, Perbill,
 };
-use sp_std::borrow::Cow;
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
@@ -240,6 +234,11 @@ parameter_types! {
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ConfirmationDepthK: u32 = 100;
+    pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
+        HistorySize::new(NonZeroU64::new(1).unwrap()),
+        HistorySize::new(NonZeroU64::new(10).unwrap()),
+    );
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -250,6 +249,8 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -840,45 +841,15 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
     block_object_mapping
 }
 
-fn extract_system_bundles(
+fn extract_successful_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> (
-    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-    sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-) {
-    let successful_bundles = Domains::successful_bundles();
-    let (system_bundles, core_bundles): (Vec<_>, Vec<_>) = extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if successful_bundles.contains(&opaque_bundle.hash()) =>
-            {
-                if opaque_bundle.domain_id().is_system() {
-                    Some((Some(opaque_bundle), None))
-                } else {
-                    Some((None, Some(opaque_bundle)))
-                }
-            }
-            _ => None,
-        })
-        .unzip();
-    (
-        system_bundles.into_iter().flatten().collect(),
-        core_bundles.into_iter().flatten().collect(),
-    )
-}
-
-fn extract_core_bundles(
-    extrinsics: Vec<UncheckedExtrinsic>,
-    domain_id: DomainId,
 ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
     let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if opaque_bundle.domain_id() == domain_id
-                    && successful_bundles.contains(&opaque_bundle.hash()) =>
+                if successful_bundles.contains(&opaque_bundle.hash()) =>
             {
                 Some(opaque_bundle)
             }
@@ -1207,20 +1178,10 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn extract_system_bundles(
+        fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> (
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-        ) {
-            extract_system_bundles(extrinsics)
-        }
-
-        fn extract_core_bundles(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
-            extract_core_bundles(extrinsics, domain_id)
+            extract_successful_bundles(extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
@@ -1231,8 +1192,8 @@ impl_runtime_apis! {
             extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
-            TEST_DOMAIN_WASM_BUNDLE.into()
+        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+            Domains::domain_runtime_code(domain_id)
         }
 
         fn timestamp() -> Moment{

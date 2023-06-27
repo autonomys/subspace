@@ -14,6 +14,9 @@ use sp_runtime::traits::SaturatedConversion;
 mod benchmarks {
     use super::*;
 
+    // TODO: Remove when DomainRegistry is usable.
+    const DOMAIN_ID: DomainId = DomainId::new(0);
+
     /// Benchmark `submit_bundle` extrinsic with the worst possible conditions:
     /// - Submit a system domain bundle
     /// - The receipts will prune a expired receipt
@@ -26,7 +29,7 @@ mod benchmarks {
         for i in 0..receipts_pruning_depth {
             let receipt = ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i));
             let bundle = create_dummy_bundle_with_receipts_generic(
-                DomainId::SYSTEM,
+                DOMAIN_ID,
                 (i + 1).into(),
                 Default::default(),
                 receipt,
@@ -45,7 +48,7 @@ mod benchmarks {
             block_hash_n::<T>(receipts_pruning_depth),
         );
         let bundle = create_dummy_bundle_with_receipts_generic(
-            DomainId::SYSTEM,
+            DOMAIN_ID,
             (receipts_pruning_depth + 1).into(),
             Default::default(),
             receipt,
@@ -64,7 +67,7 @@ mod benchmarks {
     #[benchmark]
     fn submit_core_bundle() {
         let bundle = create_dummy_bundle_with_receipts_generic(
-            DomainId::CORE_PAYMENTS,
+            DomainId::from(1u32),
             2u32.into(),
             Default::default(),
             ExecutionReceipt::dummy(1u32.into(), block_hash_n::<T>(1)),
@@ -86,7 +89,7 @@ mod benchmarks {
         for i in 0..receipts_pruning_depth {
             let receipt = ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i));
             let bundle = create_dummy_bundle_with_receipts_generic(
-                DomainId::SYSTEM,
+                DOMAIN_ID,
                 (i + 1).into(),
                 Default::default(),
                 receipt,
@@ -99,9 +102,8 @@ mod benchmarks {
         );
 
         // Construct a fraud proof that will revert `ReceiptsPruningDepth` number of receipts
-        let proof: FraudProof<T::BlockNumber, T::Hash> = FraudProof::InvalidStateTransition(
-            dummy_invalid_state_transition_proof(DomainId::SYSTEM, 0),
-        );
+        let proof: FraudProof<T::BlockNumber, T::Hash> =
+            FraudProof::InvalidStateTransition(dummy_invalid_state_transition_proof(DOMAIN_ID, 0));
 
         #[extrinsic_call]
         submit_fraud_proof(RawOrigin::None, proof);

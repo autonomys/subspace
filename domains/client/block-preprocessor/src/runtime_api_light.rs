@@ -1,6 +1,6 @@
 use crate::runtime_api::{
-    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor,
-    SetCodeConstructor, SignerExtractor, StateRootExtractor,
+    ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor,
 };
 use codec::{Codec, Encode};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
@@ -8,7 +8,6 @@ use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::ExecutionContext;
-use sp_domains::OpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_runtime::Storage;
@@ -16,7 +15,6 @@ use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
 use std::sync::Arc;
 use subspace_runtime_primitives::Moment;
-use system_runtime_primitives::SystemDomainApi;
 
 /// Lightweight runtime api based on the runtime code and partial state.
 ///
@@ -170,25 +168,6 @@ where
     }
 }
 
-impl<Executor, Block, PNumber, PHash> SystemDomainApi<Block, PNumber, PHash, Block::Hash>
-    for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    PNumber: Codec,
-    PHash: Codec,
-    Executor: CodeExecutor,
-{
-    fn __runtime_api_internal_call_api_at(
-        &self,
-        _at: <Block as BlockT>::Hash,
-        _context: ExecutionContext,
-        params: Vec<u8>,
-        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
-    ) -> Result<Vec<u8>, ApiError> {
-        self.dispatch_call(fn_name, params)
-    }
-}
-
 impl<Executor, Block> InherentExtrinsicApi<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
@@ -202,23 +181,6 @@ where
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
         self.dispatch_call(fn_name, params)
-    }
-}
-
-impl<PBlock, Executor, Block> CoreBundleConstructor<PBlock, Block> for RuntimeApiLight<Executor>
-where
-    PBlock: BlockT,
-    Block: BlockT,
-    Executor: CodeExecutor,
-{
-    fn construct_submit_core_bundle_extrinsics(
-        &self,
-        at: Block::Hash,
-        opaque_bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-    ) -> Result<Vec<Vec<u8>>, ApiError> {
-        <Self as SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>::construct_submit_core_bundle_extrinsics(
-            self, at, opaque_bundles,
-        )
     }
 }
 

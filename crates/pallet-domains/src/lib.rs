@@ -24,36 +24,37 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod runtime_registry;
 pub mod weights;
 
-use codec::{Decode, Encode};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
-use sp_domains::bundle_election::verify_system_bundle_solution;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::merkle_tree::Witness;
-use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{BundleSolution, DomainId, ExecutionReceipt, OpaqueBundle, ProofOfElection};
+use sp_domains::{DomainId, OpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::runtime_registry::{
+        do_register_runtime, do_upgrade_runtime, Error as RuntimeRegistryError, RuntimeObject,
+    };
     use crate::weights::WeightInfo;
-    use frame_support::pallet_prelude::*;
+    use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::weights::Weight;
-    use frame_support::PalletError;
+    use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use pallet_settlement::{Error as SettlementError, FraudProofError};
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{DomainId, ExecutorPublicKey, OpaqueBundle};
-    use sp_runtime::traits::{One, Zero};
+    use sp_domains::{
+        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
+    };
+    use sp_runtime::traits::{BlockNumberProvider, Zero};
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
 
@@ -75,6 +76,14 @@ mod pallet {
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
     pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
+
+    /// Stores the next runtime id.
+    #[pallet::storage]
+    pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type RuntimeRegistry<T: Config> =
+        StorageMap<_, Identity, RuntimeId, RuntimeObject<T::BlockNumber, T::Hash>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -136,6 +145,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<RuntimeRegistryError> for Error<T> {
+        fn from(err: RuntimeRegistryError) -> Self {
+            Error::RuntimeRegistry(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Can not find the block hash of given primary block number.
@@ -144,6 +159,8 @@ mod pallet {
         Bundle(BundleError),
         /// Invalid fraud proof.
         FraudProof(FraudProofError),
+        /// Runtime registry specific errors
+        RuntimeRegistry(RuntimeRegistryError),
     }
 
     #[pallet::event]
@@ -155,18 +172,21 @@ mod pallet {
             bundle_hash: H256,
             bundle_author: ExecutorPublicKey,
         },
+        DomainRuntimeCreated {
+            runtime_id: RuntimeId,
+            runtime_type: RuntimeType,
+        },
+        DomainRuntimeUpgraded {
+            runtime_id: RuntimeId,
+        },
     }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        // TODO: proper weight
+        #[allow(deprecated)]
         #[pallet::call_index(0)]
-        #[pallet::weight(
-            if opaque_bundle.domain_id().is_system() {
-                T::WeightInfo::submit_system_bundle()
-            } else {
-                T::WeightInfo::submit_core_bundle()
-            }
-        )]
+        #[pallet::weight(Weight::from_all(10_000))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -177,11 +197,9 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
 
-            // Only process the system domain receipts.
-            if domain_id.is_system() {
-                pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
-                    .map_err(Error::<T>::from)?;
-            }
+            // TODO: Implement the receipts processing v2.
+            pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
+                .map_err(Error::<T>::from)?;
 
             let bundle_hash = opaque_bundle.hash();
 
@@ -215,39 +233,83 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id().is_system() {
-                pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
+            pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
+                .map_err(Error::<T>::from)?;
+
+            Ok(())
+        }
+
+        #[pallet::call_index(2)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn register_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_name: Vec<u8>,
+            runtime_type: RuntimeType,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            let runtime_id =
+                do_register_runtime::<T>(runtime_name, runtime_type.clone(), code, block_number)
                     .map_err(Error::<T>::from)?;
-            }
+
+            Self::deposit_event(Event::DomainRuntimeCreated {
+                runtime_id,
+                runtime_type,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(3)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn upgrade_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_id: RuntimeId,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            do_upgrade_runtime::<T>(runtime_id, code, block_number).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainRuntimeUpgraded { runtime_id });
 
             Ok(())
         }
     }
 
+    #[pallet::genesis_config]
+    #[derive(Default)]
+    pub struct GenesisConfig {
+        pub genesis_domain_runtime: Option<GenesisDomainRuntime>,
+    }
+
+    #[pallet::genesis_build]
+    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+        fn build(&self) {
+            if let Some(genesis_domain_runtime) = &self.genesis_domain_runtime {
+                // Register the genesis domain runtime
+                do_register_runtime::<T>(
+                    genesis_domain_runtime.name.clone(),
+                    genesis_domain_runtime.runtime_type.clone(),
+                    genesis_domain_runtime.code.clone(),
+                    Zero::zero(),
+                )
+                .expect("Genesis runtime registration must always succeed");
+            }
+        }
+    }
+
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            let parent_number = block_number - One::one();
-            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
-
-            pallet_settlement::PrimaryBlockHash::<T>::insert(
-                DomainId::SYSTEM,
-                parent_number,
-                parent_hash,
-            );
-
-            // The genesis block hash is not finalized until the genesis block building is done,
-            // hence the genesis receipt is initialized after the genesis building.
-            if parent_number.is_zero() {
-                pallet_settlement::Pallet::<T>::initialize_genesis_receipt(
-                    DomainId::SYSTEM,
-                    parent_hash,
-                );
-            }
-
+        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
 
-            T::DbWeight::get().writes(2)
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -270,19 +332,7 @@ mod pallet {
                 Call::submit_bundle { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
-                Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        Err(TransactionValidityError::Invalid(
-                            InvalidTransactionCode::FraudProof.into(),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
+                Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -312,13 +362,6 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        return InvalidTransactionCode::FraudProof.into();
-                    }
                     if let Err(e) =
                         pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
@@ -344,141 +387,22 @@ impl<T: Config> Pallet<T> {
         SuccessfulBundles::<T>::get()
     }
 
-    /// Returns the block number of the latest receipt.
-    pub fn head_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
-    }
-
-    /// Returns the block number of the oldest receipt still being tracked in the state.
-    pub fn oldest_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
+    pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
+        // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
+        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
     }
 
     fn pre_dispatch_submit_bundle(
-        opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
-        if !opaque_bundle.domain_id().is_system() {
-            return Ok(());
-        }
-
-        let receipt = &opaque_bundle.receipt;
-        let oldest_receipt_number = Self::oldest_receipt_number();
-        let next_head_receipt_number = Self::head_receipt_number() + One::one();
-        let primary_number = receipt.primary_number;
-
-        // Ignore the receipt if it has already been pruned.
-        if primary_number < oldest_receipt_number {
-            return Ok(());
-        }
-
-        // TODO: check if the receipt extend the receipt chain or add confirmations to the head receipt.
-        match primary_number.cmp(&next_head_receipt_number) {
-            // Missing receipt.
-            Ordering::Greater => {
-                return Err(TransactionValidityError::Invalid(
-                    InvalidTransactionCode::ExecutionReceipt.into(),
-                ));
-            }
-            // Non-best receipt or new best receipt.
-            Ordering::Less | Ordering::Equal => {
-                if !pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
-                    DomainId::SYSTEM,
-                    receipt,
-                ) {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "Invalid primary hash for #{primary_number:?} in receipt, \
-                        expected: {:?}, got: {:?}",
-                        pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
-                        receipt.primary_hash,
-                    );
-                    return Err(TransactionValidityError::Invalid(
-                        InvalidTransactionCode::ExecutionReceipt.into(),
-                    ));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_system_bundle_solution(
-        receipt: &ExecutionReceipt<T::BlockNumber, T::Hash, T::DomainHash>,
-        authority_stake_weight: sp_domains::StakeWeight,
-        authority_witness: &Witness,
-        proof_of_election: &ProofOfElection<T::DomainHash>,
-    ) -> Result<(), BundleError> {
-        let ProofOfElection {
-            system_state_root,
-            system_block_number,
-            system_block_hash,
-            ..
-        } = proof_of_election;
-
-        let state_root = *system_state_root;
-        let block_number = T::BlockNumber::from(*system_block_number);
-        let block_hash = *system_block_hash;
-
-        let new_best_receipt_number = receipt.primary_number.max(Self::head_receipt_number());
-
-        let state_root_verifiable = block_number <= new_best_receipt_number;
-
-        if !block_number.is_zero() && state_root_verifiable {
-            let maybe_state_root = receipt.trace.last().and_then(|state_root| {
-                if (receipt.primary_number, receipt.domain_hash) == (block_number, block_hash) {
-                    Some(*state_root)
-                } else {
-                    None
-                }
-            });
-
-            let expected_state_root = match maybe_state_root {
-                Some(v) => v,
-                None => pallet_settlement::Pallet::<T>::state_root((
-                    DomainId::SYSTEM,
-                    block_number,
-                    block_hash,
-                ))
-                .ok_or(BundleError::StateRootNotFound)
-                .map_err(|err| {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "State root for #{block_number:?},{block_hash:?} not found, \
-                        current head receipt: {:?}",
-                        pallet_settlement::Pallet::<T>::receipt_head(DomainId::SYSTEM),
-                    );
-                    err
-                })?,
-            };
-
-            if expected_state_root != state_root {
-                log::debug!(
-                    target: "runtime::domains",
-                    "Bad state root for #{block_number:?},{block_hash:?}, \
-                    expected: {expected_state_root:?}, got: {state_root:?}",
-                );
-                return Err(BundleError::BadStateRoot);
-            }
-        }
-
-        let state_root = H256::decode(&mut state_root.encode().as_slice())
-            .map_err(|_| BundleError::StateRootNotH256)?;
-
-        verify_system_bundle_solution(
-            proof_of_election,
-            state_root,
-            authority_stake_weight,
-            authority_witness,
-        )
-        .map_err(|_| BundleError::BadElectionSolution)?;
-
+        // TODO: Validate domain block tree
         Ok(())
     }
 
     fn validate_bundle(
         OpaqueBundle {
             sealed_header,
-            receipt,
+            receipt: _,
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), BundleError> {
@@ -518,99 +442,7 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        let proof_of_election = header.bundle_solution.proof_of_election();
-        proof_of_election
-            .verify_vrf_proof()
-            .map_err(|_| BundleError::BadVrfProof)?;
-
-        if proof_of_election.domain_id.is_system() {
-            let BundleSolution::System {
-                authority_stake_weight,
-                authority_witness,
-                proof_of_election
-            } = &header.bundle_solution else {
-                unreachable!("Must be system domain bundle solution as we just checked; qed ")
-            };
-
-            // TODO: currently, only the system bundles created on the primary fork can be
-            // prevented beforehand, the core bundles will be rejected by the system domain but
-            // they are still included on the primary chain as it's not feasible to check core bundles
-            // within this pallet, which may be solved if the `submit_bundle` extrinsic is no longer
-            // free in the future.
-            let bundle_created_on_valid_primary_block =
-                match pallet_settlement::PrimaryBlockHash::<T>::get(
-                    DomainId::SYSTEM,
-                    header.primary_number,
-                ) {
-                    Some(block_hash) => block_hash == header.primary_hash,
-                    // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
-                    // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
-                    // is unavailable in pallet-receipts at this point.
-                    None => frame_system::Pallet::<T>::parent_hash() == header.primary_hash,
-                };
-
-            if !bundle_created_on_valid_primary_block {
-                log::debug!(
-                    target: "runtime::domains",
-                    "Bundle is probably created on a primary fork #{:?}, expected: {:?}, got: {:?}",
-                    header.primary_number,
-                    pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, header.primary_number),
-                    header.primary_hash,
-                );
-                return Err(BundleError::UnknownBlock);
-            }
-
-            Self::validate_system_bundle_solution(
-                receipt,
-                *authority_stake_weight,
-                authority_witness,
-                proof_of_election,
-            )?;
-
-            let best_number = Self::head_receipt_number();
-            let max_allowed = best_number + T::MaximumReceiptDrift::get();
-            let oldest_receipt_number = Self::oldest_receipt_number();
-            let primary_number = receipt.primary_number;
-
-            // The corresponding block info has been pruned, such expired receipts
-            // will be skipped too while applying the bundle.
-            if primary_number < oldest_receipt_number {
-                return Ok(());
-            }
-
-            // Due to `initialize_block` is skipped while calling the runtime api, the block
-            // hash mapping for last block is unknown to the transaction pool, but this info
-            // is already available in System.
-            let point_to_parent_block = primary_number == current_block_number - One::one()
-                && receipt.primary_hash == frame_system::Pallet::<T>::parent_hash();
-
-            let point_to_valid_primary_block =
-                pallet_settlement::Pallet::<T>::point_to_valid_primary_block(
-                    DomainId::SYSTEM,
-                    receipt,
-                );
-
-            if !point_to_parent_block && !point_to_valid_primary_block {
-                log::debug!(
-                    target: "runtime::domains",
-                    "Receipt of #{primary_number:?},{:?} points to an unknown primary block, \
-                    expected: #{primary_number:?},{:?}",
-                    receipt.primary_hash,
-                    pallet_settlement::PrimaryBlockHash::<T>::get(DomainId::SYSTEM, primary_number),
-                );
-                return Err(BundleError::Receipt(ExecutionReceiptError::UnknownBlock));
-            }
-
-            // Ensure the receipt is not too new.
-            if primary_number == current_block_number || primary_number > max_allowed {
-                log::debug!(
-                    target: "runtime::domains",
-                    "Receipt for #{primary_number:?} is too far in future, \
-                    current_block_number: {current_block_number:?}, max_allowed: {max_allowed:?}",
-                );
-                return Err(BundleError::Receipt(ExecutionReceiptError::TooFarInFuture));
-            }
-        }
+        // TODO: Implement bundle validation.
 
         Ok(())
     }

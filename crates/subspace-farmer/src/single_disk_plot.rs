@@ -37,7 +37,7 @@ use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
-use subspace_farmer_components::{auditing, plotting, proving};
+use subspace_farmer_components::{auditing, plotting, proving, FarmerProtocolInfo};
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -461,6 +461,7 @@ struct Handlers {
 /// Plot starts operating during creation and doesn't stop until dropped (or error happens).
 #[must_use = "Plot does not function properly unless run() method is called"]
 pub struct SingleDiskPlot {
+    farmer_protocol_info: FarmerProtocolInfo,
     single_disk_plot_info: SingleDiskPlotInfo,
     /// Metadata of all sectors plotted so far
     sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
@@ -1082,6 +1083,7 @@ impl SingleDiskPlot {
         }));
 
         let farm = Self {
+            farmer_protocol_info: farmer_app_info.protocol_info,
             single_disk_plot_info,
             sectors_metadata,
             pieces_in_sector,
@@ -1143,7 +1145,13 @@ impl SingleDiskPlot {
                 (PieceOffset::ZERO..)
                     .take(self.pieces_in_sector.into())
                     .map(|piece_offset| {
-                        sector_id.derive_piece_index(piece_offset, sector_metadata.history_size)
+                        sector_id.derive_piece_index(
+                            piece_offset,
+                            sector_metadata.history_size,
+                            self.farmer_protocol_info.max_pieces_in_sector,
+                            self.farmer_protocol_info.recent_segments,
+                            self.farmer_protocol_info.recent_history_fraction,
+                        )
                     })
                     .collect_into(&mut piece_indexes);
 

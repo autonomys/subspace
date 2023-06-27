@@ -37,6 +37,7 @@ use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::iter;
+use std::num::NonZeroU64;
 use std::sync::Once;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -158,6 +159,11 @@ parameter_types! {
     pub const InitialSolutionRange: SolutionRange = INITIAL_SOLUTION_RANGE;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ConfirmationDepthK: u32 = 10;
+    pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
+        HistorySize::new(NonZeroU64::new(1).unwrap()),
+        HistorySize::new(NonZeroU64::new(10).unwrap()),
+    );
     pub const RecordSize: u32 = 3840;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
@@ -173,6 +179,8 @@ impl Config for Test {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ConstU64<1>;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -393,6 +401,11 @@ pub fn create_signed_vote(
         history_size: HistorySize::from(SegmentIndex::ZERO),
         max_pieces_in_sector: MAX_PIECES_IN_SECTOR,
         sector_expiration: SegmentIndex::ONE,
+        recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
+        recent_history_fraction: (
+            HistorySize::from(NonZeroU64::new(1).unwrap()),
+            HistorySize::from(NonZeroU64::new(10).unwrap()),
+        ),
     };
     let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);

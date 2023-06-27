@@ -90,6 +90,7 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
+    pub(crate) num_established_peer_connections_change: Handler<usize>,
 }
 
 #[derive(Debug)]
@@ -99,7 +100,7 @@ pub(crate) struct Shared {
     /// Addresses on which node is listening for incoming requests.
     pub(crate) listeners: Mutex<Vec<Multiaddr>>,
     pub(crate) external_addresses: Mutex<Vec<Multiaddr>>,
-    pub(crate) connected_peers_count: Arc<AtomicUsize>,
+    pub(crate) num_established_peer_connections: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
     pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
@@ -118,7 +119,7 @@ impl Shared {
             id,
             listeners: Mutex::default(),
             external_addresses: Mutex::default(),
-            connected_peers_count: Arc::new(AtomicUsize::new(0)),
+            num_established_peer_connections: Arc::new(AtomicUsize::new(0)),
             command_sender,
             kademlia_tasks_semaphore,
             regular_tasks_semaphore,

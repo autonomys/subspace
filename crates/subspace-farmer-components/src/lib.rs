@@ -41,4 +41,8 @@ pub struct FarmerProtocolInfo {
     pub max_pieces_in_sector: u16,
     /// Number of segments after which sector expires
     pub sector_expiration: SegmentIndex,
+    /// Number of latest archived segments that are considered "recent history".
+    pub recent_segments: HistorySize,
+    /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+    pub recent_history_fraction: (HistorySize, HistorySize),
 }

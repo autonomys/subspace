@@ -67,7 +67,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Blake2b256Hash, Solution};
-use subspace_fraud_proof::domain_extrinsics_builder::SystemDomainExtrinsicsBuilder;
+use subspace_fraud_proof::domain_extrinsics_builder::DomainExtrinsicsBuilder;
 use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
@@ -257,7 +257,7 @@ impl MockPrimaryNode {
         let mut bundle_validator = BundleValidator::new(client.clone());
 
         let domain_extrinsics_builder =
-            SystemDomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor.clone()));
+            DomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor.clone()));
 
         let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
             client.clone(),

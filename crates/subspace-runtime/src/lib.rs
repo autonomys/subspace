@@ -25,9 +25,6 @@ mod fees;
 mod object_mapping;
 mod signed_extensions;
 
-// Make system domain WASM runtime available.
-include!(concat!(env!("OUT_DIR"), "/system_domain_wasm_bundle.rs"));
-
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
@@ -42,6 +39,7 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::mem;
+use core::num::NonZeroU64;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -63,7 +61,6 @@ use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
-use sp_std::borrow::Cow;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -131,7 +128,7 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 1000;
+const SLOT_DURATION: u64 = 2000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
@@ -162,6 +159,14 @@ const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
 ///
 /// This impacts solution range for votes in consensus.
 const EXPECTED_VOTES_PER_BLOCK: u32 = 9;
+
+/// Number of latest archived segments that are considered "recent history".
+const RECENT_SEGMENTS: HistorySize = HistorySize::new(NonZeroU64::new(5).expect("Not zero; qed"));
+/// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
+    HistorySize::new(NonZeroU64::new(1).expect("Not zero; qed")),
+    HistorySize::new(NonZeroU64::new(10).expect("Not zero; qed")),
+);
 
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -241,6 +246,8 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
+    pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = RECENT_HISTORY_FRACTION;
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
@@ -262,6 +269,8 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -800,20 +809,10 @@ impl_runtime_apis! {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
-        fn extract_system_bundles(
+        fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> (
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-            sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash>,
-        ) {
-            crate::domains::extract_system_bundles(extrinsics)
-        }
-
-        fn extract_core_bundles(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
         ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
-            crate::domains::extract_core_bundles(extrinsics, domain_id)
+            crate::domains::extract_successful_bundles(extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
@@ -824,8 +823,8 @@ impl_runtime_apis! {
             crate::domains::extrinsics_shuffling_seed::<Block>(header)
         }
 
-        fn system_domain_wasm_bundle() -> Cow<'static, [u8]> {
-            SYSTEM_DOMAIN_WASM_BUNDLE.into()
+        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+            Domains::domain_runtime_code(domain_id)
         }
 
         fn timestamp() -> Moment{

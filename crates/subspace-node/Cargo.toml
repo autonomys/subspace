@@ -23,12 +23,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 bytesize = "1.2.0"
 clap = { version = "4.2.1", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
-core-evm-runtime = { version = "0.1.0", path = "../../domains/runtime/core-evm" }
 dirs = "5.0.1"
 domain-client-executor = { version = "0.1.0", path = "../../domains/client/domain-executor" }
 domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-service" }
 domain-service = { version = "0.1.0", path = "../../domains/service" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
+evm-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "c13d670b25b5506c1c5243f352941dc46c82ffe4" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
@@ -37,7 +37,7 @@ futures = "0.3.28"
 hex-literal = "0.4.0"
 log = "0.4.19"
 once_cell = "1.18.0"
-parity-scale-codec = "3.4.0"
+parity-scale-codec = "3.6.1"
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
@@ -64,7 +64,6 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-runtime = { version = "0.1.0", path = "../subspace-runtime" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 subspace-service = { version = "0.1.0", path = "../subspace-service" }
-system-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/system" }
 thiserror = "1.0.38"
 tokio = "1.28.2"
 
@@ -80,6 +79,5 @@ runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-benchmarking-cli/runtime-benchmarks",
 	"subspace-runtime/runtime-benchmarks",
-	"system-domain-runtime/runtime-benchmarks",
-	"core-evm-runtime/runtime-benchmarks",
+	"evm-domain-runtime/runtime-benchmarks",
 ]

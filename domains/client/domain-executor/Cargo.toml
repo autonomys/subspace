@@ -5,7 +5,7 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2021"
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.4.0", features = [ "derive" ] }
+codec = { package = "parity-scale-codec", version = "3.6.1", features = [ "derive" ] }
 crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }
@@ -38,16 +38,14 @@ sp-trie = { version = "22.0.0", git = "https://github.com/subspace/substrate", r
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives" }
 subspace-fraud-proof = { version = "0.1.0", path = "../../../crates/subspace-fraud-proof" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives" }
-subspace-wasm-tools = { version = "0.1.0", path = "../../../crates/subspace-wasm-tools" }
-system-runtime-primitives = { version = "0.1.0", path = "../../primitives/system-runtime" }
 tracing = "0.1.37"
 thiserror = "1.0.38"
 tokio = { version = "1.28.2", features = ["macros"] }
 
 [dev-dependencies]
 domain-client-message-relayer = { version = "0.1.0", path = "../relayer" }
-domain-test-primitives = { version = "0.1.0", path = "../../test/primitives" }
-domain-test-service = { version = "0.1.0", path = "../../test/service" }
+# domain-test-primitives = { version = "0.1.0", path = "../../test/primitives" }
+# domain-test-service = { version = "0.1.0", path = "../../test/service" }
 num-traits = "0.2.15"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 pallet-domains = { version = "0.1.0", path = "../../../crates/pallet-domains" }
@@ -59,7 +57,6 @@ sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspac
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
 sc-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
-system-domain-test-runtime = { version = "0.1.0", path = "../../test/runtime/system" }
 subspace-test-runtime = { version = "0.1.0", path = "../../../test/subspace-test-runtime" }
 subspace-test-service = { version = "0.1.0", path = "../../../test/subspace-test-service" }
 substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }

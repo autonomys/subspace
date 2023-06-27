@@ -1,16 +1,14 @@
 use crate::runtime_api::{
-    CoreBundleConstructor, ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor,
-    SetCodeConstructor, SignerExtractor, StateRootExtractor,
+    ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor,
 };
 use codec::Encode;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
-use sp_domains::OpaqueBundle;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use std::sync::Arc;
 use subspace_runtime_primitives::Moment;
-use system_runtime_primitives::SystemDomainApi;
 
 /// A runtime api with full backend.
 pub struct RuntimeApiFull<Client> {
@@ -47,23 +45,6 @@ where
             .runtime_api()
             .extract_xdm_proof_state_roots(best_hash, ext.encode())?;
         maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
-    }
-}
-
-impl<PBlock, Client, Block> CoreBundleConstructor<PBlock, Block> for RuntimeApiFull<Client>
-where
-    PBlock: BlockT,
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block>,
-    Client::Api: SystemDomainApi<Block, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-{
-    fn construct_submit_core_bundle_extrinsics(
-        &self,
-        at: Block::Hash,
-        opaque_bundles: Vec<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-    ) -> Result<Vec<Vec<u8>>, ApiError> {
-        let api = self.client.runtime_api();
-        api.construct_submit_core_bundle_extrinsics(at, opaque_bundles)
     }
 }
 

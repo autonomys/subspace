@@ -12,7 +12,7 @@ description = "Subspace fraud proof utilities"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.4.0", features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.6.1", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
@@ -29,13 +29,11 @@ sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate"
 sp-settlement = { version = "0.1.0", path = "../sp-settlement" }
 sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 sp-trie = { version = "22.0.0", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
-subspace-wasm-tools = { version = "0.1.0", path = "../subspace-wasm-tools" }
-system-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/system-runtime" }
 tracing = "0.1.37"
 
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
-domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
+# domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
 pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f", default-features = false }
