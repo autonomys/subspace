@@ -42,8 +42,9 @@ use subspace_core_primitives::U256;
 mod pallet {
     use crate::calculate_tx_range;
     use crate::runtime_registry::{
-        do_register_runtime, do_schedule_runtime_upgrade, register_runtime_at_genesis,
-        Error as RuntimeRegistryError, RuntimeObject, ScheduledRuntimeUpgrade,
+        do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
+        register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
+        ScheduledRuntimeUpgrade,
     };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
@@ -383,10 +384,15 @@ mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
+        fn on_initialize(block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
+            // TODO: add upgrade runtime digest
+            let upgrade_runtimes_result = do_upgrade_runtimes::<T>(block_number);
 
-            T::DbWeight::get().writes(1)
+            T::DbWeight::get().reads_writes(
+                upgrade_runtimes_result.reads,
+                upgrade_runtimes_result.writes + 1,
+            )
         }
 
         fn on_finalize(_: T::BlockNumber) {

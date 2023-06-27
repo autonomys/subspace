@@ -1,6 +1,4 @@
 //! Runtime registry for domains
-// TODO: remove once all the components are connected
-#![allow(dead_code)]
 
 use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
 use crate::Config;
@@ -21,7 +19,6 @@ pub enum Error {
     SpecVersionNeedsToIncrease,
     MaxRuntimeId,
     MissingRuntimeObject,
-    MaxRuntimeUpgrades,
     RuntimeUpgradeAlreadyScheduled,
     MaxScheduledBlockNumber,
 }
@@ -152,41 +149,50 @@ pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
     Ok(())
 }
 
-// TODO: upgrade after a delay instead of immediately
-pub(crate) fn do_upgrade_runtime<T: Config>(
-    runtime_id: RuntimeId,
-    code: Vec<u8>,
-    at: T::BlockNumber,
-) -> Result<(), Error> {
-    RuntimeRegistry::<T>::try_mutate(runtime_id, |maybe_runtime_object| {
-        let runtime_obj = maybe_runtime_object
-            .as_mut()
-            .ok_or(Error::MissingRuntimeObject)?;
+pub(crate) struct UpgradeRuntimesResult {
+    pub(crate) reads: u64,
+    pub(crate) writes: u64,
+}
 
-        let new_runtime_version = can_upgrade_code(&runtime_obj.version, &code)?;
-        let runtime_hash = T::Hashing::hash(&code);
+pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) -> UpgradeRuntimesResult {
+    let mut upgrade_runtimes_result = UpgradeRuntimesResult {
+        reads: 0,
+        writes: 0,
+    };
 
-        runtime_obj.code = code;
-        runtime_obj.version = new_runtime_version;
-        runtime_obj.hash = runtime_hash;
-        runtime_obj.runtime_upgrades = runtime_obj
-            .runtime_upgrades
-            .checked_add(1)
-            .ok_or(Error::MaxRuntimeUpgrades)?;
-        runtime_obj.updated_at = at;
-        Ok(())
-    })
+    for (runtime_id, scheduled_update) in ScheduledRuntimeUpgrades::<T>::drain_prefix(at) {
+        RuntimeRegistry::<T>::mutate(runtime_id, |maybe_runtime_object| {
+            let runtime_obj = maybe_runtime_object
+                .as_mut()
+                .expect("Runtime object exists since an upgrade is scheduled after verification");
+
+            let runtime_hash = T::Hashing::hash(&scheduled_update.code);
+            runtime_obj.code = scheduled_update.code;
+            runtime_obj.version = scheduled_update.version;
+            runtime_obj.hash = runtime_hash;
+            runtime_obj.runtime_upgrades = runtime_obj.runtime_upgrades.saturating_add(1);
+            runtime_obj.updated_at = at;
+        });
+
+        // one read for each key under `ScheduledRuntimeUpgrades`
+        upgrade_runtimes_result.reads += 1;
+        // two writes, one to kill the `ScheduledRuntimeUpgrades` and one to update `RuntimeRegistry`
+        upgrade_runtimes_result.writes += 2;
+    }
+
+    upgrade_runtimes_result
 }
 
 #[cfg(test)]
 mod tests {
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::{Error as RuntimeRegistryError, RuntimeObject};
-    use crate::tests::{new_test_ext, DomainRuntimeUpgradeDelay, Test};
+    use crate::tests::{new_test_ext, DomainRuntimeUpgradeDelay, Domains, System, Test};
     use crate::Error;
     use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::dispatch::RawOrigin;
+    use frame_support::traits::OnInitialize;
     use sp_domains::RuntimeType;
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::DispatchError;
@@ -238,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_domain_runtime() {
+    fn schedule_domain_runtime_upgrade() {
         let mut ext = new_test_ext();
         ext.execute_with(|| {
             RuntimeRegistry::<Test>::insert(
@@ -340,5 +346,84 @@ mod tests {
                 }
             )
         })
+    }
+
+    #[allow(dead_code)]
+    fn go_to_block(block: u64) {
+        for i in System::block_number() + 1..=block {
+            let parent_hash = if System::block_number() > 1 {
+                let hdr = System::finalize();
+                hdr.hash()
+            } else {
+                System::parent_hash()
+            };
+
+            System::reset_events();
+            let digest = sp_runtime::testing::Digest { logs: vec![] };
+            System::initialize(&i, &parent_hash, &digest);
+            Domains::on_initialize(i);
+        }
+    }
+
+    #[test]
+    fn upgrade_scheduled_domain_runtime() {
+        let mut ext = new_test_ext();
+        let mut version = RuntimeVersion {
+            spec_name: "test".into(),
+            impl_name: Default::default(),
+            authoring_version: 0,
+            spec_version: 1,
+            impl_version: 1,
+            apis: Default::default(),
+            transaction_version: 1,
+            state_version: 0,
+        };
+
+        ext.execute_with(|| {
+            RuntimeRegistry::<Test>::insert(
+                0,
+                RuntimeObject {
+                    runtime_name: b"evm".to_vec(),
+                    runtime_type: Default::default(),
+                    runtime_upgrades: 0,
+                    hash: Default::default(),
+                    code: vec![1, 2, 3, 4],
+                    version: version.clone(),
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                },
+            );
+
+            NextRuntimeId::<Test>::set(1);
+        });
+
+        version.spec_version = 2;
+        let read_runtime_version = ReadRuntimeVersion(version.encode());
+        ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
+            read_runtime_version,
+        ));
+
+        ext.execute_with(|| {
+            let res = crate::Pallet::<Test>::upgrade_domain_runtime(
+                RawOrigin::Root.into(),
+                0,
+                vec![6, 7, 8, 9],
+            );
+            assert_ok!(res);
+
+            let current_block = frame_system::Pallet::<Test>::current_block_number();
+            let scheduled_block_number = current_block
+                .checked_add(DomainRuntimeUpgradeDelay::get())
+                .unwrap();
+
+            go_to_block(scheduled_block_number);
+            assert_eq!(
+                ScheduledRuntimeUpgrades::<Test>::get(scheduled_block_number, 0),
+                None
+            );
+
+            let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
+            assert_eq!(runtime_obj.version, version);
+        });
     }
 }
