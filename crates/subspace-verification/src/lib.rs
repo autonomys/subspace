@@ -104,7 +104,7 @@ fn calculate_solution_distance(
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
     let sector_slot_challenge_with_audit_chunk =
-        blake2b_256_hash_with_key(&audit_chunk.to_le_bytes(), sector_slot_challenge.as_ref());
+        blake2b_256_hash_with_key(sector_slot_challenge.as_ref(), &audit_chunk.to_le_bytes());
     let sector_slot_challenge_with_audit_chunk_as_solution_range: SolutionRange =
         SolutionRange::from_le_bytes(
             *sector_slot_challenge_with_audit_chunk
