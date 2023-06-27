@@ -81,6 +81,7 @@ where
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
 pub fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
+    domain_id: DomainId,
     primary_chain_client: &Arc<PClient>,
     at: SBlock::Hash,
     state_root_extractor: &SRE,
@@ -101,7 +102,7 @@ where
         let primary_runtime = primary_chain_client.runtime_api();
         if let Some(system_domain_state_root) = primary_runtime.state_root(
             best_hash,
-            DomainId::SYSTEM,
+            domain_id,
             state_roots.system_domain_block_info.block_number.into(),
             state_roots.system_domain_block_info.block_hash.into(),
         )? {

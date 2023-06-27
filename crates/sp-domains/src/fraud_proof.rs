@@ -283,7 +283,7 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
     // TODO: remove this later.
     /// Constructs a dummy bundle equivocation proof.
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy_at(slot_number: u64) -> Self {
+    pub fn dummy_at(domain_id: DomainId, slot_number: u64) -> Self {
         use sp_application_crypto::UncheckedFrom;
 
         let dummy_header = SealedBundleHeader {
@@ -293,7 +293,7 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
                 slot_number,
                 extrinsics_root: H256::default(),
                 bundle_solution: crate::BundleSolution::dummy(
-                    DomainId::SYSTEM,
+                    domain_id,
                     crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
                 ),
             },
@@ -301,7 +301,7 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
         };
 
         Self {
-            domain_id: DomainId::SYSTEM,
+            domain_id,
             offender: AccountId::decode(&mut sp_runtime::traits::TrailingZeroInput::zeroes())
                 .expect("Failed to create zero account"),
             slot: slot_number.into(),

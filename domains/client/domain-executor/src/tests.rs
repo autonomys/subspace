@@ -413,6 +413,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Manually remove the target bundle from tx pool in case resubmit it by accident
     ferdie
         .prune_tx_from_pool(&bundle_to_tx(target_bundle.clone()))
+        .await
         .unwrap();
 
     // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
@@ -446,6 +447,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
     ferdie
         .prune_tx_from_pool(&original_submit_bundle_tx)
+        .await
         .unwrap();
     assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
 
@@ -863,7 +865,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // Re-submit 4 after 3, this time the execution will succeed and the head receipt number will
     // be updated.
-    ferdie.prune_tx_from_pool(&submit_bundle_4).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_4).await.unwrap();
     ferdie
         .submit_transaction(create_submit_bundle(3))
         .await
@@ -917,7 +919,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    ferdie.prune_tx_from_pool(&submit_bundle_tx).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_tx).await.unwrap();
 
     // Bundle is rejected because it is duplicated.
     match ferdie
@@ -1009,7 +1011,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .unwrap();
 
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
-    ferdie.prune_tx_from_pool(&submit_bundle_tx).unwrap();
+    ferdie.prune_tx_from_pool(&submit_bundle_tx).await.unwrap();
 
     // Bundle can be successfully submitted to the new fork, or it is also possible
     // that the `submit_bundle_tx` in the retracted block has been resubmitted to the

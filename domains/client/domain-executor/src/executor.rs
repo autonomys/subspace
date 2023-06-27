@@ -18,7 +18,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use sp_settlement::SettlementApi;
@@ -126,7 +126,8 @@ where
         let active_leaves =
             active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
 
-        let parent_chain = DomainParentChain::new(params.primary_chain_client.clone());
+        let parent_chain =
+            DomainParentChain::new(params.domain_id, params.primary_chain_client.clone());
 
         let domain_bundle_proposer = DomainBundleProposer::new(
             params.client.clone(),
@@ -135,7 +136,7 @@ where
         );
 
         let bundle_producer = DomainBundleProducer::new(
-            DomainId::SYSTEM,
+            params.domain_id,
             params.client.clone(),
             parent_chain.clone(),
             domain_bundle_proposer,
@@ -151,7 +152,7 @@ where
         );
 
         let domain_block_processor = DomainBlockProcessor {
-            domain_id: DomainId::SYSTEM,
+            domain_id: params.domain_id,
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
             backend: params.backend.clone(),
@@ -161,7 +162,7 @@ where
         };
 
         let receipts_checker = ReceiptsChecker {
-            domain_id: DomainId::SYSTEM,
+            domain_id: params.domain_id,
             client: params.client.clone(),
             primary_chain_client: params.primary_chain_client.clone(),
             fraud_proof_generator: fraud_proof_generator.clone(),
@@ -171,6 +172,7 @@ where
         };
 
         let bundle_processor = BundleProcessor::new(
+            params.domain_id,
             params.primary_chain_client.clone(),
             params.client.clone(),
             params.backend.clone(),
@@ -180,7 +182,7 @@ where
         );
 
         spawn_essential.spawn_essential_blocking(
-            "system-executor-worker",
+            "domain-executor-worker",
             None,
             crate::domain_worker_starter::start_worker(
                 spawn_essential.clone(),
