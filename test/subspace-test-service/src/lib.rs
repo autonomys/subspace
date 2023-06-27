@@ -348,7 +348,7 @@ impl MockPrimaryNode {
                         maybe_block_imported = imported_blocks_stream.next() => {
                             match maybe_block_imported {
                                 Some(block) => if block.is_new_best {
-                                    bundle_validator.update_recent_stored_bundles(block.hash);
+                                    bundle_validator.update_recent_stored_bundles(block.hash, *block.header.number());
                                 }
                                 None => break,
                             }
@@ -528,11 +528,14 @@ impl MockPrimaryNode {
     }
 
     /// Remove a ready transaction from transaction pool.
-    pub fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
+    pub async fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
         self.transaction_pool.pool().prune_known(
             &BlockId::Hash(self.client.info().best_hash),
             &[self.transaction_pool.hash_of(tx)],
         )?;
+        // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
+        // all the bans as the ban time must be passed.
+        tokio::time::sleep(time::Duration::from_millis(1)).await;
         self.transaction_pool
             .pool()
             .validated_pool()
