@@ -52,6 +52,7 @@ pub struct PiecesReconstructor {
 }
 
 impl PiecesReconstructor {
+    // TODO: Make erasure coding an explicit argument
     pub fn new(kzg: Kzg) -> Result<Self, ReconstructorInstantiationError> {
         // TODO: Check if KZG can process number configured number of elements and update proof
         //  message in `.expect()`

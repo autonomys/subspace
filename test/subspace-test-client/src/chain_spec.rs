@@ -91,7 +91,7 @@ fn create_genesis_config(
         },
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {
-            runtime_name_and_runtime_code: None,
+            genesis_domain_runtime: None,
         },
     }
 }

@@ -466,6 +466,25 @@ where
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct GenesisDomainRuntime {
+    pub name: Vec<u8>,
+    pub runtime_type: RuntimeType,
+    pub code: Vec<u8>,
+}
+
+/// Types of runtime pallet domains currently supports
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub enum RuntimeType {
+    #[default]
+    Evm,
+}
+
+/// Type representing the runtime ID.
+pub type RuntimeId = u32;
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi<DomainHash: Encode + Decode> {

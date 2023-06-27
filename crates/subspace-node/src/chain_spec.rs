@@ -22,6 +22,7 @@ use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
+use sp_domains::RuntimeType;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
     SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
@@ -396,12 +397,13 @@ fn subspace_genesis_config(
             confirmation_depth_k,
         },
         domains: DomainsConfig {
-            runtime_name_and_runtime_code: Some((
-                b"evm".to_vec(),
-                evm_domain_runtime::WASM_BINARY
+            genesis_domain_runtime: Some(sp_domains::GenesisDomainRuntime {
+                name: b"evm".to_vec(),
+                runtime_type: RuntimeType::Evm,
+                code: evm_domain_runtime::WASM_BINARY
                     .unwrap_or_else(|| panic!("EVM domain runtime not available"))
                     .to_owned(),
-            )),
+            }),
         },
     }
 }

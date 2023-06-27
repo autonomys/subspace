@@ -16,12 +16,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::{
-    BlockImportingNotification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
-    SubspaceLink,
+    get_chain_constants, BlockImportingNotification, NewSlotInfo, NewSlotNotification,
+    RewardSigningNotification, SubspaceLink,
 };
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
+use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
@@ -100,6 +101,7 @@ where
     Client: ProvideRuntimeApi<Block>
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = ClientError>
+        + AuxStore
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
@@ -234,15 +236,23 @@ where
                 solution.sector_index,
             );
 
+            // TODO: This will be necessary for verifying sector expiration in the future
+            let _history_size = runtime_api.history_size(parent_hash).ok()?;
+            let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;
+            let chain_constants = get_chain_constants(self.client.as_ref()).ok()?;
+
             let segment_index = sector_id
-                .derive_piece_index(solution.piece_offset, solution.history_size)
+                .derive_piece_index(
+                    solution.piece_offset,
+                    solution.history_size,
+                    max_pieces_in_sector,
+                    chain_constants.recent_segments(),
+                    chain_constants.recent_history_fraction(),
+                )
                 .segment_index();
             let mut maybe_segment_commitment = runtime_api
                 .segment_commitment(parent_hash, segment_index)
                 .ok()?;
-            // TODO: This will be necessary for verifying sector expiration in the future
-            let _history_size = runtime_api.history_size(parent_hash).ok()?;
-            let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;
 
             // This is not a very nice hack due to the fact that at the time first block is produced
             // extrinsics with segment headers are not yet in runtime.
@@ -274,6 +284,8 @@ where
                     piece_check_params: Some(PieceCheckParams {
                         max_pieces_in_sector,
                         segment_commitment,
+                        recent_segments: chain_constants.recent_segments(),
+                        recent_history_fraction: chain_constants.recent_history_fraction(),
                     }),
                 },
                 &self.subspace_link.kzg,
@@ -418,6 +430,7 @@ where
     Client: ProvideRuntimeApi<Block>
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = ClientError>
+        + AuxStore
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,

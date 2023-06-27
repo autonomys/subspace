@@ -36,8 +36,8 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockWeight, PublicKey, Randomness, RewardSignature, SectorId,
-    SegmentCommitment, SegmentIndex, SolutionRange,
+    ArchivedHistorySegment, BlockWeight, HistorySize, PublicKey, Randomness, RewardSignature,
+    SectorId, SegmentCommitment, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
@@ -77,6 +77,12 @@ pub struct ChainConstants<Header: HeaderT> {
 
     /// Storage bound for the light client store.
     pub storage_bound: StorageBound<NumberOf<Header>>,
+
+    /// Number of latest archived segments that are considered "recent history".
+    pub recent_segments: HistorySize,
+
+    /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+    pub recent_history_fraction: (HistorySize, HistorySize),
 }
 
 /// Defines the storage bound for the light client store.
@@ -349,10 +355,15 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             header_digests.pre_digest.solution.sector_index,
         );
 
+        let max_pieces_in_sector = self.store.max_pieces_in_sector();
+
         let segment_index = sector_id
             .derive_piece_index(
                 header_digests.pre_digest.solution.piece_offset,
                 header_digests.pre_digest.solution.history_size,
+                max_pieces_in_sector,
+                constants.recent_segments,
+                constants.recent_history_fraction,
             )
             .segment_index();
 
@@ -368,8 +379,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 global_randomness: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
-                    max_pieces_in_sector: self.store.max_pieces_in_sector(),
+                    max_pieces_in_sector,
                     segment_commitment,
+                    recent_segments: constants.recent_segments,
+                    recent_history_fraction: constants.recent_history_fraction,
                 }),
             })
                 .into(),

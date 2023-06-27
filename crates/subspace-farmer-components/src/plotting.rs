@@ -199,7 +199,13 @@ where
     let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
         .take(pieces_in_sector.into())
         .map(|piece_offset| {
-            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.history_size)
+            sector_id.derive_piece_index(
+                piece_offset,
+                farmer_protocol_info.history_size,
+                farmer_protocol_info.max_pieces_in_sector,
+                farmer_protocol_info.recent_segments,
+                farmer_protocol_info.recent_history_fraction,
+            )
         })
         .collect();
 

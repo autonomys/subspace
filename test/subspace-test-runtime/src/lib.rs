@@ -24,6 +24,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
+use core::num::NonZeroU64;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -233,6 +234,11 @@ parameter_types! {
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ConfirmationDepthK: u32 = 100;
+    pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
+        HistorySize::new(NonZeroU64::new(1).unwrap()),
+        HistorySize::new(NonZeroU64::new(10).unwrap()),
+    );
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -243,6 +249,8 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;

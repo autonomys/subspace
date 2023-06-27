@@ -6242,10 +6242,12 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-domains",
+ "sp-externalities",
  "sp-io",
  "sp-runtime",
  "sp-std",
  "sp-trie",
+ "sp-version",
 ]
 
 [[package]]
@@ -10838,6 +10840,7 @@ dependencies = [
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
+ "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-fraud-proof",

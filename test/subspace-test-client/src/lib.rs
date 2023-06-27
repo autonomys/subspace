@@ -28,7 +28,7 @@ use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -233,6 +233,11 @@ where
         history_size,
         max_pieces_in_sector: pieces_in_sector,
         sector_expiration: SegmentIndex::from(100),
+        recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
+        recent_history_fraction: (
+            HistorySize::from(NonZeroU64::new(1).unwrap()),
+            HistorySize::from(NonZeroU64::new(10).unwrap()),
+        ),
     };
 
     let plotted_sector = plot_sector::<_, PosTable>(

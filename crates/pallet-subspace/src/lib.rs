@@ -1,4 +1,4 @@
-#![feature(assert_matches)]
+#![feature(assert_matches, const_option)]
 // Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -139,7 +139,7 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -215,6 +215,14 @@ mod pallet {
         /// to the client-dependent transaction confirmation depth `k`).
         #[pallet::constant]
         type ConfirmationDepthK: Get<Self::BlockNumber>;
+
+        /// Number of latest archived segments that are considered "recent history".
+        #[pallet::constant]
+        type RecentSegments: Get<HistorySize>;
+
+        /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+        #[pallet::constant]
+        type RecentHistoryFraction: Get<(HistorySize, HistorySize)>;
 
         /// Number of votes expected per block.
         ///
@@ -1046,6 +1054,11 @@ impl<T: Config> Pallet<T> {
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
             slot_probability: T::SlotProbability::get(),
+            recent_segments: T::RecentSegments::get(),
+            recent_history_fraction: (
+                T::RecentHistoryFraction::get().0,
+                T::RecentHistoryFraction::get().1,
+            ),
         }
     }
 }
@@ -1347,8 +1360,19 @@ fn check_vote<T: Config>(
         solution.sector_index,
     );
 
+    let recent_segments = T::RecentSegments::get();
+    let recent_history_fraction = (
+        T::RecentHistoryFraction::get().0,
+        T::RecentHistoryFraction::get().1,
+    );
     let segment_index = sector_id
-        .derive_piece_index(solution.piece_offset, solution.history_size)
+        .derive_piece_index(
+            solution.piece_offset,
+            solution.history_size,
+            T::MaxPiecesInSector::get(),
+            recent_segments,
+            recent_history_fraction,
+        )
         .segment_index();
 
     let segment_commitment =
@@ -1371,6 +1395,8 @@ fn check_vote<T: Config>(
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),
                 segment_commitment,
+                recent_segments,
+                recent_history_fraction,
             }),
         })
             .into(),
