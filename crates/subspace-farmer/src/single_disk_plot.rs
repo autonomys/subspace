@@ -1202,7 +1202,7 @@ impl SingleDiskPlot {
     /// Wipe everything that belongs to this single disk plot
     pub fn wipe(directory: &Path) -> io::Result<()> {
         let single_disk_plot_info_path = directory.join(SingleDiskPlotInfo::FILE_NAME);
-        let single_disk_plot_info = SingleDiskPlotInfo::load_from(directory)?.ok_or_else(|| {
+        match SingleDiskPlotInfo::load_from(directory)?.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
@@ -1210,9 +1210,14 @@ impl SingleDiskPlot {
                     single_disk_plot_info_path.display()
                 ),
             )
-        })?;
-
-        info!("Found single disk plot {}", single_disk_plot_info.id());
+        }) {
+            Ok(single_disk_plot_info) => {
+                info!("Found single disk plot {}", single_disk_plot_info.id());
+            }
+            Err(error) => {
+                warn!("Found unknown single disk plot: {}", error);
+            }
+        }
 
         {
             let plot = directory.join(Self::PLOT_FILE);
