@@ -1,12 +1,15 @@
 //! Runtime registry for domains
+// TODO: remove once all the components are connected
+#![allow(dead_code)]
 
-use crate::pallet::{NextRuntimeId, RuntimeRegistry};
+use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
 use crate::Config;
 use codec::{Decode, Encode};
 use frame_support::PalletError;
 use scale_info::TypeInfo;
 use sp_core::Hasher;
 use sp_domains::{RuntimeId, RuntimeType};
+use sp_runtime::traits::{CheckedAdd, Get};
 use sp_std::vec::Vec;
 use sp_version::RuntimeVersion;
 
@@ -19,6 +22,8 @@ pub enum Error {
     MaxRuntimeId,
     MissingRuntimeObject,
     MaxRuntimeUpgrades,
+    RuntimeUpgradeAlreadyScheduled,
+    MaxScheduledBlockNumber,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -31,6 +36,12 @@ pub struct RuntimeObject<Number, Hash> {
     pub version: RuntimeVersion,
     pub created_at: Number,
     pub updated_at: Number,
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct ScheduledRuntimeUpgrade {
+    pub code: Vec<u8>,
+    pub version: RuntimeVersion,
 }
 
 /// Extracts the runtime version of the provided code.
@@ -122,6 +133,25 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
     Ok(runtime_id)
 }
 
+/// Schedules a runtime upgrade after `DomainRuntimeUpgradeDelay` from current block number.
+pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
+    runtime_id: RuntimeId,
+    code: Vec<u8>,
+    current_block_number: T::BlockNumber,
+) -> Result<(), Error> {
+    let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).ok_or(Error::MissingRuntimeObject)?;
+    let new_runtime_version = can_upgrade_code(&runtime_obj.version, &code)?;
+    let scheduled_at = current_block_number
+        .checked_add(&T::DomainRuntimeUpgradeDelay::get())
+        .ok_or(Error::MaxScheduledBlockNumber)?;
+    let scheduled_upgrade = ScheduledRuntimeUpgrade {
+        code,
+        version: new_runtime_version,
+    };
+    ScheduledRuntimeUpgrades::<T>::insert(scheduled_at, runtime_id, scheduled_upgrade);
+    Ok(())
+}
+
 // TODO: upgrade after a delay instead of immediately
 pub(crate) fn do_upgrade_runtime<T: Config>(
     runtime_id: RuntimeId,
@@ -150,14 +180,15 @@ pub(crate) fn do_upgrade_runtime<T: Config>(
 
 #[cfg(test)]
 mod tests {
-    use crate::pallet::{NextRuntimeId, RuntimeRegistry};
+    use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::{Error as RuntimeRegistryError, RuntimeObject};
-    use crate::tests::{new_test_ext, Test};
+    use crate::tests::{new_test_ext, DomainRuntimeUpgradeDelay, Test};
     use crate::Error;
     use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::dispatch::RawOrigin;
     use sp_domains::RuntimeType;
+    use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::DispatchError;
     use sp_version::RuntimeVersion;
 
@@ -283,15 +314,31 @@ mod tests {
                 runtime_obj.version,
                 RuntimeVersion {
                     spec_name: "test".into(),
-                    spec_version: 2,
+                    spec_version: 1,
                     impl_version: 1,
                     transaction_version: 1,
                     ..Default::default()
                 }
             );
-            assert_eq!(runtime_obj.runtime_upgrades, 1);
-            assert_eq!(runtime_obj.code, vec![6, 7, 8, 9]);
-            assert!(runtime_obj.updated_at > runtime_obj.created_at);
+            assert_eq!(runtime_obj.runtime_upgrades, 0);
+            assert_eq!(runtime_obj.code, vec![1, 2, 3, 4]);
+
+            let block_number = frame_system::Pallet::<Test>::current_block_number();
+            let scheduled_block_number = block_number
+                .checked_add(DomainRuntimeUpgradeDelay::get())
+                .unwrap();
+            let scheduled_upgrade =
+                ScheduledRuntimeUpgrades::<Test>::get(scheduled_block_number, 0).unwrap();
+            assert_eq!(
+                scheduled_upgrade.version,
+                RuntimeVersion {
+                    spec_name: "test".into(),
+                    spec_version: 2,
+                    impl_version: 1,
+                    transaction_version: 1,
+                    ..Default::default()
+                }
+            )
         })
     }
 }

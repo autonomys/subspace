@@ -42,8 +42,8 @@ use subspace_core_primitives::U256;
 mod pallet {
     use crate::calculate_tx_range;
     use crate::runtime_registry::{
-        do_register_runtime, do_upgrade_runtime, register_runtime_at_genesis,
-        Error as RuntimeRegistryError, RuntimeObject,
+        do_register_runtime, do_schedule_runtime_upgrade, register_runtime_at_genesis,
+        Error as RuntimeRegistryError, RuntimeObject, ScheduledRuntimeUpgrade,
     };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
@@ -68,6 +68,9 @@ mod pallet {
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
+
+        /// Delay before a domain runtime is upgraded.
+        type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -97,6 +100,17 @@ mod pallet {
     #[pallet::storage]
     pub(super) type RuntimeRegistry<T: Config> =
         StorageMap<_, Identity, RuntimeId, RuntimeObject<T::BlockNumber, T::Hash>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type ScheduledRuntimeUpgrades<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        T::BlockNumber,
+        Identity,
+        RuntimeId,
+        ScheduledRuntimeUpgrade,
+        OptionQuery,
+    >;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -335,7 +349,8 @@ mod pallet {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            do_upgrade_runtime::<T>(runtime_id, code, block_number).map_err(Error::<T>::from)?;
+            do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
+                .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainRuntimeUpgraded { runtime_id });
 
