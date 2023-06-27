@@ -40,7 +40,8 @@ use sp_std::vec::Vec;
 #[frame_support::pallet]
 mod pallet {
     use crate::runtime_registry::{
-        do_register_runtime, do_upgrade_runtime, Error as RuntimeRegistryError, RuntimeObject,
+        do_register_runtime, do_upgrade_runtime, register_runtime_at_genesis,
+        Error as RuntimeRegistryError, RuntimeObject,
     };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
@@ -293,9 +294,10 @@ mod pallet {
         fn build(&self) {
             if let Some(genesis_domain_runtime) = &self.genesis_domain_runtime {
                 // Register the genesis domain runtime
-                do_register_runtime::<T>(
+                register_runtime_at_genesis::<T>(
                     genesis_domain_runtime.name.clone(),
                     genesis_domain_runtime.runtime_type.clone(),
+                    genesis_domain_runtime.runtime_version.clone(),
                     genesis_domain_runtime.code.clone(),
                     Zero::zero(),
                 )

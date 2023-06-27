@@ -90,6 +90,38 @@ pub(crate) fn do_register_runtime<T: Config>(
     Ok(runtime_id)
 }
 
+// TODO: Remove once `do_register_runtime` works at genesis.
+/// Registers a new domain runtime at genesis.
+pub(crate) fn register_runtime_at_genesis<T: Config>(
+    runtime_name: Vec<u8>,
+    runtime_type: RuntimeType,
+    runtime_version: RuntimeVersion,
+    code: Vec<u8>,
+    at: T::BlockNumber,
+) -> Result<RuntimeId, Error> {
+    let runtime_hash = T::Hashing::hash(&code);
+    let runtime_id = NextRuntimeId::<T>::get();
+
+    RuntimeRegistry::<T>::insert(
+        runtime_id,
+        RuntimeObject {
+            runtime_name,
+            runtime_type,
+            hash: runtime_hash,
+            code,
+            version: runtime_version,
+            created_at: at,
+            updated_at: at,
+            runtime_upgrades: 0u32,
+        },
+    );
+
+    let next_runtime_id = runtime_id.checked_add(1).ok_or(Error::MaxRuntimeId)?;
+    NextRuntimeId::<T>::set(next_runtime_id);
+
+    Ok(runtime_id)
+}
+
 // TODO: upgrade after a delay instead of immediately
 pub(crate) fn do_upgrade_runtime<T: Config>(
     runtime_id: RuntimeId,
