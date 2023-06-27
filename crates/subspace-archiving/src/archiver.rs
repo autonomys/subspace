@@ -124,11 +124,6 @@ impl Segment {
         let Self::V0 { items } = self;
         items.push(segment_item);
     }
-
-    fn pop_item(&mut self) -> Option<SegmentItem> {
-        let Self::V0 { items } = self;
-        items.pop()
-    }
 }
 
 /// Kinds of items that are contained within a segment
@@ -376,9 +371,11 @@ impl Archiver {
 
         let mut last_archived_block = self.last_archived_block;
 
+        let mut segment_size = segment.encoded_size();
+
         // `-2` because even the smallest segment item will take 2 bytes to encode, so it makes
         // sense to stop earlier here
-        while segment.encoded_size() < (RecordedHistorySegment::SIZE - 2) {
+        while segment_size < (RecordedHistorySegment::SIZE - 2) {
             let segment_item = match self.buffer.pop_front() {
                 Some(segment_item) => segment_item,
                 None => {
@@ -398,18 +395,14 @@ impl Archiver {
                 }
             };
 
-            // Push segment item into the segment temporarily to measure encoded size of resulting
-            // segment
-            segment.push_item(segment_item);
-            let encoded_segment_length = segment.encoded_size();
-            // Pop segment item back from segment
-            let segment_item = segment.pop_item().unwrap();
+            let segment_item_encoded_size = segment_item.encoded_size();
+            segment_size += segment_item_encoded_size;
 
             // Check if there would be enough data collected with above segment item inserted
-            if encoded_segment_length >= RecordedHistorySegment::SIZE {
+            if segment_size >= RecordedHistorySegment::SIZE {
                 // Check if there is an excess of data that should be spilled over into the next
                 // segment
-                let spill_over = encoded_segment_length - RecordedHistorySegment::SIZE;
+                let spill_over = segment_size - RecordedHistorySegment::SIZE;
 
                 // Due to compact vector length encoding in scale codec, spill over might happen to
                 // be the same or even bigger than the inserted segment item bytes, in which case
@@ -434,6 +427,7 @@ impl Archiver {
 
                 if spill_over > inner_bytes_size {
                     self.buffer.push_front(segment_item);
+                    segment_size -= segment_item_encoded_size;
                     break;
                 }
             }
@@ -477,8 +471,7 @@ impl Archiver {
         }
 
         // Check if there is an excess of data that should be spilled over into the next segment
-        let segment_encoded_length = segment.encoded_size();
-        let spill_over = segment_encoded_length
+        let spill_over = segment_size
             .checked_sub(RecordedHistorySegment::SIZE)
             .unwrap_or_default();
 
