@@ -24,6 +24,7 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod domain_registry;
 pub mod runtime_registry;
 pub mod weights;
 
@@ -44,6 +45,10 @@ pub type BalanceOf<T> =
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::domain_registry::{
+        can_instantiate_domain, do_instantiate_domain, DomainConfig, DomainObject,
+        Error as DomainRegistryError,
+    };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
@@ -141,6 +146,20 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Stores the next domain id.
+    #[pallet::storage]
+    pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
+
+    /// The domain registry
+    #[pallet::storage]
+    pub(super) type DomainRegistry<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        DomainObject<T::BlockNumber, T::Hash, T::AccountId>,
+        OptionQuery,
+    >;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// The signer of bundle is unexpected.
@@ -207,6 +226,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<DomainRegistryError> for Error<T> {
+        fn from(err: DomainRegistryError) -> Self {
+            Error::DomainRegistry(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Can not find the block hash of given primary block number.
@@ -217,6 +242,8 @@ mod pallet {
         FraudProof(FraudProofError),
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
+        /// Domain registry specific errors
+        DomainRegistry(DomainRegistryError),
     }
 
     #[pallet::event]
@@ -237,6 +264,10 @@ mod pallet {
             scheduled_at: T::BlockNumber,
         },
         DomainRuntimeUpgraded {
+            runtime_id: RuntimeId,
+        },
+        DomainInstantiated {
+            domain_id: DomainId,
             runtime_id: RuntimeId,
         },
     }
@@ -388,6 +419,31 @@ mod pallet {
             Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
                 runtime_id,
                 scheduled_at,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(4)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn instantiate_domain(
+            origin: OriginFor<T>,
+            domain_config: DomainConfig,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            can_instantiate_domain::<T>(&who, &domain_config).map_err(Error::<T>::from)?;
+
+            let runtime_id = domain_config.runtime_id;
+            let created_at = frame_system::Pallet::<T>::current_block_number();
+
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainInstantiated {
+                domain_id,
+                runtime_id,
             });
 
             Ok(())
