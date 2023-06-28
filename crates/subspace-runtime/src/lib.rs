@@ -182,6 +182,10 @@ const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
     HistorySize::new(NonZeroU64::new(10).expect("Not zero; qed")),
 );
 
+/// The block weight for 2 seconds of compute
+const BLOCK_WEIGHT_FOR_2_SEC: Weight =
+    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
+
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
@@ -192,7 +196,7 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
     /// We allow for 2 seconds of compute with a 6 second average block time.
-    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX), NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
 }
@@ -428,6 +432,13 @@ parameter_types! {
     pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
+    /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
+    pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
+    /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
+    pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
+    pub const MaxBundlesPerBlock: u32 = 10;
+    pub const DomainInstantiationDeposit: Balance = 100 * SSC;
+    pub const MaxDomainNameLength: u32 = 32;
 }
 
 impl pallet_domains::Config for Runtime {
@@ -438,6 +449,12 @@ impl pallet_domains::Config for Runtime {
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxBundlesPerBlock = MaxBundlesPerBlock;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type Currency = Balances;
 }
 
 impl pallet_settlement::Config for Runtime {

@@ -1,6 +1,7 @@
 use crate::{self as pallet_domains};
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
+use frame_support::weights::Weight;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::{
@@ -14,6 +15,7 @@ use subspace_core_primitives::U256 as P256;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+type Balance = u64;
 
 // TODO: Remove when DomainRegistry is usable.
 const DOMAIN_ID: DomainId = DomainId::new(0);
@@ -28,6 +30,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Settlement: pallet_settlement,
         Domains: pallet_domains,
+        Balances: pallet_balances,
     }
 );
 
@@ -52,7 +55,7 @@ impl frame_system::Config for Test {
     type BlockHashCount = ConstU64<2>;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<Balance>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -62,12 +65,37 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
+    pub const ExistentialDeposit: u64 = 1;
+}
+
+impl pallet_balances::Config for Test {
+    type AccountStore = System;
+    type Balance = Balance;
+    type DustRemoval = ();
+    type RuntimeEvent = RuntimeEvent;
+    type ExistentialDeposit = ExistentialDeposit;
+    type MaxLocks = ();
+    type MaxReserves = ();
+    type ReserveIdentifier = ();
+    type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = ();
+    type MaxHolds = ();
+}
+
+parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = 10;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
+    pub const MaxBundlesPerBlock: u32 = 10;
+    pub const MaxDomainBlockSize: u32 = u32::MAX;
+    pub const MaxDomainBlockWeight: Weight = Weight::MAX;
+    pub const DomainInstantiationDeposit: Balance = 0;
+    pub const MaxDomainNameLength: u32 = u32::MAX;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -98,6 +126,12 @@ impl pallet_domains::Config for Test {
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxBundlesPerBlock = MaxBundlesPerBlock;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type Currency = Balances;
 }
 
 impl pallet_settlement::Config for Test {

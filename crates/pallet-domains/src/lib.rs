@@ -27,7 +27,7 @@ mod tests;
 pub mod runtime_registry;
 pub mod weights;
 
-use frame_support::traits::Get;
+use frame_support::traits::{Currency, Get};
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
@@ -38,16 +38,21 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
+/// The balance type used by the currency system.
+pub type BalanceOf<T> =
+    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
 #[frame_support::pallet]
 mod pallet {
-    use crate::calculate_tx_range;
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
         ScheduledRuntimeUpgrade,
     };
     use crate::weights::WeightInfo;
+    use crate::{calculate_tx_range, BalanceOf};
     use frame_support::pallet_prelude::{StorageMap, *};
+    use frame_support::traits::LockableCurrency;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -72,6 +77,29 @@ mod pallet {
 
         /// Delay before a domain runtime is upgraded.
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
+
+        /// The maximum block size limit for all domain.
+        #[pallet::constant]
+        type MaxDomainBlockSize: Get<u32>;
+
+        /// The maximum block weight limit for all domain.
+        #[pallet::constant]
+        type MaxDomainBlockWeight: Get<Weight>;
+
+        /// The maximum bundle per block limit for all domain.
+        #[pallet::constant]
+        type MaxBundlesPerBlock: Get<u32>;
+
+        /// The maximum domain name length limit for all domain.
+        #[pallet::constant]
+        type MaxDomainNameLength: Get<u32>;
+
+        /// The amount of fund to be locked up for the domain instance creator.
+        #[pallet::constant]
+        type DomainInstantiationDeposit: Get<BalanceOf<Self>>;
+
+        /// The currency trait.
+        type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
