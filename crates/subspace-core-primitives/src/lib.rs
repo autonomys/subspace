@@ -41,7 +41,7 @@ mod tests;
 extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
-use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar};
+use crate::crypto::{blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use core::convert::AsRef;
@@ -829,17 +829,11 @@ impl SectorId {
 
     /// Derive evaluation seed
     pub fn evaluation_seed(&self, piece_offset: PieceOffset, history_size: HistorySize) -> PosSeed {
-        let mut evaluation_seed = self.0;
-
-        for (output, input) in evaluation_seed.iter_mut().zip(piece_offset.to_bytes()) {
-            *output ^= input;
-        }
-        for (output, input) in evaluation_seed
-            .iter_mut()
-            .zip(history_size.get().to_le_bytes())
-        {
-            *output ^= input;
-        }
+        let evaluation_seed = blake2b_256_hash_list(&[
+            &self.0,
+            &piece_offset.to_bytes(),
+            &history_size.get().to_le_bytes(),
+        ]);
 
         PosSeed::from(evaluation_seed)
     }
