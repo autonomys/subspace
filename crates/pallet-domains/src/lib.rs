@@ -66,7 +66,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
+        DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{BlockNumberProvider, Zero};
     use sp_std::fmt::Debug;
@@ -451,24 +451,44 @@ mod pallet {
     }
 
     #[pallet::genesis_config]
-    #[derive(Default)]
-    pub struct GenesisConfig {
-        pub genesis_domain_runtime: Option<GenesisDomainRuntime>,
+    pub struct GenesisConfig<T: Config> {
+        pub genesis_domain: Option<GenesisDomain<T::AccountId>>,
+    }
+
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            GenesisConfig {
+                genesis_domain: None,
+            }
+        }
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            if let Some(genesis_domain_runtime) = &self.genesis_domain_runtime {
+            if let Some(genesis_domain) = &self.genesis_domain {
                 // Register the genesis domain runtime
-                register_runtime_at_genesis::<T>(
-                    genesis_domain_runtime.name.clone(),
-                    genesis_domain_runtime.runtime_type.clone(),
-                    genesis_domain_runtime.runtime_version.clone(),
-                    genesis_domain_runtime.code.clone(),
+                let runtime_id = register_runtime_at_genesis::<T>(
+                    genesis_domain.runtime_name.clone(),
+                    genesis_domain.runtime_type.clone(),
+                    genesis_domain.runtime_version.clone(),
+                    genesis_domain.code.clone(),
                     Zero::zero(),
                 )
                 .expect("Genesis runtime registration must always succeed");
+
+                // Instantiate the genesis domain
+                let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
+                can_instantiate_domain::<T>(&genesis_domain.owner_account_id, &domain_config)
+                    .expect("Genesis domain config must be valid");
+
+                let created_at = frame_system::Pallet::<T>::current_block_number();
+                do_instantiate_domain::<T>(
+                    domain_config,
+                    genesis_domain.owner_account_id.clone(),
+                    created_at,
+                )
+                .expect("Genesis domain instantiation must always succeed");
             }
         }
     }

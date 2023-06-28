@@ -27,6 +27,7 @@ sp-runtime = { version = "24.0.0", default-features = false, git = "https://gith
 sp-state-machine = { version = "0.28.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-trie = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-weights = { version = "20.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 thiserror = { version = "1.0.38", optional = true }
@@ -49,6 +50,7 @@ std = [
 	"sp-state-machine/std",
 	"sp-std/std",
 	"sp-trie/std",
+	"sp-weights/std",
 	"subspace-core-primitives/std",
 	"subspace-runtime-primitives/std",
 	"thiserror",

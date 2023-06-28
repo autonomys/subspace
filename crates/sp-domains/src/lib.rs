@@ -40,6 +40,7 @@ use sp_runtime::traits::{
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness, U256};
 use subspace_runtime_primitives::Moment;
@@ -477,11 +478,20 @@ where
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct GenesisDomainRuntime {
-    pub name: Vec<u8>,
+pub struct GenesisDomain<AccountId> {
+    // Domain runtime items
+    pub runtime_name: Vec<u8>,
     pub runtime_type: RuntimeType,
     pub runtime_version: RuntimeVersion,
     pub code: Vec<u8>,
+
+    // Domain config items
+    pub owner_account_id: AccountId,
+    pub domain_name: Vec<u8>,
+    pub max_block_size: u32,
+    pub max_block_weight: Weight,
+    pub bundle_slot_probability: (u64, u64),
+    pub target_bundles_per_block: u32,
 }
 
 /// Types of runtime pallet domains currently supports

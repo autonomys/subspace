@@ -7,7 +7,7 @@ use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, RuntimeId};
+use sp_domains::{DomainId, GenesisDomain, RuntimeId};
 use sp_runtime::traits::CheckedAdd;
 use sp_std::vec::Vec;
 
@@ -43,6 +43,22 @@ pub struct DomainConfig {
     pub bundle_slot_probability: (u64, u64),
     /// The expected number of bundles for a domain block, must be `≥ 1` and `≤ MaxBundlesPerBlock`.
     pub target_bundles_per_block: u32,
+}
+
+impl DomainConfig {
+    pub(crate) fn from_genesis<T: Config>(
+        genesis_domain: &GenesisDomain<T::AccountId>,
+        runtime_id: RuntimeId,
+    ) -> Self {
+        DomainConfig {
+            domain_name: genesis_domain.domain_name.clone(),
+            runtime_id,
+            max_block_size: genesis_domain.max_block_size,
+            max_block_weight: genesis_domain.max_block_weight,
+            bundle_slot_probability: genesis_domain.bundle_slot_probability,
+            target_bundles_per_block: genesis_domain.target_bundles_per_block,
+        }
+    }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

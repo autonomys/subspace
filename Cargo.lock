@@ -9842,6 +9842,7 @@ dependencies = [
  "sp-state-machine",
  "sp-std",
  "sp-trie",
+ "sp-weights",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
