@@ -67,60 +67,14 @@ pub type Moment = u64;
 /// to even the core data structures.
 pub mod opaque {
     use super::BlockNumber;
-    use parity_scale_codec::{Decode, Encode};
-    use serde::{Deserialize, Serialize};
-    use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
-    use sp_runtime::{generic, DigestItem, OpaqueExtrinsic};
-    use sp_std::prelude::*;
-    use subspace_core_primitives::RecordedHistorySegment;
+    use sp_runtime::generic;
+    use sp_runtime::traits::BlakeTwo256;
+    pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
 
     /// Opaque block header type.
     pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
     /// Opaque block type.
-
-    /// Abstraction over a substrate block.
-    #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    #[serde(deny_unknown_fields)]
-    pub struct Block {
-        /// The block header.
-        pub header: Header,
-        /// The accompanying extrinsics.
-        pub extrinsics: Vec<OpaqueExtrinsic>,
-    }
-
-    impl BlockT for Block {
-        type Extrinsic = OpaqueExtrinsic;
-        type Header = Header;
-        type Hash = <Header as HeaderT>::Hash;
-
-        fn header(&self) -> &Self::Header {
-            &self.header
-        }
-        fn extrinsics(&self) -> &[Self::Extrinsic] {
-            &self.extrinsics[..]
-        }
-        fn deconstruct(self) -> (Self::Header, Vec<Self::Extrinsic>) {
-            (self.header, self.extrinsics)
-        }
-        fn new(mut header: Self::Header, extrinsics: Vec<Self::Extrinsic>) -> Self {
-            if header.number == 0 {
-                // This check is necessary in case block was deconstructed and constructed again.
-                if header.digest.logs.is_empty() {
-                    // We fill genesis block with extra data such that the very first archived
-                    // segment can be produced right away, bootstrapping the farming process.
-                    let ballast = vec![0; RecordedHistorySegment::SIZE];
-                    header.digest.logs.push(DigestItem::Other(ballast));
-                }
-                Block { header, extrinsics }
-            } else {
-                Block { header, extrinsics }
-            }
-        }
-        fn encode_from(header: &Self::Header, extrinsics: &[Self::Extrinsic]) -> Vec<u8> {
-            (header, extrinsics).encode()
-        }
-    }
+    pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 }
 
 /// A trait for finding the address for a block reward based on the `PreRuntime` digests contained within it.
