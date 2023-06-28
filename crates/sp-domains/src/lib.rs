@@ -301,11 +301,6 @@ impl<DomainHash> BundleSolution<DomainHash> {
     pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
         &self.proof_of_election
     }
-
-    /// Returns the hash of the block on top of which the solution was created.
-    pub fn creation_block_hash(&self) -> &DomainHash {
-        &self.proof_of_election.system_block_hash
-    }
 }
 
 impl<DomainHash: Default> BundleSolution<DomainHash> {
