@@ -204,6 +204,10 @@ mod pallet {
             runtime_id: RuntimeId,
             runtime_type: RuntimeType,
         },
+        DomainRuntimeUpgradeScheduled {
+            runtime_id: RuntimeId,
+            scheduled_at: T::BlockNumber,
+        },
         DomainRuntimeUpgraded {
             runtime_id: RuntimeId,
         },
@@ -350,10 +354,13 @@ mod pallet {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
+            let scheduled_at = do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
                 .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::DomainRuntimeUpgraded { runtime_id });
+            Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
+                runtime_id,
+                scheduled_at,
+            });
 
             Ok(())
         }
@@ -386,7 +393,6 @@ mod pallet {
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
-            // TODO: add upgrade runtime digest
             let upgrade_runtimes_result = do_upgrade_runtimes::<T>(block_number);
 
             T::DbWeight::get().reads_writes(

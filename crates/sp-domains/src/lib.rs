@@ -33,8 +33,9 @@ use sp_api::RuntimeVersion;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
+use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
-use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
+use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::crypto::blake2b_256_hash;
@@ -486,6 +487,33 @@ pub enum RuntimeType {
 
 /// Type representing the runtime ID.
 pub type RuntimeId = u32;
+
+/// Domains specific digest item.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+pub enum DomainDigestItem {
+    DomainRuntimeUpgraded(RuntimeId),
+}
+
+/// Domains specific digest items.
+pub trait DomainsDigestItem {
+    fn domain_runtime_upgrade(runtime_id: RuntimeId) -> Self;
+    fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId>;
+}
+
+impl DomainsDigestItem for DigestItem {
+    fn domain_runtime_upgrade(runtime_id: RuntimeId) -> Self {
+        Self::Other(DomainDigestItem::DomainRuntimeUpgraded(runtime_id).encode())
+    }
+
+    fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId> {
+        match self.try_to::<DomainDigestItem>(OpaqueDigestItemId::Other) {
+            None => None,
+            Some(domain_digest_item) => match domain_digest_item {
+                DomainDigestItem::DomainRuntimeUpgraded(runtime_id) => Some(runtime_id),
+            },
+        }
+    }
+}
 
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.

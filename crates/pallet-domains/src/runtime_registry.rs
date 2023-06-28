@@ -1,13 +1,14 @@
 //! Runtime registry for domains
 
 use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
-use crate::Config;
+use crate::{Config, Event};
 use codec::{Decode, Encode};
 use frame_support::PalletError;
 use scale_info::TypeInfo;
 use sp_core::Hasher;
-use sp_domains::{RuntimeId, RuntimeType};
+use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Get};
+use sp_runtime::DigestItem;
 use sp_std::vec::Vec;
 use sp_version::RuntimeVersion;
 
@@ -135,7 +136,7 @@ pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
     runtime_id: RuntimeId,
     code: Vec<u8>,
     current_block_number: T::BlockNumber,
-) -> Result<(), Error> {
+) -> Result<T::BlockNumber, Error> {
     let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).ok_or(Error::MissingRuntimeObject)?;
     let new_runtime_version = can_upgrade_code(&runtime_obj.version, &code)?;
     let scheduled_at = current_block_number
@@ -146,19 +147,17 @@ pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
         version: new_runtime_version,
     };
     ScheduledRuntimeUpgrades::<T>::insert(scheduled_at, runtime_id, scheduled_upgrade);
-    Ok(())
+    Ok(scheduled_at)
 }
 
+#[derive(Default)]
 pub(crate) struct UpgradeRuntimesResult {
     pub(crate) reads: u64,
     pub(crate) writes: u64,
 }
 
 pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) -> UpgradeRuntimesResult {
-    let mut upgrade_runtimes_result = UpgradeRuntimesResult {
-        reads: 0,
-        writes: 0,
-    };
+    let mut upgrade_runtimes_result = UpgradeRuntimesResult::default();
 
     for (runtime_id, scheduled_update) in ScheduledRuntimeUpgrades::<T>::drain_prefix(at) {
         RuntimeRegistry::<T>::mutate(runtime_id, |maybe_runtime_object| {
@@ -178,6 +177,14 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) -> UpgradeRunti
         upgrade_runtimes_result.reads += 1;
         // two writes, one to kill the `ScheduledRuntimeUpgrades` and one to update `RuntimeRegistry`
         upgrade_runtimes_result.writes += 2;
+
+        // deposit digest log for light clients
+        frame_system::Pallet::<T>::deposit_log(DigestItem::domain_runtime_upgrade(runtime_id));
+
+        // deposit event to signal runtime upgrade is complete
+        frame_system::Pallet::<T>::deposit_event(<T as Config>::RuntimeEvent::from(
+            Event::DomainRuntimeUpgraded { runtime_id },
+        ));
     }
 
     upgrade_runtimes_result
@@ -193,9 +200,9 @@ mod tests {
     use frame_support::assert_ok;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
-    use sp_domains::RuntimeType;
+    use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
-    use sp_runtime::DispatchError;
+    use sp_runtime::{Digest, DispatchError};
     use sp_version::RuntimeVersion;
 
     struct ReadRuntimeVersion(Vec<u8>);
@@ -348,7 +355,6 @@ mod tests {
         })
     }
 
-    #[allow(dead_code)]
     fn go_to_block(block: u64) {
         for i in System::block_number() + 1..=block {
             let parent_hash = if System::block_number() > 1 {
@@ -363,6 +369,17 @@ mod tests {
             System::initialize(&i, &parent_hash, &digest);
             Domains::on_initialize(i);
         }
+    }
+
+    fn fetch_upgraded_runtime_from_digest(digest: Digest) -> Option<RuntimeId> {
+        for log in digest.logs {
+            match log.as_domain_runtime_upgrade() {
+                None => continue,
+                Some(runtime_id) => return Some(runtime_id),
+            }
+        }
+
+        None
     }
 
     #[test]
@@ -424,6 +441,9 @@ mod tests {
 
             let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
             assert_eq!(runtime_obj.version, version);
+
+            let digest = System::digest();
+            assert_eq!(Some(0), fetch_upgraded_runtime_from_digest(digest))
         });
     }
 }
