@@ -12,6 +12,7 @@ type NotificationEventHandler = Bag<NotificationHandler, Notification>;
 
 pub const DEFAULT_CAPACITY: usize = (1 << 20) - 1;
 
+// TODO: Consider renaming this type.
 #[derive(Clone)]
 pub struct ArchivalStoragePieces {
     cuckoo_filter: Arc<Mutex<CuckooFilter<DefaultHasher>>>,
@@ -33,12 +34,13 @@ impl ArchivalStoragePieces {
     }
 
     pub fn add_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<(), anyhow::Error> {
+        let mut cuckoo_filter = self.cuckoo_filter.lock();
         for piece_index in piece_indexes {
-            self.cuckoo_filter
-                .lock()
+            cuckoo_filter
                 .add(piece_index)
                 .map_err(|err| anyhow::anyhow!("Cuckoo filter error: {}", err,))?;
         }
+        drop(cuckoo_filter);
 
         self.listeners.call_simple(&Notification);
 
@@ -57,7 +59,7 @@ impl PeerInfoProvider for ArchivalStoragePieces {
         }
     }
 
-    fn subscribe(&self, handler: NotificationHandler) -> Option<HandlerId> {
+    fn on_notification(&self, handler: NotificationHandler) -> Option<HandlerId> {
         let handler_id = self.listeners.add(handler);
 
         Some(handler_id)

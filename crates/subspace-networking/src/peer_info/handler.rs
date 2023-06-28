@@ -12,9 +12,10 @@ use libp2p::swarm::{
     NegotiatedSubstream, SubstreamProtocol,
 };
 use std::error::Error;
+use std::io;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use std::{fmt, io};
 use tracing::debug;
 
 /// The configuration for peer-info protocol.
@@ -48,37 +49,30 @@ impl Config {
 /// The successful result of processing an inbound or outbound peer info requests.
 #[derive(Debug)]
 pub enum PeerInfoSuccess {
+    /// Local peer received peer info from a remote peer.
     Received(PeerInfo),
-    DataSent,
+    /// Local peer sent its peer info to a remote peer.
+    Sent,
 }
 
 /// A peer info protocol failure.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PeerInfoError {
     /// The peer does not support the peer info protocol.
+    #[error("Peer info protocol is not supported.")]
     Unsupported,
     /// The peer info request failed.
+    #[error("Peer info error: {error}")]
     Other {
+        #[source]
         error: Box<dyn Error + Send + 'static>,
     },
 }
 
-impl fmt::Display for PeerInfoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PeerInfoError::Other { error } => write!(f, "Peer info error: {error}"),
-            PeerInfoError::Unsupported => write!(f, "Peer info protocol not supported"),
-        }
-    }
-}
-
-impl Error for PeerInfoError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            PeerInfoError::Other { error } => Some(&**error),
-            PeerInfoError::Unsupported => None,
-        }
-    }
+/// Marker struct for outbound peer-info requests.
+#[derive(Debug, Clone)]
+pub struct HandlerInEvent {
+    pub peer_info: Arc<PeerInfo>,
 }
 
 /// Protocol handler that handles peer-info requests.
@@ -107,19 +101,13 @@ impl Handler {
     }
 }
 
-/// Marker struct for outbound peer-info requests.
-#[derive(Debug, Clone)]
-pub struct HandlerInEvent {
-    pub peer_info: PeerInfo,
-}
-
 impl ConnectionHandler for Handler {
     type InEvent = HandlerInEvent;
-    type OutEvent = super::Result;
+    type OutEvent = Result<PeerInfoSuccess, PeerInfoError>;
     type Error = PeerInfoError;
     type InboundProtocol = ReadyUpgrade<&'static [u8]>;
     type OutboundProtocol = ReadyUpgrade<&'static [u8]>;
-    type OutboundOpenInfo = PeerInfo;
+    type OutboundOpenInfo = Arc<PeerInfo>;
     type InboundOpenInfo = ();
 
     fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<&'static [u8]>, ()> {
@@ -147,7 +135,7 @@ impl ConnectionHandler for Handler {
         ConnectionHandlerEvent<
             ReadyUpgrade<&'static [u8]>,
             Self::OutboundOpenInfo,
-            super::Result,
+            Result<PeerInfoSuccess, PeerInfoError>,
             Self::Error,
         >,
     > {
@@ -188,7 +176,7 @@ impl ConnectionHandler for Handler {
                         self.outbound = Some(OutboundState::Idle(stream));
 
                         return Poll::Ready(ConnectionHandlerEvent::Custom(Ok(
-                            PeerInfoSuccess::DataSent,
+                            PeerInfoSuccess::Sent,
                         )));
                     }
                     Poll::Ready(Err(error)) => {
@@ -271,7 +259,7 @@ type OutPeerInfoFuture = BoxFuture<'static, Result<NegotiatedSubstream, io::Erro
 
 /// The current state w.r.t. outbound peer info requests.
 enum OutboundState {
-    RequestNewStream(PeerInfo),
+    RequestNewStream(Arc<PeerInfo>),
     /// A new substream is being negotiated for the protocol.
     NegotiatingStream,
     /// A peer info request is being sent and the response awaited.

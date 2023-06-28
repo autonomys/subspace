@@ -367,7 +367,8 @@ where
                                 %disk_farm_index,
                                 %sector_index,
                                 %sector_offset,
-                                "Couldn't add new pieces to archival storage cuckoo filter.");
+                                "Couldn't add new pieces to archival storage cuckoo filter.",
+                            );
                         }
 
                         // TODO: Skip those that were already announced (because they cached)

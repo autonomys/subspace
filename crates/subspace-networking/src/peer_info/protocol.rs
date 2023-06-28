@@ -5,9 +5,10 @@ use futures::prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use std::io;
 use std::io::ErrorKind;
+use std::sync::Arc;
 
 /// Send peer-info data to a remote peer.
-pub async fn send<S>(mut stream: S, pi: PeerInfo) -> io::Result<S>
+pub async fn send<S>(mut stream: S, pi: Arc<PeerInfo>) -> io::Result<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -26,7 +27,7 @@ pub async fn recv<S>(mut stream: S) -> io::Result<(S, PeerInfo)>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let mut rec_len_bytes = [0u8; 4];
+    let mut rec_len_bytes = 0u32.to_le_bytes();
     stream.read_exact(&mut rec_len_bytes).await?;
     let rec_len = u32::from_le_bytes(rec_len_bytes) as usize;
     let mut rec_data = vec![0; rec_len];

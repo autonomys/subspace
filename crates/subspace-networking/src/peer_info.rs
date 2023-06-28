@@ -68,16 +68,13 @@ pub enum PeerRole {
     Node,
     /// DSN bootstrap node.
     BootstrapNode,
-    /// Unspecified client (testing, custom utilities, etc.
+    /// Unspecified client (testing, custom utilities, etc).
     Client,
 }
 
-/// The result of an inbound or outbound peer-info requests.
-pub type Result = std::result::Result<PeerInfoSuccess, PeerInfoError>;
-
 /// A [`NetworkBehaviour`] that handles inbound peer info requests and
 /// sends outbound peer info requests on the first established connection.
-pub struct Behaviour<PeerInfoProvider = ConstantPeerInfoProvider> {
+pub struct Behaviour<PeerInfoProvider> {
     /// Peer info protocol configuration.
     config: Config,
     /// Queue of events to yield to the swarm.
@@ -89,24 +86,24 @@ pub struct Behaviour<PeerInfoProvider = ConstantPeerInfoProvider> {
     /// Whether the behaviour should notify connected peers.
     should_notify_handlers: Arc<AtomicBool>,
     /// We just save the handler ID.
-    #[allow(dead_code)]
-    notify_handler_id: Option<HandlerId>,
+    _notify_handler_id: Option<HandlerId>,
     /// Known connected peers.
     connected_peers: HashSet<PeerId>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 /// Peer info push request. Handlers wait for these requests to send data.
 struct Request {
     peer_id: PeerId,
+    peer_info: Arc<PeerInfo>,
 }
 
 /// Provides the current peer info data.
 pub trait PeerInfoProvider: 'static {
     /// Returns the current peer info data.
     fn peer_info(&self) -> PeerInfo;
-    /// Subscribe to peer info updates.
-    fn subscribe(&self, handler: NotificationHandler) -> Option<HandlerId>;
+    /// Subscribe to peer info updates and invoke provided callback.
+    fn on_notification(&self, callback: NotificationHandler) -> Option<HandlerId>;
 }
 
 /// Handles constant peer info data.
@@ -126,7 +123,7 @@ impl PeerInfoProvider for ConstantPeerInfoProvider {
         self.peer_info.clone()
     }
 
-    fn subscribe(&self, _: NotificationHandler) -> Option<HandlerId> {
+    fn on_notification(&self, _: NotificationHandler) -> Option<HandlerId> {
         // No notifications.
         None
     }
@@ -138,14 +135,14 @@ pub struct Event {
     /// The peer ID of the remote.
     pub peer_id: PeerId,
     /// The result of an inbound or outbound peer info request.
-    pub result: Result,
+    pub result: Result<PeerInfoSuccess, PeerInfoError>,
 }
 
 impl<PIP: PeerInfoProvider> Behaviour<PIP> {
     /// Creates a new `Peer Info` network behaviour with the given configuration.
     pub fn new(config: Config, peer_info_provider: PIP) -> Self {
         let should_notify_handlers = Arc::new(AtomicBool::new(false));
-        let notify_handler_id = peer_info_provider.subscribe({
+        let notify_handler_id = peer_info_provider.on_notification({
             let should_notify_handlers = should_notify_handlers.clone();
 
             Arc::new(move |_| {
@@ -154,7 +151,7 @@ impl<PIP: PeerInfoProvider> Behaviour<PIP> {
         });
 
         Self {
-            notify_handler_id,
+            _notify_handler_id: notify_handler_id,
             config,
             peer_info_provider,
             events: VecDeque::new(),
@@ -175,7 +172,7 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
         _: PeerId,
         _: &Multiaddr,
         _: &Multiaddr,
-    ) -> std::result::Result<THandler<Self>, ConnectionDenied> {
+    ) -> Result<THandler<Self>, ConnectionDenied> {
         Ok(Handler::new(self.config.clone()))
     }
 
@@ -185,7 +182,7 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
         _: PeerId,
         _: &Multiaddr,
         _: Endpoint,
-    ) -> std::result::Result<THandler<Self>, ConnectionDenied> {
+    ) -> Result<THandler<Self>, ConnectionDenied> {
         Ok(Handler::new(self.config.clone()))
     }
 
@@ -210,8 +207,12 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
             debug!("Notify peer-info handlers.");
 
             self.requests.clear();
+            let peer_info = Arc::new(self.peer_info_provider.peer_info());
             for peer_id in self.connected_peers.iter().cloned() {
-                self.requests.push(Request { peer_id })
+                self.requests.push(Request {
+                    peer_id,
+                    peer_info: peer_info.clone(),
+                });
             }
         }
 
@@ -219,11 +220,11 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
             let Event { result, peer_id } = &e;
 
             match result {
-                Ok(PeerInfoSuccess::DataSent) => {
-                    debug!(%peer_id,"Peer info sent.", )
+                Ok(PeerInfoSuccess::Sent) => {
+                    debug!(%peer_id, "Peer info sent.")
                 }
                 Ok(PeerInfoSuccess::Received(_)) => {
-                    debug!(%peer_id, "Peer info received", )
+                    debug!(%peer_id, "Peer info received")
                 }
                 Err(err) => {
                     debug!(%peer_id, ?err, "Peer info error");
@@ -234,13 +235,11 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
         }
 
         // Check for pending requests.
-        if let Some(Request { peer_id }) = self.requests.pop() {
+        if let Some(Request { peer_id, peer_info }) = self.requests.pop() {
             return Poll::Ready(ToSwarm::NotifyHandler {
                 peer_id,
                 handler: NotifyHandler::Any,
-                event: HandlerInEvent {
-                    peer_info: self.peer_info_provider.peer_info(),
-                },
+                event: HandlerInEvent { peer_info },
             });
         }
 
@@ -258,7 +257,8 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
 
                 // Push the peer-info request on the first connection.
                 if other_established == 0 {
-                    self.requests.push(Request { peer_id });
+                    let peer_info = Arc::new(self.peer_info_provider.peer_info());
+                    self.requests.push(Request { peer_id, peer_info });
                 }
             }
             FromSwarm::ConnectionClosed(ConnectionClosed {
