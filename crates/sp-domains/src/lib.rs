@@ -34,7 +34,9 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
+};
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -108,19 +110,25 @@ impl From<DomainId> for u32 {
     }
 }
 
-impl core::ops::Add<u32> for DomainId {
+impl core::ops::Add<DomainId> for DomainId {
     type Output = Self;
 
-    fn add(self, other: u32) -> Self {
-        Self(self.0 + other)
+    fn add(self, other: DomainId) -> Self {
+        Self(self.0 + other.0)
     }
 }
 
-impl core::ops::Sub<u32> for DomainId {
+impl core::ops::Sub<DomainId> for DomainId {
     type Output = Self;
 
-    fn sub(self, other: u32) -> Self {
-        Self(self.0 - other)
+    fn sub(self, other: DomainId) -> Self {
+        Self(self.0 - other.0)
+    }
+}
+
+impl CheckedAdd for DomainId {
+    fn checked_add(&self, rhs: &Self) -> Option<Self> {
+        self.0.checked_add(rhs.0).map(Self)
     }
 }
 
