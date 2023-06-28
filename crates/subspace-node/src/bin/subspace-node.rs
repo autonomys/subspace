@@ -29,38 +29,19 @@ use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
-use sc_executor::NativeExecutionDispatch;
 use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
-use subspace_node::{
-    AccountId32ToAccountId20Converter, Cli, DomainCli, DomainSubcommand, ExecutorDispatch,
-    Subcommand,
+use subspace_node::domain::{
+    AccountId32ToAccountId20Converter, DomainCli, DomainSubcommand, EVMDomainExecutorDispatch,
 };
+use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
-
-/// EVM domain executor instance.
-pub struct EVMDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for crate::EVMDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        evm_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        evm_domain_runtime::native_version()
-    }
-}
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]

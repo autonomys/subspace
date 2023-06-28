@@ -18,11 +18,9 @@
 
 mod chain_spec;
 mod chain_spec_utils;
-mod domain;
+pub mod domain;
 mod import_blocks_from_dsn;
 
-pub use crate::domain::cli::{DomainCli, Subcommand as DomainSubcommand};
-pub use crate::domain::AccountId32ToAccountId20Converter;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 use bytesize::ByteSize;
 use clap::Parser;
