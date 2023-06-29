@@ -19,8 +19,8 @@ include = [
 codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 schnorrkel = { version = "0.9.1", default-features = false, features = ["u64_backend"] }
-sp-arithmetic = { version = "16.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "28e33f78a3aa8ac4c6753108bc0471273ff6bf6f" }
+sp-arithmetic = { version = "16.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving", default-features = false }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }

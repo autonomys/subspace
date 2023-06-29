@@ -223,7 +223,7 @@ services:
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
       "--rpc-cors", "all",
       "--rpc-methods", "safe",
-      "--unsafe-ws-external",
+      "--unsafe-rpc-external",
       "--dsn-disable-private-ips",
       "--no-private-ipv4",
       "--validator",
