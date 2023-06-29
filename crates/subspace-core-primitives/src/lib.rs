@@ -793,7 +793,7 @@ impl SectorId {
             * recent_history_fraction.1.in_pieces().get()
             / recent_history_fraction.0.in_pieces().get();
         let input_hash =
-            U256::from_le_bytes(blake2b_256_hash_with_key(&self.0, &piece_offset.to_bytes()));
+            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0));
         let history_size_in_pieces = history_size.in_pieces().get();
         let num_interleaved_pieces = 1.max(
             u64::from(max_pieces_in_sector) * recent_history_fraction.0.in_pieces().get()
