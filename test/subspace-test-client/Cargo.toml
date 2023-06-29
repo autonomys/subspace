@@ -15,6 +15,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+evm-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/evm" }
 futures = "0.3.28"
 schnorrkel = "0.9.1"
 sc-chain-spec = { git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
@@ -25,8 +26,8 @@ sc-service = { git = "https://github.com/subspace/substrate", rev = "55c157cff49
 sp-api = { git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
 sp-core = { git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-domains = { version = "0.1.0", path = "../../crates/sp-domains" }
 sp-runtime = { git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
-# system-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/system" }
 subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-erasure-coding = { path = "../../crates/subspace-erasure-coding" }
