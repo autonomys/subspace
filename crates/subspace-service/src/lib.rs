@@ -18,6 +18,7 @@
 #![feature(type_alias_impl_trait, type_changing_struct_update)]
 
 pub mod dsn;
+mod genesis_block_builder;
 mod metrics;
 pub mod piece_cache;
 pub mod rpc;
@@ -27,6 +28,7 @@ pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
+use crate::genesis_block_builder::SubspaceGenesisBlockBuilder;
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
@@ -55,7 +57,9 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
+use sc_service::{
+    new_db_backend, Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager,
+};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, HeaderT, Metadata, ProvideRuntimeApi, TransactionFor};
@@ -295,11 +299,22 @@ where
 
     let executor = sc_service::new_native_or_wasm_executor(config);
 
+    let backend = new_db_backend(config.db_config())?;
+
+    let genesis_block_builder = SubspaceGenesisBlockBuilder::new(
+        config.chain_spec.as_storage_builder(),
+        !config.no_genesis(),
+        backend.clone(),
+        executor.clone(),
+    )?;
+
     let (client, backend, keystore_container, task_manager) =
-        sc_service::new_full_parts::<Block, RuntimeApi, _>(
+        sc_service::new_full_parts_with_genesis_builder::<Block, RuntimeApi, _, _>(
             config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
+            backend,
+            genesis_block_builder,
         )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
