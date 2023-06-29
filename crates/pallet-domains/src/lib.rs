@@ -390,15 +390,14 @@ mod pallet {
     }
 
     #[pallet::hooks]
+    // TODO: proper benchmark
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
-            let upgrade_runtimes_result = do_upgrade_runtimes::<T>(block_number);
 
-            T::DbWeight::get().reads_writes(
-                upgrade_runtimes_result.reads,
-                upgrade_runtimes_result.writes + 1,
-            )
+            do_upgrade_runtimes::<T>(block_number);
+
+            Weight::zero()
         }
 
         fn on_finalize(_: T::BlockNumber) {

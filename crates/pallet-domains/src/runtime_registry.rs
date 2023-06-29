@@ -150,15 +150,7 @@ pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
     Ok(scheduled_at)
 }
 
-#[derive(Default)]
-pub(crate) struct UpgradeRuntimesResult {
-    pub(crate) reads: u64,
-    pub(crate) writes: u64,
-}
-
-pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) -> UpgradeRuntimesResult {
-    let mut upgrade_runtimes_result = UpgradeRuntimesResult::default();
-
+pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) {
     for (runtime_id, scheduled_update) in ScheduledRuntimeUpgrades::<T>::drain_prefix(at) {
         RuntimeRegistry::<T>::mutate(runtime_id, |maybe_runtime_object| {
             let runtime_obj = maybe_runtime_object
@@ -173,11 +165,6 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) -> UpgradeRunti
             runtime_obj.updated_at = at;
         });
 
-        // one read for each key under `ScheduledRuntimeUpgrades`
-        upgrade_runtimes_result.reads += 1;
-        // two writes, one to kill the `ScheduledRuntimeUpgrades` and one to update `RuntimeRegistry`
-        upgrade_runtimes_result.writes += 2;
-
         // deposit digest log for light clients
         frame_system::Pallet::<T>::deposit_log(DigestItem::domain_runtime_upgrade(runtime_id));
 
@@ -186,8 +173,6 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) -> UpgradeRunti
             Event::DomainRuntimeUpgraded { runtime_id },
         ));
     }
-
-    upgrade_runtimes_result
 }
 
 #[cfg(test)]
