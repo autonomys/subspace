@@ -115,12 +115,12 @@ pub fn local_testnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
+pub fn gemini_3e_config() -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3d EVM Domain",
+        "Subspace Gemini 3e EVM Domain",
         // ID
-        "subspace_gemini_3d_evm_domain",
+        "subspace_gemini_3e_evm_domain",
         ChainType::Live,
         move || {
             let sudo_account = AccountId::from_str("f31e60022e290708c17d6997c34de6a30d09438f")
@@ -143,7 +143,7 @@ pub fn gemini_3d_config() -> ExecutionChainSpec<GenesisConfig> {
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3d-evm-domain"),
+        Some("subspace-gemini-3e-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -193,10 +193,10 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
     )
 }
 
-pub fn load_chain_spec(spec_id: &str) -> std::result::Result<Box<dyn sc_cli::ChainSpec>, String> {
+pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
         "dev" => development_config(),
-        "gemini-3d" => gemini_3d_config(),
+        "gemini-3e" => gemini_3e_config(),
         "devnet" => devnet_config(),
         "" | "local" => local_testnet_config(),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,

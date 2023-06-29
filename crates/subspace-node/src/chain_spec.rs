@@ -82,16 +82,16 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3d_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3d",
+        "Subspace Gemini 3e",
         // ID
-        "subspace_gemini_3d",
-        ChainType::Custom("Subspace Gemini 3d".to_string()),
+        "subspace_gemini_3e",
+        ChainType::Custom("Subspace Gemini 3e".to_string()),
         || {
             let sudo_account =
-                AccountId::from_ss58check("5CZy4hcmaVZUMZLfB41v1eAKvtZ8W7axeWuDvwjhjPwfhAqt")
+                AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
                     .expect("Wrong root account address");
 
             let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
@@ -158,7 +158,7 @@ pub fn gemini_3d_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3d"),
+        Some("subspace-gemini-3e"),
         None,
         // Properties
         Some(chain_spec_properties()),
