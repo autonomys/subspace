@@ -2165,6 +2165,9 @@ dependencies = [
  "domain-client-executor-gossip",
  "domain-client-message-relayer",
  "domain-runtime-primitives",
+ "domain-test-primitives",
+ "domain-test-service",
+ "evm-domain-test-runtime",
  "futures",
  "futures-timer",
  "num-traits",
@@ -2267,7 +2270,7 @@ dependencies = [
  "fc-rpc",
  "fc-rpc-core",
  "fc-storage",
- "fp-rpc",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "futures",
  "jsonrpsee",
  "pallet-transaction-payment-rpc",
@@ -2380,6 +2383,79 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "tracing",
+]
+
+[[package]]
+name = "domain-test-primitives"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api",
+ "sp-domains",
+ "sp-messenger",
+ "subspace-runtime-primitives",
+]
+
+[[package]]
+name = "domain-test-service"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "domain-client-consensus-relay-chain",
+ "domain-client-executor",
+ "domain-eth-service",
+ "domain-runtime-primitives",
+ "domain-service",
+ "domain-test-primitives",
+ "evm-domain-test-runtime",
+ "fp-account 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "frame-support",
+ "frame-system",
+ "frame-system-rpc-runtime-api",
+ "futures",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc",
+ "rand 0.8.5",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-slots",
+ "sc-executor",
+ "sc-network",
+ "sc-network-sync",
+ "sc-rpc",
+ "sc-service",
+ "sc-tracing",
+ "sc-transaction-pool",
+ "sc-utils",
+ "serde",
+ "sp-api",
+ "sp-application-crypto",
+ "sp-arithmetic",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-keyring",
+ "sp-messenger",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-timestamp",
+ "sp-transaction-pool",
+ "subspace-networking",
+ "subspace-proof-of-space",
+ "subspace-runtime-primitives",
+ "subspace-service",
+ "subspace-test-client",
+ "subspace-test-runtime",
+ "subspace-test-service",
+ "substrate-frame-rpc-system",
+ "substrate-test-client",
+ "tokio",
  "tracing",
 ]
 
@@ -2698,10 +2774,10 @@ version = "0.1.0"
 dependencies = [
  "domain-pallet-executive",
  "domain-runtime-primitives",
- "fp-account",
- "fp-evm",
- "fp-rpc",
- "fp-self-contained",
+ "fp-account 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-self-contained 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -2710,13 +2786,64 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-balances",
- "pallet-base-fee",
- "pallet-ethereum",
- "pallet-evm",
- "pallet-evm-chain-id",
- "pallet-evm-precompile-modexp",
- "pallet-evm-precompile-sha3fips",
- "pallet-evm-precompile-simple",
+ "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-evm-precompile-modexp 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-evm-precompile-sha3fips 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-evm-precompile-simple 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-messenger",
+ "pallet-sudo",
+ "pallet-timestamp",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "pallet-transporter",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-block-builder",
+ "sp-core",
+ "sp-domains",
+ "sp-inherents",
+ "sp-io",
+ "sp-messenger",
+ "sp-offchain",
+ "sp-runtime",
+ "sp-session",
+ "sp-std",
+ "sp-transaction-pool",
+ "sp-version",
+ "subspace-runtime-primitives",
+ "substrate-wasm-builder",
+]
+
+[[package]]
+name = "evm-domain-test-runtime"
+version = "0.1.0"
+dependencies = [
+ "domain-pallet-executive",
+ "domain-runtime-primitives",
+ "domain-test-primitives",
+ "fp-account 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-self-contained 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "frame-system-benchmarking",
+ "frame-system-rpc-runtime-api",
+ "hex-literal",
+ "log",
+ "pallet-balances",
+ "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-evm-precompile-modexp 2.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-evm-precompile-sha3fips 2.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-evm-precompile-simple 2.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-messenger",
  "pallet-sudo",
  "pallet-timestamp",
@@ -2816,8 +2943,8 @@ version = "2.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
  "async-trait",
- "fp-consensus",
- "fp-rpc",
+ "fp-consensus 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "sc-consensus",
  "sp-api",
  "sp-block-builder",
@@ -2832,7 +2959,7 @@ version = "2.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
  "async-trait",
- "fp-storage",
+ "fp-storage 2.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "log",
  "parity-db",
  "parity-scale-codec",
@@ -2851,8 +2978,8 @@ source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f
 dependencies = [
  "fc-db",
  "fc-storage",
- "fp-consensus",
- "fp-rpc",
+ "fp-consensus 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "futures",
  "futures-timer",
  "log",
@@ -2877,17 +3004,17 @@ dependencies = [
  "fc-mapping-sync",
  "fc-rpc-core",
  "fc-storage",
- "fp-ethereum",
- "fp-evm",
- "fp-rpc",
- "fp-storage",
+ "fp-ethereum 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-storage 2.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "futures",
  "hex",
  "jsonrpsee",
  "libsecp256k1",
  "log",
  "lru 0.8.1",
- "pallet-evm",
+ "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "parity-scale-codec",
  "prometheus",
  "rand 0.8.5",
@@ -2934,8 +3061,8 @@ source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f
 dependencies = [
  "ethereum",
  "ethereum-types",
- "fp-rpc",
- "fp-storage",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-storage 2.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "parity-scale-codec",
  "sc-client-api",
  "sp-api",
@@ -3098,9 +3225,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-account"
+version = "1.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "hex",
+ "impl-serde",
+ "libsecp256k1",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "fp-consensus"
 version = "2.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
+dependencies = [
+ "ethereum",
+ "parity-scale-codec",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "fp-consensus"
+version = "2.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
 dependencies = [
  "ethereum",
  "parity-scale-codec",
@@ -3116,7 +3273,21 @@ source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f
 dependencies = [
  "ethereum",
  "ethereum-types",
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "frame-support",
+ "num_enum",
+ "parity-scale-codec",
+ "sp-std",
+]
+
+[[package]]
+name = "fp-ethereum"
+version = "1.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "ethereum",
+ "ethereum-types",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "frame-support",
  "num_enum",
  "parity-scale-codec",
@@ -3139,13 +3310,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-evm"
+version = "3.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "evm",
+ "frame-support",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "fp-rpc"
 version = "3.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
  "ethereum",
  "ethereum-types",
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-core",
+ "sp-runtime",
+ "sp-state-machine",
+ "sp-std",
+]
+
+[[package]]
+name = "fp-rpc"
+version = "3.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "ethereum",
+ "ethereum-types",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -3168,9 +3371,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "fp-self-contained"
+version = "1.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "frame-support",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-runtime",
+]
+
+[[package]]
 name = "fp-storage"
 version = "2.0.0"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
+dependencies = [
+ "parity-scale-codec",
+ "serde",
+]
+
+[[package]]
+name = "fp-storage"
+version = "2.0.0"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
 dependencies = [
  "parity-scale-codec",
  "serde",
@@ -6002,7 +6226,21 @@ name = "pallet-base-fee"
 version = "1.0.0"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-core",
+ "sp-runtime",
+]
+
+[[package]]
+name = "pallet-base-fee"
+version = "1.0.0"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
@@ -6083,14 +6321,37 @@ dependencies = [
  "ethereum",
  "ethereum-types",
  "evm",
- "fp-consensus",
- "fp-ethereum",
- "fp-evm",
- "fp-rpc",
- "fp-storage",
+ "fp-consensus 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-ethereum 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-storage 2.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "frame-support",
  "frame-system",
- "pallet-evm",
+ "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-ethereum"
+version = "4.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "ethereum",
+ "ethereum-types",
+ "evm",
+ "fp-consensus 2.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-ethereum 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-rpc 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-storage 2.0.0 (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "frame-support",
+ "frame-system",
+ "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "parity-scale-codec",
  "scale-info",
  "sp-io",
@@ -6105,8 +6366,33 @@ source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f
 dependencies = [
  "environmental",
  "evm",
- "fp-account",
- "fp-evm",
+ "fp-account 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "hex",
+ "hex-literal",
+ "impl-trait-for-tuples",
+ "log",
+ "parity-scale-codec",
+ "rlp",
+ "scale-info",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-evm"
+version = "6.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "environmental",
+ "evm",
+ "fp-account 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -6135,11 +6421,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-evm-chain-id"
+version = "1.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-evm-precompile-modexp"
 version = "2.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "num",
+]
+
+[[package]]
+name = "pallet-evm-precompile-modexp"
+version = "2.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "num",
 ]
 
@@ -6148,7 +6454,16 @@ name = "pallet-evm-precompile-sha3fips"
 version = "2.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "tiny-keccak",
+]
+
+[[package]]
+name = "pallet-evm-precompile-sha3fips"
+version = "2.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "tiny-keccak",
 ]
 
@@ -6157,7 +6472,17 @@ name = "pallet-evm-precompile-simple"
 version = "2.0.0-dev"
 source = "git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3#74483666645e121c0c5e6616f43fdfd8664ea0d3"
 dependencies = [
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "ripemd",
+ "sp-io",
+]
+
+[[package]]
+name = "pallet-evm-precompile-simple"
+version = "2.0.0-dev"
+source = "git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4#c13d670b25b5506c1c5243f352941dc46c82ffe4"
+dependencies = [
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "ripemd",
  "sp-io",
 ]
@@ -10276,6 +10601,7 @@ dependencies = [
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
+ "domain-test-service",
  "frame-support",
  "futures",
  "hash-db 0.16.0",
@@ -10357,7 +10683,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-service",
  "evm-domain-runtime",
- "fp-evm",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "frame-support",
@@ -10566,6 +10892,7 @@ version = "0.1.0"
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
+ "evm-domain-test-runtime",
  "futures",
  "sc-chain-spec",
  "sc-client-api",
@@ -10576,6 +10903,7 @@ dependencies = [
  "sp-api",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-domains",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
