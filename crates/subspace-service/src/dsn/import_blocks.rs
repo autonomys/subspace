@@ -46,7 +46,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 /// How long to wait for peers before giving up
 const WAIT_FOR_PEERS_TIMEOUT: Duration = Duration::from_secs(10);
 /// How many blocks to queue before pausing and waiting for blocks to be imported
-const QUEUED_BLOCKS_LIMIT: BlockNumber = 1_000;
+const QUEUED_BLOCKS_LIMIT: BlockNumber = 2048;
 /// Time to wait for blocks to import if import is too slow
 const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 

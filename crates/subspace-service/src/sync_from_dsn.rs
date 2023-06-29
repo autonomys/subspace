@@ -1,8 +1,10 @@
 use crate::dsn::import_blocks::import_blocks_from_dsn;
+use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
+use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
 use sp_api::BlockT;
 use sp_blockchain::HeaderBackend;
@@ -33,6 +35,7 @@ pub(super) fn create_observer_and_worker<Block, Client>(
     node: Node,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
+    sync_mode: Arc<Atomic<SyncMode>>,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -54,7 +57,14 @@ where
         async move { create_observer(network_service.as_ref(), &node, client.as_ref(), tx).await }
     };
     let worker_fut = async move {
-        create_worker(&node, client.as_ref(), import_queue_service.as_mut(), rx).await
+        create_worker(
+            &node,
+            client.as_ref(),
+            import_queue_service.as_mut(),
+            sync_mode,
+            rx,
+        )
+        .await
     };
     (observer_fut, worker_fut)
 }
@@ -166,6 +176,7 @@ async fn create_worker<Block, IQS, Client>(
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
+    sync_mode: Arc<Atomic<SyncMode>>,
     mut notifications: mpsc::Receiver<NotificationReason>,
 ) -> Result<(), sc_service::Error>
 where
@@ -179,6 +190,8 @@ where
             trace!("Ignoring Subspace networking for DSN sync for now");
             continue;
         }
+
+        let prev_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::SeqCst);
 
         while notifications.try_next().is_ok() {
             // Just drain extra messages if there are any
@@ -197,6 +210,8 @@ where
         {
             warn!(%error, "Error when syncing blocks from DSN");
         }
+
+        sync_mode.store(prev_sync_mode, Ordering::Release);
     }
 
     Ok(())

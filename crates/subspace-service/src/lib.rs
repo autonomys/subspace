@@ -786,6 +786,7 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
+    let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -808,6 +809,7 @@ where
             node.clone(),
             Arc::clone(&client),
             import_queue_service,
+            sync_mode,
         );
         task_manager
             .spawn_handle()
