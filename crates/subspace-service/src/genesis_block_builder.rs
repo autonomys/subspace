@@ -1,3 +1,5 @@
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 use sc_client_api::backend::Backend;
 use sc_client_api::BlockImportOperation;
 use sc_executor::RuntimeVersionOf;
@@ -67,7 +69,7 @@ impl<Block: BlockT, B: Backend<Block>, E: RuntimeVersionOf> BuildGenesisBlock<Bl
 
 /// Create a custom Subspace genesis block, given the initial storage.
 ///
-/// We have a non-empty digest in comparision to the default Substrate genesis block.
+/// We have a non-empty digest in comparison to the default Substrate genesis block.
 fn construct_genesis_block<Block: BlockT>(
     state_root: Block::Hash,
     state_version: StateVersion,
@@ -79,7 +81,14 @@ fn construct_genesis_block<Block: BlockT>(
 
     // We fill genesis block with extra data such that the very first archived
     // segment can be produced right away, bootstrapping the farming process.
-    let ballast = vec![0; RecordedHistorySegment::SIZE];
+    let mut ballast = vec![0; RecordedHistorySegment::SIZE];
+    let mut rng = ChaCha8Rng::from_seed(
+        state_root
+            .as_ref()
+            .try_into()
+            .expect("State root in Subspace must be 32 bytes, panic otherwise; qed"),
+    );
+    rng.fill(ballast.as_mut_slice());
     let digest = Digest {
         logs: vec![DigestItem::Other(ballast)],
     };
