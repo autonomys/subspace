@@ -92,6 +92,8 @@ where
 {
     /// The domain id
     pub domain_id: DomainId,
+    // TODO: Make the signing scheme generic over domains, because Ecdsa only used in the EVM domain,
+    // other (incoming) domains may use Sr25519
     /// The node's account key
     pub key: EcdsaKeyring,
     /// TaskManager's instance.
