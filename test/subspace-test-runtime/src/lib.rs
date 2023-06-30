@@ -483,11 +483,13 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = 10;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const ExpectedBundlesPerInterval: u64 = 600;
+    pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

@@ -426,11 +426,14 @@ parameter_types! {
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
+    /// Runtime upgrade is delayed for 1 day at 6 sec block time.
+    pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

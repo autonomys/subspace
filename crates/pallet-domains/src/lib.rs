@@ -42,8 +42,9 @@ use subspace_core_primitives::U256;
 mod pallet {
     use crate::calculate_tx_range;
     use crate::runtime_registry::{
-        do_register_runtime, do_upgrade_runtime, register_runtime_at_genesis,
-        Error as RuntimeRegistryError, RuntimeObject,
+        do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
+        register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
+        ScheduledRuntimeUpgrade,
     };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
@@ -68,6 +69,9 @@ mod pallet {
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
+
+        /// Delay before a domain runtime is upgraded.
+        type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -97,6 +101,17 @@ mod pallet {
     #[pallet::storage]
     pub(super) type RuntimeRegistry<T: Config> =
         StorageMap<_, Identity, RuntimeId, RuntimeObject<T::BlockNumber, T::Hash>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type ScheduledRuntimeUpgrades<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        T::BlockNumber,
+        Identity,
+        RuntimeId,
+        ScheduledRuntimeUpgrade,
+        OptionQuery,
+    >;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -188,6 +203,10 @@ mod pallet {
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
             runtime_type: RuntimeType,
+        },
+        DomainRuntimeUpgradeScheduled {
+            runtime_id: RuntimeId,
+            scheduled_at: T::BlockNumber,
         },
         DomainRuntimeUpgraded {
             runtime_id: RuntimeId,
@@ -335,9 +354,13 @@ mod pallet {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            do_upgrade_runtime::<T>(runtime_id, code, block_number).map_err(Error::<T>::from)?;
+            let scheduled_at = do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
+                .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::DomainRuntimeUpgraded { runtime_id });
+            Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
+                runtime_id,
+                scheduled_at,
+            });
 
             Ok(())
         }
@@ -367,11 +390,14 @@ mod pallet {
     }
 
     #[pallet::hooks]
+    // TODO: proper benchmark
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
+        fn on_initialize(block_number: T::BlockNumber) -> Weight {
             SuccessfulBundles::<T>::kill();
 
-            T::DbWeight::get().writes(1)
+            do_upgrade_runtimes::<T>(block_number);
+
+            Weight::zero()
         }
 
         fn on_finalize(_: T::BlockNumber) {
