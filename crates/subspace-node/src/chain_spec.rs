@@ -31,6 +31,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
+const GEMINI_3E_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3e.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -167,8 +168,8 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
     ))
 }
 
-pub fn gemini_3d_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
-    Err("Wrong release for Gemini 3d. Use the release prefixed with `gemini-3d`".to_string())
+pub fn gemini_3e_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+    ConsensusChainSpec::from_json_bytes(GEMINI_3E_CHAIN_SPEC)
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
