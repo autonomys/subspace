@@ -6317,6 +6317,7 @@ dependencies = [
  "sp-std",
  "sp-trie",
  "sp-version",
+ "subspace-core-primitives",
 ]
 
 [[package]]

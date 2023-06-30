@@ -36,9 +36,11 @@ use sp_domains::{DomainId, OpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
+use subspace_core_primitives::U256;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::calculate_tx_range;
     use crate::runtime_registry::{
         do_register_runtime, do_upgrade_runtime, register_runtime_at_genesis,
         Error as RuntimeRegistryError, RuntimeObject,
@@ -58,6 +60,7 @@ mod pallet {
     use sp_runtime::traits::{BlockNumberProvider, Zero};
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
+    use subspace_core_primitives::U256;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_settlement::Config {
@@ -68,6 +71,15 @@ mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+
+        /// Initial domain tx range value.
+        type InitialDomainTxRange: Get<u64>;
+
+        /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
+        type DomainTxRangeAdjustmentInterval: Get<u64>;
+
+        /// Expected bundles to be produced per adjustment interval.
+        type ExpectedBundlesPerInterval: Get<u64>;
     }
 
     #[pallet::pallet]
@@ -182,6 +194,52 @@ mod pallet {
         },
     }
 
+    /// Per-domain state for tx range calculation.
+    #[derive(Debug, Default, Decode, Encode, TypeInfo, PartialEq, Eq)]
+    pub struct TxRangeState {
+        /// Current tx range.
+        pub tx_range: U256,
+
+        /// Blocks in the current adjustment interval.
+        pub interval_blocks: u64,
+
+        /// Bundles in the current adjustment interval.
+        pub interval_bundles: u64,
+    }
+
+    impl TxRangeState {
+        /// Called when a bundle is added to the current block.
+        pub fn on_bundle(&mut self) {
+            self.interval_bundles += 1;
+        }
+
+        /// Called when the current block is finalized.
+        pub fn on_finalize(
+            &mut self,
+            tx_range_adjustment_interval: u64,
+            expected_bundle_count: u64,
+        ) {
+            self.interval_blocks += 1;
+            if self.interval_blocks < tx_range_adjustment_interval {
+                return;
+            }
+
+            // End of interval. Recalculate the tx range and reset the state.
+            let prev_tx_range = self.tx_range;
+            self.tx_range =
+                calculate_tx_range(self.tx_range, self.interval_bundles, expected_bundle_count);
+            log::trace!(target: "runtime::domains",
+                "tx range update: blocks = {}, bundles = {}, prev = {prev_tx_range}, new = {}",
+                self.interval_blocks, self.interval_bundles, self.tx_range);
+            self.interval_blocks = 0;
+            self.interval_bundles = 0;
+        }
+    }
+
+    #[pallet::storage]
+    pub(super) type DomainTxRangeState<T: Config> =
+        StorageMap<_, Identity, DomainId, TxRangeState, OptionQuery>;
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
@@ -205,6 +263,8 @@ mod pallet {
             let bundle_hash = opaque_bundle.hash();
 
             SuccessfulBundles::<T>::append(bundle_hash);
+
+            Self::note_domain_bundle(domain_id);
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -313,6 +373,10 @@ mod pallet {
 
             T::DbWeight::get().writes(1)
         }
+
+        fn on_finalize(_: T::BlockNumber) {
+            Self::update_domain_tx_range();
+        }
     }
 
     /// Constructs a `TransactionValidity` with pallet-executor specific defaults.
@@ -394,6 +458,14 @@ impl<T: Config> Pallet<T> {
         RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
     }
 
+    /// Returns the tx range for the domain.
+    pub fn domain_tx_range(domain_id: DomainId) -> U256 {
+        DomainTxRangeState::<T>::try_get(domain_id)
+            .map(|state| state.tx_range)
+            .ok()
+            .unwrap_or_else(Self::initial_tx_range)
+    }
+
     fn pre_dispatch_submit_bundle(
         _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
@@ -448,6 +520,43 @@ impl<T: Config> Pallet<T> {
 
         Ok(())
     }
+
+    /// Called when a bundle is added to update the bundle state for tx range
+    /// calculation.
+    fn note_domain_bundle(domain_id: DomainId) {
+        DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| match maybe_state {
+            Some(state) => {
+                state.interval_bundles += 1;
+            }
+            None => {
+                maybe_state.replace(TxRangeState {
+                    tx_range: Self::initial_tx_range(),
+                    interval_blocks: 0,
+                    interval_bundles: 1,
+                });
+            }
+        });
+    }
+
+    /// Called when the block is finalized to update the tx range for all the
+    /// domains with bundles in the block.
+    fn update_domain_tx_range() {
+        for domain_id in DomainTxRangeState::<T>::iter_keys() {
+            DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| {
+                if let Some(state) = maybe_state {
+                    state.on_finalize(
+                        T::DomainTxRangeAdjustmentInterval::get(),
+                        T::ExpectedBundlesPerInterval::get(),
+                    );
+                }
+            })
+        }
+    }
+
+    /// Calculates the initial tx range.
+    fn initial_tx_range() -> U256 {
+        U256::MAX / T::InitialDomainTxRange::get()
+    }
 }
 
 impl<T> Pallet<T>
@@ -489,4 +598,27 @@ where
             }
         }
     }
+}
+
+/// Calculates the new tx range based on the bundles produced during the interval.
+pub fn calculate_tx_range(
+    cur_tx_range: U256,
+    actual_bundle_count: u64,
+    expected_bundle_count: u64,
+) -> U256 {
+    if actual_bundle_count == 0 || expected_bundle_count == 0 {
+        return cur_tx_range;
+    }
+
+    let Some(new_tx_range) = U256::from(actual_bundle_count)
+        .saturating_mul(&cur_tx_range)
+        .checked_div(&U256::from(expected_bundle_count)) else {
+        return cur_tx_range;
+    };
+
+    let upper_bound = cur_tx_range.saturating_mul(&U256::from(4_u64));
+    let Some(lower_bound) = cur_tx_range.checked_div(&U256::from(4_u64)) else {
+        return cur_tx_range;
+    };
+    new_tx_range.clamp(lower_bound, upper_bound)
 }

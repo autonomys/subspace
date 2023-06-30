@@ -25,6 +25,7 @@ sp-io = { version = "23.0.0", default-features = false, git = "https://github.co
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", features = ["serde"] }
+subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
 sp-trie = { version = "22.0.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
@@ -46,6 +47,7 @@ std = [
   "sp-runtime/std",
   "sp-std/std",
   "sp-version/std",
+  "subspace-core-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [

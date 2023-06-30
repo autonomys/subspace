@@ -10,6 +10,7 @@ use sp_domains::{
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use std::sync::atomic::{AtomicU64, Ordering};
+use subspace_core_primitives::U256 as P256;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -63,6 +64,9 @@ impl frame_system::Config for Test {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const InitialDomainTxRange: u64 = 10;
+    pub const DomainTxRangeAdjustmentInterval: u64 = 100;
+    pub const ExpectedBundlesPerInterval: u64 = 600;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -89,6 +93,9 @@ impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
+    type InitialDomainTxRange = InitialDomainTxRange;
+    type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
+    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
 }
 
 impl pallet_settlement::Config for Test {
@@ -264,4 +271,57 @@ fn test_stale_bundle_should_be_rejected() {
             assert_not_stale!(pallet_domains::Pallet::<Test>::validate_bundle(bundle));
         }
     });
+}
+
+#[test]
+fn test_calculate_tx_range() {
+    let cur_tx_range = P256::from(400_u64);
+
+    assert_eq!(
+        cur_tx_range,
+        pallet_domains::calculate_tx_range(cur_tx_range, 0, 1000)
+    );
+    assert_eq!(
+        cur_tx_range,
+        pallet_domains::calculate_tx_range(cur_tx_range, 1000, 0)
+    );
+
+    // Lower bound of 1/4 * current range
+    assert_eq!(
+        cur_tx_range.checked_div(&P256::from(4_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 10, 1000)
+    );
+
+    // Upper bound of 4 * current range
+    assert_eq!(
+        cur_tx_range.checked_mul(&P256::from(4_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 8000, 1000)
+    );
+
+    // For anything else in the [0.25, 4.0] range, the change ratio should be same as
+    // actual / expected
+    assert_eq!(
+        cur_tx_range.checked_div(&P256::from(4_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 250, 1000)
+    );
+    assert_eq!(
+        cur_tx_range.checked_div(&P256::from(2_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 500, 1000)
+    );
+    assert_eq!(
+        cur_tx_range.checked_mul(&P256::from(1_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 1000, 1000)
+    );
+    assert_eq!(
+        cur_tx_range.checked_mul(&P256::from(2_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 2000, 1000)
+    );
+    assert_eq!(
+        cur_tx_range.checked_mul(&P256::from(3_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 3000, 1000)
+    );
+    assert_eq!(
+        cur_tx_range.checked_mul(&P256::from(4_u64)).unwrap(),
+        pallet_domains::calculate_tx_range(cur_tx_range, 4000, 1000)
+    );
 }

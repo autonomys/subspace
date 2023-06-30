@@ -137,6 +137,7 @@ where
 
         let bundle_producer = DomainBundleProducer::new(
             params.domain_id,
+            params.primary_chain_client.clone(),
             params.client.clone(),
             parent_chain.clone(),
             domain_bundle_proposer,

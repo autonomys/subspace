@@ -521,15 +521,34 @@ pub fn bidirectional_distance<T: WrappingSub + Ord>(a: &T, b: &T) -> T {
 #[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
 mod private_u256 {
     //! This module is needed to scope clippy allows
+    use parity_scale_codec::{Decode, Encode};
+    use scale_info::TypeInfo;
 
     uint::construct_uint! {
+        #[derive(Encode, Decode, TypeInfo)]
         pub struct U256(4);
     }
 }
 
 /// 256-bit unsigned integer
 #[derive(
-    Debug, Display, Add, Sub, Mul, Div, Rem, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash,
+    Debug,
+    Display,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
 )]
 pub struct U256(private_u256::U256);
 
@@ -731,6 +750,12 @@ impl TryFrom<U256> for u64 {
     #[inline]
     fn try_from(value: U256) -> Result<Self, Self::Error> {
         Self::try_from(value.0)
+    }
+}
+
+impl Default for U256 {
+    fn default() -> Self {
+        Self::zero()
     }
 }
 

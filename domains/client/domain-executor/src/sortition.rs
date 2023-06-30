@@ -28,10 +28,7 @@ where
     Client: ProvideRuntimeApi<Block>,
     Client::Api: DomainCoreApi<Block>,
 {
-    pub(crate) fn new(bundle_vrf_hash: U256, client: Arc<Client>) -> Self {
-        // TODO: this will be refactored as part of the change to make the
-        // tx range dynamic. Setting this to 100% for now.
-        let tx_range = U256::MAX;
+    pub(crate) fn new(bundle_vrf_hash: U256, tx_range: U256, client: Arc<Client>) -> Self {
         Self {
             bundle_vrf_hash,
             tx_range,
