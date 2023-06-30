@@ -26,7 +26,10 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table};
 use thiserror::Error;
+use tokio::sync::Semaphore;
 use tracing::{debug, warn};
+
+const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
 
 fn default_backoff() -> ExponentialBackoff {
     ExponentialBackoff {
@@ -199,7 +202,13 @@ where
     let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
         .take(pieces_in_sector.into())
         .map(|piece_offset| {
-            sector_id.derive_piece_index(piece_offset, farmer_protocol_info.history_size)
+            sector_id.derive_piece_index(
+                piece_offset,
+                farmer_protocol_info.history_size,
+                farmer_protocol_info.max_pieces_in_sector,
+                farmer_protocol_info.recent_segments,
+                farmer_protocol_info.recent_history_fraction,
+            )
         })
         .collect();
 
@@ -402,6 +411,10 @@ async fn download_sector<PG: PieceGetter>(
     piece_indexes: &[PieceIndex],
     piece_memory_cache: PieceMemoryCache,
 ) -> Result<(), PlottingError> {
+    // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
+    //  concurrency from there
+    let recovery_semaphore = Semaphore::new(RECONSTRUCTION_CONCURRENCY_LIMIT);
+
     let mut pieces_receiving_futures = piece_indexes
         .iter()
         .map(|piece_index| async {
@@ -422,6 +435,15 @@ async fn download_sector<PG: PieceGetter>(
 
             // all retries failed
             if !succeeded {
+                let _permit = match recovery_semaphore.acquire().await {
+                    Ok(permit) => permit,
+                    Err(error) => {
+                        return (
+                            piece_index,
+                            Err(format!("Recovery semaphore was closed: {error}").into()),
+                        );
+                    }
+                };
                 let recovered_piece =
                     recover_missing_piece(piece_getter, kzg.clone(), piece_index).await;
 

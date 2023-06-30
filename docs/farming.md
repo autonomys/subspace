@@ -44,7 +44,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
---chain gemini-3d `
+--chain gemini-3e `
 --execution wasm `
 --blocks-pruning archive `
 --state-pruning archive `
@@ -58,7 +58,7 @@ If you're connected directly without any router, then again nothing needs to be 
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-windows
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3b
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3e
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at C:\Users\X\AppData\Local\subspace-node-windows-x86_64-snapshot-2022-jan-05.exe\data\chains\subspace_test\db\full
@@ -96,7 +96,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-3d \
+  --chain gemini-3e \
   --execution wasm \
   --blocks-pruning archive \
   --state-pruning archive \
@@ -110,7 +110,7 @@ If you're connected directly without any router, then again nothing needs to be 
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-ubuntu
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3b
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3e
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /home/X/.local/share/subspace-node-x86_64-ubuntu-20.04-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -151,7 +151,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-3d \
+  --chain gemini-3e \
   --execution wasm \
   --blocks-pruning archive \
   --state-pruning archive \
@@ -165,7 +165,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 2022-02-03 10:52:23 Subspace
 2022-02-03 10:52:23 ✌️  version 0.1.0-35cf6f5-x86_64-macos
 2022-02-03 10:52:23 ❤️  by Subspace Labs <https://subspace.network>, 2021-2022
-2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3b
+2022-02-03 10:52:23 📋 Chain specification: Subspace Gemini 3e
 2022-02-03 10:52:23 🏷  Node name: YOUR_FANCY_NAME
 2022-02-03 10:52:23 👤 Role: AUTHORITY
 2022-02-03 10:52:23 💾 Database: RocksDb at /Users/X/Library/Application Support/subspace-node-x86_64-macos-11-snapshot-2022-jan-05/chains/subspace_test/db/full
@@ -214,7 +214,7 @@ services:
       - "0.0.0.0:30433:30433"
     restart: unless-stopped
     command: [
-      "--chain", "gemini-3d",
+      "--chain", "gemini-3e",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
       "--blocks-pruning", "archive",
@@ -223,7 +223,7 @@ services:
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
       "--rpc-cors", "all",
       "--rpc-methods", "safe",
-      "--unsafe-ws-external",
+      "--unsafe-rpc-external",
       "--dsn-disable-private-ips",
       "--no-private-ipv4",
       "--validator",
@@ -286,7 +286,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3d.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3e.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
 
 ## Switching from older/different versions of Subspace
 
@@ -297,7 +297,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain gemini-3d
+./NODE_FILE_NAME purge-chain --chain gemini-3e
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -319,8 +319,8 @@ Below are some helpful samples:
 
 - `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
 - `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
-- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-3d ...` : start node and store data in `/path/to/data` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-3d` : erases data related to the node if data were stored in `/path/to/data`
+- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-3e ...` : start node and store data in `/path/to/data` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-3e` : erases data related to the node if data were stored in `/path/to/data`
 
 Examples:
 ```bash

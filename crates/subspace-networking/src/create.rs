@@ -274,6 +274,7 @@ where
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
             .set_protocol_names(vec![Cow::Owned(KADEMLIA_PROTOCOL.into())])
+            .disjoint_query_paths(true)
             .set_max_packet_size(2 * Piece::SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
             .set_record_filtering(KademliaStoreInserts::FilterBoth)

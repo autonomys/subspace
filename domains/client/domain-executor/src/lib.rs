@@ -73,9 +73,8 @@ mod executor;
 mod fraud_proof;
 mod parent_chain;
 mod sortition;
-// TODO: Unlock once domain test infra is workable again.
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 mod utils;
 
 pub use self::executor::Executor;
@@ -90,7 +89,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_domains::{Bundle, ExecutionReceipt};
+use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
@@ -153,6 +152,7 @@ pub struct EssentialExecutorParams<
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
 {
+    pub domain_id: DomainId,
     pub primary_chain_client: Arc<PClient>,
     pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,

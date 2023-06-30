@@ -1,5 +1,15 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+// `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
+#![recursion_limit = "256"]
+
+mod precompiles;
+
+// Make the WASM binary available.
+#[cfg(feature = "std")]
+include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
+
 use codec::{Decode, Encode};
-use domain_runtime_primitives::opaque::Header;
+pub use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
@@ -26,11 +36,12 @@ use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+    ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
+    RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
-    IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
+    BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
+    IdentifyAccount, IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
 };
 use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
@@ -340,13 +351,14 @@ impl pallet_sudo::Config for Runtime {
 
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 7;
+    pub const RelayConfirmationDepth: BlockNumber = 1;
 }
 
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
-    pub const CoreDomainId: DomainId = DomainId::CORE_EVM;
+    // TODO: Proper value
+    pub const CoreDomainId: DomainId = DomainId::new(3u32);
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -566,6 +578,49 @@ impl fp_rpc::ConvertTransaction<opaque::UncheckedExtrinsic> for TransactionConve
     }
 }
 
+fn extract_xdm_proof_state_roots(
+    encoded_ext: Vec<u8>,
+) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
+    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
+        match &ext.0.function {
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+// TODO: this is inconsistent with other domains.
+// Ref https://github.com/subspace/subspace/pull/1434#discussion_r1186633233
+pub fn extract_signers<Lookup>(
+    extrinsics: Vec<UncheckedExtrinsic>,
+    lookup: &Lookup,
+) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)>
+where
+    Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
+{
+    let mut signer_extrinsics = sp_std::vec![];
+    for extrinsic in extrinsics {
+        if let Ok(checked) = extrinsic.clone().check(lookup) {
+            let maybe_signer = match checked.signed {
+                CheckedSignature::SelfContained(account_id) => Some(account_id.encode()),
+                CheckedSignature::Signed(account_id, _) => Some(account_id.encode()),
+                CheckedSignature::Unsigned => None,
+            };
+
+            signer_extrinsics.push((maybe_signer, extrinsic))
+        }
+    }
+
+    signer_extrinsics
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -695,7 +750,8 @@ impl_runtime_apis! {
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
             use codec::Encode;
-            let set_code_call = frame_system::Call::set_code { code };
+            // Use `set_code_without_checks` instead of `set_code` in the test environment.
+            let set_code_call = frame_system::Call::set_code_without_checks { code };
             UncheckedExtrinsic::new_unsigned(
                 domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
                     call: Box::new(set_code_call.into()),
@@ -985,49 +1041,20 @@ impl_runtime_apis! {
             Ok(batches)
         }
     }
-}
 
-fn extract_xdm_proof_state_roots(
-    encoded_ext: Vec<u8>,
-) -> Option<ExtractedStateRootsFromProof<BlockNumber, Hash, Hash>> {
-    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
-        match &ext.0.function {
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
-                msg.extract_state_roots_from_proof::<BlakeTwo256>()
-            }
-            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
-                msg.extract_state_roots_from_proof::<BlakeTwo256>()
-            }
-            _ => None,
-        }
-    } else {
-        None
-    }
-}
-
-// TODO: this is inconsistent with other domains.
-// Ref https://github.com/subspace/subspace/pull/1434#discussion_r1186633233
-pub fn extract_signers<Lookup>(
-    extrinsics: Vec<UncheckedExtrinsic>,
-    lookup: &Lookup,
-) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)>
-where
-    Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
-{
-    use sp_runtime::traits::Checkable;
-
-    let mut signer_extrinsics = sp_std::vec![];
-    for extrinsic in extrinsics {
-        if let Ok(checked) = extrinsic.clone().check(lookup) {
-            let maybe_signer = match checked.signed {
-                CheckedSignature::SelfContained(account_id) => Some(account_id.encode()),
-                CheckedSignature::Signed(account_id, _) => Some(account_id.encode()),
-                CheckedSignature::Unsigned => None,
-            };
-
-            signer_extrinsics.push((maybe_signer, extrinsic))
+    impl domain_test_primitives::TimestampApi<Block> for Runtime {
+        fn timestamp() -> Moment {
+             Timestamp::now()
         }
     }
 
-    signer_extrinsics
+    impl domain_test_primitives::OnchainStateApi<Block, AccountId, Balance> for Runtime {
+        fn free_balance(account_id: AccountId) -> Balance {
+            Balances::free_balance(account_id)
+        }
+
+        fn get_open_channel_for_domain(dst_domain_id: DomainId) -> Option<ChannelId> {
+            Messenger::get_open_channel_for_domain(dst_domain_id).map(|(c, _)| c)
+        }
+    }
 }

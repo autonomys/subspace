@@ -69,6 +69,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
         max_pieces_in_sector: pieces_in_sector,
         sector_expiration: SegmentIndex::ONE,
+        recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
+        recent_history_fraction: (
+            HistorySize::from(NonZeroU64::new(1).unwrap()),
+            HistorySize::from(NonZeroU64::new(10).unwrap()),
+        ),
     };
     let solution_range = SolutionRange::MAX;
     let reward_address = PublicKey::default();

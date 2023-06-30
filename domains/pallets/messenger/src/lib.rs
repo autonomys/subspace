@@ -111,7 +111,6 @@ mod pallet {
         ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
-    use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
     use sp_std::vec::Vec;
@@ -732,11 +731,9 @@ mod pallet {
             dst_domain_id: DomainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
+            // TODO: system domain and core domain have been removed.
             // ensure domain is either system domain or core domain
-            ensure!(
-                dst_domain_id.is_core() || dst_domain_id.is_system(),
-                Error::<T>::InvalidDomain,
-            );
+            // ensure!(dst_domain_id.is_core(), Error::<T>::InvalidDomain,);
 
             let channel_id = NextChannelId::<T>::get(dst_domain_id);
             let next_channel_id = channel_id
@@ -928,32 +925,33 @@ mod pallet {
                 TransactionValidityError::Invalid(InvalidTransaction::BadProof),
             )?;
 
+            // TODO: system domain has been removed
             // on system domain, ensure the core domain info is at K-depth and state root matches
-            if T::SelfDomainId::get().is_system() {
-                if let Some((domain_id, block_info, state_root)) =
-                    extracted_state_roots.core_domain_info.clone()
-                {
-                    // ensure the block is at-least k-deep
-                    let confirmed = T::DomainInfo::domain_best_number(domain_id)
-                        .and_then(|best_number| {
-                            best_number
-                                .checked_sub(&T::ConfirmationDepth::get())
-                                .map(|confirmed_number| confirmed_number >= block_info.block_number)
-                        })
-                        .unwrap_or(false);
-                    ensure!(confirmed, InvalidTransaction::BadMandatory);
+            // if T::SelfDomainId::get().is_system() {
+            // if let Some((domain_id, block_info, state_root)) =
+            // extracted_state_roots.core_domain_info.clone()
+            // {
+            // // ensure the block is at-least k-deep
+            // let confirmed = T::DomainInfo::domain_best_number(domain_id)
+            // .and_then(|best_number| {
+            // best_number
+            // .checked_sub(&T::ConfirmationDepth::get())
+            // .map(|confirmed_number| confirmed_number >= block_info.block_number)
+            // })
+            // .unwrap_or(false);
+            // ensure!(confirmed, InvalidTransaction::BadMandatory);
 
-                    // verify state root of the block
-                    let valid_state_root = T::DomainInfo::domain_state_root(
-                        domain_id,
-                        block_info.block_number,
-                        block_info.block_hash,
-                    )
-                    .map(|got_state_root| got_state_root == state_root)
-                    .unwrap_or(false);
-                    ensure!(valid_state_root, InvalidTransaction::BadMandatory)
-                }
-            }
+            // // verify state root of the block
+            // let valid_state_root = T::DomainInfo::domain_state_root(
+            // domain_id,
+            // block_info.block_number,
+            // block_info.block_hash,
+            // )
+            // .map(|got_state_root| got_state_root == state_root)
+            // .unwrap_or(false);
+            // ensure!(valid_state_root, InvalidTransaction::BadMandatory)
+            // }
+            // }
 
             let state_root = extracted_state_roots
                 .core_domain_info

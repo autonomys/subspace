@@ -18,6 +18,7 @@
 #![feature(type_alias_impl_trait, type_changing_struct_update)]
 
 pub mod dsn;
+mod genesis_block_builder;
 mod metrics;
 pub mod piece_cache;
 pub mod rpc;
@@ -27,6 +28,7 @@ pub mod tx_pre_validator;
 
 use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
+use crate::genesis_block_builder::SubspaceGenesisBlockBuilder;
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
@@ -55,10 +57,12 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
+use sc_service::{
+    new_db_backend, Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager,
+};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, ConstructRuntimeApi, HeaderT, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::{Error as ConsensusError, SyncOracle};
@@ -295,11 +299,22 @@ where
 
     let executor = sc_service::new_native_or_wasm_executor(config);
 
+    let backend = new_db_backend(config.db_config())?;
+
+    let genesis_block_builder = SubspaceGenesisBlockBuilder::new(
+        config.chain_spec.as_storage_builder(),
+        !config.no_genesis(),
+        backend.clone(),
+        executor.clone(),
+    )?;
+
     let (client, backend, keystore_container, task_manager) =
-        sc_service::new_full_parts::<Block, RuntimeApi, _>(
+        sc_service::new_full_parts_with_genesis_builder::<Block, RuntimeApi, _, _>(
             config,
             telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
             executor.clone(),
+            backend,
+            genesis_block_builder,
         )?;
 
     let kzg = Kzg::new(embedded_kzg_settings());
@@ -771,6 +786,7 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
+    let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config,
@@ -793,7 +809,7 @@ where
             node.clone(),
             Arc::clone(&client),
             import_queue_service,
-            sync_service.clone(),
+            sync_mode,
         );
         task_manager
             .spawn_handle()
@@ -813,17 +829,21 @@ where
 
     let sync_oracle = sync_service.clone();
     let best_hash = client.info().best_hash;
+    let best_number = client.info().best_number;
     let mut imported_blocks_stream = client.import_notification_stream();
     task_manager.spawn_handle().spawn(
         "maintain-bundles-stored-in-last-k",
         None,
         Box::pin(async move {
             if !sync_oracle.is_major_syncing() {
-                bundle_validator.update_recent_stored_bundles(best_hash);
+                bundle_validator.update_recent_stored_bundles(best_hash, best_number);
             }
             while let Some(incoming_block) = imported_blocks_stream.next().await {
                 if !sync_oracle.is_major_syncing() && incoming_block.is_new_best {
-                    bundle_validator.update_recent_stored_bundles(incoming_block.hash);
+                    bundle_validator.update_recent_stored_bundles(
+                        incoming_block.hash,
+                        *incoming_block.header.number(),
+                    );
                 }
             }
         }),

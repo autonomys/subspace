@@ -28,10 +28,13 @@ use schnorrkel::SignatureError;
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, blake2b_256_hash_list};
+use subspace_core_primitives::crypto::{
+    blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
+};
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockNumber, BlockWeight, PublicKey, Randomness, Record, RewardSignature,
-    SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution, SolutionRange,
+    Blake2b256Hash, BlockNumber, BlockWeight, HistorySize, PublicKey, Randomness, Record,
+    RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
+    SolutionRange,
 };
 use subspace_proof_of_space::Table;
 
@@ -100,15 +103,18 @@ fn calculate_solution_distance(
             .next()
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
-    let sector_slot_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
-        *sector_slot_challenge
-            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-            .next()
-            .expect("Solution range is smaller in size than sector slot challenge; qed"),
-    );
+    let sector_slot_challenge_with_audit_chunk =
+        blake2b_256_hash_with_key(sector_slot_challenge.as_ref(), &audit_chunk.to_le_bytes());
+    let sector_slot_challenge_with_audit_chunk_as_solution_range: SolutionRange =
+        SolutionRange::from_le_bytes(
+            *sector_slot_challenge_with_audit_chunk
+                .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+                .next()
+                .expect("Solution range is smaller in size than blake2b-256 hash; qed"),
+        );
     subspace_core_primitives::bidirectional_distance(
         &global_challenge_as_solution_range,
-        &(audit_chunk ^ sector_slot_challenge_as_solution_range),
+        &sector_slot_challenge_with_audit_chunk_as_solution_range,
     )
 }
 
@@ -130,6 +136,10 @@ pub struct PieceCheckParams {
     pub max_pieces_in_sector: u16,
     /// Segment commitment of segment to which piece belongs
     pub segment_commitment: SegmentCommitment,
+    /// Number of latest archived segments that are considered "recent history".
+    pub recent_segments: HistorySize,
+    /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+    pub recent_history_fraction: (HistorySize, HistorySize),
 }
 
 /// Parameters for solution verification
@@ -228,6 +238,8 @@ where
     if let Some(PieceCheckParams {
         max_pieces_in_sector,
         segment_commitment,
+        recent_segments,
+        recent_history_fraction,
     }) = piece_check_params
     {
         if u16::from(solution.piece_offset) >= *max_pieces_in_sector {
@@ -238,7 +250,13 @@ where
         }
 
         let position = sector_id
-            .derive_piece_index(solution.piece_offset, solution.history_size)
+            .derive_piece_index(
+                solution.piece_offset,
+                solution.history_size,
+                *max_pieces_in_sector,
+                *recent_segments,
+                *recent_history_fraction,
+            )
             .position();
 
         // Check that piece is part of the blockchain history

@@ -24,6 +24,7 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod runtime_registry;
 pub mod weights;
 
 use frame_support::traits::Get;
@@ -35,12 +36,16 @@ use sp_domains::{DomainId, OpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
-
-pub type RuntimeId = u32;
+use subspace_core_primitives::U256;
 
 #[frame_support::pallet]
 mod pallet {
-    use super::RuntimeId;
+    use crate::calculate_tx_range;
+    use crate::runtime_registry::{
+        do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
+        register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
+        ScheduledRuntimeUpgrade,
+    };
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::weights::Weight;
@@ -50,10 +55,13 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{DomainId, ExecutorPublicKey, OpaqueBundle};
-    use sp_runtime::traits::{One, Zero};
+    use sp_domains::{
+        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
+    };
+    use sp_runtime::traits::{BlockNumberProvider, Zero};
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
+    use subspace_core_primitives::U256;
 
     #[pallet::config]
     pub trait Config: frame_system::Config + pallet_settlement::Config {
@@ -62,32 +70,48 @@ mod pallet {
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
 
+        /// Delay before a domain runtime is upgraded.
+        type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
+
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+
+        /// Initial domain tx range value.
+        type InitialDomainTxRange: Get<u64>;
+
+        /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
+        type DomainTxRangeAdjustmentInterval: Get<u64>;
+
+        /// Expected bundles to be produced per adjustment interval.
+        type ExpectedBundlesPerInterval: Get<u64>;
     }
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    // TODO: Proper RuntimeObject
-    #[derive(DebugNoBound, Encode, Decode, TypeInfo, CloneNoBound, PartialEqNoBound, EqNoBound)]
-    #[scale_info(skip_type_params(T))]
-    pub struct RuntimeObject<T: Config> {
-        pub runtime_name: Vec<u8>,
-        pub created_at: T::BlockNumber,
-        pub updated_at: T::BlockNumber,
-        pub runtime_upgrades: u32,
-        pub domain_runtime_code: Vec<u8>,
-    }
-
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
     pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
 
+    /// Stores the next runtime id.
     #[pallet::storage]
-    pub(super) type RuntimeRegistry<T> =
-        StorageMap<_, Identity, RuntimeId, RuntimeObject<T>, OptionQuery>;
+    pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type RuntimeRegistry<T: Config> =
+        StorageMap<_, Identity, RuntimeId, RuntimeObject<T::BlockNumber, T::Hash>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type ScheduledRuntimeUpgrades<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        T::BlockNumber,
+        Identity,
+        RuntimeId,
+        ScheduledRuntimeUpgrade,
+        OptionQuery,
+    >;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -149,6 +173,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<RuntimeRegistryError> for Error<T> {
+        fn from(err: RuntimeRegistryError) -> Self {
+            Error::RuntimeRegistry(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Can not find the block hash of given primary block number.
@@ -157,6 +187,8 @@ mod pallet {
         Bundle(BundleError),
         /// Invalid fraud proof.
         FraudProof(FraudProofError),
+        /// Runtime registry specific errors
+        RuntimeRegistry(RuntimeRegistryError),
     }
 
     #[pallet::event]
@@ -168,18 +200,71 @@ mod pallet {
             bundle_hash: H256,
             bundle_author: ExecutorPublicKey,
         },
+        DomainRuntimeCreated {
+            runtime_id: RuntimeId,
+            runtime_type: RuntimeType,
+        },
+        DomainRuntimeUpgradeScheduled {
+            runtime_id: RuntimeId,
+            scheduled_at: T::BlockNumber,
+        },
+        DomainRuntimeUpgraded {
+            runtime_id: RuntimeId,
+        },
     }
+
+    /// Per-domain state for tx range calculation.
+    #[derive(Debug, Default, Decode, Encode, TypeInfo, PartialEq, Eq)]
+    pub struct TxRangeState {
+        /// Current tx range.
+        pub tx_range: U256,
+
+        /// Blocks in the current adjustment interval.
+        pub interval_blocks: u64,
+
+        /// Bundles in the current adjustment interval.
+        pub interval_bundles: u64,
+    }
+
+    impl TxRangeState {
+        /// Called when a bundle is added to the current block.
+        pub fn on_bundle(&mut self) {
+            self.interval_bundles += 1;
+        }
+
+        /// Called when the current block is finalized.
+        pub fn on_finalize(
+            &mut self,
+            tx_range_adjustment_interval: u64,
+            expected_bundle_count: u64,
+        ) {
+            self.interval_blocks += 1;
+            if self.interval_blocks < tx_range_adjustment_interval {
+                return;
+            }
+
+            // End of interval. Recalculate the tx range and reset the state.
+            let prev_tx_range = self.tx_range;
+            self.tx_range =
+                calculate_tx_range(self.tx_range, self.interval_bundles, expected_bundle_count);
+            log::trace!(target: "runtime::domains",
+                "tx range update: blocks = {}, bundles = {}, prev = {prev_tx_range}, new = {}",
+                self.interval_blocks, self.interval_bundles, self.tx_range);
+            self.interval_blocks = 0;
+            self.interval_bundles = 0;
+        }
+    }
+
+    #[pallet::storage]
+    pub(super) type DomainTxRangeState<T: Config> =
+        StorageMap<_, Identity, DomainId, TxRangeState, OptionQuery>;
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        // TODO: proper weight
+        #[allow(deprecated)]
         #[pallet::call_index(0)]
-        #[pallet::weight(
-            if opaque_bundle.domain_id().is_system() {
-                T::WeightInfo::submit_system_bundle()
-            } else {
-                T::WeightInfo::submit_core_bundle()
-            }
-        )]
+        #[pallet::weight(Weight::from_all(10_000))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
@@ -197,6 +282,8 @@ mod pallet {
             let bundle_hash = opaque_bundle.hash();
 
             SuccessfulBundles::<T>::append(bundle_hash);
+
+            Self::note_domain_bundle(domain_id);
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -226,10 +313,54 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            if fraud_proof.domain_id().is_system() {
-                pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
+            pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
+                .map_err(Error::<T>::from)?;
+
+            Ok(())
+        }
+
+        #[pallet::call_index(2)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn register_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_name: Vec<u8>,
+            runtime_type: RuntimeType,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            let runtime_id =
+                do_register_runtime::<T>(runtime_name, runtime_type.clone(), code, block_number)
                     .map_err(Error::<T>::from)?;
-            }
+
+            Self::deposit_event(Event::DomainRuntimeCreated {
+                runtime_id,
+                runtime_type,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(3)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn upgrade_domain_runtime(
+            origin: OriginFor<T>,
+            runtime_id: RuntimeId,
+            code: Vec<u8>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let block_number = frame_system::Pallet::<T>::current_block_number();
+            let scheduled_at = do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
+                runtime_id,
+                scheduled_at,
+            });
 
             Ok(())
         }
@@ -238,54 +369,39 @@ mod pallet {
     #[pallet::genesis_config]
     #[derive(Default)]
     pub struct GenesisConfig {
-        pub runtime_name_and_runtime_code: Option<(Vec<u8>, Vec<u8>)>,
+        pub genesis_domain_runtime: Option<GenesisDomainRuntime>,
     }
 
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
-            if let Some((runtime_name, runtime_code)) = &self.runtime_name_and_runtime_code {
+            if let Some(genesis_domain_runtime) = &self.genesis_domain_runtime {
                 // Register the genesis domain runtime
-                RuntimeRegistry::<T>::insert(
-                    0u32,
-                    RuntimeObject {
-                        runtime_name: runtime_name.clone(),
-                        created_at: Zero::zero(),
-                        updated_at: Zero::zero(),
-                        runtime_upgrades: 0u32,
-                        domain_runtime_code: runtime_code.clone(),
-                    },
-                );
-
-                // Instantiate the genesis domain
+                register_runtime_at_genesis::<T>(
+                    genesis_domain_runtime.name.clone(),
+                    genesis_domain_runtime.runtime_type.clone(),
+                    genesis_domain_runtime.runtime_version.clone(),
+                    genesis_domain_runtime.code.clone(),
+                    Zero::zero(),
+                )
+                .expect("Genesis runtime registration must always succeed");
             }
         }
     }
 
     #[pallet::hooks]
+    // TODO: proper benchmark
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            let parent_number = block_number - One::one();
-            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
-
-            pallet_settlement::PrimaryBlockHash::<T>::insert(
-                DomainId::SYSTEM,
-                parent_number,
-                parent_hash,
-            );
-
-            // The genesis block hash is not finalized until the genesis block building is done,
-            // hence the genesis receipt is initialized after the genesis building.
-            if parent_number.is_zero() {
-                pallet_settlement::Pallet::<T>::initialize_genesis_receipt(
-                    DomainId::SYSTEM,
-                    parent_hash,
-                );
-            }
-
             SuccessfulBundles::<T>::kill();
 
-            T::DbWeight::get().writes(2)
+            do_upgrade_runtimes::<T>(block_number);
+
+            Weight::zero()
+        }
+
+        fn on_finalize(_: T::BlockNumber) {
+            Self::update_domain_tx_range();
         }
     }
 
@@ -308,19 +424,7 @@ mod pallet {
                 Call::submit_bundle { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
-                Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        Err(TransactionValidityError::Invalid(
-                            InvalidTransactionCode::FraudProof.into(),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
+                Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -350,13 +454,6 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if !fraud_proof.domain_id().is_system() {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Wrong fraud proof, expected system domain fraud proof but got: {fraud_proof:?}",
-                        );
-                        return InvalidTransactionCode::FraudProof.into();
-                    }
                     if let Err(e) =
                         pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
                     {
@@ -384,17 +481,15 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
         // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
-        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.domain_runtime_code)
+        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
     }
 
-    /// Returns the block number of the latest receipt.
-    pub fn head_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::head_receipt_number(DomainId::SYSTEM)
-    }
-
-    /// Returns the block number of the oldest receipt still being tracked in the state.
-    pub fn oldest_receipt_number() -> T::BlockNumber {
-        pallet_settlement::Pallet::<T>::oldest_receipt_number(DomainId::SYSTEM)
+    /// Returns the tx range for the domain.
+    pub fn domain_tx_range(domain_id: DomainId) -> U256 {
+        DomainTxRangeState::<T>::try_get(domain_id)
+            .map(|state| state.tx_range)
+            .ok()
+            .unwrap_or_else(Self::initial_tx_range)
     }
 
     fn pre_dispatch_submit_bundle(
@@ -451,6 +546,43 @@ impl<T: Config> Pallet<T> {
 
         Ok(())
     }
+
+    /// Called when a bundle is added to update the bundle state for tx range
+    /// calculation.
+    fn note_domain_bundle(domain_id: DomainId) {
+        DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| match maybe_state {
+            Some(state) => {
+                state.interval_bundles += 1;
+            }
+            None => {
+                maybe_state.replace(TxRangeState {
+                    tx_range: Self::initial_tx_range(),
+                    interval_blocks: 0,
+                    interval_bundles: 1,
+                });
+            }
+        });
+    }
+
+    /// Called when the block is finalized to update the tx range for all the
+    /// domains with bundles in the block.
+    fn update_domain_tx_range() {
+        for domain_id in DomainTxRangeState::<T>::iter_keys() {
+            DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| {
+                if let Some(state) = maybe_state {
+                    state.on_finalize(
+                        T::DomainTxRangeAdjustmentInterval::get(),
+                        T::ExpectedBundlesPerInterval::get(),
+                    );
+                }
+            })
+        }
+    }
+
+    /// Calculates the initial tx range.
+    fn initial_tx_range() -> U256 {
+        U256::MAX / T::InitialDomainTxRange::get()
+    }
 }
 
 impl<T> Pallet<T>
@@ -492,4 +624,27 @@ where
             }
         }
     }
+}
+
+/// Calculates the new tx range based on the bundles produced during the interval.
+pub fn calculate_tx_range(
+    cur_tx_range: U256,
+    actual_bundle_count: u64,
+    expected_bundle_count: u64,
+) -> U256 {
+    if actual_bundle_count == 0 || expected_bundle_count == 0 {
+        return cur_tx_range;
+    }
+
+    let Some(new_tx_range) = U256::from(actual_bundle_count)
+        .saturating_mul(&cur_tx_range)
+        .checked_div(&U256::from(expected_bundle_count)) else {
+        return cur_tx_range;
+    };
+
+    let upper_bound = cur_tx_range.saturating_mul(&U256::from(4_u64));
+    let Some(lower_bound) = cur_tx_range.checked_div(&U256::from(4_u64)) else {
+        return cur_tx_range;
+    };
+    new_tx_range.clamp(lower_bound, upper_bound)
 }

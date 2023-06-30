@@ -1,8 +1,7 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
 use crate::utils::{
-    to_number_primitive, translate_number_type, DomainBlockImportNotification,
-    DomainImportNotificationSinks,
+    to_number_primitive, DomainBlockImportNotification, DomainImportNotificationSinks,
 };
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
@@ -86,6 +85,7 @@ impl<Block, PBlock, Client, PClient, Backend, BI>
 where
     Block: BlockT,
     PBlock: BlockT,
+    NumberFor<PBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -179,7 +179,7 @@ where
                 );
             }
             (false, false) => {
-                let common_block_number = translate_number_type(route.common_block().number);
+                let common_block_number = route.common_block().number.into();
                 let parent_header = self
                     .client
                     .header(self.client.hash(common_block_number)?.ok_or_else(|| {

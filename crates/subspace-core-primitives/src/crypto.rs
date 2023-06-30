@@ -65,7 +65,7 @@ pub fn blake2b_256_254_hash_to_scalar(data: &[u8]) -> Scalar {
 /// BLAKE2b-256 keyed hashing of a single value.
 ///
 /// PANIC: Panics if key is longer than 64 bytes.
-pub fn blake2b_256_hash_with_key(data: &[u8], key: &[u8]) -> Blake2b256Hash {
+pub fn blake2b_256_hash_with_key(key: &[u8], data: &[u8]) -> Blake2b256Hash {
     let mut state = Blake2bMac::<U32>::new_with_salt_and_personal(key, &[], &[])
         .expect("Only panics when key is over 64 bytes as specified in function description");
     Update::update(&mut state, data);

@@ -39,6 +39,7 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::mem;
+use core::num::NonZeroU64;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -68,7 +69,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange,
+    SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -141,6 +142,20 @@ const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
+/// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
+const INITIAL_DOMAIN_TX_RANGE: u64 = 10;
+
+/// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
+const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
+
+/// Expected bundles per slot.
+/// TODO: this should come from DomainConfig when domain registry is implemented.
+const EXPECTED_BUNDLES_PER_SLOT: u64 = 1;
+
+/// Expected bundles to be produced per adjustment interval.
+const EXPECTED_BUNDLES_PER_INTERVAL: u64 =
+    TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS * SLOT_PROBABILITY.1 * EXPECTED_BUNDLES_PER_SLOT;
+
 // We assume initial plot size starts with the a single sector, where we effectively audit each
 // chunk of every piece.
 const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
@@ -158,6 +173,14 @@ const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
 ///
 /// This impacts solution range for votes in consensus.
 const EXPECTED_VOTES_PER_BLOCK: u32 = 9;
+
+/// Number of latest archived segments that are considered "recent history".
+const RECENT_SEGMENTS: HistorySize = HistorySize::new(NonZeroU64::new(5).expect("Not zero; qed"));
+/// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
+    HistorySize::new(NonZeroU64::new(1).expect("Not zero; qed")),
+    HistorySize::new(NonZeroU64::new(10).expect("Not zero; qed")),
+);
 
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -237,6 +260,8 @@ parameter_types! {
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
+    pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = RECENT_HISTORY_FRACTION;
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
@@ -258,6 +283,8 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -396,12 +423,21 @@ impl pallet_offences_subspace::Config for Runtime {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
+    pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
+    pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
+    pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
+    /// Runtime upgrade is delayed for 1 day at 6 sec block time.
+    pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
+    type InitialDomainTxRange = InitialDomainTxRange;
+    type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
+    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
 }
 
 impl pallet_settlement::Config for Runtime {
@@ -816,6 +852,10 @@ impl_runtime_apis! {
 
         fn timestamp() -> Moment{
             Timestamp::now()
+        }
+
+        fn domain_tx_range(domain_id: DomainId) -> U256 {
+            Domains::domain_tx_range(domain_id)
         }
     }
 

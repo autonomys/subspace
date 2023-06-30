@@ -28,19 +28,27 @@ use sc_service::ImportQueue;
 use sc_tracing::tracing::{debug, info, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use static_assertions::const_assert;
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex,
+    ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
 
+// Refuse to compile on non-64-bit platforms, otherwise segment indices will not fit in memory
+const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
+
 /// How long to wait for peers before giving up
 const WAIT_FOR_PEERS_TIMEOUT: Duration = Duration::from_secs(10);
+/// How many blocks to queue before pausing and waiting for blocks to be imported
+const QUEUED_BLOCKS_LIMIT: BlockNumber = 2048;
+/// Time to wait for blocks to import if import is too slow
+const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 
 struct WaitLinkError<B: BlockT> {
     error: BlockImportError,
@@ -101,8 +109,13 @@ where
     let mut link = WaitLink::new();
     let mut import_queue_service = import_queue.service();
 
-    let import_blocks_fut =
-        import_blocks_from_dsn(node, client.as_ref(), import_queue_service.as_mut(), force);
+    let import_blocks_fut = import_blocks_from_dsn(
+        node,
+        client.as_ref(),
+        import_queue_service.as_mut(),
+        BlockOrigin::NetworkInitialSync,
+        force,
+    );
     let drive_import_queue_fut = async {
         let mut last_imported_blocks = link.imported_blocks;
         loop {
@@ -160,8 +173,6 @@ where
     Ok(downloaded_blocks)
 }
 
-// TODO: Handle situation where block we are about to import is already included in chain and
-//  further sync from DSN is not necessary
 // TODO: Only download segment headers starting with the first segment that node doesn't have rather
 //  than from genesis
 /// Starts the process of importing blocks.
@@ -171,6 +182,7 @@ pub async fn import_blocks_from_dsn<Block, IQS, Client>(
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
+    block_origin: BlockOrigin,
     force: bool,
 ) -> Result<u64, sc_service::Error>
 where
@@ -217,13 +229,22 @@ where
         )),
     );
 
-    let best_block_number = client.info().best_number;
     let mut downloaded_blocks = 0;
     let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
 
     // Skip the first segment, everyone has it locally
     for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
         let pieces_indices = segment_index.segment_piece_indexes_source_first();
+
+        if let Some(segment_header) = segment_headers.get(u64::from(segment_index) as usize) {
+            let last_archived_block =
+                NumberFor::<Block>::from(segment_header.last_archived_block().number);
+            if last_archived_block <= client.info().best_number {
+                // Reset reconstructor instance
+                reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+                continue;
+            }
+        }
 
         let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
         let mut pieces_received = 0;
@@ -257,7 +278,11 @@ where
         let reconstructed_contents = reconstructor
             .add_segment(segment_pieces.as_ref())
             .map_err(|error| error.to_string())?;
+        drop(segment_pieces);
 
+        let mut blocks_to_import = Vec::with_capacity(reconstructed_contents.blocks.len());
+
+        let best_block_number = client.info().best_number;
         for (block_number, block_bytes) in reconstructed_contents.blocks {
             {
                 let block_number = block_number.into();
@@ -278,6 +303,11 @@ where
 
                     continue;
                 }
+
+                // Limit number of queued blocks for import
+                while block_number - best_block_number >= QUEUED_BLOCKS_LIMIT.into() {
+                    tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
+                }
             }
 
             let block =
@@ -286,29 +316,32 @@ where
             let (header, extrinsics) = block.deconstruct();
             let hash = header.hash();
 
-            // import queue handles verification and importing it into the client.
-            import_queue_service.import_blocks(
-                BlockOrigin::NetworkInitialSync,
-                vec![IncomingBlock::<Block> {
-                    hash,
-                    header: Some(header),
-                    body: Some(extrinsics),
-                    indexed_body: None,
-                    justifications: None,
-                    origin: None,
-                    allow_missing_state: false,
-                    import_existing: force,
-                    state: None,
-                    skip_execution: false,
-                }],
-            );
+            blocks_to_import.push(IncomingBlock {
+                hash,
+                header: Some(header),
+                body: Some(extrinsics),
+                indexed_body: None,
+                justifications: None,
+                origin: None,
+                allow_missing_state: false,
+                import_existing: force,
+                state: None,
+                skip_execution: false,
+            });
 
             downloaded_blocks += 1;
 
             if downloaded_blocks % 1000 == 0 {
-                info!("Imported block {}", block_number);
+                info!("Imported block {} from DSN", block_number);
             }
         }
+
+        if blocks_to_import.is_empty() {
+            break;
+        }
+
+        // import queue handles verification and importing it into the client.
+        import_queue_service.import_blocks(block_origin, blocks_to_import);
     }
 
     Ok(downloaded_blocks)

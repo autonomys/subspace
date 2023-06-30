@@ -9,6 +9,7 @@ use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, trace, warn};
 
+// TODO: Probably should be made configurable
 const PARALLELISM_LEVEL: usize = 20;
 
 #[derive(Debug, Error)]

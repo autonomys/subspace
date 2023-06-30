@@ -29,15 +29,17 @@ use parity_scale_codec::MaxEncodedLen;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
+use sp_api::RuntimeVersion;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
+use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
-use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
+use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness};
+use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness, U256};
 use subspace_runtime_primitives::Moment;
 
 /// Key type for Executor.
@@ -122,47 +124,15 @@ impl core::ops::Sub<u32> for DomainId {
     }
 }
 
-const OPEN_DOMAIN_ID_START: u32 = 100;
-
 impl DomainId {
-    pub const SYSTEM: Self = Self::new(0);
-
-    pub const CORE_DOMAIN_ID_START: Self = Self::new(1);
-
-    pub const CORE_PAYMENTS: Self = Self::new(1);
-
-    pub const CORE_EVM: Self = Self::new(3);
-
     /// Creates a [`DomainId`].
     pub const fn new(id: u32) -> Self {
         Self(id)
     }
 
-    /// Returns `true` if a domain is a system domain.
-    pub fn is_system(&self) -> bool {
-        self.0 == Self::SYSTEM.0
-    }
-
-    /// Returns `true` if a domain is a core domain.
-    pub fn is_core(&self) -> bool {
-        self.0 >= Self::CORE_DOMAIN_ID_START.0 && self.0 < OPEN_DOMAIN_ID_START
-    }
-
-    /// Returns `true` if a domain is an open domain.
-    pub fn is_open(&self) -> bool {
-        self.0 >= OPEN_DOMAIN_ID_START
-    }
-
     /// Converts the inner integer to little-endian bytes.
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
-    }
-
-    /// Returns the section name when a core domain wasm blob is embedded into the system domain
-    /// runtime via the `link_section` attribute.
-    #[cfg(feature = "std")]
-    pub fn link_section_name(&self) -> String {
-        format!("runtime_blob_{}", self.0)
     }
 }
 
@@ -498,6 +468,53 @@ where
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct GenesisDomainRuntime {
+    pub name: Vec<u8>,
+    pub runtime_type: RuntimeType,
+    pub runtime_version: RuntimeVersion,
+    pub code: Vec<u8>,
+}
+
+/// Types of runtime pallet domains currently supports
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
+pub enum RuntimeType {
+    #[default]
+    Evm,
+}
+
+/// Type representing the runtime ID.
+pub type RuntimeId = u32;
+
+/// Domains specific digest item.
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+pub enum DomainDigestItem {
+    DomainRuntimeUpgraded(RuntimeId),
+}
+
+/// Domains specific digest items.
+pub trait DomainsDigestItem {
+    fn domain_runtime_upgrade(runtime_id: RuntimeId) -> Self;
+    fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId>;
+}
+
+impl DomainsDigestItem for DigestItem {
+    fn domain_runtime_upgrade(runtime_id: RuntimeId) -> Self {
+        Self::Other(DomainDigestItem::DomainRuntimeUpgraded(runtime_id).encode())
+    }
+
+    fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId> {
+        match self.try_to::<DomainDigestItem>(OpaqueDigestItemId::Other) {
+            None => None,
+            Some(domain_digest_item) => match domain_digest_item {
+                DomainDigestItem::DomainRuntimeUpgraded(runtime_id) => Some(runtime_id),
+            },
+        }
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for executor pallet.
     pub trait ExecutorApi<DomainHash: Encode + Decode> {
@@ -518,7 +535,10 @@ sp_api::decl_runtime_apis! {
         /// Returns the WASM bundle for given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
 
-        // Returns the current timestamp at given height
+        /// Returns the current timestamp at given height.
         fn timestamp() -> Moment;
+
+        /// Returns the current Tx range for the given domain Id.
+        fn domain_tx_range(domain_id: DomainId) -> U256;
     }
 }

@@ -41,7 +41,7 @@ mod tests;
 extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
-use crate::crypto::{blake2b_256_hash, blake2b_256_hash_with_key, Scalar};
+use crate::crypto::{blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use core::convert::AsRef;
@@ -521,15 +521,34 @@ pub fn bidirectional_distance<T: WrappingSub + Ord>(a: &T, b: &T) -> T {
 #[allow(clippy::assign_op_pattern, clippy::ptr_offset_with_cast)]
 mod private_u256 {
     //! This module is needed to scope clippy allows
+    use parity_scale_codec::{Decode, Encode};
+    use scale_info::TypeInfo;
 
     uint::construct_uint! {
+        #[derive(Encode, Decode, TypeInfo)]
         pub struct U256(4);
     }
 }
 
 /// 256-bit unsigned integer
 #[derive(
-    Debug, Display, Add, Sub, Mul, Div, Rem, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash,
+    Debug,
+    Display,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Hash,
+    Encode,
+    Decode,
+    TypeInfo,
 )]
 pub struct U256(private_u256::U256);
 
@@ -734,6 +753,12 @@ impl TryFrom<U256> for u64 {
     }
 }
 
+impl Default for U256 {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 /// Challenge used for a particular sector for particular slot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
 pub struct SectorSlotChallenge(Blake2b256Hash);
@@ -782,10 +807,36 @@ impl SectorId {
         &self,
         piece_offset: PieceOffset,
         history_size: HistorySize,
+        max_pieces_in_sector: u16,
+        recent_segments: HistorySize,
+        recent_history_fraction: (HistorySize, HistorySize),
     ) -> PieceIndex {
-        let piece_index =
-            U256::from_le_bytes(blake2b_256_hash_with_key(&self.0, &piece_offset.to_bytes()))
-                % U256::from(history_size.in_pieces().get());
+        let recent_segments_in_pieces = recent_segments.in_pieces().get();
+        // Recent history must be at most `recent_history_fraction` of all history to use separate
+        // policy for recent pieces
+        let min_history_size_in_pieces = recent_segments_in_pieces
+            * recent_history_fraction.1.in_pieces().get()
+            / recent_history_fraction.0.in_pieces().get();
+        let input_hash =
+            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0));
+        let history_size_in_pieces = history_size.in_pieces().get();
+        let num_interleaved_pieces = 1.max(
+            u64::from(max_pieces_in_sector) * recent_history_fraction.0.in_pieces().get()
+                / recent_history_fraction.1.in_pieces().get()
+                * 2,
+        );
+
+        let piece_index = if history_size_in_pieces > min_history_size_in_pieces
+            && u64::from(piece_offset) < num_interleaved_pieces
+            && u16::from(piece_offset) % 2 == 1
+        {
+            // For odd piece offsets at the beginning of the sector pick pieces at random from
+            // recent history only
+            input_hash % U256::from(recent_segments_in_pieces)
+                + U256::from(history_size_in_pieces - recent_segments_in_pieces)
+        } else {
+            input_hash % U256::from(history_size_in_pieces)
+        };
 
         PieceIndex::from(u64::try_from(piece_index).expect(
             "Remainder of division by PieceIndex is guaranteed to fit into PieceIndex; qed",
@@ -803,17 +854,11 @@ impl SectorId {
 
     /// Derive evaluation seed
     pub fn evaluation_seed(&self, piece_offset: PieceOffset, history_size: HistorySize) -> PosSeed {
-        let mut evaluation_seed = self.0;
-
-        for (output, input) in evaluation_seed.iter_mut().zip(piece_offset.to_bytes()) {
-            *output ^= input;
-        }
-        for (output, input) in evaluation_seed
-            .iter_mut()
-            .zip(history_size.get().to_le_bytes())
-        {
-            *output ^= input;
-        }
+        let evaluation_seed = blake2b_256_hash_list(&[
+            &self.0,
+            &piece_offset.to_bytes(),
+            &history_size.get().to_le_bytes(),
+        ]);
 
         PosSeed::from(evaluation_seed)
     }

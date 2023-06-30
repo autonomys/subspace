@@ -64,21 +64,6 @@ where
             _phantom: Default::default(),
         }
     }
-
-    fn build_system_domain_extrinsics(
-        &self,
-        primary_hash: PBlock::Hash,
-        runtime_code: Vec<u8>,
-    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
-        let system_runtime_api_light =
-            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
-        let domain_extrinsics = DomainBlockPreprocessor::<Block, _, _, _>::new(
-            self.primary_chain_client.clone(),
-            system_runtime_api_light,
-        )
-        .preprocess_primary_block_for_verifier(primary_hash)?;
-        Ok(domain_extrinsics)
-    }
 }
 
 impl<PBlock, PClient, Executor> BuildDomainExtrinsics<PBlock>
@@ -98,10 +83,18 @@ where
 {
     fn build_domain_extrinsics(
         &self,
-        _domain_id: DomainId,
+        domain_id: DomainId,
         primary_hash: <PBlock as BlockT>::Hash,
         domain_runtime: Vec<u8>,
     ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
-        self.build_system_domain_extrinsics(primary_hash, domain_runtime)
+        let domain_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), domain_runtime.into());
+        let domain_extrinsics = DomainBlockPreprocessor::<Block, _, _, _>::new(
+            domain_id,
+            self.primary_chain_client.clone(),
+            domain_runtime_api_light,
+        )
+        .preprocess_primary_block_for_verifier(primary_hash)?;
+        Ok(domain_extrinsics)
     }
 }

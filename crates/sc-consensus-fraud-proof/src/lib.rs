@@ -20,7 +20,6 @@ use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::Error as ConsensusError;
-use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
@@ -87,16 +86,22 @@ where
 
         if !block.state_action.skip_execution_checks() {
             if let Some(extrinsics) = &block.body {
-                let fraud_proofs = self
-                    .client
-                    .runtime_api()
-                    .extract_fraud_proofs(parent_hash, extrinsics.clone(), DomainId::SYSTEM)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+                // TODO: Fetch the registered domains properly
+                // We may change `extract_fraud_proofs` API to return the fraud proofs for all
+                // domains instead of specifying the domain_id each time for the efficiency.
+                let registered_domains = vec![];
+                for domain_id in registered_domains {
+                    let fraud_proofs = self
+                        .client
+                        .runtime_api()
+                        .extract_fraud_proofs(parent_hash, extrinsics.clone(), domain_id)
+                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
-                for fraud_proof in fraud_proofs {
-                    self.fraud_proof_verifier
-                        .verify_fraud_proof(&fraud_proof)
-                        .map_err(|e| ConsensusError::Other(Box::new(e)))?;
+                    for fraud_proof in fraud_proofs {
+                        self.fraud_proof_verifier
+                            .verify_fraud_proof(&fraud_proof)
+                            .map_err(|e| ConsensusError::Other(Box::new(e)))?;
+                    }
                 }
             }
         }

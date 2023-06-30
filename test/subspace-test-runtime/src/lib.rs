@@ -24,6 +24,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Encode};
+use core::num::NonZeroU64;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -67,6 +68,7 @@ use sp_version::RuntimeVersion;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SolutionRange,
+    U256,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -233,6 +235,11 @@ parameter_types! {
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ConfirmationDepthK: u32 = 100;
+    pub const RecentSegments: HistorySize = HistorySize::new(NonZeroU64::new(5).unwrap());
+    pub const RecentHistoryFraction: (HistorySize, HistorySize) = (
+        HistorySize::new(NonZeroU64::new(1).unwrap()),
+        HistorySize::new(NonZeroU64::new(10).unwrap()),
+    );
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -243,6 +250,8 @@ impl pallet_subspace::Config for Runtime {
     type SlotProbability = SlotProbability;
     type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type RecentSegments = RecentSegments;
+    type RecentHistoryFraction = RecentHistoryFraction;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -471,12 +480,20 @@ impl pallet_offences_subspace::Config for Runtime {
 parameter_types! {
     pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 2;
+    pub const InitialDomainTxRange: u64 = 10;
+    pub const DomainTxRangeAdjustmentInterval: u64 = 100;
+    pub const ExpectedBundlesPerInterval: u64 = 600;
+    pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type ConfirmationDepthK = ConfirmationDepthK;
+    type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
+    type InitialDomainTxRange = InitialDomainTxRange;
+    type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
+    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
 }
 
 impl pallet_settlement::Config for Runtime {
@@ -1190,6 +1207,10 @@ impl_runtime_apis! {
 
         fn timestamp() -> Moment{
             Timestamp::now()
+        }
+
+        fn domain_tx_range(_: DomainId) -> U256 {
+            U256::MAX
         }
     }
 

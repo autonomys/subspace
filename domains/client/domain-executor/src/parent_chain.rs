@@ -57,6 +57,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
 
 /// The parent chain of the domain.
 pub struct DomainParentChain<Block, PBlock, PClient> {
+    domain_id: DomainId,
     primary_chain_client: Arc<PClient>,
     _phantom: PhantomData<(Block, PBlock)>,
 }
@@ -64,6 +65,7 @@ pub struct DomainParentChain<Block, PBlock, PClient> {
 impl<Block, PBlock, PClient> Clone for DomainParentChain<Block, PBlock, PClient> {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             primary_chain_client: self.primary_chain_client.clone(),
             _phantom: self._phantom,
         }
@@ -71,8 +73,9 @@ impl<Block, PBlock, PClient> Clone for DomainParentChain<Block, PBlock, PClient>
 }
 
 impl<Block, PBlock, PClient> DomainParentChain<Block, PBlock, PClient> {
-    pub fn new(primary_chain_client: Arc<PClient>) -> Self {
+    pub fn new(domain_id: DomainId, primary_chain_client: Arc<PClient>) -> Self {
         Self {
+            domain_id,
             primary_chain_client,
             _phantom: PhantomData,
         }
@@ -105,7 +108,7 @@ where
         let oldest_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .oldest_receipt_number(at, DomainId::SYSTEM)?;
+            .oldest_receipt_number(at, self.domain_id)?;
         Ok(oldest_receipt_number.into())
     }
 
@@ -113,7 +116,7 @@ where
         let head_receipt_number = self
             .primary_chain_client
             .runtime_api()
-            .head_receipt_number(at, DomainId::SYSTEM)?;
+            .head_receipt_number(at, self.domain_id)?;
         Ok(head_receipt_number.into())
     }
 
@@ -135,7 +138,7 @@ where
     ) -> Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>, sp_api::ApiError> {
         self.primary_chain_client
             .runtime_api()
-            .extract_receipts(at, extrinsics, DomainId::SYSTEM)
+            .extract_receipts(at, extrinsics, self.domain_id)
     }
 
     fn extract_fraud_proofs(
@@ -145,7 +148,7 @@ where
     ) -> Result<Vec<FraudProofFor<PBlock>>, sp_api::ApiError> {
         self.primary_chain_client
             .runtime_api()
-            .extract_fraud_proofs(at, extrinsics, DomainId::SYSTEM)
+            .extract_fraud_proofs(at, extrinsics, self.domain_id)
     }
 
     fn submit_fraud_proof_unsigned(

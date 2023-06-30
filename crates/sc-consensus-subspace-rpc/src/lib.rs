@@ -242,11 +242,14 @@ where
             })?;
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
+            let chain_constants = runtime_api.chain_constants(best_hash)?;
             let protocol_info = FarmerProtocolInfo {
                 history_size: runtime_api.history_size(best_hash)?,
                 max_pieces_in_sector: runtime_api.max_pieces_in_sector(best_hash)?,
                 // TODO: Fetch this from the runtime
                 sector_expiration: SegmentIndex::from(100),
+                recent_segments: chain_constants.recent_segments(),
+                recent_history_fraction: chain_constants.recent_history_fraction(),
             };
 
             FarmerAppInfo {

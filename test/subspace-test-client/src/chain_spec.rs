@@ -2,6 +2,7 @@
 
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
+use sp_domains::{GenesisDomainRuntime, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
@@ -91,7 +92,14 @@ fn create_genesis_config(
         },
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {
-            runtime_name_and_runtime_code: None,
+            genesis_domain_runtime: Some(GenesisDomainRuntime {
+                name: b"evm".to_vec(),
+                runtime_type: RuntimeType::Evm,
+                runtime_version: evm_domain_test_runtime::VERSION,
+                code: evm_domain_test_runtime::WASM_BINARY
+                    .unwrap_or_else(|| panic!("EVM domain runtime not available"))
+                    .to_owned(),
+            }),
         },
     }
 }
