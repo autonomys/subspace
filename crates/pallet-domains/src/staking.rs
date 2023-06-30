@@ -81,6 +81,8 @@ pub enum Error {
     InsufficientBalance,
     BalanceFreeze,
     MinimumOperatorStake,
+    UnknownOperator,
+    MinimumNominatorStake,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -144,6 +146,41 @@ pub(crate) fn do_register_operator<T: Config>(
         domain_stake_summary.next_operators.push(operator_id);
 
         Ok(operator_id)
+    })
+}
+
+pub(crate) fn do_nominate_operator<T: Config>(
+    operator_id: OperatorId,
+    nominator_id: T::AccountId,
+    amount: BalanceOf<T>,
+) -> Result<(), Error> {
+    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+
+        // reserve stake balance
+        ensure!(
+            amount >= operator.minimum_nominator_stake,
+            Error::MinimumNominatorStake
+        );
+
+        ensure!(
+            T::Currency::balance_freezable(&nominator_id) >= amount,
+            Error::InsufficientBalance
+        );
+
+        T::Currency::set_freeze(
+            &T::FreezeIdentifier::staking_freeze_id(),
+            &nominator_id,
+            amount,
+        )
+        .map_err(|_| Error::BalanceFreeze)?;
+
+        operator.pending_transfers.push(PendingTransfer {
+            nominator_id,
+            transfer: Transfer::Deposit(amount),
+        });
+
+        Ok(())
     })
 }
 
@@ -214,6 +251,73 @@ mod tests {
             assert_eq!(
                 Balances::usable_balance(operator_account),
                 operator_free_balance - operator_stake
+            );
+        });
+    }
+
+    #[test]
+    fn nominate_operator() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 1500 * SSC;
+        let operator_stake = 1000 * SSC;
+        let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+
+        let nominator_account = 2;
+        let nominator_free_balance = 200 * SSC;
+        let nominator_stake = 100 * SSC;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            Balances::set_balance(&operator_account, operator_free_balance);
+            Balances::set_balance(&nominator_account, nominator_free_balance);
+            assert!(Balances::usable_balance(nominator_account) == nominator_free_balance);
+
+            DomainStakingSummary::<Test>::insert(
+                domain_id,
+                StakingSummary {
+                    current_epoch_index: 0,
+                    current_total_stake: 0,
+                    next_total_stake: 0,
+                    current_operators: vec![],
+                    next_operators: vec![],
+                },
+            );
+
+            let operator_config = OperatorConfig {
+                signing_key: pair.public(),
+                minimum_nominator_stake: 100 * SSC,
+                nomination_tax: Default::default(),
+            };
+
+            let res = Domains::register_operator(
+                RuntimeOrigin::signed(operator_account),
+                domain_id,
+                operator_stake,
+                operator_config,
+            );
+            assert_ok!(res);
+
+            let operator_id = 0;
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                nominator_stake,
+            );
+            assert_ok!(res);
+
+            let operator_pool = OperatorPools::<Test>::get(0).unwrap();
+            assert_eq!(
+                operator_pool.pending_transfers[1],
+                PendingTransfer {
+                    nominator_id: nominator_account,
+                    transfer: Transfer::Deposit(nominator_stake),
+                }
+            );
+
+            assert_eq!(
+                Balances::usable_balance(nominator_account),
+                nominator_free_balance - nominator_stake
             );
         });
     }

@@ -60,7 +60,8 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_register_operator, Error as StakingError, OperatorConfig, OperatorPool, StakingSummary,
+        do_nominate_operator, do_register_operator, Error as StakingError, OperatorConfig,
+        OperatorPool, StakingSummary,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -274,6 +275,10 @@ mod pallet {
             operator_id: OperatorId,
             domain_id: DomainId,
         },
+        OperatorNominated {
+            operator_id: OperatorId,
+            nominator_id: T::AccountId,
+        },
     }
 
     /// Per-domain state for tx range calculation.
@@ -441,6 +446,27 @@ mod pallet {
             Self::deposit_event(Event::OperatorRegistered {
                 operator_id,
                 domain_id,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(5)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn nominate_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            let nominator_id = ensure_signed(origin)?;
+
+            do_nominate_operator::<T>(operator_id, nominator_id.clone(), amount)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::OperatorNominated {
+                operator_id,
+                nominator_id,
             });
 
             Ok(())
