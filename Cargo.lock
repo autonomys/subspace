@@ -2181,7 +2181,6 @@ dependencies = [
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
- "domain-client-executor-gossip",
  "domain-client-message-relayer",
  "domain-runtime-primitives",
  "domain-test-primitives",
