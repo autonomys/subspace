@@ -29,38 +29,22 @@ use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
-use sc_executor::NativeExecutionDispatch;
 use sc_service::{BasePath, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
-use subspace_node::{
-    AccountId32ToAccountId20Converter, Cli, DomainCli, DomainSubcommand, ExecutorDispatch,
-    Subcommand,
+use sp_domains::GenerateGenesisStateRoot;
+use std::sync::Arc;
+use subspace_node::domain::{
+    AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainSubcommand,
+    EVMDomainExecutorDispatch,
 };
+use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
-
-/// EVM domain executor instance.
-pub struct EVMDomainExecutorDispatch;
-
-impl NativeExecutionDispatch for crate::EVMDomainExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        evm_domain_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        evm_domain_runtime::native_version()
-    }
-}
 
 /// Subspace node error.
 #[derive(thiserror::Error, Debug)]
@@ -128,7 +112,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -145,7 +129,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -163,7 +147,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -182,7 +166,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -201,7 +185,7 @@ fn main() -> Result<(), Error> {
                     other: (_block_import, subspace_link, _telemetry, _bundle_validator),
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config,
+                    &config, None,
                 )?;
 
                 let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
@@ -274,7 +258,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -309,7 +293,9 @@ fn main() -> Result<(), Error> {
                             PosTable,
                             RuntimeApi,
                             ExecutorDispatch,
-                        >(&config)?;
+                        >(
+                            &config, None
+                        )?;
 
                         cmd.run(client)
                     }
@@ -317,7 +303,7 @@ fn main() -> Result<(), Error> {
                         let PartialComponents {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &config,
+                            &config, None,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
@@ -485,9 +471,14 @@ fn main() -> Result<(), Error> {
                             || cli.run.is_dev().unwrap_or(false),
                     };
 
+                    let construct_domain_genesis_block_builder =
+                        |backend, executor| -> Arc<dyn GenerateGenesisStateRoot> {
+                            Arc::new(DomainGenesisBlockBuilder::new(backend, executor))
+                        };
                     let partial_components =
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &primary_chain_config,
+                            Some(&construct_domain_genesis_block_builder),
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(

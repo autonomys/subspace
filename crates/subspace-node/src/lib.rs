@@ -18,11 +18,9 @@
 
 mod chain_spec;
 mod chain_spec_utils;
-mod domain;
+pub mod domain;
 mod import_blocks_from_dsn;
 
-pub use crate::domain::cli::{DomainCli, Subcommand as DomainSubcommand};
-pub use crate::domain::AccountId32ToAccountId20Converter;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 use bytesize::ByteSize;
 use clap::Parser;
@@ -46,10 +44,14 @@ impl NativeExecutionDispatch for ExecutorDispatch {
     type ExtendHostFunctions = (
         frame_benchmarking::benchmarking::HostFunctions,
         sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains::domain::HostFunctions,
     );
     /// Otherwise we only use the default Substrate host functions.
     #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = sp_consensus_subspace::consensus::HostFunctions;
+    type ExtendHostFunctions = (
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains::domain::HostFunctions,
+    );
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_runtime::api::dispatch(method, data)
