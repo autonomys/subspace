@@ -13,6 +13,7 @@ use libp2p::swarm::{
 };
 use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
+use parking_lot::Mutex;
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,7 +36,16 @@ pub struct CuckooFilterDTO {
     pub length: u64,
 }
 
-#[derive(Clone, Encode, Decode, Default)]
+impl fmt::Debug for CuckooFilterDTO {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CuckooFilterDTO")
+            .field("values", &self.length)
+            .field("length", &self.values.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Encode, Decode, Default, Debug)]
 /// Peer info data
 pub enum PeerInfo {
     /// DSN farmer.
@@ -50,32 +60,6 @@ pub enum PeerInfo {
     /// Unspecified client (testing, custom utilities, etc).
     #[default]
     Client,
-}
-
-impl fmt::Debug for PeerInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut debug_struct = f.debug_struct("PeerInfo");
-
-        match self {
-            PeerInfo::Farmer { cuckoo_filter } => {
-                debug_struct
-                    .field("role", &"Farmer")
-                    .field("cuckoo-filter(length)", &cuckoo_filter.length)
-                    .field("cuckoo-filter(data)", &cuckoo_filter.values.len());
-            }
-            PeerInfo::Node => {
-                debug_struct.field("role", &"Node");
-            }
-            PeerInfo::BootstrapNode => {
-                debug_struct.field("role", &"BootstrapNode");
-            }
-            PeerInfo::Client => {
-                debug_struct.field("role", &"Client");
-            }
-        };
-
-        debug_struct.finish()
-    }
 }
 
 /// A [`NetworkBehaviour`] that handles inbound peer info requests and
@@ -96,7 +80,7 @@ pub struct Behaviour<PeerInfoProvider> {
     /// Known connected peers.
     connected_peers: HashSet<PeerId>,
     /// Future waker.
-    waker: Option<Waker>,
+    waker: Arc<Mutex<Option<Waker>>>,
 }
 
 #[derive(Debug)]
@@ -149,12 +133,17 @@ pub struct Event {
 impl<PIP: PeerInfoProvider> Behaviour<PIP> {
     /// Creates a new `Peer Info` network behaviour with the given configuration.
     pub fn new(config: Config, peer_info_provider: PIP) -> Self {
+        let waker = Arc::new(Mutex::new(None::<Waker>));
         let should_notify_handlers = Arc::new(AtomicBool::new(false));
         let _notify_handler_id = peer_info_provider.on_notification({
             let should_notify_handlers = should_notify_handlers.clone();
+            let waker = waker.clone();
 
             Arc::new(move |_| {
                 should_notify_handlers.store(true, Ordering::SeqCst);
+                if let Some(waker) = waker.lock().as_mut() {
+                    waker.wake_by_ref();
+                }
             })
         });
 
@@ -166,12 +155,12 @@ impl<PIP: PeerInfoProvider> Behaviour<PIP> {
             requests: Vec::new(),
             should_notify_handlers,
             connected_peers: HashSet::new(),
-            waker: None,
+            waker,
         }
     }
 
     fn wake(&self) {
-        if let Some(waker) = &self.waker {
+        if let Some(waker) = &self.waker.lock().as_mut() {
             waker.wake_by_ref()
         }
     }
@@ -259,7 +248,7 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
             });
         }
 
-        self.waker = Some(cx.waker().clone());
+        self.waker.lock().replace(cx.waker().clone());
         Poll::Pending
     }
 
