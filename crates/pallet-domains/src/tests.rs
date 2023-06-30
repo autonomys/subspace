@@ -92,10 +92,10 @@ parameter_types! {
     pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxBundlesPerBlock: u32 = 10;
-    pub const MaxDomainBlockSize: u32 = u32::MAX;
-    pub const MaxDomainBlockWeight: Weight = Weight::MAX;
-    pub const DomainInstantiationDeposit: Balance = 0;
-    pub const MaxDomainNameLength: u32 = u32::MAX;
+    pub const MaxDomainBlockSize: u32 = 1024 * 1024;
+    pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
+    pub const DomainInstantiationDeposit: Balance = 100;
+    pub const MaxDomainNameLength: u32 = 16;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);

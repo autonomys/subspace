@@ -149,3 +149,147 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
     Ok(domain_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
+    use crate::runtime_registry::RuntimeObject;
+    use crate::tests::{new_test_ext, Test};
+    use sp_version::RuntimeVersion;
+
+    #[test]
+    fn test_domain_instantiation() {
+        let creator = 1u64;
+        let created_at = 0u64;
+        // Construct an invalid domain config initially
+        let mut domain_config = DomainConfig {
+            domain_name: vec![0; 1024],
+            runtime_id: 0,
+            max_block_size: u32::MAX,
+            max_block_weight: Weight::MAX,
+            bundle_slot_probability: (0, 0),
+            target_bundles_per_block: 0,
+        };
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            assert_eq!(NextDomainId::<Test>::get(), 0.into());
+
+            // Failed to instantiate domain due to `domain_name` too long
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::DomainNameTooLong)
+            );
+            // Recorrect `domain_name`
+            domain_config.domain_name = b"evm-domain".to_vec();
+
+            // Failed to instantiate domain due to using unregistered runtime id
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::RuntimeNotFound)
+            );
+            // Register runtime id
+            RuntimeRegistry::<Test>::insert(
+                domain_config.runtime_id,
+                RuntimeObject {
+                    runtime_name: b"evm".to_vec(),
+                    runtime_type: Default::default(),
+                    runtime_upgrades: 0,
+                    hash: Default::default(),
+                    code: vec![1, 2, 3, 4],
+                    version: RuntimeVersion {
+                        spec_name: "test".into(),
+                        spec_version: 1,
+                        impl_version: 1,
+                        transaction_version: 1,
+                        ..Default::default()
+                    },
+                    created_at: Default::default(),
+                    updated_at: Default::default(),
+                },
+            );
+
+            // Failed to instantiate domain due to exceed max domain block size limit
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::ExceedMaxDomainBlockSize)
+            );
+            // Recorrect `max_block_size`
+            domain_config.max_block_size = 1;
+
+            // Failed to instantiate domain due to exceed max domain block weight limit
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::ExceedMaxDomainBlockWeight)
+            );
+            // Recorrect `max_block_weight`
+            domain_config.max_block_weight = Weight::from_parts(1, 0);
+
+            // Failed to instantiate domain due to invalid `target_bundles_per_block`
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InvalidBundlesPerBlock)
+            );
+            domain_config.target_bundles_per_block = u32::MAX;
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InvalidBundlesPerBlock)
+            );
+            // Recorrect `target_bundles_per_block`
+            domain_config.target_bundles_per_block = 1;
+
+            // Failed to instantiate domain due to invalid `bundle_slot_probability`
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            domain_config.bundle_slot_probability = (1, 0);
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            domain_config.bundle_slot_probability = (0, 1);
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            domain_config.bundle_slot_probability = (2, 1);
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InvalidSlotProbability)
+            );
+            // Recorrect `bundle_slot_probability`
+            domain_config.bundle_slot_probability = (1, 1);
+
+            // Failed to instantiate domain due to creator don't have enough fund
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
+                Err(Error::InsufficientFund)
+            );
+            // Set enough fund to creator
+            <Test as Config>::Currency::make_free_balance_be(
+                &creator,
+                <Test as Config>::DomainInstantiationDeposit::get(),
+            );
+
+            // `instantiate_domain` must success now
+            let domain_id =
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at).unwrap();
+            let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
+
+            assert_eq!(domain_obj.owner_account_id, creator);
+            assert_eq!(domain_obj.created_at, created_at);
+            assert_eq!(domain_obj.domain_config, domain_config);
+            assert_eq!(NextDomainId::<Test>::get(), 1.into());
+            // Fund locked up thus can't withdraw
+            assert!(<Test as Config>::Currency::ensure_can_withdraw(
+                &creator,
+                1,
+                WithdrawReasons::all(),
+                <Test as Config>::DomainInstantiationDeposit::get() - 1
+            )
+            .is_err());
+        });
+    }
+}
