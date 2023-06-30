@@ -78,7 +78,7 @@ pub(crate) fn can_instantiate_domain<T: Config>(
     domain_config: &DomainConfig,
 ) -> Result<(), Error> {
     ensure!(
-        domain_config.domain_name.len() as u32 <= T::MaxDomainBlockSize::get(),
+        domain_config.domain_name.len() as u32 <= T::MaxDomainNameLength::get(),
         Error::DomainNameTooLong,
     );
     ensure!(
@@ -119,6 +119,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     owner_account_id: T::AccountId,
     created_at: T::BlockNumber,
 ) -> Result<DomainId, Error> {
+    can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
+
     let domain_obj = DomainObject {
         owner_account_id: owner_account_id.clone(),
         created_at,

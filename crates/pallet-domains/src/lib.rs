@@ -46,8 +46,7 @@ pub type BalanceOf<T> =
 #[frame_support::pallet]
 mod pallet {
     use crate::domain_registry::{
-        can_instantiate_domain, do_instantiate_domain, DomainConfig, DomainObject,
-        Error as DomainRegistryError,
+        do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
     };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
@@ -432,9 +431,6 @@ mod pallet {
             domain_config: DomainConfig,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-
-            can_instantiate_domain::<T>(&who, &domain_config).map_err(Error::<T>::from)?;
-
             let runtime_id = domain_config.runtime_id;
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
@@ -479,14 +475,10 @@ mod pallet {
 
                 // Instantiate the genesis domain
                 let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                can_instantiate_domain::<T>(&genesis_domain.owner_account_id, &domain_config)
-                    .expect("Genesis domain config must be valid");
-
-                let created_at = frame_system::Pallet::<T>::current_block_number();
                 do_instantiate_domain::<T>(
                     domain_config,
                     genesis_domain.owner_account_id.clone(),
-                    created_at,
+                    Zero::zero(),
                 )
                 .expect("Genesis domain instantiation must always succeed");
             }
