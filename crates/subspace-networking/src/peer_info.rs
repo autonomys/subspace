@@ -26,35 +26,23 @@ pub struct Notification;
 /// Defines a subscription to a peer-info notification.
 pub type NotificationHandler = Arc<dyn Fn(&Notification) + Send + Sync + 'static>;
 
+/// Cuckoo filter data transfer object.
+#[derive(Clone, Encode, Decode, Default)]
+pub struct CuckooFilterDTO {
+    /// Exported cuckoo filter values.
+    pub values: Vec<u8>,
+    /// Cuckoo filter items.
+    pub length: u64,
+}
+
 #[derive(Clone, Encode, Decode, Default)]
 /// Peer info data
-pub struct PeerInfo {
-    /// Peer role.
-    pub role: PeerRole,
-    // TODO: consider having a type-safe data structure bound to PeerRole
-    /// Peer info data.
-    pub data: Option<Vec<u8>>,
-}
-
-impl fmt::Debug for PeerInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let data_len = match &self.data {
-            Some(data) => data.len(),
-            None => 0,
-        };
-
-        f.debug_struct("PeerInfo")
-            .field("role", &self.role)
-            .field("data(bytes)", &data_len)
-            .finish()
-    }
-}
-
-#[derive(Clone, Debug, Encode, Decode, Default)]
-/// Defines the role of a peer
-pub enum PeerRole {
+pub enum PeerInfo {
     /// DSN farmer.
-    Farmer,
+    Farmer {
+        /// Peer info data.
+        cuckoo_filter: CuckooFilterDTO,
+    },
     /// DSN node.
     Node,
     /// DSN bootstrap node.
@@ -62,6 +50,32 @@ pub enum PeerRole {
     /// Unspecified client (testing, custom utilities, etc).
     #[default]
     Client,
+}
+
+impl fmt::Debug for PeerInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("PeerInfo");
+
+        match self {
+            PeerInfo::Farmer { cuckoo_filter } => {
+                debug_struct
+                    .field("role", &"Farmer")
+                    .field("cuckoo-filter(length)", &cuckoo_filter.length)
+                    .field("cuckoo-filter(data)", &cuckoo_filter.values.len());
+            }
+            PeerInfo::Node => {
+                debug_struct.field("role", &"Node");
+            }
+            PeerInfo::BootstrapNode => {
+                debug_struct.field("role", &"BootstrapNode");
+            }
+            PeerInfo::Client => {
+                debug_struct.field("role", &"Client");
+            }
+        };
+
+        debug_struct.finish()
+    }
 }
 
 /// A [`NetworkBehaviour`] that handles inbound peer info requests and

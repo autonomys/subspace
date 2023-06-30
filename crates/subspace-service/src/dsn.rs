@@ -16,10 +16,10 @@ use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, ConstantPeerInfoProvider, CreationError,
     MemoryProviderStorage, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
-    NodeRunner, ParityDbError, ParityDbProviderStorage, PeerInfo, PeerRole,
-    PieceAnnouncementRequestHandler, PieceAnnouncementResponse, PieceByHashRequestHandler,
-    PieceByHashResponse, ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler,
-    SegmentHeaderRequest, SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
+    NodeRunner, ParityDbError, ParityDbProviderStorage, PeerInfo, PieceAnnouncementRequestHandler,
+    PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -135,10 +135,7 @@ where
         dsn_protocol_version,
         keypair,
         provider_storage.clone(),
-        ConstantPeerInfoProvider::new(PeerInfo {
-            role: PeerRole::Node,
-            data: None,
-        }),
+        ConstantPeerInfoProvider::new(PeerInfo::Node),
     );
 
     default_networking_config

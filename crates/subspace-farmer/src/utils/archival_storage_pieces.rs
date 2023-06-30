@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::{
-    Notification, NotificationHandler, PeerInfo, PeerInfoProvider, PeerRole,
+    CuckooFilterDTO, Notification, NotificationHandler, PeerInfo, PeerInfoProvider,
 };
 
 type NotificationEventHandler = Bag<NotificationHandler, Notification>;
@@ -61,11 +61,12 @@ impl ArchivalStoragePieces {
 impl PeerInfoProvider for ArchivalStoragePieces {
     fn peer_info(&self) -> PeerInfo {
         let exported_filter = self.cuckoo_filter.lock().export();
-        let data = serde_scale::to_vec(&exported_filter).expect("Serialization always works.");
 
-        PeerInfo {
-            role: PeerRole::Farmer,
-            data: Some(data),
+        PeerInfo::Farmer {
+            cuckoo_filter: CuckooFilterDTO {
+                values: exported_filter.values,
+                length: exported_filter.length as u64,
+            },
         }
     }
 

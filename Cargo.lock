@@ -9097,15 +9097,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-scale"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f2e6779ee764eea43ff586c555089470f7803669ffd8e76636f34f37d7ec3a8"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_arrays"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10548,7 +10539,6 @@ dependencies = [
  "rayon",
  "schnorrkel",
  "serde",
- "serde-scale",
  "serde_json",
  "ss58-registry",
  "static_assertions",
