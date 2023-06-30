@@ -21,12 +21,12 @@ use std::task::{Context, Poll, Waker};
 use tracing::debug;
 
 #[derive(Debug, Clone, Copy)]
-/// Peer info notification marker.
+/// Peer info notification stub.
 pub struct Notification;
 /// Defines a subscription to a peer-info notification.
 pub type NotificationHandler = Arc<dyn Fn(&Notification) + Send + Sync + 'static>;
 
-#[derive(Clone, Encode, Decode)]
+#[derive(Clone, Encode, Decode, Default)]
 /// Peer info data
 pub struct PeerInfo {
     /// Peer role.
@@ -50,16 +50,7 @@ impl fmt::Debug for PeerInfo {
     }
 }
 
-impl Default for PeerInfo {
-    fn default() -> Self {
-        PeerInfo {
-            role: PeerRole::Client,
-            data: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode, Default)]
 /// Defines the role of a peer
 pub enum PeerRole {
     /// DSN farmer.
@@ -69,6 +60,7 @@ pub enum PeerRole {
     /// DSN bootstrap node.
     BootstrapNode,
     /// Unspecified client (testing, custom utilities, etc).
+    #[default]
     Client,
 }
 
@@ -144,7 +136,7 @@ impl<PIP: PeerInfoProvider> Behaviour<PIP> {
     /// Creates a new `Peer Info` network behaviour with the given configuration.
     pub fn new(config: Config, peer_info_provider: PIP) -> Self {
         let should_notify_handlers = Arc::new(AtomicBool::new(false));
-        let notify_handler_id = peer_info_provider.on_notification({
+        let _notify_handler_id = peer_info_provider.on_notification({
             let should_notify_handlers = should_notify_handlers.clone();
 
             Arc::new(move |_| {
@@ -153,7 +145,7 @@ impl<PIP: PeerInfoProvider> Behaviour<PIP> {
         });
 
         Self {
-            _notify_handler_id: notify_handler_id,
+            _notify_handler_id,
             config,
             peer_info_provider,
             events: VecDeque::new(),

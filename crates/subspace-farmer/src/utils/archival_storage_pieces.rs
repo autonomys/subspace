@@ -2,6 +2,8 @@ use cuckoofilter::CuckooFilter;
 use event_listener_primitives::{Bag, HandlerId};
 use parking_lot::Mutex;
 use std::collections::hash_map::DefaultHasher;
+use std::fmt;
+use std::fmt::Debug;
 use std::sync::Arc;
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::{
@@ -22,6 +24,14 @@ pub struct ArchivalStoragePieces {
 impl Default for ArchivalStoragePieces {
     fn default() -> Self {
         Self::new(DEFAULT_CAPACITY)
+    }
+}
+
+impl Debug for ArchivalStoragePieces {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ArchivalStoragePieces")
+            .field("cuckoo_filter (len)", &self.cuckoo_filter.lock().len())
+            .finish()
     }
 }
 

@@ -69,7 +69,7 @@ pub enum PeerInfoError {
     },
 }
 
-/// Marker struct for outbound peer-info requests.
+/// Struct for outbound peer-info requests.
 #[derive(Debug, Clone)]
 pub struct HandlerInEvent {
     pub peer_info: Arc<PeerInfo>,

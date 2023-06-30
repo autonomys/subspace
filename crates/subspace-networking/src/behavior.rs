@@ -45,8 +45,9 @@ pub(crate) struct BehaviorConfig<RecordStore, PeerInfoProvider> {
     pub(crate) connection_limits: ConnectionLimits,
     /// The configuration for the [`ReservedPeersBehaviour`].
     pub(crate) reserved_peers: ReservedPeersConfig,
-
+    /// The configuration for the [`PeerInfo`] protocol.
     pub(crate) peer_info_config: PeerInfoConfig,
+    /// Provides peer-info for local peer.
     pub(crate) peer_info_provider: PeerInfoProvider,
 }
 
