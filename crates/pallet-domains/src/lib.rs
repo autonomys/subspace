@@ -28,7 +28,7 @@ pub mod runtime_registry;
 mod staking;
 pub mod weights;
 
-use frame_support::traits::fungible::Inspect;
+use frame_support::traits::fungible::{Inspect, InspectFreeze};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -43,7 +43,14 @@ use subspace_core_primitives::U256;
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
+pub(crate) type FungibleFreezeId<T> =
+    <<T as Config>::Currency as InspectFreeze<<T as frame_system::Config>::AccountId>>::Id;
+
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
+
+pub trait FreezeIdentifier<T: Config> {
+    fn staking_freeze_id() -> FungibleFreezeId<T>;
+}
 
 #[frame_support::pallet]
 mod pallet {
@@ -52,9 +59,11 @@ mod pallet {
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
         ScheduledRuntimeUpgrade,
     };
-    use crate::staking::{OperatorPool, StakingSummary};
+    use crate::staking::{
+        do_register_operator, Error as StakingError, OperatorConfig, OperatorPool, StakingSummary,
+    };
     use crate::weights::WeightInfo;
-    use crate::{calculate_tx_range, BalanceOf, NominatorId};
+    use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
     use frame_support::weights::Weight;
@@ -102,6 +111,9 @@ mod pallet {
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
 
+        /// Identifier used for Freezing the funds used for staking.
+        type FreezeIdentifier: FreezeIdentifier<Self>;
+
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
 
@@ -113,6 +125,9 @@ mod pallet {
 
         /// Expected bundles to be produced per adjustment interval.
         type ExpectedBundlesPerInterval: Get<u64>;
+
+        /// Minimum operator stake required to become operator of a domain.
+        type MinOperatorStake: Get<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -215,6 +230,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<StakingError> for Error<T> {
+        fn from(err: StakingError) -> Self {
+            Error::Staking(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Can not find the block hash of given primary block number.
@@ -225,6 +246,8 @@ mod pallet {
         FraudProof,
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
+        /// Staking related errors.
+        Staking(StakingError),
     }
 
     #[pallet::event]
@@ -246,6 +269,10 @@ mod pallet {
         },
         DomainRuntimeUpgraded {
             runtime_id: RuntimeId,
+        },
+        OperatorRegistered {
+            operator_id: OperatorId,
+            domain_id: DomainId,
         },
     }
 
@@ -393,6 +420,27 @@ mod pallet {
             Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
                 runtime_id,
                 scheduled_at,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(4)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn register_operator(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            amount: BalanceOf<T>,
+            config: OperatorConfig<BalanceOf<T>>,
+        ) -> DispatchResult {
+            let owner = ensure_signed(origin)?;
+
+            let operator_id = do_register_operator::<T>(owner, domain_id, amount, config)
+                .map_err(Error::<T>::from)?;
+            Self::deposit_event(Event::OperatorRegistered {
+                operator_id,
+                domain_id,
             });
 
             Ok(())

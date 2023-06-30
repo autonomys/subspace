@@ -1,16 +1,19 @@
 use crate::{self as pallet_domains};
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
+use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{ConstU128, Get, H256, U256};
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
+    DomainsFreezeIdentifier, ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::U256 as P256;
+use subspace_runtime_primitives::SSC;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -90,6 +93,23 @@ impl Get<BlockNumber> for ConfirmationDepthK {
     }
 }
 
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum FreezeIdentifier {
+    Domains(DomainsFreezeIdentifier),
+}
+
+impl pallet_domains::FreezeIdentifier<Test> for FreezeIdentifier {
+    fn staking_freeze_id() -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking)
+    }
+}
+
+parameter_types! {
+    pub const MaxFreezes: u32 = 10;
+}
+
 impl pallet_balances::Config for Test {
     type MaxLocks = ();
     type MaxReserves = ();
@@ -100,10 +120,14 @@ impl pallet_balances::Config for Test {
     type ExistentialDeposit = ConstU128<1>;
     type AccountStore = System;
     type WeightInfo = ();
-    type FreezeIdentifier = ();
-    type MaxFreezes = ();
+    type FreezeIdentifier = FreezeIdentifier;
+    type MaxFreezes = MaxFreezes;
     type RuntimeHoldReason = ();
     type MaxHolds = ();
+}
+
+parameter_types! {
+    pub const MinOperatorStake: u128 = 100 * SSC;
 }
 
 impl pallet_domains::Config for Test {
@@ -112,10 +136,12 @@ impl pallet_domains::Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
+    type FreezeIdentifier = FreezeIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
+    type MinOperatorStake = MinOperatorStake;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
