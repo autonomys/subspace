@@ -12,19 +12,11 @@ use subspace_networking::{
 
 type NotificationEventHandler = Bag<NotificationHandler, Notification>;
 
-pub const DEFAULT_CAPACITY: usize = (1 << 20) - 1;
-
 // TODO: Consider renaming this type.
 #[derive(Clone)]
 pub struct ArchivalStoragePieces {
     cuckoo_filter: Arc<Mutex<CuckooFilter<DefaultHasher>>>,
     listeners: NotificationEventHandler,
-}
-
-impl Default for ArchivalStoragePieces {
-    fn default() -> Self {
-        Self::new(DEFAULT_CAPACITY)
-    }
 }
 
 impl Debug for ArchivalStoragePieces {

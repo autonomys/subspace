@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
+    ArchivedHistorySegment, Piece, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
@@ -94,8 +94,13 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    // TODO: calculate proper capacity
-    let archival_storage_pieces = ArchivalStoragePieces::default();
+    let cuckoo_filter_capacity = disk_farms
+        .iter()
+        .map(|df| df.allocated_plotting_space as usize)
+        .sum::<usize>()
+        / Piece::SIZE
+        + 1usize;
+    let archival_storage_pieces = ArchivalStoragePieces::new(cuckoo_filter_capacity);
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
@@ -361,8 +366,7 @@ where
                         }
 
                         if let Err(err) = archival_storage_pieces.add_pieces(&new_pieces) {
-                            // TODO: change to error when we calculate how much space we need
-                            debug!(
+                            error!(
                                 %err,
                                 %disk_farm_index,
                                 %sector_index,
