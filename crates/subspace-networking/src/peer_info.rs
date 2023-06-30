@@ -17,7 +17,7 @@ use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use tracing::debug;
 
 #[derive(Debug, Clone, Copy)]
@@ -89,6 +89,8 @@ pub struct Behaviour<PeerInfoProvider> {
     _notify_handler_id: Option<HandlerId>,
     /// Known connected peers.
     connected_peers: HashSet<PeerId>,
+    /// Future waker.
+    waker: Option<Waker>,
 }
 
 #[derive(Debug)]
@@ -158,6 +160,13 @@ impl<PIP: PeerInfoProvider> Behaviour<PIP> {
             requests: Vec::new(),
             should_notify_handlers,
             connected_peers: HashSet::new(),
+            waker: None,
+        }
+    }
+
+    fn wake(&self) {
+        if let Some(waker) = &self.waker {
+            waker.wake_by_ref()
         }
     }
 }
@@ -195,12 +204,13 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
         self.events.push_front(Event {
             peer_id: peer,
             result,
-        })
+        });
+        self.wake();
     }
 
     fn poll(
         &mut self,
-        _: &mut Context<'_>,
+        cx: &mut Context<'_>,
         _: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::OutEvent, THandlerInEvent<Self>>> {
         if self.should_notify_handlers.swap(false, Ordering::SeqCst) {
@@ -243,6 +253,7 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
             });
         }
 
+        self.waker = Some(cx.waker().clone());
         Poll::Pending
     }
 
@@ -259,6 +270,7 @@ impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
                 if other_established == 0 {
                     let peer_info = Arc::new(self.peer_info_provider.peer_info());
                     self.requests.push(Request { peer_id, peer_info });
+                    self.wake();
                 }
             }
             FromSwarm::ConnectionClosed(ConnectionClosed {

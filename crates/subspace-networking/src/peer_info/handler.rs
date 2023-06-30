@@ -14,7 +14,7 @@ use libp2p::swarm::{
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use tracing::debug;
 
@@ -87,6 +87,8 @@ pub struct Handler {
     inbound: Option<InPeerInfoFuture>,
     /// Last peer-info error.
     error: Option<PeerInfoError>,
+    /// Future waker.
+    waker: Option<Waker>,
 }
 
 impl Handler {
@@ -97,6 +99,13 @@ impl Handler {
             outbound: None,
             inbound: None,
             error: None,
+            waker: None,
+        }
+    }
+
+    fn wake(&self) {
+        if let Some(waker) = &self.waker {
+            waker.wake_by_ref()
         }
     }
 }
@@ -122,6 +131,7 @@ impl ConnectionHandler for Handler {
         } else {
             self.outbound = Some(OutboundState::RequestNewStream(event.peer_info));
         }
+        self.wake();
     }
 
     fn connection_keep_alive(&self) -> KeepAlive {
@@ -207,6 +217,7 @@ impl ConnectionHandler for Handler {
             }
         }
 
+        self.waker = Some(cx.waker().clone());
         Poll::Pending
     }
 
@@ -251,6 +262,7 @@ impl ConnectionHandler for Handler {
             }
             ConnectionEvent::AddressChange(_) => {}
         }
+        self.wake();
     }
 }
 
