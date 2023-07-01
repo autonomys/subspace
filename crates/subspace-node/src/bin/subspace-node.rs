@@ -213,10 +213,11 @@ fn main() -> Result<(), Error> {
             // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
                 for chain in &[
-                    "subspace_gemini_1b",
-                    "Lamda_2513",
-                    "Lamda_2513_2",
-                    "Lamda_2513_3",
+                    "subspace_gemini_2a",
+                    "subspace_gemini_3a",
+                    "subspace_gemini_3b",
+                    "subspace_gemini_3c",
+                    "subspace_gemini_3d",
                 ] {
                     let _ = std::fs::remove_dir_all(
                         base_dir.join("subspace-node").join("chains").join(chain),
