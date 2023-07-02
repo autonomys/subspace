@@ -56,8 +56,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
+use sp_domains::{DomainId, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
@@ -432,19 +431,13 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
-}
-
-impl pallet_settlement::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 parameter_types! {
@@ -528,7 +521,6 @@ construct_runtime!(
         Feeds: pallet_feeds = 9,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
-        Settlement: pallet_settlement = 15,
         Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
 

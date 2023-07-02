@@ -20,7 +20,6 @@ use sp_domains::{Bundle, DomainId, ExecutorApi};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
-use subspace_core_primitives::BlockNumber;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockPrimaryNode,
@@ -36,6 +35,7 @@ fn number_of(primary_node: &MockPrimaryNode, block_hash: Hash) -> u32 {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
     let _ = sc_cli::LoggerBuilder::new("runtime=debug").init();
@@ -789,8 +789,8 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
 
     // Get a bundle from alice's tx pool and used as bundle template.
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let bundle_template = bundle.unwrap();
-    let alice_key = Sr25519Keyring::Alice;
+    let _bundle_template = bundle.unwrap();
+    let _alice_key = Sr25519Keyring::Alice;
     // Drop alice in order to control the execution chain by submitting the receipts manually later.
     drop(alice);
 

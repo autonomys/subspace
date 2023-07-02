@@ -488,19 +488,13 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
-}
-
-impl pallet_settlement::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 parameter_types! {
@@ -624,7 +618,6 @@ construct_runtime!(
         Feeds: pallet_feeds = 6,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
         ObjectStore: pallet_object_store = 10,
-        Settlement: pallet_settlement = 14,
         Domains: pallet_domains = 11,
 
         Vesting: orml_vesting = 7,
@@ -867,6 +860,8 @@ fn extract_successful_bundles(
         .collect()
 }
 
+// TODO: Remove when proceeding to fraud proof v2.
+#[allow(unused)]
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
@@ -886,17 +881,18 @@ fn extract_receipts(
         .collect()
 }
 
+// TODO: Remove when proceeding to fraud proof v2.
+#[allow(unused)]
 fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
-    let successful_fraud_proofs = Settlement::successful_fraud_proofs();
+    // TODO: Ensure fraud proof extrinsic is infallible.
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id
-                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
+                if fraud_proof.domain_id() == domain_id =>
             {
                 Some(fraud_proof)
             }

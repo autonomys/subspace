@@ -242,6 +242,7 @@ impl EndpointHandler<MessageId> for MockEndpoint {
     }
 }
 
+// TODO: Remove as pallet_settlement has been removed.
 #[frame_support::pallet]
 #[allow(dead_code)]
 pub(crate) mod mock_pallet_settlement {

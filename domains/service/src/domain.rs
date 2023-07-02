@@ -432,7 +432,7 @@ where
     // .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
     // .into();
     // TODO: Implement when block tree is ready.
-    let domain_confirmation_depth = 256u32.into();
+    let domain_confirmation_depth = 256u32;
 
     let executor = Executor::new(
         Box::new(task_manager.spawn_essential_handle()),

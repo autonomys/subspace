@@ -102,7 +102,7 @@ where
 
     fn oldest_receipt_number(
         &self,
-        at: PBlock::Hash,
+        _at: PBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
         // TODO: Implement when block tree is ready.
         Ok(0u32.into())
