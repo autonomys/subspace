@@ -1,12 +1,11 @@
 use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use futures::StreamExt;
-use parity_scale_codec::{Decode, Encode, FullCodec};
+use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
 use sp_domains::DomainId;
 use sp_messenger::RelayerApi;
-use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
 use std::sync::Arc;
 
@@ -197,6 +196,8 @@ where
 
 impl<SDSO, CDSO> CombinedSyncOracle<SDSO, CDSO> {
     /// Returns a new sync oracle that wraps system domain and core domain sync oracle.
+    // TODO: Remove or make use of it.
+    #[allow(unused)]
     fn new(system_domain_sync_oracle: SDSO, core_domain_sync_oracle: CDSO) -> Self {
         CombinedSyncOracle {
             system_domain_sync_oracle,

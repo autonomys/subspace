@@ -4,17 +4,16 @@ pub mod worker;
 
 use async_channel::TrySendError;
 use cross_domain_message_gossip::Message as GossipMessage;
-use parity_scale_codec::{Decode, Encode, FullCodec};
-use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
+use parity_scale_codec::{Decode, Encode};
+use sc_client_api::{AuxStore, HeaderBackend, ProofProvider};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
-    CoreDomainStateRootStorage, CrossDomainMessage, DomainBlockInfo, Proof,
-    RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
+    CrossDomainMessage, DomainBlockInfo, Proof, RelayerMessageWithStorageKey,
+    RelayerMessagesWithStorageKey,
 };
 use sp_messenger::RelayerApi;
-use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::ArithmeticError;
 use std::marker::PhantomData;
@@ -96,15 +95,6 @@ where
             .map_err(|_| Error::UnableToFetchDomainId)
     }
 
-    pub(crate) fn relay_confirmation_depth(
-        client: &Arc<Client>,
-    ) -> Result<NumberFor<Block>, Error> {
-        let best_block_id = client.info().best_hash;
-        let api = client.runtime_api();
-        api.relay_confirmation_depth(best_block_id)
-            .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)
-    }
-
     /// Constructs the proof for the given key using the system domain backend.
     fn construct_system_domain_storage_proof_for_key_at(
         system_domain_client: &Arc<Client>,
@@ -125,45 +115,6 @@ where
                     },
                     system_domain_state_root: state_root,
                     core_domain_proof: None,
-                    message_proof: proof,
-                })
-            })
-            .ok_or(Error::ConstructStorageProof)
-    }
-
-    /// Constructs the proof for the given key using the core domain backend.
-    fn construct_core_domain_storage_proof_for_key_at<SNumber, SHash>(
-        system_domain_info: DomainBlockInfo<SNumber, SHash>,
-        core_domain_client: &Arc<Client>,
-        block_hash: Block::Hash,
-        key: &[u8],
-        system_domain_state_root: SHash,
-        core_domain_proof: StorageProof,
-    ) -> Result<ProofOf<Block>, Error>
-    where
-        SNumber: Into<NumberFor<Block>>,
-        SHash: Into<Block::Hash>,
-    {
-        core_domain_client
-            .header(block_hash)?
-            .map(|header| (*header.number(), header.hash()))
-            .and_then(|(number, hash)| {
-                let proof = core_domain_client
-                    .read_proof(block_hash, &mut [key].into_iter())
-                    .ok()?;
-                Some(Proof {
-                    system_domain_block_info: DomainBlockInfo {
-                        block_number: system_domain_info.block_number.into(),
-                        block_hash: system_domain_info.block_hash.into(),
-                    },
-                    system_domain_state_root: system_domain_state_root.into(),
-                    core_domain_proof: Some((
-                        DomainBlockInfo {
-                            block_number: number,
-                            block_hash: hash,
-                        },
-                        core_domain_proof,
-                    )),
                     message_proof: proof,
                 })
             })
@@ -292,138 +243,6 @@ where
             |msg| {
                 Self::gossip_inbox_message_response(system_domain_client, msg, gossip_message_sink)
             },
-        )?;
-
-        Ok(())
-    }
-
-    pub(crate) fn submit_messages_from_core_domain<SDC, SBlock>(
-        relayer_id: RelayerId,
-        core_domain_client: &Arc<Client>,
-        system_domain_client: &Arc<SDC>,
-        confirmed_block_hash: Block::Hash,
-        gossip_message_sink: &GossipMessageSink,
-        relay_confirmation_depth: NumberFor<SBlock>,
-    ) -> Result<(), Error>
-    where
-        SBlock: BlockT,
-        Block::Hash: FullCodec,
-        NumberFor<Block>: FullCodec + TypeInfo,
-        NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-        SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
-        SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-        SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>,
-    {
-        let core_domain_id = Self::domain_id(core_domain_client)?;
-        let core_domain_block_header = core_domain_client.expect_header(confirmed_block_hash)?;
-        let system_domain_api = system_domain_client.runtime_api();
-        let best_system_domain_block_hash = system_domain_client.info().best_hash;
-        let best_system_domain_block_header =
-            system_domain_client.expect_header(best_system_domain_block_hash)?;
-
-        // verify if the core domain number is K-deep on System domain client
-        if !system_domain_api
-            .domain_best_number(best_system_domain_block_hash, core_domain_id)?
-            .map(
-                |best_number| match best_number.checked_sub(&relay_confirmation_depth) {
-                    None => false,
-                    Some(best_confirmed) => {
-                        best_confirmed >= (*core_domain_block_header.number()).into()
-                    }
-                },
-            )
-            .unwrap_or(false)
-        {
-            return Err(Error::CoreDomainNonConfirmedOnSystemDomain);
-        }
-
-        // verify if the state root is matching.
-        let core_domain_number = *core_domain_block_header.number();
-        if !system_domain_api
-            .domain_state_root(
-                best_system_domain_block_hash,
-                core_domain_id,
-                core_domain_number.into(),
-                confirmed_block_hash.into(),
-            )?
-            .map(|state_root| state_root == (*core_domain_block_header.state_root()).into())
-            .unwrap_or_else(|| {
-                // if this is genesis block, ignore as state root of genesis for core domain is not tracked on runtime
-                core_domain_number.is_zero()
-            })
-        {
-            tracing::error!(
-                target: LOG_TARGET,
-                "Core domain state root mismatch at: Number: {:?}, Hash: {:?}",
-                core_domain_number,
-                confirmed_block_hash
-            );
-            return Err(Error::CoreDomainStateRootInvalid);
-        }
-
-        // fetch messages to be relayed
-        let core_domain_api = core_domain_client.runtime_api();
-        let assigned_messages: RelayerMessagesWithStorageKey = core_domain_api
-            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
-            .map_err(|_| Error::FetchAssignedMessages)?;
-
-        let filtered_messages =
-            Self::filter_assigned_messages(core_domain_client, assigned_messages)?;
-
-        // short circuit if the there are no messages to relay
-        if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
-            return Ok(());
-        }
-
-        // generate core domain proof that points to the state root of the core domain block on System domain.
-        let storage_key =
-            CoreDomainStateRootStorage::<NumberFor<Block>, Block::Hash, Block::Hash>::storage_key(
-                core_domain_id,
-                *core_domain_block_header.number(),
-                core_domain_block_header.hash(),
-            );
-
-        // construct storage proof for the core domain state root using system domain backend.
-        let core_domain_state_root_proof = system_domain_client.read_proof(
-            best_system_domain_block_hash,
-            &mut [storage_key.as_ref()].into_iter(),
-        )?;
-
-        let system_domain_block_info = DomainBlockInfo {
-            block_number: *best_system_domain_block_header.number(),
-            block_hash: best_system_domain_block_hash,
-        };
-
-        Self::construct_cross_domain_message_and_submit(
-            confirmed_block_hash,
-            filtered_messages.outbox,
-            |block_hash, key| {
-                Self::construct_core_domain_storage_proof_for_key_at(
-                    system_domain_block_info.clone(),
-                    core_domain_client,
-                    block_hash,
-                    key,
-                    *best_system_domain_block_header.state_root(),
-                    core_domain_state_root_proof.clone(),
-                )
-            },
-            |msg| Self::gossip_outbox_message(core_domain_client, msg, gossip_message_sink),
-        )?;
-
-        Self::construct_cross_domain_message_and_submit(
-            confirmed_block_hash,
-            filtered_messages.inbox_responses,
-            |block_id, key| {
-                Self::construct_core_domain_storage_proof_for_key_at(
-                    system_domain_block_info.clone(),
-                    core_domain_client,
-                    block_id,
-                    key,
-                    *best_system_domain_block_header.state_root(),
-                    core_domain_state_root_proof.clone(),
-                )
-            },
-            |msg| Self::gossip_inbox_message_response(core_domain_client, msg, gossip_message_sink),
         )?;
 
         Ok(())
