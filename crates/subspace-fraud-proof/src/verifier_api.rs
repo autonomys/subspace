@@ -2,15 +2,17 @@
 //! as well as the implementation to provide convenient interfaces used in the fraud
 //! proof verification.
 
+// TODO: Remove once fraud proof v2 is implemented.
+#![allow(unused)]
+
 use codec::{Decode, Encode};
 use domain_runtime_primitives::Hash;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
-use sp_domains::DomainId;
+use sp_domains::{DomainId, ExecutorApi};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -45,8 +47,6 @@ pub trait VerifierApi {
 }
 
 /// A wrapper of primary chain client/system domain client in common.
-///
-/// Both primary chain client and system domain client maintains the state of receipts, i.e., implements `SettlementApi`.
 pub struct VerifierClient<Client, Block> {
     client: Arc<Client>,
     _phantom: PhantomData<Block>,
@@ -75,7 +75,7 @@ impl<Client, Block> VerifierApi for VerifierClient<Client, Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: SettlementApi<Block, domain_runtime_primitives::Hash>,
+    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
 {
     // TODO: It's not necessary to require `pre_state_root` in the proof and then verify, it can
     // be just retrieved by the verifier itself according the execution phase, which requires some
@@ -85,118 +85,36 @@ where
     // Related: https://github.com/subspace/subspace/pull/1240#issuecomment-1476212007
     fn verify_pre_state_root(
         &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
-        let InvalidStateTransitionProof {
-            domain_id,
-            parent_number,
-            bad_receipt_hash,
-            pre_state_root,
-            execution_phase,
-            ..
-        } = invalid_state_transition_proof;
-
-        let pre_state_root_onchain = match execution_phase {
-            ExecutionPhase::InitializeBlock { domain_parent_hash } => {
-                self.client.runtime_api().state_root(
-                    self.client.info().best_hash,
-                    *domain_id,
-                    NumberFor::<Block>::from(*parent_number),
-                    Block::Hash::decode(&mut domain_parent_hash.encode().as_slice())?,
-                )?
-            }
-            ExecutionPhase::ApplyExtrinsic(trace_index_of_pre_state_root)
-            | ExecutionPhase::FinalizeBlock {
-                total_extrinsics: trace_index_of_pre_state_root,
-            } => {
-                let trace = self.client.runtime_api().execution_trace(
-                    self.client.info().best_hash,
-                    *domain_id,
-                    *bad_receipt_hash,
-                )?;
-
-                trace.get(*trace_index_of_pre_state_root as usize).copied()
-            }
-        };
-
-        match pre_state_root_onchain {
-            Some(expected_pre_state_root) if expected_pre_state_root == *pre_state_root => Ok(()),
-            res => {
-                tracing::debug!(
-                    "Invalid `pre_state_root` in InvalidStateTransitionProof for {domain_id:?}, expected: {res:?}, got: {pre_state_root:?}",
-                );
-                Err(VerificationError::InvalidPreStateRoot)
-            }
-        }
+        // TODO: Implement or remove entirely.
+        Ok(())
     }
 
     fn verify_post_state_root(
         &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
+        _invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
-        let InvalidStateTransitionProof {
-            domain_id,
-            bad_receipt_hash,
-            execution_phase,
-            post_state_root,
-            ..
-        } = invalid_state_transition_proof;
-
-        let trace = self.client.runtime_api().execution_trace(
-            self.client.info().best_hash,
-            *domain_id,
-            *bad_receipt_hash,
-        )?;
-
-        let post_state_root_onchain = match execution_phase {
-            ExecutionPhase::InitializeBlock { .. } => trace
-                .get(0)
-                .ok_or(VerificationError::PostStateRootNotFound)?,
-            ExecutionPhase::ApplyExtrinsic(trace_index_of_post_state_root)
-            | ExecutionPhase::FinalizeBlock {
-                total_extrinsics: trace_index_of_post_state_root,
-            } => trace
-                .get(*trace_index_of_post_state_root as usize + 1)
-                .ok_or(VerificationError::PostStateRootNotFound)?,
-        };
-
-        if post_state_root_onchain == post_state_root {
-            Err(VerificationError::SamePostStateRoot)
-        } else {
-            Ok(())
-        }
+        // TODO: Implement or remove entirely.
+        Ok(())
     }
 
     fn primary_hash(
         &self,
-        domain_id: DomainId,
-        domain_block_number: u32,
+        _domain_id: DomainId,
+        _domain_block_number: u32,
     ) -> Result<H256, VerificationError> {
-        self.client
-            .runtime_api()
-            .primary_hash(
-                self.client.info().best_hash,
-                domain_id,
-                domain_block_number.into(),
-            )?
-            .and_then(|primary_hash| Decode::decode(&mut primary_hash.encode().as_slice()).ok())
-            .ok_or(VerificationError::PrimaryHashNotFound)
+        // TODO: Remove entirely.
+        Err(VerificationError::PrimaryHashNotFound)
     }
 
     fn state_root(
         &self,
-        domain_id: DomainId,
-        domain_block_number: u32,
-        domain_block_hash: H256,
+        _domain_id: DomainId,
+        _domain_block_number: u32,
+        _domain_block_hash: H256,
     ) -> Result<Hash, VerificationError> {
-        self.client
-            .runtime_api()
-            .state_root(
-                self.client.info().best_hash,
-                domain_id,
-                NumberFor::<Block>::from(domain_block_number),
-                Block::Hash::decode(&mut domain_block_hash.encode().as_slice())?,
-            )?
-            .ok_or(VerificationError::DomainStateRootNotFound)
+        // TODO: Implement or remove entirely.
+        Err(VerificationError::DomainStateRootNotFound)
     }
 }

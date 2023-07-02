@@ -276,8 +276,8 @@ mod pallet {
             let domain_id = opaque_bundle.domain_id();
 
             // TODO: Implement the receipts processing v2.
-            pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
-                .map_err(Error::<T>::from)?;
+            // pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
+            // .map_err(Error::<T>::from)?;
 
             let bundle_hash = opaque_bundle.hash();
 

@@ -32,7 +32,6 @@ use sp_domains::{DomainId, ExecutorApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
-use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
@@ -69,7 +68,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -160,7 +159,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -292,7 +291,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash> + SettlementApi<PBlock, Hash>,
+    PClient::Api: ExecutorApi<PBlock, Hash>,
     SC: SelectChain<PBlock>,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
@@ -427,11 +426,13 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
-    let domain_confirmation_depth = primary_chain_client
-        .runtime_api()
-        .receipts_pruning_depth(primary_chain_client.info().best_hash)
-        .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
-        .into();
+    // let domain_confirmation_depth = primary_chain_client
+    // .runtime_api()
+    // .receipts_pruning_depth(primary_chain_client.info().best_hash)
+    // .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
+    // .into();
+    // TODO: Implement when block tree is ready.
+    let domain_confirmation_depth = 256u32.into();
 
     let executor = Executor::new(
         Box::new(task_manager.spawn_essential_handle()),

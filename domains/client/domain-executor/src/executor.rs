@@ -21,7 +21,6 @@ use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
-use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
@@ -92,7 +91,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,

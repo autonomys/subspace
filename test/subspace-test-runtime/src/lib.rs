@@ -1120,58 +1120,6 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_settlement::SettlementApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
-            Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
-        }
-
-        fn state_root(
-            domain_id: DomainId,
-            domain_block_number: NumberFor<Block>,
-            domain_block_hash: Hash,
-        ) -> Option<domain_runtime_primitives::Hash> {
-            Settlement::state_root((domain_id, domain_block_number, domain_block_hash))
-        }
-
-        fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Settlement::primary_hash(domain_id, domain_block_number)
-        }
-
-        fn receipts_pruning_depth() -> BlockNumber {
-            ReceiptsPruningDepth::get()
-        }
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Settlement::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Settlement::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
-            extract_receipts(extrinsics, domain_id)
-        }
-
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
-            extract_fraud_proofs(extrinsics, domain_id)
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
-            Domains::submit_fraud_proof_unsigned(fraud_proof)
-        }
-    }
-
     impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
