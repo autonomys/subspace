@@ -69,7 +69,7 @@ pub struct DomainObject<Number, Hash, AccountId> {
     pub created_at: Number,
     /// The hash of the genesis execution receipt for this domain.
     pub genesis_receipt_hash: Hash,
-    /// The domain genesis config.
+    /// The domain config.
     pub domain_config: DomainConfig,
 }
 
@@ -121,8 +121,16 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
+    // Lock up fund of the domain instance creator
+    T::Currency::set_lock(
+        DOMAIN_INSTANCE_ID,
+        &owner_account_id,
+        T::DomainInstantiationDeposit::get(),
+        WithdrawReasons::all(),
+    );
+
     let domain_obj = DomainObject {
-        owner_account_id: owner_account_id.clone(),
+        owner_account_id,
         created_at,
         // TODO: drive the `genesis_receipt_hash` from genesis config through host function
         genesis_receipt_hash: T::Hash::default(),
@@ -133,14 +141,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
     let next_domain_id = domain_id.checked_add(&1.into()).ok_or(Error::MaxDomainId)?;
     NextDomainId::<T>::set(next_domain_id);
-
-    // Lock up fund of the domain instance creator
-    T::Currency::set_lock(
-        DOMAIN_INSTANCE_ID,
-        &owner_account_id,
-        T::DomainInstantiationDeposit::get(),
-        WithdrawReasons::all(),
-    );
 
     // TODO: initialize the stake summary for this domain
 
