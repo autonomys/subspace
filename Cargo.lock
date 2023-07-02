@@ -6662,21 +6662,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-settlement"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "pallet-subspace"
 version = "0.1.0"
 dependencies = [
@@ -10100,18 +10085,6 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-staking",
- "sp-std",
-]
-
-[[package]]
-name = "sp-settlement"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
- "sp-domains",
- "sp-runtime",
  "sp-std",
 ]
 
