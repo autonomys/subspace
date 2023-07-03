@@ -32,7 +32,7 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, ExecutorApi, OpaqueBundles};
+use sp_domains::{DomainId, DomainsApi, OpaqueBundles};
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
@@ -60,7 +60,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
 {
     let extrinsics = primary_chain_client
         .block_body(block_hash)?
@@ -252,7 +252,7 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
 {
     pub fn new(
         domain_id: DomainId,

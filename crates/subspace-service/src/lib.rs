@@ -71,7 +71,7 @@ use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, Subspac
 use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
-use sp_domains::{ExecutorApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
+use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -288,7 +288,7 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
-        + ExecutorApi<Block, DomainHash>
+        + DomainsApi<Block, DomainHash>
         + ObjectsApi<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
@@ -463,7 +463,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
-        + ExecutorApi<Block, DomainHash>
+        + DomainsApi<Block, DomainHash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
     TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
@@ -550,7 +550,7 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
-        + ExecutorApi<Block, DomainHash>
+        + DomainsApi<Block, DomainHash>
         + ObjectsApi<Block>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,

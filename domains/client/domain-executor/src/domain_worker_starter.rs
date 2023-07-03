@@ -33,7 +33,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
 use std::sync::Arc;
@@ -99,7 +99,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<PBlock>
         + BlockchainEvents<PBlock>
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,

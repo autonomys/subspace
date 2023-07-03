@@ -11,7 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, DomainId, ExecutorApi, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
+    Bundle, DomainId, DomainsApi, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
@@ -95,7 +95,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {

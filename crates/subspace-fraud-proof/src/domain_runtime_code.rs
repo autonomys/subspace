@@ -2,7 +2,7 @@ use codec::{Decode, Encode};
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
 use sp_domains::fraud_proof::VerificationError;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::Block as BlockT;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -38,7 +38,7 @@ where
     PBlock: BlockT,
     Hash: Encode + Decode,
     PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: DomainsApi<PBlock, Hash>,
 {
     let wasm_bundle = primary_chain_client
         .runtime_api()

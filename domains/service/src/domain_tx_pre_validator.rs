@@ -6,7 +6,7 @@ use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -69,7 +69,7 @@ where
     NumberFor<PBlock>: From<NumberFor<Block>>,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     SRE: StateRootExtractor<Block> + Send + Sync,
 {
     type Block = Block;

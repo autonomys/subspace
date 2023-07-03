@@ -4,7 +4,7 @@
 use crate::runtime_api::StateRootExtractor;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend};
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor};
 use std::sync::Arc;
@@ -22,7 +22,7 @@ pub fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
 ) -> Result<bool, Error>
 where
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: ExecutorApi<PBlock, SBlock::Hash>,
+    PClient::Api: DomainsApi<PBlock, SBlock::Hash>,
     SBlock: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<SBlock>>,
@@ -33,7 +33,7 @@ where
         // verify system domain state root
         let _best_hash = primary_chain_client.info().best_hash;
         let _primary_runtime = primary_chain_client.runtime_api();
-        // TODO: Add `state_root` in ExecutorApi
+        // TODO: Add `state_root` in DomainsApi
         // if let Some(system_domain_state_root) = primary_runtime.state_root(
         // best_hash,
         // domain_id,

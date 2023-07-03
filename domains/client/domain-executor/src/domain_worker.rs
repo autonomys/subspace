@@ -7,7 +7,7 @@ use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::{ExecutorApi, OpaqueBundle};
+use sp_domains::{DomainsApi, OpaqueBundle};
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
     Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,
@@ -77,7 +77,7 @@ pub(crate) async fn handle_block_import_notifications<
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + BlockchainEvents<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -197,7 +197,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     BundlerFn: Fn(
             (PBlock::Hash, NumberFor<PBlock>),
             ExecutorSlotInfo,

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Primitives for executor pallet.
+//! Primitives for domains pallet.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -567,8 +567,8 @@ pub trait Domain {
 }
 
 sp_api::decl_runtime_apis! {
-    /// API necessary for executor pallet.
-    pub trait ExecutorApi<DomainHash: Encode + Decode> {
+    /// API necessary for domains pallet.
+    pub trait DomainsApi<DomainHash: Encode + Decode> {
         /// Submits the transaction bundle via an unsigned extrinsic.
         fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
 

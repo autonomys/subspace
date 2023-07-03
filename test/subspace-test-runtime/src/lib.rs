@@ -1141,7 +1141,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::DomainsApi<Block, domain_runtime_primitives::Hash> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
         ) {

@@ -3,7 +3,7 @@ use sc_client_api::BlockBackend;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -88,7 +88,7 @@ where
     PBlock: BlockT,
     NumberFor<PBlock>: Into<NumberFor<Block>>,
     PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
 {
     fn best_hash(&self) -> PBlock::Hash {
         self.primary_chain_client.info().best_hash

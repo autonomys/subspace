@@ -6,7 +6,7 @@ use sc_consensus_subspace::get_chain_constants;
 use sp_api::{HeaderT, ProvideRuntimeApi};
 use sp_blockchain::HeaderMetadata;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
-use sp_domains::{ExecutorApi, OpaqueBundle};
+use sp_domains::{DomainsApi, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use std::collections::{HashSet, VecDeque};
@@ -39,7 +39,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProvideRuntimeApi<Block>
         + AuxStore,
-    Client::Api: ExecutorApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: DomainsApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
 {
     fn new(client: Arc<Client>) -> Self {
         let confirm_depth_k = get_chain_constants(client.as_ref())
@@ -274,7 +274,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProvideRuntimeApi<Block>
         + AuxStore,
-    Client::Api: ExecutorApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: DomainsApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
 {
     pub fn new(client: Arc<Client>) -> Self {
         BundleValidator {

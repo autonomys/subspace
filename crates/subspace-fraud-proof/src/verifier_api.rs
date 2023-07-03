@@ -11,7 +11,7 @@ use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -75,7 +75,7 @@ impl<Client, Block> VerifierApi for VerifierClient<Client, Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
-    Client::Api: ExecutorApi<Block, domain_runtime_primitives::Hash>,
+    Client::Api: DomainsApi<Block, domain_runtime_primitives::Hash>,
 {
     // TODO: It's not necessary to require `pre_state_root` in the proof and then verify, it can
     // be just retrieved by the verifier itself according the execution phase, which requires some

@@ -20,7 +20,7 @@ use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::Error as ConsensusError;
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -62,7 +62,7 @@ impl<Block, Client, Inner, Verifier, DomainHash> BlockImport<Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: ExecutorApi<Block, DomainHash>,
+    Client::Api: DomainsApi<Block, DomainHash>,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
         + Send,
     Verifier: VerifyFraudProof<Block> + Send,

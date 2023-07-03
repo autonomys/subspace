@@ -15,7 +15,7 @@ use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, RuntimeCode};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_state_machine::backend::AsTrieBackend;
@@ -234,7 +234,7 @@ where
     PBlock: BlockT,
     H256: Into<PBlock::Hash>,
     PClient: ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    PClient::Api: DomainsApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
@@ -377,7 +377,7 @@ where
     PBlock: BlockT,
     H256: Into<PBlock::Hash>,
     C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
+    C::Api: DomainsApi<PBlock, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,

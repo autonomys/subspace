@@ -14,7 +14,7 @@
 
 use crate::runtime_api::InherentExtrinsicConstructor;
 use sp_api::ProvideRuntimeApi;
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ where
     Block: BlockT,
     PBlock: BlockT,
     PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    PClient::Api: DomainsApi<PBlock, Block::Hash>,
     DomainRuntimeApi: InherentExtrinsicConstructor<Block>,
 {
     let primary_api = primary_client.runtime_api();
