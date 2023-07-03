@@ -38,6 +38,8 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
+use sp_runtime_interface::pass_by::PassBy;
+use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use sp_weights::Weight;
@@ -310,11 +312,6 @@ impl<DomainHash> BundleSolution<DomainHash> {
     pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
         &self.proof_of_election
     }
-
-    /// Returns the hash of the block on top of which the solution was created.
-    pub fn creation_block_hash(&self) -> &DomainHash {
-        &self.proof_of_election.system_block_hash
-    }
 }
 
 impl<DomainHash: Default> BundleSolution<DomainHash> {
@@ -503,6 +500,10 @@ pub enum RuntimeType {
     Evm,
 }
 
+impl PassBy for RuntimeType {
+    type PassBy = pass_by::Codec<Self>;
+}
+
 /// Type representing the runtime ID.
 pub type RuntimeId = u32;
 
@@ -530,6 +531,46 @@ impl DomainsDigestItem for DigestItem {
                 DomainDigestItem::DomainRuntimeUpgraded(runtime_id) => Some(runtime_id),
             },
         }
+    }
+}
+
+#[cfg(feature = "std")]
+pub trait GenerateGenesisStateRoot: Send + Sync {
+    /// Returns the state root of genesis block built from the runtime genesis config on success.
+    fn generate_genesis_state_root(
+        &self,
+        runtime_type: RuntimeType,
+        raw_runtime_genesis_config: Vec<u8>,
+    ) -> Option<H256>;
+}
+
+#[cfg(feature = "std")]
+sp_externalities::decl_extension! {
+    /// A domain genesis receipt extension.
+    pub struct GenesisReceiptExtension(std::sync::Arc<dyn GenerateGenesisStateRoot>);
+}
+
+#[cfg(feature = "std")]
+impl GenesisReceiptExtension {
+    /// Create a new instance of [`GenesisReceiptExtension`].
+    pub fn new(inner: std::sync::Arc<dyn GenerateGenesisStateRoot>) -> Self {
+        Self(inner)
+    }
+}
+
+/// Domain-related runtime interface
+#[runtime_interface]
+pub trait Domain {
+    fn generate_genesis_state_root(
+        &mut self,
+        runtime_type: RuntimeType,
+        raw_runtime_genesis_config: Vec<u8>,
+    ) -> Option<H256> {
+        use sp_externalities::ExternalitiesExt;
+
+        self.extension::<GenesisReceiptExtension>()
+            .expect("No `GenesisReceiptExtension` associated for the current context!")
+            .generate_genesis_state_root(runtime_type, raw_runtime_genesis_config)
     }
 }
 

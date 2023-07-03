@@ -60,21 +60,37 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
-    use pallet_settlement::{Error as SettlementError, FraudProofError};
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, RuntimeId, RuntimeType,
     };
-    use sp_runtime::traits::{BlockNumberProvider, Zero};
+    use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config + pallet_settlement::Config {
+    pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// Domain block hash type.
+        type DomainHash: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaybeDisplay
+            + SimpleBitOps
+            + Ord
+            + Default
+            + Copy
+            + CheckEqual
+            + sp_std::hash::Hash
+            + AsRef<[u8]>
+            + AsMut<[u8]>
+            + MaxEncodedLen
+            + Into<H256>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
@@ -206,19 +222,6 @@ mod pallet {
         Empty,
     }
 
-    impl<T> From<SettlementError> for Error<T> {
-        #[inline]
-        fn from(error: SettlementError) -> Self {
-            match error {
-                SettlementError::MissingParent => {
-                    Self::Bundle(BundleError::Receipt(ExecutionReceiptError::MissingParent))
-                }
-                SettlementError::FraudProof(err) => Self::FraudProof(err),
-                SettlementError::UnavailablePrimaryBlockHash => Self::UnavailablePrimaryBlockHash,
-            }
-        }
-    }
-
     impl<T> From<RuntimeRegistryError> for Error<T> {
         fn from(err: RuntimeRegistryError) -> Self {
             Error::RuntimeRegistry(err)
@@ -238,7 +241,7 @@ mod pallet {
         /// Invalid bundle.
         Bundle(BundleError),
         /// Invalid fraud proof.
-        FraudProof(FraudProofError),
+        FraudProof,
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
         /// Domain registry specific errors
@@ -333,9 +336,7 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
 
-            // TODO: Implement the receipts processing v2.
-            pallet_settlement::Pallet::<T>::track_receipt(domain_id, &opaque_bundle.receipt)
-                .map_err(Error::<T>::from)?;
+            // TODO: Implement the block tree v2.
 
             let bundle_hash = opaque_bundle.hash();
 
@@ -371,8 +372,7 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            pallet_settlement::Pallet::<T>::process_fraud_proof(fraud_proof)
-                .map_err(Error::<T>::from)?;
+            // TODO: Implement fraud proof processing.
 
             Ok(())
         }
@@ -550,15 +550,7 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    if let Err(e) =
-                        pallet_settlement::Pallet::<T>::validate_fraud_proof(fraud_proof)
-                    {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Bad fraud proof: {fraud_proof:?}, error: {e:?}",
-                        );
-                        return InvalidTransactionCode::FraudProof.into();
-                    }
+                    // TODO: Validate fraud proof
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)

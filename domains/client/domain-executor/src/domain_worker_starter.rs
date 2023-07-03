@@ -36,7 +36,6 @@ use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::ExecutorApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
-use sp_settlement::SettlementApi;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 use tracing::Instrument;
@@ -100,7 +99,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<PBlock>
         + BlockchainEvents<PBlock>
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash>,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,

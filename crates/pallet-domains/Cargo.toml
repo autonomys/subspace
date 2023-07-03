@@ -17,7 +17,6 @@ frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "h
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 log = { version = "0.4.19", default-features = false }
-pallet-settlement = { version = "0.1.0", default-features = false, path = "../pallet-settlement" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
@@ -40,7 +39,6 @@ std = [
   "frame-support/std",
   "frame-system/std",
   "log/std",
-  "pallet-settlement/std",
   "scale-info/std",
   "sp-core/std",
   "sp-domains/std",
