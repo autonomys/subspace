@@ -44,6 +44,7 @@ use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
 use core::simd::Simd;
@@ -69,6 +70,9 @@ pub const RANDOMNESS_LENGTH: usize = 32;
 
 /// BLAKE2b-256 hash output
 pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
+
+/// 128 bits for the proof of time data types.
+pub type PotBytes = [u8; 16];
 
 /// Type of randomness.
 #[derive(
@@ -126,6 +130,9 @@ pub type SolutionRange = u64;
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
+
+/// Block hash (the bytes from H256)
+pub type BlockHash = [u8; 32];
 
 // TODO: New type
 /// Segment commitment type.
@@ -213,6 +220,68 @@ impl Default for PosProof {
 impl PosProof {
     /// Size of proof of space proof in bytes.
     pub const SIZE: usize = 17 * 8;
+}
+
+/// Proof of time key(input to the encryption).
+#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+pub struct PotKey(PotBytes);
+
+/// Proof of time seed (input to the encryption).
+#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+pub struct PotSeed(PotBytes);
+
+/// Proof of time ciphertext (output from the encryption).
+#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+pub struct PotCheckpoint(PotBytes);
+
+/// Proof of time.
+/// TODO: versioning.
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct PotProof {
+    /// Slot the proof was evaluated for.
+    pub slot_number: SlotNumber,
+
+    /// The seed used for evaluation.
+    pub seed: PotSeed,
+
+    /// The key used for evaluation.
+    pub key: PotKey,
+
+    /// The encrypted outputs from each stage.
+    pub checkpoints: Vec<PotCheckpoint>,
+
+    /// Hash of last block at injection point.
+    pub injected_block_hash: BlockHash,
+}
+
+impl PotProof {
+    /// Create the proof.
+    pub fn new(
+        slot_number: SlotNumber,
+        seed: PotSeed,
+        key: PotKey,
+        checkpoints: Vec<PotCheckpoint>,
+        injected_block_hash: BlockHash,
+    ) -> Self {
+        Self {
+            slot_number,
+            seed,
+            key,
+            checkpoints,
+            injected_block_hash,
+        }
+    }
+
+    /// Returns the last check point.
+    pub fn output(&self) -> Option<PotCheckpoint> {
+        self.checkpoints.last().cloned()
+    }
+
+    /// Derives the global randomness from the output.
+    pub fn derive_global_randomness(&self) -> Option<Blake2b256Hash> {
+        self.output()
+            .map(|checkpoint| blake2b_256_hash(&PotBytes::from(checkpoint)))
+    }
 }
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.

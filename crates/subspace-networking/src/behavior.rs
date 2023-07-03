@@ -3,12 +3,16 @@ pub(crate) mod provider_storage;
 #[cfg(test)]
 mod tests;
 
+use crate::peer_info::{
+    Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
+};
 use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
 };
 use crate::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
 };
+use crate::PeerInfoProvider;
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
@@ -42,6 +46,10 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) connection_limits: ConnectionLimits,
     /// The configuration for the [`ReservedPeersBehaviour`].
     pub(crate) reserved_peers: ReservedPeersConfig,
+    /// The configuration for the [`PeerInfo`] protocol.
+    pub(crate) peer_info_config: PeerInfoConfig,
+    /// Provides peer-info for local peer.
+    pub(crate) peer_info_provider: PeerInfoProvider,
 }
 
 #[derive(NetworkBehaviour)]
@@ -56,6 +64,7 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
+    pub(crate) peer_info: PeerInfoBehaviour,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -94,6 +103,7 @@ where
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
+            peer_info: PeerInfoBehaviour::new(config.peer_info_config, config.peer_info_provider),
         }
     }
 }
@@ -108,4 +118,5 @@ pub(crate) enum Event {
     /// Event stub for connection limits and block list behaviours. We won't receive such events.
     VoidEventStub(VoidEvent),
     ReservedPeers(ReservedPeersEvent),
+    PeerInfo(PeerInfoEvent),
 }

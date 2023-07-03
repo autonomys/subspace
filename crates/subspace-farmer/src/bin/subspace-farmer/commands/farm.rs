@@ -17,12 +17,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
+    ArchivedHistorySegment, Piece, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
     SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
 };
+use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
@@ -93,6 +94,14 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
+    let cuckoo_filter_capacity = disk_farms
+        .iter()
+        .map(|df| df.allocated_plotting_space as usize)
+        .sum::<usize>()
+        / Piece::SIZE
+        + 1usize;
+    let archival_storage_pieces = ArchivalStoragePieces::new(cuckoo_filter_capacity);
+
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
         let directory = disk_farms
@@ -116,6 +125,7 @@ where
             &readers_and_pieces,
             node_client.clone(),
             piece_memory_cache.clone(),
+            archival_storage_pieces.clone(),
         )?
     };
 
@@ -296,6 +306,7 @@ where
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
             let span = info_span!("farm", %disk_farm_index);
+            let archival_storage_pieces = archival_storage_pieces.clone();
 
             // We are not going to send anything here, but dropping of sender on dropping of
             // corresponding `SingleDiskPlot` will allow us to stop background tasks.
@@ -352,6 +363,16 @@ where
                         if new_pieces.is_empty() {
                             // None of the pieces are new, nothing left to do here
                             return;
+                        }
+
+                        if let Err(err) = archival_storage_pieces.add_pieces(&new_pieces) {
+                            error!(
+                                %err,
+                                %disk_farm_index,
+                                %sector_index,
+                                %sector_offset,
+                                "Couldn't add new pieces to archival storage cuckoo filter.",
+                            );
                         }
 
                         // TODO: Skip those that were already announced (because they cached)

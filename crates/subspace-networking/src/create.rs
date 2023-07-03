@@ -10,10 +10,12 @@ use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
+use crate::peer_info::PeerInfoProvider;
 use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
+use crate::PeerInfoConfig;
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::connection_limits::ConnectionLimits;
@@ -48,6 +50,7 @@ const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
+const PEER_INFO_PROTOCOL_NAME: &[u8] = b"/subspace/peer-info/1.0.0";
 
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
@@ -229,6 +232,8 @@ pub struct Config<ProviderStorage> {
     pub metrics: Option<Metrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
+    /// Specifies a source for peer information.
+    pub peer_info_provider: PeerInfoProvider,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -248,6 +253,7 @@ impl Default for Config<MemoryProviderStorage> {
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
             MemoryProviderStorage::new(peer_id),
+            PeerInfoProvider::new_client(),
         )
     }
 }
@@ -261,6 +267,7 @@ where
         protocol_version: String,
         keypair: identity::Keypair,
         provider_storage: ProviderStorage,
+        peer_info_provider: PeerInfoProvider,
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
@@ -333,6 +340,7 @@ where
             temporary_ban_backoff,
             metrics: None,
             protocol_version,
+            peer_info_provider,
         }
     }
 }
@@ -391,6 +399,7 @@ where
         temporary_ban_backoff,
         metrics,
         protocol_version,
+        peer_info_provider,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -434,6 +443,8 @@ where
             reserved_peers: reserved_peers.clone(),
             protocol_name: RESERVED_PEERS_PROTOCOL_NAME,
         },
+        peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
+        peer_info_provider,
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
