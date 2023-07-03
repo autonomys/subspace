@@ -184,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
                     protocol_version.to_string(),
                     keypair,
                     provider_storage,
-                    PeerInfoProvider::new_bootstrap_node_provider(),
+                    PeerInfoProvider::new_bootstrap_node(),
                 )
             };
             let (node, mut node_runner) =

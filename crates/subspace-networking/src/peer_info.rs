@@ -114,15 +114,15 @@ pub trait CuckooFilterProvider: Debug + 'static {
 
 impl PeerInfoProvider {
     /// Creates a new Node peer-info provider.
-    pub fn new_node_provider() -> Self {
+    pub fn new_node() -> Self {
         Self::Node
     }
     /// Creates a new Bootstrap Node peer-info provider.
-    pub fn new_bootstrap_node_provider() -> Self {
+    pub fn new_bootstrap_node() -> Self {
         Self::BootstrapNode
     }
     /// Creates a new Client peer-info provider.
-    pub fn new_client_provider() -> Self {
+    pub fn new_client() -> Self {
         Self::Client
     }
     /// Creates a new Farmer peer-info provider.

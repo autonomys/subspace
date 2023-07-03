@@ -253,7 +253,7 @@ impl Default for Config<MemoryProviderStorage> {
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
             MemoryProviderStorage::new(peer_id),
-            PeerInfoProvider::new_client_provider(),
+            PeerInfoProvider::new_client(),
         )
     }
 }
