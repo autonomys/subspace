@@ -1,5 +1,9 @@
 use futures::channel::{mpsc, oneshot};
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
+use memmap2::Mmap;
+use parking_lot::RwLock;
+use std::future::Future;
+use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::reading;
@@ -8,10 +12,10 @@ use subspace_proof_of_space::Table;
 use tracing::{error, warn};
 
 #[derive(Debug)]
-pub(super) struct ReadPieceRequest {
-    pub(super) sector_index: SectorIndex,
-    pub(super) piece_offset: PieceOffset,
-    pub(super) response_sender: oneshot::Sender<Option<Piece>>,
+struct ReadPieceRequest {
+    sector_index: SectorIndex,
+    piece_offset: PieceOffset,
+    response_sender: oneshot::Sender<Option<Piece>>,
 }
 
 /// Wrapper data structure that can be used to read pieces from single disk plot
@@ -21,10 +25,34 @@ pub struct PieceReader {
 }
 
 impl PieceReader {
-    pub(super) fn new() -> (Self, mpsc::Receiver<ReadPieceRequest>) {
-        let (read_piece_sender, read_piece_receiver) = mpsc::channel::<ReadPieceRequest>(10);
+    /// Creates new piece reader instance and background future that handles reads internally.
+    ///
+    /// NOTE: Background future is async, but does blocking operations and should be running in
+    /// dedicated thread.
+    pub(super) fn new<PosTable>(
+        public_key: PublicKey,
+        pieces_in_sector: u16,
+        first_sector_index: SectorIndex,
+        global_plot_mmap: Mmap,
+        sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+        erasure_coding: ErasureCoding,
+    ) -> (Self, impl Future<Output = ()>)
+    where
+        PosTable: Table,
+    {
+        let (read_piece_sender, read_piece_receiver) = mpsc::channel(10);
 
-        (Self { read_piece_sender }, read_piece_receiver)
+        let reading_fut = read_pieces::<PosTable>(
+            public_key,
+            pieces_in_sector,
+            first_sector_index,
+            global_plot_mmap,
+            sectors_metadata,
+            erasure_coding,
+            read_piece_receiver,
+        );
+
+        (Self { read_piece_sender }, reading_fut)
     }
 
     pub(super) fn close_all_readers(&mut self) {
@@ -51,8 +79,76 @@ impl PieceReader {
     }
 }
 
+async fn read_pieces<PosTable>(
+    public_key: PublicKey,
+    pieces_in_sector: u16,
+    first_sector_index: SectorIndex,
+    global_plot_mmap: Mmap,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    erasure_coding: ErasureCoding,
+    mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
+) where
+    PosTable: Table,
+{
+    #[cfg(unix)]
+    {
+        if let Err(error) = global_plot_mmap.advise(memmap2::Advice::Random) {
+            error!(%error, "Failed to set random access on global plot mmap");
+        }
+    }
+
+    while let Some(read_piece_request) = read_piece_receiver.next().await {
+        let ReadPieceRequest {
+            sector_index,
+            piece_offset,
+            response_sender,
+        } = read_piece_request;
+
+        if response_sender.is_canceled() {
+            continue;
+        }
+
+        let (sector_metadata, sector_count) = {
+            let sectors_metadata = sectors_metadata.read();
+
+            let sector_offset = (sector_index - first_sector_index) as usize;
+            let sector_count = sectors_metadata.len();
+
+            let sector_metadata = match sectors_metadata.get(sector_offset) {
+                Some(sector_metadata) => sector_metadata.clone(),
+                None => {
+                    error!(
+                        %sector_index,
+                        %first_sector_index,
+                        %sector_count,
+                        "Tried to read piece from sector that is not yet \
+                        plotted"
+                    );
+                    continue;
+                }
+            };
+
+            (sector_metadata, sector_count)
+        };
+
+        let maybe_piece = read_piece::<PosTable>(
+            &public_key,
+            piece_offset,
+            pieces_in_sector,
+            sector_count,
+            first_sector_index,
+            &sector_metadata,
+            &global_plot_mmap,
+            &erasure_coding,
+        );
+
+        // Doesn't matter if receiver still cares about it
+        let _ = response_sender.send(maybe_piece);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-pub(super) fn read_piece<PosTable>(
+fn read_piece<PosTable>(
     public_key: &PublicKey,
     piece_offset: PieceOffset,
     pieces_in_sector: u16,

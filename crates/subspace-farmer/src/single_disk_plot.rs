@@ -5,7 +5,7 @@ use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::auditing::audit_sector;
-use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
+use crate::single_disk_plot::piece_reader::PieceReader;
 use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
@@ -998,75 +998,23 @@ impl SingleDiskPlot {
                 }
             })?;
 
-        let (piece_reader, mut read_piece_receiver) = PieceReader::new();
+        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
+            public_key,
+            pieces_in_sector,
+            first_sector_index,
+            unsafe { Mmap::map(&*plot_file)? },
+            Arc::clone(&sectors_metadata),
+            erasure_coding,
+        );
 
         let reading_join_handle = thread::Builder::new()
             .name(format!("reading-{disk_farm_index}"))
             .spawn({
-                let global_plot_mmap = unsafe { Mmap::map(&*plot_file)? };
-                #[cfg(unix)]
-                {
-                    global_plot_mmap.advise(memmap2::Advice::Random)?;
-                }
-
-                let sectors_metadata = Arc::clone(&sectors_metadata);
                 let mut stop_receiver = stop_sender.subscribe();
-                let span = span.clone();
+                let reading_fut = reading_fut.instrument(span.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let _span_guard = span.enter();
-
-                    let reading_fut = async move {
-                        while let Some(read_piece_request) = read_piece_receiver.next().await {
-                            let ReadPieceRequest {
-                                sector_index,
-                                piece_offset,
-                                response_sender,
-                            } = read_piece_request;
-
-                            if response_sender.is_canceled() {
-                                continue;
-                            }
-
-                            let (sector_metadata, sector_count) = {
-                                let sectors_metadata = sectors_metadata.read();
-
-                                let sector_offset = (sector_index - first_sector_index) as usize;
-                                let sector_count = sectors_metadata.len();
-
-                                let sector_metadata = match sectors_metadata.get(sector_offset) {
-                                    Some(sector_metadata) => sector_metadata.clone(),
-                                    None => {
-                                        error!(
-                                            %sector_index,
-                                            %first_sector_index,
-                                            %sector_count,
-                                            "Tried to read piece from sector that is not yet \
-                                            plotted"
-                                        );
-                                        continue;
-                                    }
-                                };
-
-                                (sector_metadata, sector_count)
-                            };
-
-                            let maybe_piece = read_piece::<PosTable>(
-                                &public_key,
-                                piece_offset,
-                                pieces_in_sector,
-                                sector_count,
-                                first_sector_index,
-                                &sector_metadata,
-                                &global_plot_mmap,
-                                &erasure_coding,
-                            );
-
-                            // Doesn't matter if receiver still cares about it
-                            let _ = response_sender.send(maybe_piece);
-                        }
-                    };
 
                     handle.block_on(select(
                         Box::pin(reading_fut),
