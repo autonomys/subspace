@@ -540,7 +540,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         let receipt = &mut opaque_bundle.receipt;
         assert_eq!(
             receipt.primary_number,
-            target_bundle.sealed_header.header.primary_number + 1
+            target_bundle.sealed_header.header.consensus_block_number + 1
         );
         assert_eq!(receipt.trace.len(), 3);
 

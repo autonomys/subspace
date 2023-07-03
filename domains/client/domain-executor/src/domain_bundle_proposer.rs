@@ -129,13 +129,13 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let (primary_hash, primary_number) = primary_info;
+        let (consensus_block_hash, consensus_block_number) = primary_info;
 
         let receipt = self.load_bundle_receipt(parent_number, parent_hash, parent_chain)?;
 
         let header = BundleHeader {
-            primary_number,
-            primary_hash,
+            consensus_block_number,
+            consensus_block_hash,
             slot_number: slot.into(),
             extrinsics_root,
             bundle_solution,

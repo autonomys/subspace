@@ -608,9 +608,9 @@ impl<T: Config> Pallet<T> {
                         "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
                     )
                 } else if confirmation_depth_k == One::one() {
-                    header.primary_number < finalized
+                    header.consensus_block_number < finalized
                 } else {
-                    header.primary_number <= finalized
+                    header.consensus_block_number <= finalized
                 };
 
                 if is_stale_bundle {
@@ -618,7 +618,7 @@ impl<T: Config> Pallet<T> {
                         target: "runtime::domains",
                         "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
                         ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
-                        header.primary_number,
+                        header.consensus_block_number,
                     );
                     return Err(BundleError::StaleBundle);
                 }

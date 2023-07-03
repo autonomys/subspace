@@ -162,16 +162,16 @@ fn create_dummy_receipt(
 
 fn create_dummy_bundle(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
 ) -> OpaqueBundle<BlockNumber, Hash, H256> {
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
-    let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
+    let execution_receipt = create_dummy_receipt(consensus_block_number, consensus_block_hash);
 
     let header = BundleHeader {
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
         bundle_solution: BundleSolution::dummy(domain_id, pair.public()),

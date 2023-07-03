@@ -288,8 +288,8 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 
         let dummy_header = SealedBundleHeader {
             header: BundleHeader {
-                primary_number: Number::from(0u32),
-                primary_hash: Hash::default(),
+                consensus_block_number: Number::from(0u32),
+                consensus_block_hash: Hash::default(),
                 slot_number,
                 extrinsics_root: H256::default(),
                 bundle_solution: crate::BundleSolution::dummy(

@@ -153,10 +153,10 @@ impl DomainId {
 /// assemble the final [`SealedBundleHeader`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHash> {
-    /// The block number of primary block at which the bundle was created.
-    pub primary_number: Number,
-    /// The hash of primary block at which the bundle was created.
-    pub primary_hash: Hash,
+    /// The block number of consensus block at which the bundle was created.
+    pub consensus_block_number: Number,
+    /// The hash of consensus block corresponding to `consensus_block_number`.
+    pub consensus_block_hash: Hash,
     /// The slot number.
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
@@ -434,8 +434,8 @@ pub type OpaqueBundles<Block, DomainHash> =
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
 pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
     receipt: ExecutionReceipt<BlockNumber, Hash, DomainHash>,
 ) -> OpaqueBundle<BlockNumber, Hash, DomainHash>
 where
@@ -447,8 +447,8 @@ where
 
     let sealed_header = SealedBundleHeader {
         header: BundleHeader {
-            primary_number,
-            primary_hash,
+            consensus_block_number,
+            consensus_block_hash,
             slot_number: 0u64,
             extrinsics_root: Default::default(),
             bundle_solution: BundleSolution::dummy(
