@@ -270,7 +270,6 @@ mod pallet {
         },
         DomainInstantiated {
             domain_id: DomainId,
-            runtime_id: RuntimeId,
         },
     }
 
@@ -431,16 +430,12 @@ mod pallet {
             domain_config: DomainConfig,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            let runtime_id = domain_config.runtime_id;
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
             let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
                 .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::DomainInstantiated {
-                domain_id,
-                runtime_id,
-            });
+            Self::deposit_event(Event::DomainInstantiated { domain_id });
 
             Ok(())
         }
