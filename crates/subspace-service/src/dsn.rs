@@ -14,9 +14,9 @@ use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, ConstantPeerInfoProvider, CreationError,
-    MemoryProviderStorage, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
-    NodeRunner, ParityDbError, ParityDbProviderStorage, PeerInfo, PieceAnnouncementRequestHandler,
+    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
+    NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
+    ParityDbError, ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
     PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
@@ -88,13 +88,7 @@ pub(crate) fn create_dsn_instance<AS>(
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     segment_header_cache: SegmentHeaderCache<AS>,
-) -> Result<
-    (
-        Node,
-        NodeRunner<DsnProviderStorage<AS>, ConstantPeerInfoProvider>,
-    ),
-    DsnConfigurationError,
->
+) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
 where
     AS: AuxStore + Sync + Send + 'static,
 {
@@ -135,7 +129,7 @@ where
         dsn_protocol_version,
         keypair,
         provider_storage.clone(),
-        ConstantPeerInfoProvider::new(PeerInfo::Node),
+        PeerInfoProvider::new_node_provider(),
     );
 
     default_networking_config

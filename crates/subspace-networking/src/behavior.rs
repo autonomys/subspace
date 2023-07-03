@@ -4,7 +4,7 @@ pub(crate) mod provider_storage;
 mod tests;
 
 use crate::peer_info::{
-    self, Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
+    Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
 };
 use crate::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
@@ -12,6 +12,7 @@ use crate::request_responses::{
 use crate::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
 };
+use crate::PeerInfoProvider;
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
@@ -28,7 +29,7 @@ use void::Void as VoidEvent;
 
 type BlockListBehaviour = AllowBlockListBehaviour<BlockedPeers>;
 
-pub(crate) struct BehaviorConfig<RecordStore, PeerInfoProvider> {
+pub(crate) struct BehaviorConfig<RecordStore> {
     /// Identity keypair of a node used for authenticated connections.
     pub(crate) peer_id: PeerId,
     /// The configuration for the [`Identify`] behaviour.
@@ -54,7 +55,7 @@ pub(crate) struct BehaviorConfig<RecordStore, PeerInfoProvider> {
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event")]
 #[behaviour(event_process = false)]
-pub(crate) struct Behavior<RecordStore, PeerInfoProvider> {
+pub(crate) struct Behavior<RecordStore> {
     pub(crate) identify: Identify,
     pub(crate) kademlia: Kademlia<RecordStore>,
     pub(crate) gossipsub: Toggle<Gossipsub>,
@@ -63,15 +64,14 @@ pub(crate) struct Behavior<RecordStore, PeerInfoProvider> {
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
-    pub(crate) peer_info: PeerInfoBehaviour<PeerInfoProvider>,
+    pub(crate) peer_info: PeerInfoBehaviour,
 }
 
-impl<RecordStore, PeerInfoProvider> Behavior<RecordStore, PeerInfoProvider>
+impl<RecordStore> Behavior<RecordStore>
 where
     RecordStore: Send + Sync + libp2p::kad::store::RecordStore + 'static,
-    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
-    pub(crate) fn new(config: BehaviorConfig<RecordStore, PeerInfoProvider>) -> Self {
+    pub(crate) fn new(config: BehaviorConfig<RecordStore>) -> Self {
         let kademlia = Kademlia::<RecordStore>::with_config(
             config.peer_id,
             config.record_store,

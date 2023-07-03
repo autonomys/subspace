@@ -16,6 +16,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
+use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
@@ -64,7 +65,7 @@ pub enum PeerInfo {
 
 /// A [`NetworkBehaviour`] that handles inbound peer info requests and
 /// sends outbound peer info requests on the first established connection.
-pub struct Behaviour<PeerInfoProvider> {
+pub struct Behaviour {
     /// Peer info protocol configuration.
     config: Config,
     /// Queue of events to yield to the swarm.
@@ -90,34 +91,64 @@ struct Request {
     peer_info: Arc<PeerInfo>,
 }
 
-/// Provides the current peer info data.
-pub trait PeerInfoProvider: 'static {
-    /// Returns the current peer info data.
-    fn peer_info(&self) -> PeerInfo;
-    /// Subscribe to peer info updates and invoke provided callback.
+/// Handles constant peer info data.
+#[derive(Debug)]
+pub enum PeerInfoProvider {
+    /// Provides peer-info for Node peer type.
+    Node,
+    /// Provides peer-info for Boostrap Node peer type.
+    BootstrapNode,
+    /// Provides peer-info for Client peer type.
+    Client,
+    /// Provides peer-info for Farmer peer type.
+    Farmer(Box<dyn CuckooFilterProvider + Send>),
+}
+
+/// Provides the current cuckoo-filter data.
+pub trait CuckooFilterProvider: Debug + 'static {
+    /// Returns the current cuckoo filter data.
+    fn cuckoo_filter(&self) -> CuckooFilterDTO;
+    /// Subscribe to cuckoo filter updates and invoke provided callback.
     fn on_notification(&self, callback: NotificationHandler) -> Option<HandlerId>;
 }
 
-/// Handles constant peer info data.
-pub struct ConstantPeerInfoProvider {
-    peer_info: PeerInfo,
-}
-
-impl ConstantPeerInfoProvider {
-    /// Creates a new peer [`ConstantPeerInfoProvider`].
-    pub fn new(peer_info: PeerInfo) -> Self {
-        Self { peer_info }
+impl PeerInfoProvider {
+    /// Creates a new Node peer-info provider.
+    pub fn new_node_provider() -> Self {
+        Self::Node
     }
-}
-
-impl PeerInfoProvider for ConstantPeerInfoProvider {
-    fn peer_info(&self) -> PeerInfo {
-        self.peer_info.clone()
+    /// Creates a new Bootstrap Node peer-info provider.
+    pub fn new_bootstrap_node_provider() -> Self {
+        Self::BootstrapNode
+    }
+    /// Creates a new Client peer-info provider.
+    pub fn new_client_provider() -> Self {
+        Self::Client
+    }
+    /// Creates a new Farmer peer-info provider.
+    pub fn new_farmer(provider: Box<dyn CuckooFilterProvider + Send>) -> Self {
+        Self::Farmer(provider)
     }
 
-    fn on_notification(&self, _: NotificationHandler) -> Option<HandlerId> {
-        // No notifications.
-        None
+    /// Returns the peer info data.
+    pub fn peer_info(&self) -> PeerInfo {
+        match self {
+            PeerInfoProvider::Node => PeerInfo::Node,
+            PeerInfoProvider::BootstrapNode => PeerInfo::BootstrapNode,
+            PeerInfoProvider::Client => PeerInfo::Client,
+            PeerInfoProvider::Farmer(provider) => PeerInfo::Farmer {
+                cuckoo_filter: provider.cuckoo_filter(),
+            },
+        }
+    }
+    /// Subscribe to peer info updates and invoke provided callback.
+    pub fn on_notification(&self, handler: NotificationHandler) -> Option<HandlerId> {
+        match self {
+            PeerInfoProvider::Node | PeerInfoProvider::BootstrapNode | PeerInfoProvider::Client => {
+                None
+            }
+            PeerInfoProvider::Farmer(provider) => provider.on_notification(handler),
+        }
     }
 }
 
@@ -130,9 +161,9 @@ pub struct Event {
     pub result: Result<PeerInfoSuccess, PeerInfoError>,
 }
 
-impl<PIP: PeerInfoProvider> Behaviour<PIP> {
+impl Behaviour {
     /// Creates a new `Peer Info` network behaviour with the given configuration.
-    pub fn new(config: Config, peer_info_provider: PIP) -> Self {
+    pub fn new(config: Config, peer_info_provider: PeerInfoProvider) -> Self {
         let waker = Arc::new(Mutex::new(None::<Waker>));
         let should_notify_handlers = Arc::new(AtomicBool::new(false));
         let _notify_handler_id = peer_info_provider.on_notification({
@@ -166,7 +197,7 @@ impl<PIP: PeerInfoProvider> Behaviour<PIP> {
     }
 }
 
-impl<PIP: PeerInfoProvider> NetworkBehaviour for Behaviour<PIP> {
+impl NetworkBehaviour for Behaviour {
     type ConnectionHandler = Handler;
     type OutEvent = Event;
 

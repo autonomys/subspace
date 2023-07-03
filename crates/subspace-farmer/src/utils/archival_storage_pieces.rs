@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::{
-    CuckooFilterDTO, Notification, NotificationHandler, PeerInfo, PeerInfoProvider,
+    CuckooFilterDTO, CuckooFilterProvider, Notification, NotificationHandler,
 };
 
 type NotificationEventHandler = Bag<NotificationHandler, Notification>;
@@ -50,15 +50,13 @@ impl ArchivalStoragePieces {
     }
 }
 
-impl PeerInfoProvider for ArchivalStoragePieces {
-    fn peer_info(&self) -> PeerInfo {
+impl CuckooFilterProvider for ArchivalStoragePieces {
+    fn cuckoo_filter(&self) -> CuckooFilterDTO {
         let exported_filter = self.cuckoo_filter.lock().export();
 
-        PeerInfo::Farmer {
-            cuckoo_filter: CuckooFilterDTO {
-                values: exported_filter.values,
-                length: exported_filter.length as u64,
-            },
+        CuckooFilterDTO {
+            values: exported_filter.values,
+            length: exported_filter.length as u64,
         }
     }
 

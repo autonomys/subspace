@@ -10,7 +10,7 @@ use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
-use crate::peer_info::{self, ConstantPeerInfoProvider, PeerInfo};
+use crate::peer_info::PeerInfoProvider;
 use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
@@ -184,7 +184,7 @@ impl RelayMode {
 }
 
 /// [`Node`] configuration.
-pub struct Config<ProviderStorage, PeerInfoProvider> {
+pub struct Config<ProviderStorage> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -236,13 +236,13 @@ pub struct Config<ProviderStorage, PeerInfoProvider> {
     pub peer_info_provider: PeerInfoProvider,
 }
 
-impl<ProviderStorage, PeerInfoProvider> fmt::Debug for Config<ProviderStorage, PeerInfoProvider> {
+impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }
 }
 
-impl Default for Config<MemoryProviderStorage, ConstantPeerInfoProvider> {
+impl Default for Config<MemoryProviderStorage> {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
@@ -253,15 +253,14 @@ impl Default for Config<MemoryProviderStorage, ConstantPeerInfoProvider> {
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
             MemoryProviderStorage::new(peer_id),
-            ConstantPeerInfoProvider::new(PeerInfo::default()),
+            PeerInfoProvider::new_client_provider(),
         )
     }
 }
 
-impl<ProviderStorage, PeerInfoProvider> Config<ProviderStorage, PeerInfoProvider>
+impl<ProviderStorage> Config<ProviderStorage>
 where
     ProviderStorage: provider_storage::ProviderStorage,
-    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     /// Creates a new [`Config`].
     pub fn new(
@@ -370,12 +369,11 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub fn create<ProviderStorage, PeerInfoProvider>(
-    config: Config<ProviderStorage, PeerInfoProvider>,
-) -> Result<(Node, NodeRunner<ProviderStorage, PeerInfoProvider>), CreationError>
+pub fn create<ProviderStorage>(
+    config: Config<ProviderStorage>,
+) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
 where
     ProviderStorage: Send + Sync + provider_storage::ProviderStorage + 'static,
-    PeerInfoProvider: peer_info::PeerInfoProvider,
 {
     let Config {
         keypair,
@@ -485,10 +483,7 @@ where
     let shared_weak = Arc::downgrade(&shared);
 
     let node = Node::new(shared);
-    let node_runner = NodeRunner::<ProviderStorage, PeerInfoProvider>::new(NodeRunnerConfig::<
-        ProviderStorage,
-        PeerInfoProvider,
-    > {
+    let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
         allow_non_global_addresses_in_dht,
         command_receiver,
         swarm,

@@ -15,8 +15,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, ConstantPeerInfoProvider,
-    NetworkingParametersManager, ParityDbProviderStorage, PeerInfo, VoidProviderStorage,
+    peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
+    ParityDbProviderStorage, PeerInfoProvider, VoidProviderStorage,
 };
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -184,7 +184,7 @@ async fn main() -> anyhow::Result<()> {
                     protocol_version.to_string(),
                     keypair,
                     provider_storage,
-                    ConstantPeerInfoProvider::new(PeerInfo::BootstrapNode),
+                    PeerInfoProvider::new_bootstrap_node_provider(),
                 )
             };
             let (node, mut node_runner) =

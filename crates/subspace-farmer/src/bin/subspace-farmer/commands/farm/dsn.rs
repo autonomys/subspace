@@ -54,10 +54,7 @@ pub(super) fn configure_dsn(
 ) -> Result<
     (
         Node,
-        NodeRunner<
-            FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>,
-            impl PeerInfoProvider,
-        >,
+        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>>,
         FarmerPieceCache,
     ),
     anyhow::Error,
@@ -150,7 +147,7 @@ pub(super) fn configure_dsn(
         protocol_prefix,
         keypair,
         farmer_provider_storage.clone(),
-        archival_storage_pieces,
+        PeerInfoProvider::new_farmer(Box::new(archival_storage_pieces)),
     );
     let config = Config {
         reserved_peers,
