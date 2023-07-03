@@ -2,7 +2,7 @@ use crate::{self as pallet_domains};
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use sp_core::crypto::Pair;
-use sp_core::{Get, H256, U256};
+use sp_core::{ConstU128, Get, H256, U256};
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
     ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
@@ -26,6 +26,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system,
+        Balances: pallet_balances,
         Domains: pallet_domains,
     }
 );
@@ -51,7 +52,7 @@ impl frame_system::Config for Test {
     type BlockHashCount = ConstU64<2>;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<u128>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -89,11 +90,28 @@ impl Get<BlockNumber> for ConfirmationDepthK {
     }
 }
 
+impl pallet_balances::Config for Test {
+    type MaxLocks = ();
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    type Balance = u128;
+    type DustRemoval = ();
+    type RuntimeEvent = RuntimeEvent;
+    type ExistentialDeposit = ConstU128<1>;
+    type AccountStore = System;
+    type WeightInfo = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = ();
+    type MaxHolds = ();
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type Currency = Balances;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

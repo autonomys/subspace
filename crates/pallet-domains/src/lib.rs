@@ -25,8 +25,10 @@ mod benchmarking;
 mod tests;
 
 pub mod runtime_registry;
+mod staking;
 pub mod weights;
 
+use frame_support::traits::fungible::Inspect;
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -38,16 +40,23 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
+pub(crate) type BalanceOf<T> =
+    <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
+
+pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
+
 #[frame_support::pallet]
 mod pallet {
-    use crate::calculate_tx_range;
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
         ScheduledRuntimeUpgrade,
     };
+    use crate::staking::{OperatorPool, StakingSummary};
     use crate::weights::WeightInfo;
+    use crate::{calculate_tx_range, BalanceOf, NominatorId};
     use frame_support::pallet_prelude::{StorageMap, *};
+    use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -55,7 +64,8 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
+        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, OperatorId, RuntimeId,
+        RuntimeType,
     };
     use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
@@ -88,6 +98,9 @@ mod pallet {
 
         /// Delay before a domain runtime is upgraded.
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
+
+        /// Currency type used by the domains for staking and other currency related stuff.
+        type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -126,6 +139,26 @@ mod pallet {
         Identity,
         RuntimeId,
         ScheduledRuntimeUpgrade,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub(super) type NextOperatorId<T> = StorageValue<_, OperatorId, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type OperatorIdOwner<T: Config> =
+        StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type DomainStakingSummary<T: Config> =
+        StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type OperatorPools<T: Config> = StorageMap<
+        _,
+        Identity,
+        OperatorId,
+        OperatorPool<BalanceOf<T>, NominatorId<T>>,
         OptionQuery,
     >;
 

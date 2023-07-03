@@ -489,6 +489,12 @@ impl PassBy for RuntimeType {
 /// Type representing the runtime ID.
 pub type RuntimeId = u32;
 
+/// Type representing domain epoch.
+pub type EpochIndex = u32;
+
+/// Type representing operator ID
+pub type OperatorId = u64;
+
 /// Domains specific digest item.
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub enum DomainDigestItem {
