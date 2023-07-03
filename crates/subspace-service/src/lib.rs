@@ -71,13 +71,12 @@ use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, Subspac
 use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
-use sp_domains::ExecutorApi;
+use sp_domains::{ExecutorApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
-use sp_settlement::SettlementApi;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
@@ -213,6 +212,7 @@ pub struct SubspaceConfiguration {
 
 struct SubspaceExtensionsFactory<PosTable> {
     kzg: Kzg,
+    domain_genesis_receipt_ext: Option<Arc<dyn GenerateGenesisStateRoot>>,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -230,6 +230,9 @@ where
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
         exts.register(PosExtension::new::<PosTable>());
+        if let Some(ext) = self.domain_genesis_receipt_ext.clone() {
+            exts.register(GenesisReceiptExtension::new(ext));
+        }
         exts
     }
 }
@@ -238,6 +241,12 @@ where
 #[allow(clippy::type_complexity)]
 pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
+    construct_domain_genesis_block_builder: Option<
+        &dyn Fn(
+            Arc<FullBackend>,
+            NativeElseWasmExecutor<ExecutorDispatch>,
+        ) -> Arc<dyn GenerateGenesisStateRoot>,
+    >,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -281,7 +290,6 @@ where
         + TaggedTransactionQueue<Block>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + SettlementApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -319,10 +327,14 @@ where
 
     let kzg = Kzg::new(embedded_kzg_settings());
 
+    let domain_genesis_receipt_ext =
+        construct_domain_genesis_block_builder.map(|f| f(backend.clone(), executor.clone()));
+
     client
         .execution_extensions()
         .set_extensions_factory(SubspaceExtensionsFactory::<PosTable> {
             kzg: kzg.clone(),
+            domain_genesis_receipt_ext,
             _pos_table: PhantomData,
         });
 
@@ -540,7 +552,6 @@ where
         + TransactionPaymentApi<Block, Balance>
         + ExecutorApi<Block, DomainHash>
         + ObjectsApi<Block>
-        + SettlementApi<Block, domain_runtime_primitives::Hash>
         + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
         + SubspaceApi<Block, FarmerPublicKey>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,

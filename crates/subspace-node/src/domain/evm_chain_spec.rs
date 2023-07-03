@@ -17,7 +17,7 @@
 //! EVM domain configurations.
 
 use crate::chain_spec_utils::chain_spec_properties;
-use crate::AccountId32ToAccountId20Converter;
+use crate::domain::AccountId32ToAccountId20Converter;
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
     Precompiles, SudoConfig, SystemConfig, WASM_BINARY,

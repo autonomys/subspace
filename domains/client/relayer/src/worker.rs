@@ -1,14 +1,12 @@
 use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use futures::StreamExt;
-use parity_scale_codec::{Decode, Encode, FullCodec};
+use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
 use sp_domains::DomainId;
 use sp_messenger::RelayerApi;
-use sp_runtime::scale_info::TypeInfo;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
-use sp_settlement::SettlementApi;
 use std::sync::Arc;
 
 /// Starts relaying system domain messages to other domains.
@@ -58,81 +56,6 @@ pub async fn relay_system_domain_messages<Client, Block, SO, RelayerId>(
             target: LOG_TARGET,
             ?err,
             "Failed to start relayer for system domain"
-        )
-    }
-}
-
-/// Starts relaying core domain messages to other domains.
-/// If the either system domain or core domain node is in major sync,
-/// worker waits waits until the sync is finished.
-pub async fn relay_core_domain_messages<CDC, SDC, PBlock, SBlock, Block, SDSO, CDSO, RelayerId>(
-    relayer_id: RelayerId,
-    core_domain_client: Arc<CDC>,
-    system_domain_client: Arc<SDC>,
-    system_domain_sync_oracle: SDSO,
-    core_domain_sync_oracle: CDSO,
-    gossip_message_sink: GossipMessageSink,
-) where
-    Block: BlockT,
-    PBlock: BlockT,
-    SBlock: BlockT,
-    Block::Hash: FullCodec,
-    NumberFor<Block>: FullCodec + TypeInfo,
-    NumberFor<SBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-    SBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
-    CDC: BlockchainEvents<Block>
-        + HeaderBackend<Block>
-        + AuxStore
-        + ProofProvider<Block>
-        + ProvideRuntimeApi<Block>,
-    CDC::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    SDC: HeaderBackend<SBlock> + ProvideRuntimeApi<SBlock> + ProofProvider<SBlock>,
-    SDC::Api: RelayerApi<SBlock, domain_runtime_primitives::AccountId, NumberFor<SBlock>>
-        + SettlementApi<SBlock, Block::Hash>,
-    SDSO: SyncOracle + Send,
-    CDSO: SyncOracle + Send,
-    RelayerId: Encode + Decode + Clone,
-{
-    let combined_sync_oracle =
-        CombinedSyncOracle::new(system_domain_sync_oracle, core_domain_sync_oracle);
-
-    let relay_confirmation_depth = match Relayer::relay_confirmation_depth(&core_domain_client) {
-        Ok(depth) => depth,
-        Err(err) => {
-            tracing::error!(target: LOG_TARGET, ?err, "Failed to get confirmation depth");
-            return;
-        }
-    };
-
-    let result = relay_domain_messages(
-        relayer_id,
-        relay_confirmation_depth,
-        core_domain_client,
-        |relayer_id, client, block_hash| {
-            Relayer::submit_messages_from_core_domain(
-                relayer_id,
-                client,
-                &system_domain_client,
-                block_hash,
-                &gossip_message_sink,
-                relay_confirmation_depth.into(),
-            )
-        },
-        combined_sync_oracle,
-        |domain_id, block_number| -> Result<bool, ApiError> {
-            let api = system_domain_client.runtime_api();
-            let at = system_domain_client.info().best_hash;
-            let oldest_tracked_number = api.oldest_receipt_number(at, domain_id)?;
-            // ensure block number is at least the oldest tracked number
-            Ok(block_number >= oldest_tracked_number.into())
-        },
-    )
-    .await;
-    if let Err(err) = result {
-        tracing::error!(
-            target: LOG_TARGET,
-            ?err,
-            "Failed to start relayer for core domain"
         )
     }
 }
@@ -273,6 +196,8 @@ where
 
 impl<SDSO, CDSO> CombinedSyncOracle<SDSO, CDSO> {
     /// Returns a new sync oracle that wraps system domain and core domain sync oracle.
+    // TODO: Remove or make use of it.
+    #[allow(unused)]
     fn new(system_domain_sync_oracle: SDSO, core_domain_sync_oracle: CDSO) -> Self {
         CombinedSyncOracle {
             system_domain_sync_oracle,

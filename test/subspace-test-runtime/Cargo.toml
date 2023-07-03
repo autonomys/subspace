@@ -29,7 +29,6 @@ pallet-feeds = { version = "0.1.0", default-features = false, path = "../../crat
 pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../../crates/pallet-grandpa-finality-verifier" }
 pallet-object-store = { version = "0.1.0", default-features = false, path = "../../crates/pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-offences-subspace" }
-pallet-settlement = { version = "0.1.0", default-features = false, path = "../../crates/pallet-settlement" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../../crates/pallet-rewards" }
 pallet-subspace = { version = "0.1.0", default-features = false, features = ["serde"], path = "../../crates/pallet-subspace" }
 pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
@@ -49,7 +48,6 @@ sp-objects = { version = "0.1.0", default-features = false, path = "../../crates
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
-sp-settlement = { version = "0.1.0", default-features = false, path = "../../crates/sp-settlement" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
@@ -80,7 +78,6 @@ std = [
 	"pallet-grandpa-finality-verifier/std",
 	"pallet-object-store/std",
 	"pallet-offences-subspace/std",
-	"pallet-settlement/std",
 	"pallet-rewards/std",
 	"pallet-subspace/std",
 	"pallet-sudo/std",
@@ -101,7 +98,6 @@ std = [
 	"sp-offchain/std",
 	"sp-runtime/std",
 	"sp-session/std",
-	"sp-settlement/std",
 	"sp-std/std",
 	"sp-transaction-pool/std",
 	"sp-version/std",

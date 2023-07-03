@@ -26,7 +26,6 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system,
-        Settlement: pallet_settlement,
         Domains: pallet_domains,
     }
 );
@@ -92,19 +91,13 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
+    type DomainHash = sp_core::H256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
-}
-
-impl pallet_settlement::Config for Test {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = H256;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

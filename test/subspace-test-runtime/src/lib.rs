@@ -488,19 +488,13 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
-}
-
-impl pallet_settlement::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 parameter_types! {
@@ -624,7 +618,6 @@ construct_runtime!(
         Feeds: pallet_feeds = 6,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
         ObjectStore: pallet_object_store = 10,
-        Settlement: pallet_settlement = 14,
         Domains: pallet_domains = 11,
 
         Vesting: orml_vesting = 7,
@@ -867,6 +860,8 @@ fn extract_successful_bundles(
         .collect()
 }
 
+// TODO: Remove when proceeding to fraud proof v2.
+#[allow(unused)]
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
@@ -886,17 +881,18 @@ fn extract_receipts(
         .collect()
 }
 
+// TODO: Remove when proceeding to fraud proof v2.
+#[allow(unused)]
 fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
-    let successful_fraud_proofs = Settlement::successful_fraud_proofs();
+    // TODO: Ensure fraud proof extrinsic is infallible.
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id
-                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
+                if fraud_proof.domain_id() == domain_id =>
             {
                 Some(fraud_proof)
             }
@@ -1117,58 +1113,6 @@ impl_runtime_apis! {
 
         fn chain_constants() -> ChainConstants {
             Subspace::chain_constants()
-        }
-    }
-
-    impl sp_settlement::SettlementApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
-            Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
-        }
-
-        fn state_root(
-            domain_id: DomainId,
-            domain_block_number: NumberFor<Block>,
-            domain_block_hash: Hash,
-        ) -> Option<domain_runtime_primitives::Hash> {
-            Settlement::state_root((domain_id, domain_block_number, domain_block_hash))
-        }
-
-        fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Settlement::primary_hash(domain_id, domain_block_number)
-        }
-
-        fn receipts_pruning_depth() -> BlockNumber {
-            ReceiptsPruningDepth::get()
-        }
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Settlement::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Settlement::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
-            extract_receipts(extrinsics, domain_id)
-        }
-
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
-            extract_fraud_proofs(extrinsics, domain_id)
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
-            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 

@@ -22,8 +22,10 @@ sp-application-crypto = { version = "23.0.0", default-features = false, git = "h
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", optional = true }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-externalities = { version = "0.19.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-keystore = { version = "0.27.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", optional = true }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-state-machine = { version = "0.28.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-trie = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
@@ -44,8 +46,10 @@ std = [
 	"sp-application-crypto/std",
 	"sp-consensus-slots/std",
 	"sp-core/std",
+	"sp-externalities/std",
 	"sp-keystore",
 	"sp-runtime/std",
+	"sp-runtime-interface/std",
 	"sp-state-machine/std",
 	"sp-std/std",
 	"sp-trie/std",

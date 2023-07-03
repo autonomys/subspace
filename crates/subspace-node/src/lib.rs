@@ -18,11 +18,9 @@
 
 mod chain_spec;
 mod chain_spec_utils;
-mod domain;
+pub mod domain;
 mod import_blocks_from_dsn;
 
-pub use crate::domain::cli::{DomainCli, Subcommand as DomainSubcommand};
-pub use crate::domain::AccountId32ToAccountId20Converter;
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 use bytesize::ByteSize;
 use clap::Parser;
@@ -46,10 +44,14 @@ impl NativeExecutionDispatch for ExecutorDispatch {
     type ExtendHostFunctions = (
         frame_benchmarking::benchmarking::HostFunctions,
         sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains::domain::HostFunctions,
     );
     /// Otherwise we only use the default Substrate host functions.
     #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = sp_consensus_subspace::consensus::HostFunctions;
+    type ExtendHostFunctions = (
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains::domain::HostFunctions,
+    );
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_runtime::api::dispatch(method, data)
@@ -282,7 +284,7 @@ impl SubstrateCli for Cli {
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
             "gemini-3e-compiled" => chain_spec::gemini_3e_compiled()?,
-            "gemini-3d" => chain_spec::gemini_3d_config()?,
+            "gemini-3e" => chain_spec::gemini_3e_config()?,
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
