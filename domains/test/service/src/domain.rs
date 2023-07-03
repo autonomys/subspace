@@ -38,7 +38,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as PBlock;
 use subspace_runtime_primitives::Index as Nonce;
-use subspace_test_service::MockPrimaryNode;
+use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -169,7 +169,7 @@ where
         domain_nodes_exclusive: bool,
         run_relayer: bool,
         role: Role,
-        mock_primary_node: &mut MockPrimaryNode,
+        mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
         let service_config = node_config(
             domain_id,
@@ -203,24 +203,24 @@ where
             // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
             consensus_block_import_throttling_buffer_size: 0,
-            block_importing_notification_stream: mock_primary_node
+            block_importing_notification_stream: mock_consensus_node
                 .block_importing_notification_stream(),
-            imported_block_notification_stream: mock_primary_node
+            imported_block_notification_stream: mock_consensus_node
                 .client
                 .every_import_notification_stream(),
-            new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
+            new_slot_notification_stream: mock_consensus_node.new_slot_notification_stream(),
             _phantom: Default::default(),
         };
 
-        let gossip_msg_sink = mock_primary_node
+        let gossip_msg_sink = mock_consensus_node
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
-            consensus_client: mock_primary_node.client.clone(),
-            consensus_network_sync_oracle: mock_primary_node.sync_service.clone(),
-            select_chain: mock_primary_node.select_chain.clone(),
+            consensus_client: mock_consensus_node.client.clone(),
+            consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
+            select_chain: mock_consensus_node.select_chain.clone(),
             executor_streams,
             gossip_message_sink: gossip_msg_sink,
             provider: DefaultProvider,
@@ -256,7 +256,7 @@ where
         } = domain_node;
 
         if role.is_authority() {
-            mock_primary_node
+            mock_consensus_node
                 .xdm_gossip_worker_builder()
                 .push_domain_tx_pool_sink(domain_id, tx_pool_sink.clone());
         }
@@ -402,7 +402,7 @@ impl DomainNodeBuilder {
     pub async fn build_evm_node(
         self,
         role: Role,
-        mock_primary_node: &mut MockPrimaryNode,
+        mock_consensus_node: &mut MockConsensusNode,
     ) -> EvmDomainNode {
         DomainNode::build(
             DomainId::new(3u32),
@@ -413,7 +413,7 @@ impl DomainNodeBuilder {
             self.domain_nodes_exclusive,
             self.run_relayer,
             role,
-            mock_primary_node,
+            mock_consensus_node,
         )
         .await
     }

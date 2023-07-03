@@ -22,11 +22,11 @@ use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_test_service::{
-    produce_block_with, produce_blocks, produce_blocks_until, MockPrimaryNode,
+    produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
 use tempfile::TempDir;
 
-fn number_of(primary_node: &MockPrimaryNode, block_hash: Hash) -> u32 {
+fn number_of(primary_node: &MockConsensusNode, block_hash: Hash) -> u32 {
     primary_node
         .client
         .number(block_hash)
@@ -139,7 +139,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut primary_node = MockPrimaryNode::run_mock_primary_node(
+    let mut primary_node = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -303,7 +303,7 @@ async fn test_domain_tx_propagate() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -361,7 +361,7 @@ async fn test_executor_full_node_catching_up() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -414,7 +414,7 @@ async fn test_executor_inherent_timestamp_is_set() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -490,7 +490,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -626,7 +626,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -798,7 +798,7 @@ async fn set_new_code_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -869,7 +869,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -967,7 +967,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -1043,7 +1043,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -1111,7 +1111,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 //     let tokio_handle = tokio::runtime::Handle::current();
 //
 //     // Start Ferdie
-//     let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+//     let mut ferdie = MockConsensusNode::run(
 //         tokio_handle.clone(),
 //         Ferdie,
 //         BasePath::new(directory.path().join("ferdie")),
@@ -1294,7 +1294,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // let tokio_handle = tokio::runtime::Handle::current();
 
 // // Start Ferdie
-// let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+// let mut ferdie = MockConsensusNode::run(
 // tokio_handle.clone(),
 // Ferdie,
 // BasePath::new(directory.path().join("ferdie")),

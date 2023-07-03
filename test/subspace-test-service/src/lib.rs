@@ -181,8 +181,8 @@ type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, B
 type TxPreValidator =
     ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
-/// A mock Subspace primary node instance used for testing.
-pub struct MockPrimaryNode {
+/// A mock Subspace consensus node instance used for testing.
+pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -222,13 +222,13 @@ pub struct MockPrimaryNode {
     log_prefix: &'static str,
 }
 
-impl MockPrimaryNode {
-    /// Run a mock primary node
-    pub fn run_mock_primary_node(
+impl MockConsensusNode {
+    /// Run a mock consensus node
+    pub fn run(
         tokio_handle: tokio::runtime::Handle,
         key: Sr25519Keyring,
         base_path: BasePath,
-    ) -> MockPrimaryNode {
+    ) -> MockConsensusNode {
         let log_prefix = key.into();
 
         let mut config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
@@ -237,7 +237,7 @@ impl MockPrimaryNode {
         // by `TemporarilyBanned`
         config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
-        config.network.node_name = format!("{} (MockPrimaryChain)", config.network.node_name);
+        config.network.node_name = format!("{} (Consensus)", config.network.node_name);
         let span = sc_tracing::tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
             name = config.network.node_name.as_str()
@@ -371,7 +371,7 @@ impl MockPrimaryNode {
             key.to_account_id(),
         );
 
-        MockPrimaryNode {
+        MockConsensusNode {
             task_manager,
             client,
             backend,
@@ -391,11 +391,11 @@ impl MockPrimaryNode {
         }
     }
 
-    /// Start the mock primary node network
+    /// Start the mock consensus node network
     pub fn start_network(&mut self) {
         self.network_starter
             .take()
-            .expect("mock primary node network have not started yet")
+            .expect("mock consensus node network have not started yet")
             .start_network();
     }
 
@@ -565,7 +565,7 @@ impl MockPrimaryNode {
     }
 }
 
-impl MockPrimaryNode {
+impl MockConsensusNode {
     async fn collect_txn_from_pool(
         &self,
         parent_number: NumberFor<Block>,

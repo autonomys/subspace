@@ -24,19 +24,19 @@ use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
-use subspace_test_service::{produce_block_with, produce_blocks, MockPrimaryNode};
+use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
 use tempfile::TempDir;
 
 struct TestVerifierClient {
-    primary_chain_client: Arc<Client>,
-    system_domain_client: Arc<DomainClient>,
+    consensus_client: Arc<Client>,
+    domain_client: Arc<DomainClient>,
 }
 
 impl TestVerifierClient {
-    fn new(primary_chain_client: Arc<Client>, system_domain_client: Arc<DomainClient>) -> Self {
+    fn new(consensus_client: Arc<Client>, domain_client: Arc<DomainClient>) -> Self {
         Self {
-            primary_chain_client,
-            system_domain_client,
+            consensus_client,
+            domain_client,
         }
     }
 }
@@ -67,7 +67,7 @@ impl VerifierApi for TestVerifierClient {
         // This is retrieved from the `PrimaryBlockHash` state on the parent chain in
         // production, we retrieve it from the primary chain client in test for simplicity.
         Ok(self
-            .primary_chain_client
+            .consensus_client
             .hash(domain_block_number)
             .unwrap()
             .unwrap())
@@ -80,7 +80,7 @@ impl VerifierApi for TestVerifierClient {
         domain_block_hash: H256,
     ) -> Result<Hash, VerificationError> {
         Ok(*self
-            .system_domain_client
+            .domain_client
             .header(domain_block_hash)
             .unwrap()
             .unwrap()
@@ -103,7 +103,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -417,7 +417,7 @@ async fn invalid_execution_proof_should_not_work() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -625,7 +625,7 @@ async fn invalid_execution_proof_should_not_work() {
 //     let tokio_handle = tokio::runtime::Handle::current();
 
 //     // Start Ferdie
-//     let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+//     let mut ferdie = MockConsensusNode::run(
 //         tokio_handle.clone(),
 //         Ferdie,
 //         BasePath::new(directory.path().join("ferdie")),
