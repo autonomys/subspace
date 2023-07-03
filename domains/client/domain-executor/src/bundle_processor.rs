@@ -213,9 +213,9 @@ where
             Some(exts) => exts,
             None => {
                 tracing::debug!(
-                    "No domain bundle contains in primary block {primary_info:?}, skip building domain block"
+                    "No bundles and runtime upgrade for this domain in primary block {primary_info:?}, skip building domain block"
                 );
-                self.domain_block_processor.on_domain_block_processed(
+                self.domain_block_processor.on_primary_block_processed(
                     primary_hash,
                     None,
                     head_receipt_number,
@@ -244,7 +244,7 @@ where
             domain_block_result.header_number,
         );
 
-        self.domain_block_processor.on_domain_block_processed(
+        self.domain_block_processor.on_primary_block_processed(
             primary_hash,
             Some(domain_block_result),
             head_receipt_number,

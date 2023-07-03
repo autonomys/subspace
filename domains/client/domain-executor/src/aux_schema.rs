@@ -31,18 +31,24 @@ const PRIMARY_HASH: &[u8] = b"primary_hash";
 
 /// domain_block_hash => latest_primary_block_hash
 ///
-/// Updated whenever primary block is processed, the `latest_primary_block_hash` is the block
-/// hash of the processed primary block, and the `domain_block_hash` is the best hash of domain
-/// branch driving from the processed primary block if there is no new domain block produced
-/// the same `domain_block_hash` will be inserted with a different `latest_primary_block_hash`
+/// It's important to note that a primary block could possibly contain no bundles for a specific domain,
+/// leading to the situation where multiple primary blocks could correspond to the same domain block.
+///
+/// PrimaryBlock10 --> DomainBlock5
+/// PrimaryBlock11 --> DomainBlock5
+/// PrimaryBlock12 --> DomainBlock5
+///
+/// This mapping is designed to track the most recent primary block that derives the domain block
+/// identified by `domain_block_hash`, e.g., Hash(DomainBlock5) => Hash(PrimaryBlock12).
 const LATEST_PRIMARY_HASH: &[u8] = b"latest_primary_hash";
 
 /// primary_block_hash => best_domain_block_hash
 ///
-/// Updated whenever primary block is processed, the `best_domain_block_hash` is the best hash
-/// of domain branch driving from the processed primary block, if there is no new domain block
-/// produced the `best_domain_block_hash` will be the same as the processed primary block's
-/// parent block
+/// This mapping tracks the mapping of a primary block and the corresponding domain block derived
+/// until this primary block:
+/// - Hash(PrimaryBlock10) => Hash(DomainBlock5)
+/// - Hash(PrimaryBlock11) => Hash(DomainBlock5)
+/// - Hash(PrimaryBlock12) => Hash(DomainBlock5)
 const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 
 /// Prune the execution receipts when they reach this number.

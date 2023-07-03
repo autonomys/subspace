@@ -184,7 +184,7 @@ where
                 let (common_block_number, common_block_hash) =
                     (route.common_block().number, route.common_block().hash);
 
-                // Get the domain block that driving from the common primary block and use it as
+                // Get the domain block that is derived from the common primary block and use it as
                 // the initial domain parent block
                 let domain_block_hash: Block::Hash = crate::aux_schema::best_domain_hash_for(
                     &*self.client,
@@ -193,7 +193,7 @@ where
                 .ok_or_else(
                     || {
                         sp_blockchain::Error::Backend(format!(
-                            "Domain hash driving from primary block #{common_block_number},{common_block_hash} not found"
+                            "Hash of domain block derived from primary block #{common_block_number},{common_block_hash} not found"
                         ))
                     },
                 )?;
@@ -379,7 +379,7 @@ where
         Ok(())
     }
 
-    pub(crate) fn on_domain_block_processed(
+    pub(crate) fn on_primary_block_processed(
         &self,
         primary_hash: PBlock::Hash,
         domain_block_result: Option<DomainBlockResult<Block, PBlock>>,
@@ -549,8 +549,8 @@ where
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
-            // TODO: check genesis receipt and fix https://github.com/subspace/subspace/issues/1301 to
-            // produce fraud proof accordingly
+            // Skip check for genesis receipt as it is generated on the domain instantiation by
+            // the consensus chain.
             if execution_receipt.domain_number.is_zero() {
                 continue;
             }
