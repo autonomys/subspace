@@ -1,12 +1,13 @@
+mod farming;
 pub mod piece_reader;
 
 use crate::identity::Identity;
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_plot::auditing::audit_sector;
+use crate::single_disk_plot::farming::farming;
+pub use crate::single_disk_plot::farming::FarmingError;
 use crate::single_disk_plot::piece_reader::PieceReader;
-use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
@@ -31,15 +32,17 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex, Solution};
+use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
-use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{
+    self, plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
+};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
-use subspace_farmer_components::{auditing, plotting, proving, FarmerProtocolInfo};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
-use subspace_rpc_primitives::{FarmerAppInfo, SlotInfo, SolutionResponse};
+use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, OwnedSemaphorePermit};
@@ -55,12 +58,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
-
-/// Self-imposed limit for number of solutions that farmer will not go over per challenge.
-///
-/// Only useful for initial network bootstrapping where due to initial plot size there might be too
-/// many solutions.
-const SOLUTIONS_LIMIT: usize = 1;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -396,41 +393,6 @@ pub enum PlottingError {
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
     LowLevel(#[from] plotting::PlottingError),
-}
-
-/// Errors that happen during farming
-#[derive(Debug, Error)]
-pub enum FarmingError {
-    /// Failed to substribe to slot info notifications
-    #[error("Failed to substribe to slot info notifications: {error}")]
-    FailedToSubscribeSlotInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Failed to retrieve farmer info
-    #[error("Failed to retrieve farmer info: {error}")]
-    FailedToGetFarmerInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Failed to create memory mapping for metadata
-    #[error("Failed to create memory mapping for metadata: {error}")]
-    FailedToMapMetadata {
-        /// Lower-level error
-        error: io::Error,
-    },
-    /// Failed to submit solutions response
-    #[error("Failed to submit solutions response: {error}")]
-    FailedToSubmitSolutionsResponse {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Low-level proving error
-    #[error("Low-level proving error: {0}")]
-    LowLevelProving(#[from] proving::ProvingError),
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
 }
 
 /// Errors that happen in background tasks
@@ -841,8 +803,7 @@ impl SingleDiskPlot {
                 }
             })?;
 
-        let (mut slot_info_forwarder_sender, mut slot_info_forwarder_receiver) =
-            mpsc::channel::<SlotInfo>(0);
+        let (mut slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
 
         tasks.push(Box::pin({
             let node_client = node_client.clone();
@@ -899,88 +860,20 @@ impl SingleDiskPlot {
                             return Ok(());
                         }
 
-                        while let Some(slot_info) = slot_info_forwarder_receiver.next().await {
-                            let slot = slot_info.slot_number;
-                            let sectors_metadata = sectors_metadata.read();
-                            let sector_count = sectors_metadata.len();
-
-                            debug!(%slot, %sector_count, "Reading sectors");
-
-                            let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
-
-                            for (sector_index, sector_metadata, sector) in sectors_metadata
-                                .iter()
-                                .zip(plot_mmap.chunks_exact(sector_size))
-                                .enumerate()
-                                .map(|(sector_index, (sector, metadata))| {
-                                    (sector_index as u64 + first_sector_index, sector, metadata)
-                                })
-                            {
-                                trace!(%slot, %sector_index, "Auditing sector");
-
-                                let maybe_solution_candidates = audit_sector(
-                                    &public_key,
-                                    sector_index,
-                                    &slot_info.global_challenge,
-                                    slot_info.voting_solution_range,
-                                    sector,
-                                    sector_metadata,
-                                );
-                                let Some(solution_candidates) = maybe_solution_candidates else {
-                                    continue;
-                                };
-
-                                for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
-                                    &reward_address,
-                                    &kzg,
-                                    &erasure_coding,
-                                )? {
-                                    let solution = match maybe_solution {
-                                        Ok(solution) => solution,
-                                        Err(error) => {
-                                            error!(%slot, %sector_index, %error, "Failed to prove");
-                                            // Do not error completely on disk corruption or other
-                                            // reasons why proving might fail
-                                            continue;
-                                        }
-                                    };
-
-                                    debug!(%slot, %sector_index, "Solution found");
-                                    trace!(?solution, "Solution found");
-
-                                    solutions.push(solution);
-
-                                    if solutions.len() >= SOLUTIONS_LIMIT {
-                                        break;
-                                    }
-                                }
-
-                                if solutions.len() >= SOLUTIONS_LIMIT {
-                                    break;
-                                }
-                                // TODO: It is known that decoding is slow now and we'll only be
-                                //  able to decode a single sector within time slot reliably, in the
-                                //  future we may want allow more than one sector to be valid within
-                                //  the same disk plot.
-                                if !solutions.is_empty() {
-                                    break;
-                                }
-                            }
-
-                            let response = SolutionResponse {
-                                slot_number: slot_info.slot_number,
-                                solutions,
-                            };
-                            handlers.solution.call_simple(&response);
-                            node_client
-                                .submit_solution_response(response)
-                                .await
-                                .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
-                                    error,
-                                })?;
-                        }
-
-                        Ok::<_, FarmingError>(())
+                        farming::<_, PosTable>(
+                            public_key,
+                            reward_address,
+                            first_sector_index,
+                            node_client,
+                            sector_size,
+                            plot_mmap,
+                            sectors_metadata,
+                            kzg,
+                            erasure_coding,
+                            handlers,
+                            slot_info_forwarder_receiver,
+                        )
+                        .await
                     };
 
                     let farming_result = handle.block_on(select(
