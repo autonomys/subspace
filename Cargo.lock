@@ -262,9 +262,9 @@ dependencies = [
 
 [[package]]
 name = "aes"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "433cfd6710c9986c576a25ca913c39d66a6474107b406f34f91d4a8923395241"
+checksum = "ac1f845298e95f983ff1944b728ae08b8cebab80d684f0a832ed0fc74dfa27e2"
 dependencies = [
  "cfg-if",
  "cipher 0.4.4",
@@ -292,7 +292,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "209b47e8954a928e1d72e86eca7000ebb6655fe1436d33eefc2201cad027e237"
 dependencies = [
  "aead 0.5.2",
- "aes 0.8.2",
+ "aes 0.8.3",
  "cipher 0.4.4",
  "ctr 0.9.2",
  "ghash 0.5.0",
@@ -10739,6 +10739,16 @@ dependencies = [
  "sha2 0.10.7",
  "subspace-chiapos",
  "subspace-core-primitives",
+]
+
+[[package]]
+name = "subspace-proof-of-time"
+version = "0.1.0"
+dependencies = [
+ "aes 0.8.3",
+ "rayon",
+ "subspace-core-primitives",
+ "thiserror",
 ]
 
 [[package]]
