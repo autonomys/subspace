@@ -34,12 +34,15 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, NumberFor, Zero};
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
+};
 use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness, U256};
 use subspace_runtime_primitives::Moment;
@@ -110,19 +113,25 @@ impl From<DomainId> for u32 {
     }
 }
 
-impl core::ops::Add<u32> for DomainId {
+impl core::ops::Add<DomainId> for DomainId {
     type Output = Self;
 
-    fn add(self, other: u32) -> Self {
-        Self(self.0 + other)
+    fn add(self, other: DomainId) -> Self {
+        Self(self.0 + other.0)
     }
 }
 
-impl core::ops::Sub<u32> for DomainId {
+impl core::ops::Sub<DomainId> for DomainId {
     type Output = Self;
 
-    fn sub(self, other: u32) -> Self {
-        Self(self.0 - other)
+    fn sub(self, other: DomainId) -> Self {
+        Self(self.0 - other.0)
+    }
+}
+
+impl CheckedAdd for DomainId {
+    fn checked_add(&self, rhs: &Self) -> Option<Self> {
+        self.0.checked_add(rhs.0).map(Self)
     }
 }
 
@@ -466,11 +475,20 @@ where
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct GenesisDomainRuntime {
-    pub name: Vec<u8>,
+pub struct GenesisDomain<AccountId> {
+    // Domain runtime items
+    pub runtime_name: Vec<u8>,
     pub runtime_type: RuntimeType,
     pub runtime_version: RuntimeVersion,
     pub code: Vec<u8>,
+
+    // Domain config items
+    pub owner_account_id: AccountId,
+    pub domain_name: Vec<u8>,
+    pub max_block_size: u32,
+    pub max_block_weight: Weight,
+    pub bundle_slot_probability: (u64, u64),
+    pub target_bundles_per_block: u32,
 }
 
 /// Types of runtime pallet domains currently supports

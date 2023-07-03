@@ -2,12 +2,13 @@
 
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_domains::{GenesisDomainRuntime, RuntimeType};
+use sp_domains::{GenesisDomain, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, SubspaceConfig, SudoConfig,
-    SystemConfig, VestingConfig, SSC, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
+    MaxDomainBlockWeight, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, SSC,
+    WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
@@ -83,7 +84,7 @@ fn create_genesis_config(
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.
-            key: Some(sudo_account),
+            key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
             enable_rewards: false,
@@ -92,13 +93,21 @@ fn create_genesis_config(
         },
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {
-            genesis_domain_runtime: Some(GenesisDomainRuntime {
-                name: b"evm".to_vec(),
+            genesis_domain: Some(GenesisDomain {
+                runtime_name: b"evm".to_vec(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_test_runtime::VERSION,
                 code: evm_domain_test_runtime::WASM_BINARY
                     .unwrap_or_else(|| panic!("EVM domain runtime not available"))
                     .to_owned(),
+
+                // Domain config, mainly for placeholder the concrete value TBD
+                owner_account_id: sudo_account,
+                domain_name: b"evm-domain".to_vec(),
+                max_block_size: MaxDomainBlockSize::get(),
+                max_block_weight: MaxDomainBlockWeight::get(),
+                bundle_slot_probability: (1, 1),
+                target_bundles_per_block: 10,
             }),
         },
     }
