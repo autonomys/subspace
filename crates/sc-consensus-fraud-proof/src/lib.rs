@@ -20,8 +20,8 @@ use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::Error as ConsensusError;
+use sp_domains::ExecutorApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
-use sp_settlement::SettlementApi;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
@@ -62,7 +62,7 @@ impl<Block, Client, Inner, Verifier, DomainHash> BlockImport<Block>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: SettlementApi<Block, DomainHash>,
+    Client::Api: ExecutorApi<Block, DomainHash>,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
         + Send,
     Verifier: VerifyFraudProof<Block> + Send,
@@ -82,27 +82,28 @@ where
         &mut self,
         block: BlockImportParams<Block, Self::Transaction>,
     ) -> Result<ImportResult, Self::Error> {
-        let parent_hash = *block.header.parent_hash();
+        let _parent_hash = *block.header.parent_hash();
 
         if !block.state_action.skip_execution_checks() {
-            if let Some(extrinsics) = &block.body {
+            if let Some(_extrinsics) = &block.body {
                 // TODO: Fetch the registered domains properly
                 // We may change `extract_fraud_proofs` API to return the fraud proofs for all
                 // domains instead of specifying the domain_id each time for the efficiency.
-                let registered_domains = vec![];
-                for domain_id in registered_domains {
-                    let fraud_proofs = self
-                        .client
-                        .runtime_api()
-                        .extract_fraud_proofs(parent_hash, extrinsics.clone(), domain_id)
-                        .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+                // let registered_domains = vec![];
+                // for domain_id in registered_domains {
+                // TODO: Implement `extract_fraud_proofs` when proceeding to fraud proof v2.
+                // let fraud_proofs = self
+                // .client
+                // .runtime_api()
+                // .extract_fraud_proofs(parent_hash, extrinsics.clone(), domain_id)
+                // .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
-                    for fraud_proof in fraud_proofs {
-                        self.fraud_proof_verifier
-                            .verify_fraud_proof(&fraud_proof)
-                            .map_err(|e| ConsensusError::Other(Box::new(e)))?;
-                    }
-                }
+                // for fraud_proof in fraud_proofs {
+                // self.fraud_proof_verifier
+                // .verify_fraud_proof(&fraud_proof)
+                // .map_err(|e| ConsensusError::Other(Box::new(e)))?;
+                // }
+                // }
             }
         }
 

@@ -56,8 +56,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
+use sp_domains::{DomainId, OpaqueBundle};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
@@ -432,19 +431,13 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+    type DomainHash = domain_runtime_primitives::Hash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
-}
-
-impl pallet_settlement::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
-    type MaximumReceiptDrift = MaximumReceiptDrift;
-    type ReceiptsPruningDepth = ReceiptsPruningDepth;
 }
 
 parameter_types! {
@@ -528,7 +521,6 @@ construct_runtime!(
         Feeds: pallet_feeds = 9,
         GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
         ObjectStore: pallet_object_store = 11,
-        Settlement: pallet_settlement = 15,
         Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
 
@@ -762,58 +754,6 @@ impl_runtime_apis! {
 
         fn chain_constants() -> ChainConstants {
             Subspace::chain_constants()
-        }
-    }
-
-    impl sp_settlement::SettlementApi<Block, domain_runtime_primitives::Hash> for Runtime {
-        fn execution_trace(domain_id: DomainId, receipt_hash: H256) -> Vec<domain_runtime_primitives::Hash> {
-            Settlement::receipts(domain_id, receipt_hash).map(|receipt| receipt.trace).unwrap_or_default()
-        }
-
-        fn state_root(
-            domain_id: DomainId,
-            domain_block_number: NumberFor<Block>,
-            domain_block_hash: Hash,
-        ) -> Option<domain_runtime_primitives::Hash> {
-            Settlement::state_root((domain_id, domain_block_number, domain_block_hash))
-        }
-
-        fn primary_hash(domain_id: DomainId, domain_block_number: BlockNumber) -> Option<Hash> {
-            Settlement::primary_hash(domain_id, domain_block_number)
-        }
-
-        fn receipts_pruning_depth() -> BlockNumber {
-            ReceiptsPruningDepth::get()
-        }
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Settlement::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Settlement::oldest_receipt_number(domain_id)
-        }
-
-        fn maximum_receipt_drift() -> NumberFor<Block> {
-            MaximumReceiptDrift::get()
-        }
-
-        fn extract_receipts(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>> {
-            crate::domains::extract_receipts(extrinsics, domain_id)
-        }
-
-        fn extract_fraud_proofs(
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-            domain_id: DomainId,
-        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>> {
-            crate::domains::extract_fraud_proofs(extrinsics, domain_id)
-        }
-
-        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash>) {
-            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 

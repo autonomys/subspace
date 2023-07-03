@@ -2137,7 +2137,6 @@ dependencies = [
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
- "sp-settlement",
  "sp-state-machine",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
@@ -2204,7 +2203,6 @@ dependencies = [
  "sp-keystore",
  "sp-messenger",
  "sp-runtime",
- "sp-settlement",
  "sp-state-machine",
  "sp-trie",
  "subspace-core-primitives",
@@ -2259,7 +2257,6 @@ dependencies = [
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
- "sp-settlement",
  "tracing",
 ]
 
@@ -2380,7 +2377,6 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-settlement",
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-fraud-proof",
@@ -6306,7 +6302,6 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
- "pallet-settlement",
  "parity-scale-codec",
  "scale-info",
  "sp-core",
@@ -6664,21 +6659,6 @@ dependencies = [
  "sp-staking",
  "sp-std",
  "sp-trie",
-]
-
-[[package]]
-name = "pallet-settlement"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "log",
- "parity-scale-codec",
- "scale-info",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]
@@ -8248,7 +8228,6 @@ dependencies = [
  "sp-consensus",
  "sp-domains",
  "sp-runtime",
- "sp-settlement",
  "subspace-fraud-proof",
 ]
 
@@ -10110,18 +10089,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-settlement"
-version = "0.1.0"
-dependencies = [
- "parity-scale-codec",
- "sp-api",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
 name = "sp-staking"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=55c157cff49b638a59d81a9f971f0f9a66829c71#55c157cff49b638a59d81a9f971f0f9a66829c71"
@@ -10631,7 +10598,6 @@ dependencies = [
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
- "sp-settlement",
  "sp-state-machine",
  "sp-trie",
  "subspace-runtime-primitives",
@@ -10783,7 +10749,6 @@ dependencies = [
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-runtime-configs",
- "pallet-settlement",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
@@ -10804,7 +10769,6 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-settlement",
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
@@ -10881,7 +10845,6 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-settlement",
  "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
@@ -10952,7 +10915,6 @@ dependencies = [
  "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
- "pallet-settlement",
  "pallet-subspace",
  "pallet-sudo",
  "pallet-timestamp",
@@ -10973,7 +10935,6 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-settlement",
  "sp-std",
  "sp-transaction-pool",
  "sp-version",

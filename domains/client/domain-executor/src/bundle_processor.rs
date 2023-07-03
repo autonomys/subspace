@@ -11,9 +11,8 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::traits::{Block as BlockT, HashFor, One};
 use sp_runtime::Digest;
-use sp_settlement::SettlementApi;
 use std::sync::Arc;
 
 type DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = ReceiptsChecker<
@@ -91,7 +90,7 @@ where
         + BlockBackend<PBlock>
         + ProvideRuntimeApi<PBlock>
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + SettlementApi<PBlock, Block::Hash> + 'static,
+    PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -185,11 +184,13 @@ where
             )
             .await?;
 
-        let head_receipt_number = self
-            .primary_chain_client
-            .runtime_api()
-            .head_receipt_number(primary_hash, self.domain_id)?
-            .into();
+        // TODO: Retrieve using consensus chain runtime API
+        let head_receipt_number = domain_block_result.header_number - One::one();
+        // let head_receipt_number = self
+        // .primary_chain_client
+        // .runtime_api()
+        // .head_receipt_number(primary_hash, self.domain_id)?
+        // .into();
 
         assert!(
             domain_block_result.header_number > head_receipt_number,

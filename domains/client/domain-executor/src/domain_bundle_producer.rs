@@ -160,9 +160,11 @@ where
 
         let should_skip_slot = {
             let primary_block_number = primary_info.1;
-            let head_receipt_number = self
-                .parent_chain
-                .head_receipt_number(self.parent_chain.best_hash())?;
+            // TODO: Retrieve using consensus chain runtime API
+            let head_receipt_number = domain_best_number.saturating_sub(One::one());
+            // let head_receipt_number = self
+            // .parent_chain
+            // .head_receipt_number(self.parent_chain.best_hash())?;
 
             // Receipt for block #0 does not exist, simply skip slot here to bypasss this case and
             // make the code cleaner
