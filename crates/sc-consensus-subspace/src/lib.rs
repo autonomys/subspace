@@ -238,7 +238,7 @@ pub enum Error<Header: HeaderT> {
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
-    /// Merkle Root not found
+    /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),
     /// Only root plot public key is allowed
