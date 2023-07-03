@@ -60,6 +60,7 @@ fn default_test_constants() -> ChainConstants<Header> {
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     }
 }
 
@@ -1453,3 +1454,5 @@ fn test_disallow_root_plot_public_key_override() {
         );
     });
 }
+
+// TODO: Test for expired sector

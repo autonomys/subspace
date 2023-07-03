@@ -1482,6 +1482,8 @@ fn vote_equivocation_parent_voters_duplicate() {
     });
 }
 
+// TODO: Test for `CheckVoteError::InvalidHistorySize`
+
 #[test]
 fn enabling_block_rewards_works() {
     fn set_block_rewards() {

@@ -35,6 +35,7 @@ use sp_runtime::ArithmeticError;
 use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
+use sp_std::num::NonZeroU64;
 use subspace_core_primitives::{
     ArchivedHistorySegment, BlockWeight, HistorySize, PublicKey, Randomness, RewardSignature,
     SectorId, SegmentCommitment, SegmentIndex, SolutionRange,
@@ -55,34 +56,28 @@ mod mock;
 pub struct ChainConstants<Header: HeaderT> {
     /// K Depth at which we finalize the heads.
     pub k_depth: NumberOf<Header>,
-
     /// Genesis digest items at the start of the chain since the genesis block will not have any
     /// digests to verify the Block #1 digests.
     pub genesis_digest_items: NextDigestItems,
-
     /// Genesis block segment commitments to verify the Block #1 and other block solutions until
     /// Block #1 is finalized.
     /// When Block #1 is finalized, these segment commitments are present in Block #1 are stored in
     /// the storage.
     pub genesis_segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
-
     /// Defines interval at which randomness is updated.
     pub global_randomness_interval: NumberOf<Header>,
-
     /// Era duration at which solution range is updated.
     pub era_duration: NumberOf<Header>,
-
     /// Slot probability.
     pub slot_probability: (u64, u64),
-
     /// Storage bound for the light client store.
     pub storage_bound: StorageBound<NumberOf<Header>>,
-
     /// Number of latest archived segments that are considered "recent history".
     pub recent_segments: HistorySize,
-
     /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
     pub recent_history_fraction: (HistorySize, HistorySize),
+    /// Minimum lifetime of a plotted sector, measured in archived segment.
+    pub min_sector_lifetime: HistorySize,
 }
 
 /// Defines the storage bound for the light client store.
@@ -265,6 +260,10 @@ pub enum ImportError<Header: HeaderT> {
     MissingSegmentCommitment(SegmentIndex),
     /// Incorrect block author.
     IncorrectBlockAuthor(FarmerPublicKey),
+    /// Segment commitment history is empty
+    EmptySegmentCommitmentHistory,
+    /// Invalid history size
+    InvalidHistorySize,
 }
 
 impl<Header: HeaderT> From<DigestError> for ImportError<Header> {
@@ -368,10 +367,24 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             )
             .segment_index();
 
-        let segment_commitment = self.find_segment_commitment_for_segment_index(
-            segment_index,
-            parent_header.header.hash(),
-        )?;
+        let segment_commitment = self
+            .find_segment_commitment_for_segment_index(segment_index, parent_header.header.hash())?
+            .ok_or(ImportError::MissingSegmentCommitment(segment_index))?;
+        let current_history_size = HistorySize::new(
+            NonZeroU64::try_from(self.store.number_of_segments())
+                .map_err(|_error| ImportError::EmptySegmentCommitmentHistory)?,
+        );
+        let sector_expiration_check_segment_commitment = self
+            .find_segment_commitment_for_segment_index(
+                header_digests
+                    .pre_digest
+                    .solution
+                    .history_size
+                    .sector_expiration_check(constants.min_sector_lifetime)
+                    .ok_or(ImportError::InvalidHistorySize)?
+                    .segment_index(),
+                parent_header.header.hash(),
+            )?;
 
         verify_solution(
             (&header_digests.pre_digest.solution).into(),
@@ -384,6 +397,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                     segment_commitment,
                     recent_segments: constants.recent_segments,
                     recent_history_fraction: constants.recent_history_fraction,
+                    min_sector_lifetime: constants.min_sector_lifetime,
+                    current_history_size,
+                    sector_expiration_check_segment_commitment,
                 }),
             })
                 .into(),
@@ -668,10 +684,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         &self,
         segment_index: SegmentIndex,
         chain_tip: HashOf<Header>,
-    ) -> Result<SegmentCommitment, ImportError<Header>> {
+    ) -> Result<Option<SegmentCommitment>, ImportError<Header>> {
         // check if the segment commitment is already in the store
         if let Some(segment_commitment) = self.store.segment_commitment(segment_index) {
-            return Ok(segment_commitment);
+            return Ok(Some(segment_commitment));
         };
 
         // special case: check the genesis segment commitments if the Block #1 is not finalized yet
@@ -681,7 +697,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             .genesis_segment_commitments
             .get(&segment_index)
         {
-            return Ok(*segment_commitment);
+            return Ok(Some(*segment_commitment));
         }
 
         // find the segment commitment from the headers which are not finalized yet.
@@ -700,7 +716,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             >(&header.header)?;
 
             if let Some(segment_commitment) = digest_items.segment_commitments.get(&segment_index) {
-                return Ok(*segment_commitment);
+                return Ok(Some(*segment_commitment));
             }
 
             header = self
@@ -709,7 +725,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 .ok_or_else(|| ImportError::MissingParent(header.header.hash()))?;
         }
 
-        Err(ImportError::MissingSegmentCommitment(segment_index))
+        Ok(None)
     }
 
     /// Stores finalized header and segment commitments present in the header.
