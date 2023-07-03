@@ -1745,6 +1745,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cuckoofilter"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b810a8449931679f64cd7eef1bbd0fa315801b6d5d9cdc1ace2804d6529eee18"
+dependencies = [
+ "byteorder",
+ "fnv",
+ "rand 0.7.3",
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+]
+
+[[package]]
 name = "curve25519-dalek"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9230,6 +9244,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "416bda436f9aab92e02c8e10d49a15ddd339cea90b6e340fe51ed97abb548294"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.164"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10503,6 +10526,7 @@ dependencies = [
  "blake2",
  "bytesize",
  "clap",
+ "cuckoofilter",
  "derive_more",
  "dirs",
  "event-listener-primitives",

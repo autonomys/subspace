@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::SegmentIndex;
+use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
@@ -19,10 +20,10 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-    KADEMLIA_PROVIDER_TTL_IN_SECS,
+    ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
+    PieceAnnouncementResponse, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
+    SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use tracing::{debug, error, info, trace, Instrument};
 
@@ -49,6 +50,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_memory_cache: PieceMemoryCache,
+    archival_storage_pieces: ArchivalStoragePieces,
 ) -> Result<
     (
         Node,
@@ -141,7 +143,12 @@ pub(super) fn configure_dsn(
         }
     });
 
-    let default_config = Config::new(protocol_prefix, keypair, farmer_provider_storage.clone());
+    let default_config = Config::new(
+        protocol_prefix,
+        keypair,
+        farmer_provider_storage.clone(),
+        PeerInfoProvider::new_farmer(Box::new(archival_storage_pieces)),
+    );
     let config = Config {
         reserved_peers,
         listen_on,
