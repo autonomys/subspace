@@ -2,7 +2,7 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
 use crate::sortition::TransactionSelector;
-use crate::utils::ExecutorSlotInfo;
+use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
 use domain_runtime_primitives::DomainCoreApi;
@@ -132,9 +132,9 @@ where
     pub(super) async fn produce_bundle(
         self,
         consensus_block_info: HashAndNumber<CBlock>,
-        slot_info: ExecutorSlotInfo,
+        slot_info: OperatorSlotInfo,
     ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
-        let ExecutorSlotInfo {
+        let OperatorSlotInfo {
             slot,
             global_challenge,
         } = slot_info;

@@ -8,7 +8,7 @@ use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
-pub(super) struct ExecutorSlotInfo {
+pub(super) struct OperatorSlotInfo {
     /// Slot
     pub(super) slot: Slot,
     /// Global challenge

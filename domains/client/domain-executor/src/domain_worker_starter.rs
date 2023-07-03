@@ -18,7 +18,7 @@ use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::DomainParentChain;
-use crate::utils::{BlockInfo, ExecutorSlotInfo};
+use crate::utils::{BlockInfo, OperatorSlotInfo};
 use crate::{ExecutorStreams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
@@ -165,7 +165,7 @@ pub(super) async fn start_worker<
         Box::pin(new_slot_notification_stream.map(
             |(slot, global_challenge, acknowledgement_sender)| {
                 (
-                    ExecutorSlotInfo {
+                    OperatorSlotInfo {
                         slot,
                         global_challenge,
                     },

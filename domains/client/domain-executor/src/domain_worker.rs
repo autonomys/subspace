@@ -1,6 +1,6 @@
 //! Shared domain worker functions.
 
-use crate::utils::{to_number_primitive, BlockInfo, ExecutorSlotInfo};
+use crate::utils::{to_number_primitive, BlockInfo, OperatorSlotInfo};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
@@ -17,7 +17,7 @@ use std::pin::Pin;
 pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
     bundler: BundlerFn,
-    mut slots: impl Stream<Item = (ExecutorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
+    mut slots: impl Stream<Item = (OperatorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
     Block: BlockT,
     CBlock: BlockT,
@@ -25,7 +25,7 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
     CClient::Api: DomainsApi<CBlock, Block::Hash>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
-            ExecutorSlotInfo,
+            OperatorSlotInfo,
         ) -> Pin<
             Box<
                 dyn Future<
@@ -190,7 +190,7 @@ pub(crate) async fn handle_block_import_notifications<
 async fn on_new_slot<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
     bundler: &BundlerFn,
-    executor_slot_info: ExecutorSlotInfo,
+    executor_slot_info: OperatorSlotInfo,
 ) -> Result<(), ApiError>
 where
     Block: BlockT,
@@ -199,7 +199,7 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Hash>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
-            ExecutorSlotInfo,
+            OperatorSlotInfo,
         ) -> Pin<
             Box<
                 dyn Future<
