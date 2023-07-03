@@ -164,6 +164,7 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(1).unwrap()),
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
+    pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
     pub const RecordSize: u32 = 3840;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
@@ -181,6 +182,7 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;

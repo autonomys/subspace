@@ -224,6 +224,10 @@ mod pallet {
         #[pallet::constant]
         type RecentHistoryFraction: Get<(HistorySize, HistorySize)>;
 
+        /// Minimum lifetime of a plotted sector, measured in archived segment.
+        #[pallet::constant]
+        type MinSectorLifetime: Get<HistorySize>;
+
         /// Number of votes expected per block.
         ///
         /// This impacts solution range for votes in consensus.
@@ -1059,6 +1063,7 @@ impl<T: Config> Pallet<T> {
                 T::RecentHistoryFraction::get().0,
                 T::RecentHistoryFraction::get().1,
             ),
+            min_sector_lifetime: T::MinSectorLifetime::get(),
         }
     }
 }
