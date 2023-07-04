@@ -2174,23 +2174,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-client-executor-gossip"
-version = "0.1.0"
-dependencies = [
- "futures",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "sc-network",
- "sc-network-common",
- "sc-network-gossip",
- "sc-utils",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "tracing",
-]
-
-[[package]]
 name = "domain-client-message-relayer"
 version = "0.1.0"
 dependencies = [
@@ -2274,6 +2257,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-client-subnet-gossip"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-network",
+ "sc-network-common",
+ "sc-network-gossip",
+ "sc-utils",
+ "sp-core",
+ "sp-domains",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "domain-eth-service"
 version = "0.1.0"
 dependencies = [
@@ -2349,9 +2349,9 @@ dependencies = [
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
- "domain-client-executor-gossip",
  "domain-client-message-relayer",
  "domain-client-operator",
+ "domain-client-subnet-gossip",
  "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-benchmarking-cli",

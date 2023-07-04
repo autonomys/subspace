@@ -369,7 +369,7 @@ where
         sc_network::config::FullNetworkConfiguration::new(&domain_config.service_config.network);
 
     net_config.add_notification_protocol(
-        domain_client_executor_gossip::executor_gossip_peers_set_config(),
+        domain_client_subnet_gossip::domain_subnet_gossip_peers_set_config(),
     );
 
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
