@@ -17,7 +17,7 @@
 //! Subspace node implementation.
 
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_client_executor::OperatorStreams;
+use domain_client_operator::OperatorStreams;
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;

@@ -18,9 +18,9 @@ clap = { version = "4.2.1", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../client/cross-domain-message-gossip" }
 domain-client-block-preprocessor = { package = "domain-block-preprocessor", version = "0.1.0", path = "../client/block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
-domain-client-executor = { version = "0.1.0", path = "../client/domain-executor" }
 domain-client-executor-gossip = { version = "0.1.0", path = "../client/executor-gossip" }
 domain-client-message-relayer = { version = "0.1.0", path = "../client/relayer" }
+domain-client-operator = { version = "0.1.0", path = "../client/domain-operator" }
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", default-features = false, features = ["runtime-benchmarks"] }

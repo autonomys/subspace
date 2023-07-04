@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
-use domain_client_executor::OperatorStreams;
+use domain_client_operator::OperatorStreams;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
