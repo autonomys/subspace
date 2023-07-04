@@ -64,7 +64,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, RuntimeId, RuntimeType,
+        DomainId, GenesisDomain, OpaqueBundle, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
@@ -255,7 +255,7 @@ mod pallet {
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
-            bundle_author: ExecutorPublicKey,
+            bundle_author: OperatorPublicKey,
         },
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
@@ -346,7 +346,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash,
-                bundle_author: opaque_bundle.into_executor_public_key(),
+                bundle_author: opaque_bundle.into_operator_public_key(),
             });
 
             Ok(())

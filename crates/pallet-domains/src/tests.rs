@@ -6,7 +6,7 @@ use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
+    ExecutionReceipt, OpaqueBundle, OperatorPair, SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -165,7 +165,7 @@ fn create_dummy_bundle(
     primary_number: BlockNumber,
     primary_hash: Hash,
 ) -> OpaqueBundle<BlockNumber, Hash, H256> {
-    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+    let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
     let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
 

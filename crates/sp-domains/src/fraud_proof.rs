@@ -294,10 +294,10 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
                 extrinsics_root: H256::default(),
                 bundle_solution: crate::BundleSolution::dummy(
                     domain_id,
-                    crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
+                    crate::OperatorPublicKey::unchecked_from([0u8; 32]),
                 ),
             },
-            signature: crate::ExecutorSignature::unchecked_from([0u8; 64]),
+            signature: crate::OperatorSignature::unchecked_from([0u8; 64]),
         };
 
         Self {

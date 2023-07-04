@@ -47,8 +47,8 @@ use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness, U256};
 use subspace_runtime_primitives::Moment;
 
-/// Key type for Executor.
-const KEY_TYPE: KeyTypeId = KeyTypeId(*b"exec");
+/// Key type for Operator.
+const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
 
 mod app {
     use super::KEY_TYPE;
@@ -57,22 +57,22 @@ mod app {
     app_crypto!(sr25519, KEY_TYPE);
 }
 
-/// An executor authority signature.
-pub type ExecutorSignature = app::Signature;
+/// An operator authority signature.
+pub type OperatorSignature = app::Signature;
 
-/// An executor authority keypair. Necessarily equivalent to the schnorrkel public key used in
+/// An operator authority keypair. Necessarily equivalent to the schnorrkel public key used in
 /// the main executor module. If that ever changes, then this must, too.
 #[cfg(feature = "std")]
-pub type ExecutorPair = app::Pair;
+pub type OperatorPair = app::Pair;
 
-/// An executor authority identifier.
-pub type ExecutorPublicKey = app::Public;
+/// An operator authority identifier.
+pub type OperatorPublicKey = app::Public;
 
-/// A type that implements `BoundToRuntimeAppPublic`, used for executor signing key.
-pub struct ExecutorKey;
+/// A type that implements `BoundToRuntimeAppPublic`, used for operator signing key.
+pub struct OperatorKey;
 
-impl sp_runtime::BoundToRuntimeAppPublic for ExecutorKey {
-    type Public = ExecutorPublicKey;
+impl sp_runtime::BoundToRuntimeAppPublic for OperatorKey {
+    type Public = OperatorPublicKey;
 }
 
 /// Stake weight in the domain bundle election.
@@ -178,7 +178,7 @@ pub struct SealedBundleHeader<Number, Hash, DomainHash> {
     /// Unsealed header.
     pub header: BundleHeader<Number, Hash, DomainHash>,
     /// Signature of the bundle.
-    pub signature: ExecutorSignature,
+    pub signature: OperatorSignature,
 }
 
 impl<Number: Encode, Hash: Encode, DomainHash: Encode>
@@ -187,7 +187,7 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
     /// Constructs a new instance of [`SealedBundleHeader`].
     pub fn new(
         header: BundleHeader<Number, Hash, DomainHash>,
-        signature: ExecutorSignature,
+        signature: OperatorSignature,
     ) -> Self {
         Self { header, signature }
     }
@@ -207,7 +207,7 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
         self.header
             .bundle_solution
             .proof_of_election()
-            .executor_public_key
+            .operator_public_key
             .verify(&self.pre_hash(), &self.signature)
     }
 }
@@ -221,7 +221,7 @@ pub struct ProofOfElection<DomainHash> {
     /// VRF proof.
     pub vrf_proof: VrfProof,
     /// VRF public key.
-    pub executor_public_key: ExecutorPublicKey,
+    pub operator_public_key: OperatorPublicKey,
     /// Global challenge.
     pub global_challenge: Blake2b256Hash,
     /// Storage proof containing the partial state for verifying the bundle election.
@@ -237,7 +237,7 @@ pub struct ProofOfElection<DomainHash> {
 impl<DomainHash> ProofOfElection<DomainHash> {
     pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
         bundle_election::verify_vrf_proof(
-            &self.executor_public_key,
+            &self.operator_public_key,
             // TODO: Maybe we want to store signature in the struct rather than separate fields,
             //  such that we don't need to clone here?
             &VrfSignature {
@@ -258,14 +258,14 @@ impl<DomainHash> ProofOfElection<DomainHash> {
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
+    pub fn dummy(domain_id: DomainId, operator_public_key: OperatorPublicKey) -> Self {
         let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
         let proof_bytes = vec![0u8; VrfProof::max_encoded_len()];
         Self {
             domain_id,
             vrf_output: VrfOutput::decode(&mut output_bytes.as_slice()).unwrap(),
             vrf_proof: VrfProof::decode(&mut proof_bytes.as_slice()).unwrap(),
-            executor_public_key,
+            operator_public_key,
             global_challenge: Blake2b256Hash::default(),
             storage_proof: StorageProof::empty(),
             system_state_root: Default::default(),
@@ -294,8 +294,8 @@ impl<DomainHash> BundleSolution<DomainHash> {
 
 impl<DomainHash: Default> BundleSolution<DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy(domain_id: DomainId, executor_public_key: ExecutorPublicKey) -> Self {
-        let proof_of_election = ProofOfElection::dummy(domain_id, executor_public_key);
+    pub fn dummy(domain_id: DomainId, operator_public_key: OperatorPublicKey) -> Self {
+        let proof_of_election = ProofOfElection::dummy(domain_id, operator_public_key);
 
         Self {
             authority_stake_weight: Default::default(),
@@ -334,13 +334,13 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
             .domain_id
     }
 
-    /// Consumes [`Bundle`] to extract the inner executor public key.
-    pub fn into_executor_public_key(self) -> ExecutorPublicKey {
+    /// Consumes [`Bundle`] to extract the inner operator public key.
+    pub fn into_operator_public_key(self) -> OperatorPublicKey {
         self.sealed_header
             .header
             .bundle_solution
             .proof_of_election
-            .executor_public_key
+            .operator_public_key
     }
 }
 
@@ -453,10 +453,10 @@ where
             extrinsics_root: Default::default(),
             bundle_solution: BundleSolution::dummy(
                 domain_id,
-                ExecutorPublicKey::unchecked_from([0u8; 32]),
+                OperatorPublicKey::unchecked_from([0u8; 32]),
             ),
         },
-        signature: ExecutorSignature::unchecked_from([0u8; 64]),
+        signature: OperatorSignature::unchecked_from([0u8; 64]),
     };
 
     OpaqueBundle {

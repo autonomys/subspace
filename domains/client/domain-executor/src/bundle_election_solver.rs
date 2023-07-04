@@ -1,4 +1,4 @@
-use sp_domains::{BundleSolution, DomainId, ExecutorPublicKey};
+use sp_domains::{BundleSolution, DomainId, OperatorPublicKey};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
@@ -40,7 +40,7 @@ where
 
         if let Some(authority_id) = self
             .keystore
-            .sr25519_public_keys(ExecutorPublicKey::ID)
+            .sr25519_public_keys(OperatorPublicKey::ID)
             .into_iter()
             .next()
         {

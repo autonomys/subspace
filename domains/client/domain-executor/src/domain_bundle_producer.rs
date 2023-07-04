@@ -11,7 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, DomainId, DomainsApi, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
+    Bundle, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
@@ -187,7 +187,7 @@ where
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
             let proof_of_election = bundle_solution.proof_of_election();
-            let bundle_author = proof_of_election.executor_public_key.clone();
+            let bundle_author = proof_of_election.operator_public_key.clone();
             let tx_range = self
                 .primary_chain_client
                 .runtime_api()
@@ -218,7 +218,7 @@ where
             let signature = self
                 .keystore
                 .sr25519_sign(
-                    ExecutorPublicKey::ID,
+                    OperatorPublicKey::ID,
                     bundle_author.as_ref(),
                     to_sign.as_ref(),
                 )
@@ -233,7 +233,7 @@ where
                     ))
                 })?;
 
-            let signature = ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
+            let signature = OperatorSignature::decode(&mut signature.as_ref()).map_err(|err| {
                 sp_blockchain::Error::Application(Box::from(format!(
                     "Failed to decode the signature of bundle: {err}"
                 )))
