@@ -34,7 +34,7 @@ pub struct OperatorPool<Balance, NominatorId> {
     pub pending_transfers: Vec<PendingTransfer<NominatorId, Balance>>,
 }
 
-/// Type that represents an nominator details under a specific operator pool
+/// Type that represents a nominator's details under a specific operator pool
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct Nominator<Balance> {
     pub shares: Balance,
@@ -76,7 +76,7 @@ pub struct OperatorConfig<Balance> {
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
-    MaxOperatorId,
+    MaximumOperatorId,
     DomainNotInitialized,
     InsufficientBalance,
     BalanceFreeze,
@@ -93,7 +93,7 @@ pub(crate) fn do_register_operator<T: Config>(
 ) -> Result<OperatorId, Error> {
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
         let operator_id = NextOperatorId::<T>::get();
-        let next_operator_id = operator_id.checked_add(1).ok_or(Error::MaxOperatorId)?;
+        let next_operator_id = operator_id.checked_add(1).ok_or(Error::MaximumOperatorId)?;
         NextOperatorId::<T>::set(next_operator_id);
 
         OperatorIdOwner::<T>::insert(operator_id, operator_owner.clone());
