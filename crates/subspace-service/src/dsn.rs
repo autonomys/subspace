@@ -16,7 +16,7 @@ use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
     NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbError, ParityDbProviderStorage, PieceAnnouncementRequestHandler,
+    ParityDbError, ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
     PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
@@ -125,8 +125,12 @@ where
     let provider_storage =
         NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
     let keypair = dsn_config.keypair.clone();
-    let mut default_networking_config =
-        subspace_networking::Config::new(dsn_protocol_version, keypair, provider_storage.clone());
+    let mut default_networking_config = subspace_networking::Config::new(
+        dsn_protocol_version,
+        keypair,
+        provider_storage.clone(),
+        PeerInfoProvider::new_node(),
+    );
 
     default_networking_config
         .kademlia

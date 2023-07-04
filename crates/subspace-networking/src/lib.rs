@@ -22,6 +22,7 @@ mod behavior;
 mod create;
 mod node;
 mod node_runner;
+mod peer_info;
 mod request_handlers;
 mod request_responses;
 mod reserved_peers;
@@ -36,6 +37,10 @@ pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
 };
 pub use crate::node_runner::{NodeRunner, KADEMLIA_PROVIDER_TTL_IN_SECS};
+pub use crate::peer_info::{
+    Config as PeerInfoConfig, CuckooFilterDTO, CuckooFilterProvider, Notification,
+    NotificationHandler, PeerInfo, PeerInfoProvider,
+};
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
 };
@@ -44,9 +49,6 @@ pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{
     ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
-};
-pub use request_handlers::peer_info::{
-    PeerInfo, PeerInfoRequest, PeerInfoRequestHandler, PeerInfoResponse, PeerSyncStatus,
 };
 pub use request_handlers::piece_announcement::{
     PieceAnnouncementRequest, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
