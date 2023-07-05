@@ -40,7 +40,7 @@ use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
+use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_transaction_pool::bundle_validator::BundleValidator;
@@ -76,7 +76,7 @@ pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
 type TxPreValidator =
-    PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+    ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
 /// Run a farmer.
 pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)

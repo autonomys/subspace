@@ -68,7 +68,7 @@ pub(crate) async fn handle_block_import_notifications<
     mut leaves: Vec<(CBlock::Hash, NumberFor<CBlock>, bool)>,
     mut blocks_importing: BlocksImporting,
     mut blocks_imported: BlocksImported,
-    primary_block_import_throttling_buffer_size: u32,
+    consensus_block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
     CBlock: BlockT,
@@ -96,7 +96,7 @@ pub(crate) async fn handle_block_import_notifications<
         // Skip the blocks that have been processed by the execution chain.
         if number > best_domain_number.into() {
             if let Err(error) = processor((hash, number, is_new_best)).await {
-                tracing::error!(?error, "Failed to process primary block on startup");
+                tracing::error!(?error, "Failed to process consensus block on startup");
                 // Bring down the service as bundles processor is an essential task.
                 // TODO: more graceful shutdown.
                 return;
@@ -104,17 +104,17 @@ pub(crate) async fn handle_block_import_notifications<
         }
     }
 
-    // The primary chain can be ahead of the domain by up to `block_import_throttling_buffer_size/2`
+    // The consensus chain can be ahead of the domain by up to `block_import_throttling_buffer_size/2`
     // blocks, for there are two notifications per block sent to this buffer (one will be actually
     // consumed by the domain processor, the other from `sc-consensus-subspace` is used to discontinue
-    // the primary block import in case the primary chain runs much faster than the domain.).
+    // the consensus block import in case the consensus chain runs much faster than the domain.).
     let (mut block_info_sender, mut block_info_receiver) =
-        mpsc::channel(primary_block_import_throttling_buffer_size as usize);
+        mpsc::channel(consensus_block_import_throttling_buffer_size as usize);
 
     // Run the actual processor in a dedicated task, otherwise `tokio::select!` might hang forever
     // when the throttling buffer is full.
     spawn_essential.spawn_essential_blocking(
-        "primary-block-processor",
+        "consensus-block-processor",
         None,
         Box::pin(async move {
             while let Some(maybe_block_info) = block_info_receiver.next().await {
@@ -123,7 +123,7 @@ pub(crate) async fn handle_block_import_notifications<
                         block_imported::<CBlock, _>(&processor, &mut active_leaves, block_info)
                             .await
                     {
-                        tracing::error!(?error, "Failed to process primary block");
+                        tracing::error!(?error, "Failed to process consensus block");
                         // Bring down the service as bundles processor is an essential task.
                         // TODO: more graceful shutdown.
                         break;

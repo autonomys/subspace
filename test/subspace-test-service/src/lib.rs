@@ -73,7 +73,7 @@ use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVeri
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
-use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
+use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, FraudProofVerifier, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
@@ -179,7 +179,7 @@ pub fn node_config(
 type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, Block>, Block>;
 
 type TxPreValidator =
-    PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+    ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
 /// A mock Subspace primary node instance used for testing.
 pub struct MockPrimaryNode {
@@ -278,7 +278,7 @@ impl MockPrimaryNode {
             Arc::new(invalid_state_transition_proof_verifier),
         );
 
-        let tx_pre_validator = PrimaryChainTxPreValidator::new(
+        let tx_pre_validator = ConsensusChainTxPreValidator::new(
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             proof_verifier.clone(),
@@ -868,7 +868,7 @@ where
                     // It is necessary to notify the subscriber twice for each importing block in the test to ensure
                     // the imported block must be fully processed by the executor when all acknowledgements responded.
                     // This is because the `futures::channel::mpsc::channel` used in the executor have 1 slot even the
-                    // `primary_block_import_throttling_buffer_size` is set to 0 in the test, notify one more time can
+                    // `consensus_block_import_throttling_buffer_size` is set to 0 in the test, notify one more time can
                     // ensure the previously sent `block_imported` notification must be fully processed by the executor
                     // when the second acknowledgements responded.
                     // Please see https://github.com/subspace/subspace/pull/1363#discussion_r1162571291 for more details.

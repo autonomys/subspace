@@ -116,10 +116,10 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
 >;
 
 /// Notification streams from the primary chain driving the executor.
-pub struct ExecutorStreams<CBlock, IBNS, CIBNS, NSNS> {
+pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS> {
     /// Pause the primary block import when the primary chain client
     /// runs much faster than the domain client.
-    pub primary_block_import_throttling_buffer_size: u32,
+    pub consensus_block_import_throttling_buffer_size: u32,
     /// Notification about to be imported.
     ///
     /// Fired before the completion of entire block import pipeline.
@@ -162,7 +162,7 @@ pub struct OperatorParams<
     pub is_authority: bool,
     pub keystore: KeystorePtr,
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
-    pub executor_streams: ExecutorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    pub executor_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: Arc<BI>,
 }

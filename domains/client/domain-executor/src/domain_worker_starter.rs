@@ -19,7 +19,7 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::DomainParentChain;
 use crate::utils::{BlockInfo, OperatorSlotInfo};
-use crate::{ExecutorStreams, TransactionFor};
+use crate::{OperatorStreams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
@@ -68,7 +68,7 @@ pub(super) async fn start_worker<
         TransactionPool,
     >,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
-    executor_streams: ExecutorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    executor_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
     Block: BlockT,
@@ -110,8 +110,8 @@ pub(super) async fn start_worker<
 {
     let span = tracing::Span::current();
 
-    let ExecutorStreams {
-        primary_block_import_throttling_buffer_size,
+    let OperatorStreams {
+        consensus_block_import_throttling_buffer_size,
         block_importing_notification_stream,
         imported_block_notification_stream,
         new_slot_notification_stream,
@@ -147,7 +147,7 @@ pub(super) async fn start_worker<
                 .collect(),
             Box::pin(block_importing_notification_stream),
             Box::pin(imported_block_notification_stream),
-            primary_block_import_throttling_buffer_size,
+            consensus_block_import_throttling_buffer_size,
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, CBlock, _, _>(
         consensus_client.as_ref(),

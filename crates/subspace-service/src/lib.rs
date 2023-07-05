@@ -32,7 +32,7 @@ use crate::genesis_block_builder::SubspaceGenesisBlockBuilder;
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
-use crate::tx_pre_validator::PrimaryChainTxPreValidator;
+use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::Hash as DomainHash;
@@ -256,7 +256,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            PrimaryChainTxPreValidator<
+            ConsensusChainTxPreValidator<
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -373,7 +373,7 @@ where
         Arc::new(invalid_state_transition_proof_verifier),
     );
 
-    let tx_pre_validator = PrimaryChainTxPreValidator::new(
+    let tx_pre_validator = ConsensusChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier.clone(),
@@ -499,7 +499,7 @@ where
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
-    PrimaryChainTxPreValidator<
+    ConsensusChainTxPreValidator<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
         FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -519,7 +519,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            PrimaryChainTxPreValidator<
+            ConsensusChainTxPreValidator<
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,

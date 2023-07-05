@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
-use domain_client_executor::ExecutorStreams;
+use domain_client_executor::OperatorStreams;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
@@ -199,10 +199,10 @@ where
             service_config,
             maybe_relayer_id,
         };
-        let executor_streams = ExecutorStreams {
-            // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
+        let executor_streams = OperatorStreams {
+            // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
-            primary_block_import_throttling_buffer_size: 0,
+            consensus_block_import_throttling_buffer_size: 0,
             block_importing_notification_stream: mock_primary_node
                 .block_importing_notification_stream(),
             imported_block_notification_stream: mock_primary_node
@@ -218,8 +218,8 @@ where
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
-            primary_chain_client: mock_primary_node.client.clone(),
-            primary_network_sync_oracle: mock_primary_node.sync_service.clone(),
+            consensus_client: mock_primary_node.client.clone(),
+            consensus_network_sync_oracle: mock_primary_node.sync_service.clone(),
             select_chain: mock_primary_node.select_chain.clone(),
             executor_streams,
             gossip_message_sink: gossip_msg_sink,
