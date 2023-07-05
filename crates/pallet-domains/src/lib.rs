@@ -65,8 +65,8 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_nominate_operator, do_register_operator, Error as StakingError, OperatorConfig,
-        OperatorPool, StakingSummary,
+        do_nominate_operator, do_register_operator, Error as StakingError, Nominator,
+        OperatorConfig, OperatorPool, PendingTransfer, StakingSummary,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -195,11 +195,26 @@ mod pallet {
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
-    pub(super) type OperatorPools<T: Config> = StorageMap<
+    pub(super) type OperatorPools<T: Config> =
+        StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type Nominators<T: Config> = StorageDoubleMap<
         _,
         Identity,
         OperatorId,
-        OperatorPool<BalanceOf<T>, NominatorId<T>>,
+        Identity,
+        NominatorId<T>,
+        Nominator<BalanceOf<T>>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub(super) type PendingTransfers<T: Config> = StorageMap<
+        _,
+        Identity,
+        OperatorId,
+        Vec<PendingTransfer<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
 

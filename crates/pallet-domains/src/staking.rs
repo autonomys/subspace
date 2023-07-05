@@ -1,6 +1,8 @@
 //! Staking for domains
 
-use crate::pallet::{DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools};
+use crate::pallet::{
+    DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools, PendingTransfers,
+};
 use crate::{BalanceOf, Config, FreezeIdentifier};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectFreeze, MutateFreeze};
@@ -11,13 +13,11 @@ use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, ExecutorPublicKey, OperatorId};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::Percent;
-use sp_std::collections::btree_map::BTreeMap;
-use sp_std::vec;
 use sp_std::vec::Vec;
 
 /// Type that represents an operator pool details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct OperatorPool<Balance, NominatorId> {
+pub struct OperatorPool<Balance> {
     pub signing_key: ExecutorPublicKey,
     pub current_domain_id: DomainId,
     pub minimum_nominator_stake: Balance,
@@ -29,10 +29,6 @@ pub struct OperatorPool<Balance, NominatorId> {
     /// Total shares of the nominators and the operator in this pool.
     pub total_shares: Balance,
     pub is_frozen: bool,
-    /// Nominators under this operator pool.
-    pub nominators: BTreeMap<NominatorId, Nominator<Balance>>,
-    /// Pending transfers that will take effect in the next epoch.
-    pub pending_transfers: Vec<PendingTransfer<NominatorId, Balance>>,
 }
 
 /// Type that represents a nominator's details under a specific operator pool
@@ -127,15 +123,18 @@ pub(crate) fn do_register_operator<T: Config>(
             next_total_stake: Zero::zero(),
             total_shares: Zero::zero(),
             is_frozen: false,
-            nominators: BTreeMap::new(),
-            pending_transfers: vec![PendingTransfer {
-                nominator_id: operator_owner,
-                transfer: Transfer::Deposit(amount),
-            }],
         };
         OperatorPools::<T>::insert(operator_id, operator);
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.push(operator_id);
+        // update pending transfers
+        PendingTransfers::<T>::append(
+            operator_id,
+            PendingTransfer {
+                nominator_id: operator_owner,
+                transfer: Transfer::Deposit(amount),
+            },
+        );
 
         Ok(operator_id)
     })
@@ -146,24 +145,22 @@ pub(crate) fn do_nominate_operator<T: Config>(
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
-    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator| {
-        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+    let operator = OperatorPools::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+    ensure!(
+        amount >= operator.minimum_nominator_stake,
+        Error::MinimumNominatorStake
+    );
 
-        // reserve stake balance
-        ensure!(
-            amount >= operator.minimum_nominator_stake,
-            Error::MinimumNominatorStake
-        );
-
-        freeze_account_balance_to_operator::<T>(&nominator_id, operator_id, amount)?;
-
-        operator.pending_transfers.push(PendingTransfer {
+    freeze_account_balance_to_operator::<T>(&nominator_id, operator_id, amount)?;
+    PendingTransfers::<T>::append(
+        operator_id,
+        PendingTransfer {
             nominator_id,
             transfer: Transfer::Deposit(amount),
-        });
+        },
+    );
 
-        Ok(())
-    })
+    Ok(())
 }
 
 fn freeze_account_balance_to_operator<T: Config>(
@@ -192,8 +189,10 @@ fn freeze_account_balance_to_operator<T: Config>(
 
 #[cfg(test)]
 mod tests {
-    use crate::pallet::{DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools};
-    use crate::staking::{OperatorConfig, PendingTransfer, StakingSummary, Transfer};
+    use crate::pallet::{
+        DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools, PendingTransfers,
+    };
+    use crate::staking::{OperatorConfig, OperatorPool, PendingTransfer, StakingSummary, Transfer};
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
     use crate::Error;
     use frame_support::traits::fungible::Mutate;
@@ -246,9 +245,22 @@ mod tests {
             assert_eq!(NextOperatorId::<Test>::get(), 1);
             // operator_id should be 0 and be registered
             assert_eq!(OperatorIdOwner::<Test>::get(0).unwrap(), operator_account);
-            let operator_pool = OperatorPools::<Test>::get(0).unwrap();
             assert_eq!(
-                operator_pool.pending_transfers[0],
+                OperatorPools::<Test>::get(0).unwrap(),
+                OperatorPool {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    minimum_nominator_stake: 0,
+                    nomination_tax: Default::default(),
+                    current_total_stake: 0,
+                    next_total_stake: 0,
+                    total_shares: 0,
+                    is_frozen: false,
+                }
+            );
+            let pending_transfers = PendingTransfers::<Test>::get(0).unwrap();
+            assert_eq!(
+                pending_transfers[0],
                 PendingTransfer {
                     nominator_id: operator_account,
                     transfer: Transfer::Deposit(operator_stake),
@@ -325,9 +337,9 @@ mod tests {
             );
             assert_ok!(res);
 
-            let operator_pool = OperatorPools::<Test>::get(0).unwrap();
+            let pending_transfers = PendingTransfers::<Test>::get(0).unwrap();
             assert_eq!(
-                operator_pool.pending_transfers[1],
+                pending_transfers[1],
                 PendingTransfer {
                     nominator_id: nominator_account,
                     transfer: Transfer::Deposit(nominator_stake),
