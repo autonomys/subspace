@@ -143,15 +143,15 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 fn create_dummy_receipt(
-    primary_number: BlockNumber,
-    primary_hash: Hash,
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
 ) -> ExecutionReceipt<BlockNumber, Hash, H256> {
     ExecutionReceipt {
-        primary_number,
-        primary_hash,
-        domain_number: primary_number,
+        consensus_block_number,
+        consensus_block_hash,
+        domain_block_number: consensus_block_number,
         domain_hash: H256::random(),
-        trace: if primary_number == 0 {
+        trace: if consensus_block_number == 0 {
             Vec::new()
         } else {
             vec![H256::random(), H256::random()]

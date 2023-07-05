@@ -204,7 +204,10 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_primary_info =
         |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
-            (bundle.receipt.primary_number, bundle.receipt.primary_hash)
+            (
+                bundle.receipt.consensus_block_number,
+                bundle.receipt.consensus_block_hash,
+            )
         };
 
     // Produce a bundle after the fork block #3a has been produced.
@@ -539,7 +542,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.receipt;
         assert_eq!(
-            receipt.primary_number,
+            receipt.consensus_block_number,
             target_bundle.sealed_header.header.consensus_block_number + 1
         );
         assert_eq!(receipt.trace.len(), 3);
@@ -650,7 +653,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         opaque_bundle
     };
     let bad_receipt = bad_bundle.receipt.clone();
-    let bad_receipt_number = bad_receipt.primary_number;
+    let bad_receipt_number = bad_receipt.consensus_block_number;
     assert_ne!(bad_receipt_number, 1);
 
     // Submit the bad receipt to the primary chain

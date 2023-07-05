@@ -93,7 +93,7 @@ where
         PCB: BlockT,
     {
         let block_hash = local_receipt.domain_hash;
-        let block_number = to_number_primitive(local_receipt.primary_number);
+        let block_number = to_number_primitive(local_receipt.consensus_block_number);
 
         let header = self.header(block_hash)?;
         let parent_header = self.header(*header.parent_hash())?;
@@ -118,11 +118,11 @@ where
         let primary_parent_hash = H256::decode(
             &mut self
                 .primary_chain_client
-                .header(local_receipt.primary_hash)?
+                .header(local_receipt.consensus_block_hash)?
                 .ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
                         "Header not found for primary {:?}",
-                        local_receipt.primary_hash
+                        local_receipt.consensus_block_hash
                     ))
                 })?
                 .parent_hash()

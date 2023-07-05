@@ -282,9 +282,9 @@ where
         );
 
         let execution_receipt = ExecutionReceipt {
-            primary_number,
-            primary_hash,
-            domain_number: to_number_primitive(header_number).into(),
+            consensus_block_number: primary_number,
+            consensus_block_hash: primary_hash,
+            domain_block_number: to_number_primitive(header_number) as u64, // TODO: proper type
             domain_hash: header_hash,
             trace,
             trace_root,
@@ -554,30 +554,30 @@ where
         for execution_receipt in receipts.iter() {
             // Skip check for genesis receipt as it is generated on the domain instantiation by
             // the consensus chain.
-            if execution_receipt.domain_number.is_zero() {
+            if execution_receipt.domain_block_number.is_zero() {
                 continue;
             }
 
-            let primary_block_hash = execution_receipt.primary_hash;
+            let consensus_block_hash = execution_receipt.consensus_block_hash;
 
             let local_receipt = crate::aux_schema::load_execution_receipt::<
                 _,
                 Block::Hash,
                 NumberFor<Block>,
                 ParentChainBlock::Hash,
-            >(&*self.client, primary_block_hash)?
+            >(&*self.client, consensus_block_hash)?
             .ok_or(sp_blockchain::Error::Backend(format!(
-                "receipt for primary block #{},{primary_block_hash} not found",
-                execution_receipt.primary_number
+                "receipt for primary block #{},{consensus_block_hash} not found",
+                execution_receipt.consensus_block_number
             )))?;
 
             if let Some(trace_mismatch_index) =
                 find_trace_mismatch(&local_receipt.trace, &execution_receipt.trace)
             {
                 bad_receipts_to_write.push((
-                    execution_receipt.primary_number,
+                    execution_receipt.consensus_block_number,
                     execution_receipt.hash(),
-                    (trace_mismatch_index, primary_block_hash),
+                    (trace_mismatch_index, consensus_block_hash),
                 ));
             }
         }

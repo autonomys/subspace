@@ -373,12 +373,13 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainHash> {
-    /// Primary block number.
-    pub primary_number: Number,
-    /// Hash of the origin primary block this receipt corresponds to.
-    pub primary_hash: Hash,
+    /// Consensus block number.
+    pub consensus_block_number: Number,
+    /// Hash of the origin consensus block this receipt corresponds to.
+    pub consensus_block_hash: Hash,
+    // TODO: Introduce another generic DomainNumber or use Number or use even BlockNumber primitive?
     /// Domain block number.
-    pub domain_number: Number,
+    pub domain_block_number: u64,
     /// Hash of the domain block this receipt points to.
     pub domain_hash: DomainHash,
     /// List of storage roots collected during the domain block execution.
@@ -397,18 +398,18 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, 
 impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(
-        primary_number: Number,
-        primary_hash: Hash,
+        consensus_block_number: Number,
+        consensus_block_hash: Hash,
     ) -> ExecutionReceipt<Number, Hash, DomainHash> {
-        let trace = if primary_number.is_zero() {
+        let trace = if consensus_block_number.is_zero() {
             Vec::new()
         } else {
             sp_std::vec![Default::default(), Default::default()]
         };
         ExecutionReceipt {
-            primary_number,
-            primary_hash,
-            domain_number: primary_number,
+            consensus_block_number,
+            consensus_block_hash,
+            domain_block_number: 1u64,
             domain_hash: Default::default(),
             trace,
             trace_root: Default::default(),
@@ -417,9 +418,9 @@ impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Ha
 
     pub fn genesis(primary_genesis_hash: Hash) -> ExecutionReceipt<Number, Hash, DomainHash> {
         ExecutionReceipt {
-            primary_number: Zero::zero(),
-            primary_hash: primary_genesis_hash,
-            domain_number: Zero::zero(),
+            consensus_block_number: Zero::zero(),
+            consensus_block_hash: primary_genesis_hash,
+            domain_block_number: Zero::zero(),
             domain_hash: Default::default(),
             trace: Default::default(),
             trace_root: Default::default(),

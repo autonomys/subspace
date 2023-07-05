@@ -88,8 +88,8 @@ where
     Block: BlockT,
     PBlock: BlockT,
 {
-    let block_number = execution_receipt.primary_number;
-    let primary_hash = execution_receipt.primary_hash;
+    let block_number = execution_receipt.consensus_block_number;
+    let primary_hash = execution_receipt.consensus_block_hash;
     let domain_hash = execution_receipt.domain_hash;
 
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
@@ -495,11 +495,11 @@ mod tests {
 
     type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, Hash>;
 
-    fn create_execution_receipt(primary_number: BlockNumber) -> ExecutionReceipt {
+    fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {
-            primary_number,
-            primary_hash: H256::random(),
-            domain_number: primary_number,
+            consensus_block_number,
+            consensus_block_hash: H256::random(),
+            domain_block_number: consensus_block_number as u64, // TODO: proper type
             domain_hash: H256::random(),
             trace: Default::default(),
             trace_root: Default::default(),
@@ -564,12 +564,12 @@ mod tests {
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let primary_hash = receipt.primary_hash;
+                let consensus_block_hash = receipt.consensus_block_hash;
                 write_receipt_at(block_number, &receipt);
-                assert_eq!(receipt_at(primary_hash), Some(receipt));
-                assert_eq!(hashes_at(block_number), Some(vec![primary_hash]));
+                assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
+                assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
                 assert_eq!(receipt_start(), Some(1));
-                primary_hash
+                consensus_block_hash
             })
             .collect::<Vec<_>>();
 
@@ -577,14 +577,14 @@ mod tests {
 
         // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is PRUNING_DEPTH.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
-        assert!(receipt_at(receipt.primary_hash).is_none());
+        assert!(receipt_at(receipt.consensus_block_hash).is_none());
         write_receipt_at(PRUNING_DEPTH + 1, &receipt);
-        assert!(receipt_at(receipt.primary_hash).is_some());
+        assert!(receipt_at(receipt.consensus_block_hash).is_some());
 
         // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is PRUNING_DEPTH + 1.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 2);
         write_receipt_at(PRUNING_DEPTH + 2, &receipt);
-        assert!(receipt_at(receipt.primary_hash).is_some());
+        assert!(receipt_at(receipt.consensus_block_hash).is_some());
 
         // ER of block #1 should be pruned.
         assert!(receipt_at(block_hash_list[0]).is_none());
@@ -595,9 +595,9 @@ mod tests {
 
         // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is PRUNING_DEPTH + 2.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
-        let primary_hash1 = receipt.primary_hash;
+        let consensus_block_hash1 = receipt.consensus_block_hash;
         write_receipt_at(PRUNING_DEPTH + 3, &receipt);
-        assert!(receipt_at(primary_hash1).is_some());
+        assert!(receipt_at(consensus_block_hash1).is_some());
         // ER of block #2 should be pruned.
         assert!(receipt_at(block_hash_list[1]).is_none());
         assert!(target_receipt_is_pruned(PRUNING_DEPTH + 2, 2));
@@ -606,12 +606,12 @@ mod tests {
 
         // Multiple hashes attached to the block #(PRUNING_DEPTH + 3)
         let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
-        let primary_hash2 = receipt.primary_hash;
+        let consensus_block_hash2 = receipt.consensus_block_hash;
         write_receipt_at(PRUNING_DEPTH + 3, &receipt);
-        assert!(receipt_at(primary_hash2).is_some());
+        assert!(receipt_at(consensus_block_hash2).is_some());
         assert_eq!(
             hashes_at(PRUNING_DEPTH + 3),
-            Some(vec![primary_hash1, primary_hash2])
+            Some(vec![consensus_block_hash1, consensus_block_hash2])
         );
     }
 
@@ -649,12 +649,12 @@ mod tests {
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let primary_hash = receipt.primary_hash;
+                let consensus_block_hash = receipt.consensus_block_hash;
                 write_receipt_at(0, &receipt);
-                assert_eq!(receipt_at(primary_hash), Some(receipt));
-                assert_eq!(hashes_at(block_number), Some(vec![primary_hash]));
+                assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
+                assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
                 assert_eq!(receipt_start(), Some(1));
-                primary_hash
+                consensus_block_hash
             })
             .collect::<Vec<_>>();
 
@@ -662,7 +662,7 @@ mod tests {
 
         // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is 0.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
-        assert!(receipt_at(receipt.primary_hash).is_none());
+        assert!(receipt_at(receipt.consensus_block_hash).is_none());
         write_receipt_at(0, &receipt);
 
         // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is 0.

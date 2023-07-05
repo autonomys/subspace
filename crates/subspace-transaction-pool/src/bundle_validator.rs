@@ -352,21 +352,21 @@ where
             return Err(BundleError::DuplicatedBundle);
         }
 
-        let best_primary_number = self
+        let best_consensus_block_number = self
             .bundle_collector
             .client
             .block_number_from_id(at)?
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Can not convert BlockId {at:?} to block number"
             )))?;
-        if opaque_bundle.receipt.primary_number > best_primary_number {
+        if opaque_bundle.receipt.consensus_block_number > best_consensus_block_number {
             return Err(BundleError::ReceiptInFuture);
         }
         if let Some(expected_hash) = self
             .bundle_stored_in_last_k
-            .get_canonical_block_hash(opaque_bundle.receipt.primary_number)
+            .get_canonical_block_hash(opaque_bundle.receipt.consensus_block_number)
         {
-            if opaque_bundle.receipt.primary_hash != expected_hash {
+            if opaque_bundle.receipt.consensus_block_hash != expected_hash {
                 return Err(BundleError::ReceiptPointToUnknownBlock);
             }
         }
