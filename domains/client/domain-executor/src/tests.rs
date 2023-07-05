@@ -732,7 +732,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         domain_id: DomainId::new(3u32),
         bad_receipt_hash: bad_receipt.hash(),
         parent_number: parent_number_ferdie,
-        primary_parent_hash: parent_hash_ferdie,
+        consensus_parent_hash: parent_hash_ferdie,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,

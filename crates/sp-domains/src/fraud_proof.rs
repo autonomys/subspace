@@ -69,7 +69,7 @@ impl ExecutionPhase {
     }
 }
 
-/// Error type of fraud proof verification on primary node.
+/// Error type of fraud proof verification on consensus node.
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
@@ -222,11 +222,11 @@ pub struct InvalidStateTransitionProof {
     pub bad_receipt_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
-    /// Hash of the primary block corresponding to `parent_number`.
+    /// Hash of the consensus block corresponding to `parent_number`.
     ///
     /// Runtime code for the execution of the domain block that is being challenged
-    /// is retrieved on top of the primary parent block from the primary chain.
-    pub primary_parent_hash: H256,
+    /// is retrieved on top of the consensus parent block from the consensus chain.
+    pub consensus_parent_hash: H256,
     /// State root before the fraudulent transaction.
     pub pre_state_root: H256,
     /// State root after the fraudulent transaction.
@@ -245,7 +245,7 @@ pub fn dummy_invalid_state_transition_proof(
         domain_id,
         bad_receipt_hash: H256::default(),
         parent_number,
-        primary_parent_hash: H256::default(),
+        consensus_parent_hash: H256::default(),
         pre_state_root: H256::default(),
         post_state_root: H256::default(),
         proof: StorageProof::empty(),

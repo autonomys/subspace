@@ -14,84 +14,84 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Trait to build the extrinsics of domain block derived from the original primary block.
-pub trait BuildDomainExtrinsics<PBlock: BlockT> {
+pub trait BuildDomainExtrinsics<CBlock: BlockT> {
     /// Returns the final list of encoded domain-specific extrinsics.
     fn build_domain_extrinsics(
         &self,
         domain_id: DomainId,
-        primary_hash: PBlock::Hash,
+        consensus_block_hash: CBlock::Hash,
         domain_runtime: Vec<u8>,
     ) -> sp_blockchain::Result<Vec<Vec<u8>>>;
 }
 
 /// Utility to build the system domain extrinsics.
-pub struct DomainExtrinsicsBuilder<PBlock, PClient, Executor> {
-    primary_chain_client: Arc<PClient>,
+pub struct DomainExtrinsicsBuilder<CBlock, PClient, Executor> {
+    consensus_client: Arc<PClient>,
     executor: Arc<Executor>,
-    _phantom: PhantomData<PBlock>,
+    _phantom: PhantomData<CBlock>,
 }
 
-impl<PBlock, PClient, Executor> Clone for DomainExtrinsicsBuilder<PBlock, PClient, Executor> {
+impl<CBlock, PClient, Executor> Clone for DomainExtrinsicsBuilder<CBlock, PClient, Executor> {
     fn clone(&self) -> Self {
         Self {
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             executor: self.executor.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
-impl<PBlock, PClient, Executor> DomainExtrinsicsBuilder<PBlock, PClient, Executor>
+impl<CBlock, PClient, Executor> DomainExtrinsicsBuilder<CBlock, PClient, Executor>
 where
-    PBlock: BlockT,
-    PBlock::Hash: From<H256>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CBlock: BlockT,
+    CBlock::Hash: From<H256>,
+    PClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: DomainsApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: DomainsApi<CBlock, domain_runtime_primitives::Hash>,
     Executor: CodeExecutor,
 {
     /// Constructs a new instance of [`DomainExtrinsicsBuilder`].
-    pub fn new(primary_chain_client: Arc<PClient>, executor: Arc<Executor>) -> Self {
+    pub fn new(consensus_client: Arc<PClient>, executor: Arc<Executor>) -> Self {
         Self {
-            primary_chain_client,
+            consensus_client,
             executor,
             _phantom: Default::default(),
         }
     }
 }
 
-impl<PBlock, PClient, Executor> BuildDomainExtrinsics<PBlock>
-    for DomainExtrinsicsBuilder<PBlock, PClient, Executor>
+impl<CBlock, PClient, Executor> BuildDomainExtrinsics<CBlock>
+    for DomainExtrinsicsBuilder<CBlock, PClient, Executor>
 where
-    PBlock: BlockT,
-    PBlock::Hash: From<H256>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CBlock: BlockT,
+    CBlock::Hash: From<H256>,
+    PClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: DomainsApi<PBlock, domain_runtime_primitives::Hash>,
+    PClient::Api: DomainsApi<CBlock, domain_runtime_primitives::Hash>,
     Executor: CodeExecutor,
 {
     fn build_domain_extrinsics(
         &self,
         domain_id: DomainId,
-        primary_hash: <PBlock as BlockT>::Hash,
+        consensus_block_hash: <CBlock as BlockT>::Hash,
         domain_runtime: Vec<u8>,
     ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
         let domain_runtime_api_light =
             RuntimeApiLight::new(self.executor.clone(), domain_runtime.into());
         let domain_extrinsics = DomainBlockPreprocessor::<Block, _, _, _>::new(
             domain_id,
-            self.primary_chain_client.clone(),
+            self.consensus_client.clone(),
             domain_runtime_api_light,
         )
-        .preprocess_primary_block_for_verifier(primary_hash)?;
+        .preprocess_consensus_block_for_verifier(consensus_block_hash)?;
         Ok(domain_extrinsics)
     }
 }

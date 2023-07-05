@@ -13,26 +13,26 @@ use std::sync::Arc;
 /// This is used by the System domain to validate Extrinsics.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub fn verify_xdm_with_primary_chain_client<PClient, PBlock, SBlock, SRE>(
+pub fn verify_xdm_with_primary_chain_client<CClient, PBlock, Block, SRE>(
     _domain_id: DomainId,
-    primary_chain_client: &Arc<PClient>,
-    at: SBlock::Hash,
+    consensus_client: &Arc<CClient>,
+    at: Block::Hash,
     state_root_extractor: &SRE,
-    extrinsic: &SBlock::Extrinsic,
+    extrinsic: &Block::Extrinsic,
 ) -> Result<bool, Error>
 where
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: DomainsApi<PBlock, SBlock::Hash>,
-    SBlock: BlockT,
+    CClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
+    CClient::Api: DomainsApi<PBlock, Block::Hash>,
+    Block: BlockT,
     PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<SBlock>>,
-    PBlock::Hash: From<SBlock::Hash>,
-    SRE: StateRootExtractor<SBlock>,
+    NumberFor<PBlock>: From<NumberFor<Block>>,
+    PBlock::Hash: From<Block::Hash>,
+    SRE: StateRootExtractor<Block>,
 {
     if let Ok(_state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {
         // verify system domain state root
-        let _best_hash = primary_chain_client.info().best_hash;
-        let _primary_runtime = primary_chain_client.runtime_api();
+        let _best_hash = consensus_client.info().best_hash;
+        let _primary_runtime = consensus_client.runtime_api();
         // TODO: Add `state_root` in DomainsApi
         // if let Some(system_domain_state_root) = primary_runtime.state_root(
         // best_hash,

@@ -115,7 +115,7 @@ where
             },
         )?;
 
-        let primary_parent_hash = H256::decode(
+        let consensus_parent_hash = H256::decode(
             &mut self
                 .consensus_client
                 .header(local_receipt.consensus_block_hash)?
@@ -165,7 +165,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                primary_parent_hash,
+                consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -206,7 +206,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                primary_parent_hash,
+                consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -230,7 +230,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                primary_parent_hash,
+                consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,

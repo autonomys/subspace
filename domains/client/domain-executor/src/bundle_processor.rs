@@ -212,7 +212,7 @@ where
 
         let extrinsics = match self
             .domain_block_preprocessor
-            .preprocess_primary_block(consensus_block_hash, parent_hash)?
+            .preprocess_consensus_block(consensus_block_hash, parent_hash)?
         {
             Some(exts) => exts,
             None => {

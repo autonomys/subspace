@@ -22,21 +22,22 @@ use std::sync::Arc;
 /// Note: primary block hash must be used to construct domain block.
 // TODO: Remove once evm domain is supported.
 #[allow(dead_code)]
-pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, PBlock, PClient>(
-    primary_client: &Arc<PClient>,
+pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, CBlock, CClient>(
+    consensus_client: &Arc<CClient>,
     domain_runtime_api: &DomainRuntimeApi,
-    primary_block_hash: PBlock::Hash,
+    consensus_block_hash: CBlock::Hash,
     domain_parent_hash: Block::Hash,
 ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CBlock: BlockT,
+    CClient: ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     DomainRuntimeApi: InherentExtrinsicConstructor<Block>,
 {
-    let primary_api = primary_client.runtime_api();
-    let moment = primary_api.timestamp(primary_block_hash)?;
+    let moment = consensus_client
+        .runtime_api()
+        .timestamp(consensus_block_hash)?;
 
     let mut inherent_exts = vec![];
     if let Some(inherent_timestamp) =
