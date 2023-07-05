@@ -10,7 +10,6 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::SectorMetadata;
@@ -58,7 +57,6 @@ pub(super) async fn plotting<NC, PG, PosTable>(
     metadata_file: File,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
     piece_getter: PG,
-    piece_memory_cache: PieceMemoryCache,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
     handlers: Arc<Handlers>,
@@ -121,7 +119,6 @@ where
             pieces_in_sector,
             &mut sector,
             &mut sector_metadata,
-            piece_memory_cache.clone(),
         );
         let plotted_sector = plot_sector_fut.await?;
         sector.flush()?;

@@ -123,7 +123,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
-            Default::default(),
         ))
         .unwrap();
 

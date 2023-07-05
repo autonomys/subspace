@@ -32,7 +32,6 @@ use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
-use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::multihash::ToMultihash;
@@ -87,8 +86,6 @@ where
         farming_args.max_concurrent_plots.get(),
     ));
 
-    let piece_memory_cache = PieceMemoryCache::default();
-
     let farmer_app_info = node_client
         .farmer_app_info()
         .await
@@ -124,7 +121,6 @@ where
             dsn,
             &readers_and_pieces,
             node_client.clone(),
-            piece_memory_cache.clone(),
             archival_storage_pieces.clone(),
         )?
     };
@@ -212,7 +208,6 @@ where
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
                 concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
-                piece_memory_cache: piece_memory_cache.clone(),
             },
             disk_farm_index,
         );

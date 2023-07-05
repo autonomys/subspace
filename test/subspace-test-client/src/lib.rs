@@ -252,7 +252,6 @@ where
         pieces_in_sector,
         &mut sector,
         &mut sector_metadata,
-        Default::default(),
     )
     .await
     .expect("Plotting one sector in memory must not fail");

@@ -37,7 +37,6 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
@@ -288,8 +287,6 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub erasure_coding: ErasureCoding,
     /// Semaphore to limit concurrency of plotting process.
     pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
-    /// Additional memory cache for pieces from archival storage
-    pub piece_memory_cache: PieceMemoryCache,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -461,7 +458,6 @@ impl SingleDiskPlot {
             kzg,
             erasure_coding,
             concurrent_plotting_semaphore,
-            piece_memory_cache,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -698,7 +694,6 @@ impl SingleDiskPlot {
                             metadata_file,
                             sectors_metadata,
                             piece_getter,
-                            piece_memory_cache,
                             kzg,
                             erasure_coding,
                             handlers,

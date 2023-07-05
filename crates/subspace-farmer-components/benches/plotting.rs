@@ -77,7 +77,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(pieces_in_sector),
                 black_box(&mut sector_bytes),
                 black_box(&mut sector_metadata_bytes),
-                Default::default(),
             ))
             .unwrap();
         })

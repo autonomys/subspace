@@ -426,7 +426,6 @@ pub fn create_signed_vote(
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
-            Default::default(),
         ))
         .unwrap();
 
