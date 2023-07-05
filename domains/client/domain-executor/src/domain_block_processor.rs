@@ -523,7 +523,7 @@ where
 
         if self.consensus_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
-                "Skip reporting unconfirmed bad receipt as the primary node is still major syncing..."
+                "Skip reporting unconfirmed bad receipt as the consensus node is still major syncing..."
             );
             return Ok(());
         }

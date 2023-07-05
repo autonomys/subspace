@@ -14,22 +14,22 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
-pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>(
-    primary_chain_client: &PClient,
+pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(
+    primary_chain_client: &CClient,
     bundler: BundlerFn,
     mut slots: impl Stream<Item = (ExecutorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
     Block: BlockT,
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CBlock: BlockT,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     BundlerFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (CBlock::Hash, NumberFor<CBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
                 dyn Future<
-                        Output = Option<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+                        Output = Option<OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Hash>>,
                     > + Send,
             >,
         > + Send
@@ -38,7 +38,7 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
     while let Some((executor_slot_info, slot_acknowledgement_sender)) = slots.next().await {
         let slot = executor_slot_info.slot;
         if let Err(error) =
-            on_new_slot::<Block, PBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
+            on_new_slot::<Block, CBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
                 .await
         {
             tracing::error!(
@@ -56,36 +56,36 @@ pub(crate) async fn handle_slot_notifications<Block, PBlock, PClient, BundlerFn>
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_block_import_notifications<
     Block,
-    PBlock,
-    PClient,
+    CBlock,
+    CClient,
     ProcessorFn,
     BlocksImporting,
     BlocksImported,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
-    primary_chain_client: &PClient,
+    primary_chain_client: &CClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
-    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>, bool)>,
+    mut leaves: Vec<(CBlock::Hash, NumberFor<CBlock>, bool)>,
     mut blocks_importing: BlocksImporting,
     mut blocks_imported: BlocksImported,
     primary_block_import_throttling_buffer_size: u32,
 ) where
     Block: BlockT,
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + BlockchainEvents<PBlock>,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CBlock: BlockT,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + BlockchainEvents<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>, bool),
+            (CBlock::Hash, NumberFor<CBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync
         + 'static,
-    BlocksImporting: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Unpin,
-    BlocksImported: Stream<Item = BlockImportNotification<PBlock>> + Unpin,
+    BlocksImporting: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Unpin,
+    BlocksImported: Stream<Item = BlockImportNotification<CBlock>> + Unpin,
 {
     let mut active_leaves = HashMap::with_capacity(leaves.len());
 
@@ -121,7 +121,7 @@ pub(crate) async fn handle_block_import_notifications<
             while let Some(maybe_block_info) = block_info_receiver.next().await {
                 if let Some(block_info) = maybe_block_info {
                     if let Err(error) =
-                        block_imported::<PBlock, _>(&processor, &mut active_leaves, block_info)
+                        block_imported::<CBlock, _>(&processor, &mut active_leaves, block_info)
                             .await
                     {
                         tracing::error!(?error, "Failed to process primary block");
@@ -188,23 +188,23 @@ pub(crate) async fn handle_block_import_notifications<
     }
 }
 
-async fn on_new_slot<Block, PBlock, PClient, BundlerFn>(
-    primary_chain_client: &PClient,
+async fn on_new_slot<Block, CBlock, CClient, BundlerFn>(
+    primary_chain_client: &CClient,
     bundler: &BundlerFn,
     executor_slot_info: ExecutorSlotInfo,
 ) -> Result<(), ApiError>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CBlock: BlockT,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     BundlerFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (CBlock::Hash, NumberFor<CBlock>),
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
                 dyn Future<
-                        Output = Option<OpaqueBundle<NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+                        Output = Option<OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Hash>>,
                     > + Send,
             >,
         > + Send
@@ -228,15 +228,15 @@ where
     Ok(())
 }
 
-async fn block_imported<PBlock, ProcessorFn>(
+async fn block_imported<CBlock, ProcessorFn>(
     processor: &ProcessorFn,
-    active_leaves: &mut HashMap<PBlock::Hash, NumberFor<PBlock>>,
-    block_info: BlockInfo<PBlock>,
+    active_leaves: &mut HashMap<CBlock::Hash, NumberFor<CBlock>>,
+    block_info: BlockInfo<CBlock>,
 ) -> Result<(), ApiError>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>, bool),
+            (CBlock::Hash, NumberFor<CBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,

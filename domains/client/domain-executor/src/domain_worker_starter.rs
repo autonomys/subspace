@@ -43,9 +43,9 @@ use tracing::Instrument;
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) async fn start_worker<
     Block,
-    PBlock,
+    CBlock,
     Client,
-    PClient,
+    CClient,
     TransactionPool,
     Backend,
     IBNS,
@@ -55,26 +55,26 @@ pub(super) async fn start_worker<
     BI,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     client: Arc<Client>,
     is_authority: bool,
     bundle_producer: DomainBundleProducer<
         Block,
-        PBlock,
-        PBlock,
+        CBlock,
+        CBlock,
         Client,
-        PClient,
-        DomainParentChain<Block, PBlock, PClient>,
+        CClient,
+        DomainParentChain<Block, CBlock, CClient>,
         TransactionPool,
     >,
-    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
-    executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
-    active_leaves: Vec<BlockInfo<PBlock>>,
+    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
+    executor_streams: ExecutorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-    PBlock::Hash: From<Block::Hash>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
+    CBlock::Hash: From<Block::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -93,17 +93,17 @@ pub(super) async fn start_worker<
         Error = sp_consensus::Error,
     >,
     BI: Send + Sync + 'static,
-    PClient: HeaderBackend<PBlock>
-        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + BlockchainEvents<PBlock>
+    CClient: HeaderBackend<CBlock>
+        + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + BlockchainEvents<CBlock>
         + 'static,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
-    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
+    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -121,7 +121,7 @@ pub(super) async fn start_worker<
     let handle_block_import_notifications_fut =
         handle_block_import_notifications::<Block, _, _, _, _, _>(
             spawn_essential,
-            primary_chain_client.as_ref(),
+            consensus_client.as_ref(),
             client.info().best_number,
             {
                 let span = span.clone();
@@ -149,8 +149,8 @@ pub(super) async fn start_worker<
             Box::pin(imported_block_notification_stream),
             primary_block_import_throttling_buffer_size,
         );
-    let handle_slot_notifications_fut = handle_slot_notifications::<Block, PBlock, _, _>(
-        primary_chain_client.as_ref(),
+    let handle_slot_notifications_fut = handle_slot_notifications::<Block, CBlock, _, _>(
+        consensus_client.as_ref(),
         move |primary_info, slot_info| {
             bundle_producer
                 .clone()

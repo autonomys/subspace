@@ -20,51 +20,51 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
 
-type OpaqueBundle<Block, PBlock> =
-    sp_domains::OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
+type OpaqueBundle<Block, CBlock> =
+    sp_domains::OpaqueBundle<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
 
 pub(super) struct DomainBundleProducer<
     Block,
-    PBlock,
+    CBlock,
     ParentChainBlock,
     Client,
-    PClient,
+    CClient,
     ParentChain,
     TransactionPool,
 > where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     client: Arc<Client>,
     parent_chain: ParentChain,
-    bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
-    bundle_election_solver: BundleElectionSolver<Block, PBlock>,
-    domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
+    bundle_election_solver: BundleElectionSolver<Block, CBlock>,
+    domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
-impl<Block, PBlock, ParentChainBlock, Client, PClient, ParentChain, TransactionPool> Clone
+impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionPool> Clone
     for DomainBundleProducer<
         Block,
-        PBlock,
+        CBlock,
         ParentChainBlock,
         Client,
-        PClient,
+        CClient,
         ParentChain,
         TransactionPool,
     >
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
     ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
             parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
@@ -76,49 +76,49 @@ where
     }
 }
 
-impl<Block, PBlock, ParentChainBlock, Client, PClient, ParentChain, TransactionPool>
+impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionPool>
     DomainBundleProducer<
         Block,
-        PBlock,
+        CBlock,
         ParentChainBlock,
         Client,
-        PClient,
+        CClient,
         ParentChain,
         TransactionPool,
     >
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
     ParentChainBlock: BlockT,
-    NumberFor<Block>: Into<NumberFor<PBlock>>,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
     NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         client: Arc<Client>,
         parent_chain: ParentChain,
         domain_bundle_proposer: DomainBundleProposer<
             Block,
             Client,
-            PBlock,
-            PClient,
+            CBlock,
+            CClient,
             TransactionPool,
         >,
-        bundle_sender: Arc<BundleSender<Block, PBlock>>,
+        bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::<Block, PBlock>::new(keystore.clone());
+        let bundle_election_solver = BundleElectionSolver::<Block, CBlock>::new(keystore.clone());
         Self {
             domain_id,
-            primary_chain_client,
+            consensus_client,
             client,
             parent_chain,
             bundle_sender,
@@ -131,15 +131,15 @@ where
 
     pub(super) async fn produce_bundle(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>),
         slot_info: ExecutorSlotInfo,
-    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, PBlock>>> {
+    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
         let ExecutorSlotInfo {
             slot,
             global_challenge,
         } = slot_info;
 
-        let best_receipt_is_written = crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(
+        let best_receipt_is_written = crate::aux_schema::primary_hash_for::<_, _, CBlock::Hash>(
             &*self.client,
             self.client.info().best_hash,
         )?
@@ -189,9 +189,9 @@ where
             let proof_of_election = bundle_solution.proof_of_election();
             let bundle_author = proof_of_election.operator_public_key.clone();
             let tx_range = self
-                .primary_chain_client
+                .consensus_client
                 .runtime_api()
-                .domain_tx_range(primary_info.0, self.domain_id)
+                .domain_tx_range(consensus_block_info.0, self.domain_id)
                 .map_err(|error| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Error getting tx range: {error}"
@@ -207,7 +207,7 @@ where
                 .propose_bundle_at(
                     bundle_solution,
                     slot,
-                    primary_info,
+                    consensus_block_info,
                     self.parent_chain.clone(),
                     tx_selector,
                 )

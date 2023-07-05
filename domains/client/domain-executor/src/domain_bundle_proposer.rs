@@ -16,51 +16,51 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 
-pub(super) struct DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool> {
+pub(super) struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
     client: Arc<Client>,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     transaction_pool: Arc<TransactionPool>,
-    _phantom_data: PhantomData<(Block, PBlock)>,
+    _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, Client, PBlock, PClient, TransactionPool> Clone
-    for DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>
+impl<Block, Client, CBlock, CClient, TransactionPool> Clone
+    for DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             transaction_pool: self.transaction_pool.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-pub(super) type ProposeBundleOutput<Block, PBlock> = (
-    BundleHeader<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
-    ExecutionReceiptFor<PBlock, <Block as BlockT>::Hash>,
+pub(super) type ProposeBundleOutput<Block, CBlock> = (
+    BundleHeader<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
+    ExecutionReceiptFor<CBlock, <Block as BlockT>::Hash>,
     Vec<<Block as BlockT>::Extrinsic>,
 );
 
-impl<Block, Client, PBlock, PClient, TransactionPool>
-    DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>
+impl<Block, Client, CBlock, CClient, TransactionPool>
+    DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<Block>: Into<NumberFor<PBlock>>,
+    CBlock: BlockT,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
-    PClient: HeaderBackend<PBlock>,
+    CClient: HeaderBackend<CBlock>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(crate) fn new(
         client: Arc<Client>,
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         transaction_pool: Arc<TransactionPool>,
     ) -> Self {
         Self {
             client,
-            primary_chain_client,
+            consensus_client,
             transaction_pool,
             _phantom_data: PhantomData,
         }
@@ -70,10 +70,10 @@ where
         &self,
         bundle_solution: BundleSolution<Block::Hash>,
         slot: Slot,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        primary_info: (CBlock::Hash, NumberFor<CBlock>),
         parent_chain: ParentChain,
         tx_selector: TransactionSelector<Block, Client>,
-    ) -> sp_blockchain::Result<ProposeBundleOutput<Block, PBlock>>
+    ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>>
     where
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -150,7 +150,7 @@ where
         header_number: NumberFor<Block>,
         header_hash: Block::Hash,
         parent_chain: ParentChain,
-    ) -> sp_blockchain::Result<ExecutionReceiptFor<PBlock, Block::Hash>>
+    ) -> sp_blockchain::Result<ExecutionReceiptFor<CBlock, Block::Hash>>
     where
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -172,7 +172,7 @@ where
             crate::aux_schema::load_execution_receipt_by_domain_hash::<
                 _,
                 Block::Hash,
-                NumberFor<PBlock>,
+                NumberFor<CBlock>,
                 PBlock::Hash,
             >(&*self.client, domain_hash)?
             .ok_or_else(|| {
@@ -183,7 +183,7 @@ where
         };
 
         let header_block_receipt_is_written =
-            crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(&*self.client, header_hash)?
+            crate::aux_schema::primary_hash_for::<_, _, CBlock::Hash>(&*self.client, header_hash)?
                 .is_some();
 
         // TODO: remove once the receipt generation can be done before the domain block is

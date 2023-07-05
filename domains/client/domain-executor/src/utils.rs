@@ -40,14 +40,14 @@ where
         .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"))
 }
 
-pub type DomainImportNotificationSinks<Block, PBlock> =
-    Arc<Mutex<Vec<TracingUnboundedSender<DomainBlockImportNotification<Block, PBlock>>>>>;
+pub type DomainImportNotificationSinks<Block, CBlock> =
+    Arc<Mutex<Vec<TracingUnboundedSender<DomainBlockImportNotification<Block, CBlock>>>>>;
 
-pub type DomainImportNotifications<Block, PBlock> =
-    TracingUnboundedReceiver<DomainBlockImportNotification<Block, PBlock>>;
+pub type DomainImportNotifications<Block, CBlock> =
+    TracingUnboundedReceiver<DomainBlockImportNotification<Block, CBlock>>;
 
 #[derive(Clone, Debug)]
-pub struct DomainBlockImportNotification<Block: BlockT, PBlock: BlockT> {
+pub struct DomainBlockImportNotification<Block: BlockT, CBlock: BlockT> {
     pub domain_block_hash: Block::Hash,
-    pub primary_block_hash: PBlock::Hash,
+    pub primary_block_hash: CBlock::Hash,
 }
