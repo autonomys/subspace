@@ -1,3 +1,4 @@
+pub mod archival_storage_pieces;
 pub mod farmer_piece_cache;
 pub mod farmer_piece_getter;
 pub mod farmer_provider_storage;

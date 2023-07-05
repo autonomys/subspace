@@ -24,8 +24,9 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::RuntimeType;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
-    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
+    MaxDomainBlockWeight, RuntimeConfigsConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -384,7 +385,7 @@ fn subspace_genesis_config(
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.
-            key: Some(sudo_account),
+            key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
             enable_rewards,
@@ -398,13 +399,21 @@ fn subspace_genesis_config(
             confirmation_depth_k,
         },
         domains: DomainsConfig {
-            genesis_domain_runtime: Some(sp_domains::GenesisDomainRuntime {
-                name: b"evm".to_vec(),
+            genesis_domain: Some(sp_domains::GenesisDomain {
+                runtime_name: b"evm".to_vec(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
                 code: evm_domain_runtime::WASM_BINARY
                     .unwrap_or_else(|| panic!("EVM domain runtime not available"))
                     .to_owned(),
+
+                // Domain config, mainly for placeholder the concrete value TBD
+                owner_account_id: sudo_account,
+                domain_name: b"evm-domain".to_vec(),
+                max_block_size: MaxDomainBlockSize::get(),
+                max_block_weight: MaxDomainBlockWeight::get(),
+                bundle_slot_probability: (1, 1),
+                target_bundles_per_block: 10,
             }),
         },
     }

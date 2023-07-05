@@ -24,10 +24,11 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod domain_registry;
 pub mod runtime_registry;
 pub mod weights;
 
-use frame_support::traits::Get;
+use frame_support::traits::{Currency, Get};
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
@@ -38,16 +39,24 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
+/// The balance type used by the currency system.
+pub type BalanceOf<T> =
+    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
 #[frame_support::pallet]
 mod pallet {
-    use crate::calculate_tx_range;
+    use crate::domain_registry::{
+        do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
+    };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
         ScheduledRuntimeUpgrade,
     };
     use crate::weights::WeightInfo;
+    use crate::{calculate_tx_range, BalanceOf};
     use frame_support::pallet_prelude::{StorageMap, *};
+    use frame_support::traits::LockableCurrency;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -55,7 +64,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExecutorPublicKey, GenesisDomainRuntime, OpaqueBundle, RuntimeId, RuntimeType,
+        DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
@@ -88,6 +97,29 @@ mod pallet {
 
         /// Delay before a domain runtime is upgraded.
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
+
+        /// The maximum block size limit for all domain.
+        #[pallet::constant]
+        type MaxDomainBlockSize: Get<u32>;
+
+        /// The maximum block weight limit for all domain.
+        #[pallet::constant]
+        type MaxDomainBlockWeight: Get<Weight>;
+
+        /// The maximum bundle per block limit for all domain.
+        #[pallet::constant]
+        type MaxBundlesPerBlock: Get<u32>;
+
+        /// The maximum domain name length limit for all domain.
+        #[pallet::constant]
+        type MaxDomainNameLength: Get<u32>;
+
+        /// The amount of fund to be locked up for the domain instance creator.
+        #[pallet::constant]
+        type DomainInstantiationDeposit: Get<BalanceOf<Self>>;
+
+        /// The currency trait.
+        type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
@@ -126,6 +158,20 @@ mod pallet {
         Identity,
         RuntimeId,
         ScheduledRuntimeUpgrade,
+        OptionQuery,
+    >;
+
+    /// Stores the next domain id.
+    #[pallet::storage]
+    pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
+
+    /// The domain registry
+    #[pallet::storage]
+    pub(super) type DomainRegistry<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        DomainObject<T::BlockNumber, T::Hash, T::AccountId>,
         OptionQuery,
     >;
 
@@ -182,6 +228,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<DomainRegistryError> for Error<T> {
+        fn from(err: DomainRegistryError) -> Self {
+            Error::DomainRegistry(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Can not find the block hash of given primary block number.
@@ -192,6 +244,8 @@ mod pallet {
         FraudProof,
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
+        /// Domain registry specific errors
+        DomainRegistry(DomainRegistryError),
     }
 
     #[pallet::event]
@@ -213,6 +267,9 @@ mod pallet {
         },
         DomainRuntimeUpgraded {
             runtime_id: RuntimeId,
+        },
+        DomainInstantiated {
+            domain_id: DomainId,
         },
     }
 
@@ -364,27 +421,61 @@ mod pallet {
 
             Ok(())
         }
+
+        #[pallet::call_index(4)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn instantiate_domain(
+            origin: OriginFor<T>,
+            domain_config: DomainConfig,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let created_at = frame_system::Pallet::<T>::current_block_number();
+
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainInstantiated { domain_id });
+
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
-    #[derive(Default)]
-    pub struct GenesisConfig {
-        pub genesis_domain_runtime: Option<GenesisDomainRuntime>,
+    pub struct GenesisConfig<T: Config> {
+        pub genesis_domain: Option<GenesisDomain<T::AccountId>>,
+    }
+
+    impl<T: Config> Default for GenesisConfig<T> {
+        fn default() -> Self {
+            GenesisConfig {
+                genesis_domain: None,
+            }
+        }
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
-            if let Some(genesis_domain_runtime) = &self.genesis_domain_runtime {
+            if let Some(genesis_domain) = &self.genesis_domain {
                 // Register the genesis domain runtime
-                register_runtime_at_genesis::<T>(
-                    genesis_domain_runtime.name.clone(),
-                    genesis_domain_runtime.runtime_type.clone(),
-                    genesis_domain_runtime.runtime_version.clone(),
-                    genesis_domain_runtime.code.clone(),
+                let runtime_id = register_runtime_at_genesis::<T>(
+                    genesis_domain.runtime_name.clone(),
+                    genesis_domain.runtime_type.clone(),
+                    genesis_domain.runtime_version.clone(),
+                    genesis_domain.code.clone(),
                     Zero::zero(),
                 )
                 .expect("Genesis runtime registration must always succeed");
+
+                // Instantiate the genesis domain
+                let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
+                do_instantiate_domain::<T>(
+                    domain_config,
+                    genesis_domain.owner_account_id.clone(),
+                    Zero::zero(),
+                )
+                .expect("Genesis domain instantiation must always succeed");
             }
         }
     }
