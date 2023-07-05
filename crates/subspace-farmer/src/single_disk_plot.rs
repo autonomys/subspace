@@ -30,7 +30,6 @@ use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -116,12 +115,6 @@ pub enum SingleDiskPlotInfo {
         genesis_hash: [u8; 32],
         /// Public key of identity used for plot creation
         public_key: PublicKey,
-        /// First sector index in this plot
-        ///
-        /// Multiple plots can reuse the same identity, but they have to use different ranges for
-        /// sector indexes or else they'll essentially plot the same data and will not result in
-        /// increased probability of winning the reward.
-        first_sector_index: SectorIndex,
         /// How many pieces does one sector contain.
         pieces_in_sector: u16,
         /// How much space in bytes is allocated for this plot
@@ -136,7 +129,6 @@ impl SingleDiskPlotInfo {
         id: SingleDiskPlotId,
         genesis_hash: [u8; 32],
         public_key: PublicKey,
-        first_sector_index: SectorIndex,
         pieces_in_sector: u16,
         allocated_space: u64,
     ) -> Self {
@@ -144,7 +136,6 @@ impl SingleDiskPlotInfo {
             id,
             genesis_hash,
             public_key,
-            first_sector_index,
             pieces_in_sector,
             allocated_space,
         }
@@ -195,18 +186,6 @@ impl SingleDiskPlotInfo {
         public_key
     }
 
-    /// First sector index in this plot
-    ///
-    /// Multiple plots can reuse the same identity, but they have to use different ranges for
-    /// sector indexes or else they'll essentially plot the same data and will not result in
-    /// increased probability of winning the reward.
-    pub fn first_sector_index(&self) -> SectorIndex {
-        let Self::V0 {
-            first_sector_index, ..
-        } = self;
-        *first_sector_index
-    }
-
     /// How many pieces does one sector contain.
     pub fn pieces_in_sector(&self) -> u16 {
         let Self::V0 {
@@ -250,7 +229,7 @@ pub enum SingleDiskPlotSummary {
 #[derive(Debug, Encode, Decode)]
 struct PlotMetadataHeader {
     version: u8,
-    sector_count: u64,
+    sector_count: SectorIndex,
 }
 
 impl PlotMetadataHeader {
@@ -390,7 +369,7 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotted: Handler<(usize, PlottedSector, Arc<OwnedSemaphorePermit>)>,
+    sector_plotted: Handler<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
     solution: Handler<SolutionResponse>,
 }
 
@@ -529,19 +508,10 @@ impl SingleDiskPlot {
                     });
                 }
 
-                // TODO: Global generator that makes sure to avoid returning the same sector index
-                //  for multiple disks
-                let first_sector_index = SystemTime::UNIX_EPOCH
-                    .elapsed()
-                    .expect("Unix epoch is always in the past; qed")
-                    .as_secs()
-                    .wrapping_mul(u64::from(u32::MAX));
-
                 let single_disk_plot_info = SingleDiskPlotInfo::new(
                     SingleDiskPlotId::new(),
                     farmer_app_info.genesis_hash,
                     public_key,
-                    first_sector_index,
                     max_pieces_in_sector,
                     allocated_space,
                 );
@@ -555,11 +525,10 @@ impl SingleDiskPlot {
         let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
         let sector_metadata_size = SectorMetadata::encoded_size();
-        let target_sector_count =
-            (single_disk_plot_info.allocated_space() / sector_size as u64) as usize;
-        let first_sector_index = single_disk_plot_info.first_sector_index();
+        let target_sector_count: SectorIndex =
+            single_disk_plot_info.allocated_space() / sector_size as u64;
 
-        // TODO: Consider file locking to prevent other apps from modifying it
+        // TODO: Consider file locking to prevent other apps from modifying itS
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -574,7 +543,7 @@ impl SingleDiskPlot {
             };
 
             metadata_file.preallocate(
-                RESERVED_PLOT_METADATA + sector_metadata_size as u64 * target_sector_count as u64,
+                RESERVED_PLOT_METADATA + sector_metadata_size as u64 * target_sector_count,
             )?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
@@ -608,11 +577,12 @@ impl SingleDiskPlot {
             let metadata_mmap = unsafe {
                 MmapOptions::new()
                     .offset(RESERVED_PLOT_METADATA)
-                    .len(sector_metadata_size * target_sector_count)
+                    .len(sector_metadata_size * target_sector_count as usize)
                     .map(&metadata_file)?
             };
 
-            let mut sectors_metadata = Vec::<SectorMetadata>::with_capacity(target_sector_count);
+            let mut sectors_metadata =
+                Vec::<SectorMetadata>::with_capacity(target_sector_count as usize);
 
             for mut sector_metadata_bytes in metadata_mmap
                 .chunks_exact(sector_metadata_size)
@@ -635,7 +605,7 @@ impl SingleDiskPlot {
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
-        plot_file.preallocate(sector_size as u64 * target_sector_count as u64)?;
+        plot_file.preallocate(sector_size as u64 * target_sector_count)?;
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -684,7 +654,6 @@ impl SingleDiskPlot {
 
                         plotting::<_, _, PosTable>(
                             public_key,
-                            first_sector_index,
                             node_client,
                             pieces_in_sector,
                             sector_size,
@@ -781,7 +750,6 @@ impl SingleDiskPlot {
                         farming::<_, PosTable>(
                             public_key,
                             reward_address,
-                            first_sector_index,
                             node_client,
                             sector_size,
                             plot_mmap,
@@ -813,7 +781,6 @@ impl SingleDiskPlot {
         let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
             public_key,
             pieces_in_sector,
-            first_sector_index,
             unsafe { Mmap::map(&*plot_file)? },
             Arc::clone(&sectors_metadata),
             erasure_coding,
@@ -895,11 +862,9 @@ impl SingleDiskPlot {
         &self,
     ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
         let public_key = self.single_disk_plot_info.public_key();
-        let first_sector_index = self.single_disk_plot_info.first_sector_index();
 
-        (first_sector_index..)
-            .zip(self.sectors_metadata.read().clone())
-            .map(move |(sector_index, sector_metadata)| {
+        (0..).zip(self.sectors_metadata.read().clone()).map(
+            move |(sector_index, sector_metadata)| {
                 let sector_id = SectorId::new(public_key.hash(), sector_index);
 
                 let mut piece_indexes = Vec::with_capacity(self.pieces_in_sector.into());
@@ -922,7 +887,8 @@ impl SingleDiskPlot {
                     sector_metadata,
                     piece_indexes,
                 })
-            })
+            },
+        )
     }
 
     /// Get piece reader to read plot pieces later
@@ -936,7 +902,7 @@ impl SingleDiskPlot {
     /// throttling of the plotting process is desired.
     pub fn on_sector_plotted(
         &self,
-        callback: HandlerFn<(usize, PlottedSector, Arc<OwnedSemaphorePermit>)>,
+        callback: HandlerFn<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
     ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
     }

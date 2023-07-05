@@ -160,7 +160,6 @@ pub enum PlottingError {
 #[allow(clippy::too_many_arguments)]
 pub async fn plot_sector<PG, PosTable>(
     public_key: &PublicKey,
-    sector_offset: usize,
     sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
@@ -230,7 +229,6 @@ where
         .await
         {
             warn!(
-                %sector_offset,
                 %sector_index,
                 %error,
                 "Sector plotting attempt failed, will retry later"
@@ -239,7 +237,7 @@ where
             return Err(BackoffError::transient(error));
         }
 
-        debug!(%sector_offset, %sector_index, "Sector downloaded successfully");
+        debug!(%sector_index, "Sector downloaded successfully");
 
         Ok(())
     })

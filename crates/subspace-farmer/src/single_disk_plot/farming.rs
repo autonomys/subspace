@@ -69,7 +69,6 @@ pub enum FarmingError {
 pub(super) async fn farming<NC, PosTable>(
     public_key: PublicKey,
     reward_address: PublicKey,
-    first_sector_index: SectorIndex,
     node_client: NC,
     sector_size: usize,
     plot_mmap: Mmap,
@@ -95,7 +94,7 @@ where
         let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
         let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-        for ((sector_index, sector_metadata), sector) in (first_sector_index..)
+        for ((sector_index, sector_metadata), sector) in (0..)
             .zip(&*sectors_metadata)
             .zip(plot_mmap.chunks_exact(sector_size))
         {

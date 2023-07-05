@@ -17,7 +17,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, PieceIndex, PieceIndexHash, PieceOffset, Record, SegmentIndex,
+    ArchivedHistorySegment, Piece, PieceIndex, PieceIndexHash, PieceOffset, Record, SectorIndex,
+    SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
@@ -253,23 +254,22 @@ where
         .iter()
         .enumerate()
         .flat_map(|(disk_farm_index, single_disk_plot)| {
-            single_disk_plot
-                .plotted_sectors()
-                .enumerate()
-                .filter_map(move |(sector_offset, plotted_sector_result)| {
-                    match plotted_sector_result {
+            (0 as SectorIndex..)
+                .zip(single_disk_plot.plotted_sectors())
+                .filter_map(
+                    move |(sector_index, plotted_sector_result)| match plotted_sector_result {
                         Ok(plotted_sector) => Some(plotted_sector),
                         Err(error) => {
                             error!(
                                 %error,
                                 %disk_farm_index,
-                                %sector_offset,
+                                %sector_index,
                                 "Failed reading plotted sector on startup, skipping"
                             );
                             None
                         }
-                    }
-                })
+                    },
+                )
                 .flat_map(move |plotted_sector| {
                     (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes).map(
                         move |(piece_offset, piece_index)| {
@@ -310,95 +310,87 @@ where
             // Collect newly plotted pieces
             // TODO: Once we have replotting, this will have to be updated
             single_disk_plot
-                .on_sector_plotted(Arc::new(
-                    move |(sector_offset, plotted_sector, plotting_permit)| {
-                        let _span_guard = span.enter();
-                        let plotting_permit = Arc::clone(plotting_permit);
-                        let node = node.clone();
-                        let sector_offset = *sector_offset;
-                        let sector_index = plotted_sector.sector_index;
+                .on_sector_plotted(Arc::new(move |(plotted_sector, plotting_permit)| {
+                    let _span_guard = span.enter();
+                    let plotting_permit = Arc::clone(plotting_permit);
+                    let node = node.clone();
+                    let sector_index = plotted_sector.sector_index;
 
-                        let mut dropped_receiver = dropped_sender.subscribe();
+                    let mut dropped_receiver = dropped_sender.subscribe();
 
-                        let new_pieces = {
-                            let mut readers_and_pieces = readers_and_pieces.lock();
-                            let readers_and_pieces = readers_and_pieces
-                                .as_mut()
-                                .expect("Initial value was populated above; qed");
+                    let new_pieces = {
+                        let mut readers_and_pieces = readers_and_pieces.lock();
+                        let readers_and_pieces = readers_and_pieces
+                            .as_mut()
+                            .expect("Initial value was populated above; qed");
 
-                            let new_pieces = plotted_sector
-                                .piece_indexes
-                                .iter()
-                                .filter(|&&piece_index| {
-                                    // Skip pieces that are already plotted and thus were announced
-                                    // before
-                                    !readers_and_pieces.contains_piece(&piece_index.hash())
-                                })
-                                .copied()
-                                .collect::<Vec<_>>();
+                        let new_pieces = plotted_sector
+                            .piece_indexes
+                            .iter()
+                            .filter(|&&piece_index| {
+                                // Skip pieces that are already plotted and thus were announced
+                                // before
+                                !readers_and_pieces.contains_piece(&piece_index.hash())
+                            })
+                            .copied()
+                            .collect::<Vec<_>>();
 
-                            readers_and_pieces.add_pieces(
-                                (PieceOffset::ZERO..)
-                                    .zip(plotted_sector.piece_indexes.iter().copied())
-                                    .map(|(piece_offset, piece_index)| {
-                                        (
-                                            piece_index.hash(),
-                                            PieceDetails {
-                                                disk_farm_index,
-                                                sector_index,
-                                                piece_offset,
-                                            },
-                                        )
-                                    }),
-                            );
-
-                            new_pieces
-                        };
-
-                        if new_pieces.is_empty() {
-                            // None of the pieces are new, nothing left to do here
-                            return;
-                        }
-
-                        archival_storage_pieces.add_pieces(&new_pieces);
-
-                        // TODO: Skip those that were already announced (because they cached)
-                        let publish_fut = async move {
-                            let mut pieces_publishing_futures = new_pieces
-                                .into_iter()
-                                .map(|piece_index| {
-                                    announce_single_piece_index_hash_with_backoff(
+                        readers_and_pieces.add_pieces(
+                            (PieceOffset::ZERO..)
+                                .zip(plotted_sector.piece_indexes.iter().copied())
+                                .map(|(piece_offset, piece_index)| {
+                                    (
                                         piece_index.hash(),
-                                        &node,
+                                        PieceDetails {
+                                            disk_farm_index,
+                                            sector_index,
+                                            piece_offset,
+                                        },
                                     )
-                                })
-                                .collect::<FuturesUnordered<_>>();
+                                }),
+                        );
 
-                            while pieces_publishing_futures.next().await.is_some() {
-                                // Nothing is needed here, just driving all futures to completion
-                            }
+                        new_pieces
+                    };
 
-                            info!(
-                                %sector_offset,
-                                ?sector_index,
-                                "Sector publishing was successful."
-                            );
+                    if new_pieces.is_empty() {
+                        // None of the pieces are new, nothing left to do here
+                        return;
+                    }
 
-                            // Release only after publishing is finished
-                            drop(plotting_permit);
+                    archival_storage_pieces.add_pieces(&new_pieces);
+
+                    // TODO: Skip those that were already announced (because they cached)
+                    let publish_fut = async move {
+                        let mut pieces_publishing_futures = new_pieces
+                            .into_iter()
+                            .map(|piece_index| {
+                                announce_single_piece_index_hash_with_backoff(
+                                    piece_index.hash(),
+                                    &node,
+                                )
+                            })
+                            .collect::<FuturesUnordered<_>>();
+
+                        while pieces_publishing_futures.next().await.is_some() {
+                            // Nothing is needed here, just driving all futures to completion
                         }
-                        .in_current_span();
 
-                        tokio::spawn(async move {
-                            let result =
-                                select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv()))
-                                    .await;
-                            if matches!(result, Either::Right(_)) {
-                                debug!("Piece publishing was cancelled due to shutdown.");
-                            }
-                        });
-                    },
-                ))
+                        info!(?sector_index, "Sector publishing was successful.");
+
+                        // Release only after publishing is finished
+                        drop(plotting_permit);
+                    }
+                    .in_current_span();
+
+                    tokio::spawn(async move {
+                        let result =
+                            select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
+                        if matches!(result, Either::Right(_)) {
+                            debug!("Piece publishing was cancelled due to shutdown.");
+                        }
+                    });
+                }))
                 .detach();
 
             single_disk_plot.run()

@@ -45,12 +45,11 @@ pub enum PlottingError {
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn plotting<NC, PG, PosTable>(
     public_key: PublicKey,
-    first_sector_index: SectorIndex,
     node_client: NC,
     pieces_in_sector: u16,
     sector_size: usize,
     sector_metadata_size: usize,
-    target_sector_count: usize,
+    target_sector_count: SectorIndex,
     mut metadata_header: PlotMetadataHeader,
     mut metadata_header_mmap: MmapMut,
     plot_file: Arc<File>,
@@ -69,22 +68,21 @@ where
     PosTable: Table,
 {
     // Some sectors may already be plotted, skip them
-    let sectors_offsets_left_to_plot = metadata_header.sector_count as usize..target_sector_count;
+    let sectors_indices_left_to_plot = metadata_header.sector_count..target_sector_count;
 
     // TODO: Concurrency
-    for sector_offset in sectors_offsets_left_to_plot {
-        let sector_index = sector_offset as u64 + first_sector_index;
-        trace!(%sector_offset, %sector_index, "Preparing to plot sector");
+    for sector_index in sectors_indices_left_to_plot {
+        trace!(%sector_index, "Preparing to plot sector");
 
         let mut sector = unsafe {
             MmapOptions::new()
-                .offset((sector_offset * sector_size) as u64)
+                .offset((sector_index as usize * sector_size) as u64)
                 .len(sector_size)
                 .map_mut(&*plot_file)?
         };
         let mut sector_metadata = unsafe {
             MmapOptions::new()
-                .offset(RESERVED_PLOT_METADATA + (sector_offset * sector_metadata_size) as u64)
+                .offset(RESERVED_PLOT_METADATA + (sector_index * sector_metadata_size as u64))
                 .len(sector_metadata_size)
                 .map_mut(&metadata_file)?
         };
@@ -92,7 +90,6 @@ where
             Ok(plotting_permit) => plotting_permit,
             Err(error) => {
                 warn!(
-                    %sector_offset,
                     %sector_index,
                     %error,
                     "Semaphore was closed, interrupting plotting"
@@ -101,7 +98,7 @@ where
             }
         };
 
-        debug!(%sector_offset, %sector_index, "Plotting sector");
+        debug!(%sector_index, "Plotting sector");
 
         let farmer_app_info = node_client
             .farmer_app_info()
@@ -110,7 +107,6 @@ where
 
         let plot_sector_fut = plot_sector::<_, PosTable>(
             &public_key,
-            sector_offset,
             sector_index,
             &piece_getter,
             PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
@@ -138,13 +134,11 @@ where
         // Inform others that this sector is no longer being modified
         modifying_sector_index.write().take();
 
-        info!(%sector_offset, %sector_index, "Sector plotted successfully");
+        info!(%sector_index, "Sector plotted successfully");
 
-        handlers.sector_plotted.call_simple(&(
-            sector_offset,
-            plotted_sector,
-            Arc::new(plotting_permit),
-        ));
+        handlers
+            .sector_plotted
+            .call_simple(&(plotted_sector, Arc::new(plotting_permit)));
     }
 
     Ok(())
