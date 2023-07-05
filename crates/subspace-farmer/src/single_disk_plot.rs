@@ -1,12 +1,15 @@
+mod farming;
 pub mod piece_reader;
+mod plotting;
 
 use crate::identity::Identity;
-use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_plot::auditing::audit_sector;
-use crate::single_disk_plot::piece_reader::{read_piece, PieceReader, ReadPieceRequest};
-use crate::single_disk_plot::plotting::{plot_sector, PlottedSector};
+use crate::single_disk_plot::farming::farming;
+pub use crate::single_disk_plot::farming::FarmingError;
+use crate::single_disk_plot::piece_reader::PieceReader;
+use crate::single_disk_plot::plotting::plotting;
+pub use crate::single_disk_plot::plotting::PlottingError;
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
@@ -31,23 +34,20 @@ use std::time::SystemTime;
 use std::{fmt, fs, io, thread};
 use std_semaphore::{Semaphore, SemaphoreGuard};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex, Solution};
+use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::piece_caching::PieceMemoryCache;
-use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
-use subspace_farmer_components::{auditing, plotting, proving, FarmerProtocolInfo};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
-use subspace_rpc_primitives::{FarmerAppInfo, SlotInfo, SolutionResponse};
+use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, OwnedSemaphorePermit};
-use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, warn, Instrument, Span};
 use ulid::Ulid;
-
-/// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -55,12 +55,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
-
-/// Self-imposed limit for number of solutions that farmer will not go over per challenge.
-///
-/// Only useful for initial network bootstrapping where due to initial plot size there might be too
-/// many solutions.
-const SOLUTIONS_LIMIT: usize = 1;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -381,58 +375,6 @@ pub enum SingleDiskPlotError {
     },
 }
 
-/// Errors that happen during plotting
-#[derive(Debug, Error)]
-pub enum PlottingError {
-    /// Failed to retrieve farmer info
-    #[error("Failed to retrieve farmer info: {error}")]
-    FailedToGetFarmerInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-    /// Low-level plotting error
-    #[error("Low-level plotting error: {0}")]
-    LowLevel(#[from] plotting::PlottingError),
-}
-
-/// Errors that happen during farming
-#[derive(Debug, Error)]
-pub enum FarmingError {
-    /// Failed to substribe to slot info notifications
-    #[error("Failed to substribe to slot info notifications: {error}")]
-    FailedToSubscribeSlotInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Failed to retrieve farmer info
-    #[error("Failed to retrieve farmer info: {error}")]
-    FailedToGetFarmerInfo {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Failed to create memory mapping for metadata
-    #[error("Failed to create memory mapping for metadata: {error}")]
-    FailedToMapMetadata {
-        /// Lower-level error
-        error: io::Error,
-    },
-    /// Failed to submit solutions response
-    #[error("Failed to submit solutions response: {error}")]
-    FailedToSubmitSolutionsResponse {
-        /// Lower-level error
-        error: node_client::Error,
-    },
-    /// Low-level proving error
-    #[error("Low-level proving error: {0}")]
-    LowLevelProving(#[from] proving::ProvingError),
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-}
-
 /// Errors that happen in background tasks
 #[derive(Debug, Error)]
 pub enum BackgroundTaskError {
@@ -628,9 +570,7 @@ impl SingleDiskPlot {
             .create(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        let (mut metadata_header, mut metadata_header_mmap) = if metadata_file
-            .seek(SeekFrom::End(0))?
-            == 0
+        let (metadata_header, metadata_header_mmap) = if metadata_file.seek(SeekFrom::End(0))? == 0
         {
             let metadata_header = PlotMetadataHeader {
                 version: 0,
@@ -744,86 +684,27 @@ impl SingleDiskPlot {
                             return Ok(());
                         }
 
-                        // Some sectors may already be plotted, skip them
-                        let sectors_offsets_left_to_plot =
-                            metadata_header.sector_count as usize..target_sector_count;
-
-                        // TODO: Concurrency
-                        for sector_offset in sectors_offsets_left_to_plot {
-                            let sector_index = sector_offset as u64 + first_sector_index;
-                            trace!(%sector_offset, %sector_index, "Preparing to plot sector");
-
-                            let mut sector = unsafe {
-                                MmapOptions::new()
-                                    .offset((sector_offset * sector_size) as u64)
-                                    .len(sector_size)
-                                    .map_mut(&*plot_file)?
-                            };
-                            let mut sector_metadata = unsafe {
-                                MmapOptions::new()
-                                    .offset(
-                                        RESERVED_PLOT_METADATA
-                                            + (sector_offset * sector_metadata_size) as u64,
-                                    )
-                                    .len(sector_metadata_size)
-                                    .map_mut(&metadata_file)?
-                            };
-                            let plotting_permit =
-                                match concurrent_plotting_semaphore.clone().acquire_owned().await {
-                                    Ok(plotting_permit) => plotting_permit,
-                                    Err(error) => {
-                                        warn!(
-                                            %sector_offset,
-                                            %sector_index,
-                                            %error,
-                                            "Semaphore was closed, interrupting plotting"
-                                        );
-                                        return Ok(());
-                                    }
-                                };
-
-                            debug!(%sector_offset, %sector_index, "Plotting sector");
-
-                            let farmer_app_info = node_client
-                                .farmer_app_info()
-                                .await
-                                .map_err(|error| PlottingError::FailedToGetFarmerInfo { error })?;
-
-                            let plot_sector_fut = plot_sector::<_, PosTable>(
-                                &public_key,
-                                sector_offset,
-                                sector_index,
-                                &piece_getter,
-                                PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                                &farmer_app_info.protocol_info,
-                                &kzg,
-                                &erasure_coding,
-                                pieces_in_sector,
-                                &mut sector,
-                                &mut sector_metadata,
-                                piece_memory_cache.clone(),
-                            );
-                            let plotted_sector = plot_sector_fut.await?;
-                            sector.flush()?;
-                            sector_metadata.flush()?;
-
-                            metadata_header.sector_count += 1;
-                            metadata_header_mmap
-                                .copy_from_slice(metadata_header.encode().as_slice());
-                            sectors_metadata
-                                .write()
-                                .push(plotted_sector.sector_metadata.clone());
-
-                            info!(%sector_offset, %sector_index, "Sector plotted successfully");
-
-                            handlers.sector_plotted.call_simple(&(
-                                sector_offset,
-                                plotted_sector,
-                                Arc::new(plotting_permit),
-                            ));
-                        }
-
-                        Ok::<_, PlottingError>(())
+                        plotting::<_, _, PosTable>(
+                            public_key,
+                            first_sector_index,
+                            node_client,
+                            pieces_in_sector,
+                            sector_size,
+                            sector_metadata_size,
+                            target_sector_count,
+                            metadata_header,
+                            metadata_header_mmap,
+                            plot_file,
+                            metadata_file,
+                            sectors_metadata,
+                            piece_getter,
+                            piece_memory_cache,
+                            kzg,
+                            erasure_coding,
+                            handlers,
+                            concurrent_plotting_semaphore,
+                        )
+                        .await
                     };
 
                     let initial_plotting_result = handle.block_on(select(
@@ -841,8 +722,7 @@ impl SingleDiskPlot {
                 }
             })?;
 
-        let (mut slot_info_forwarder_sender, mut slot_info_forwarder_receiver) =
-            mpsc::channel::<SlotInfo>(0);
+        let (mut slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
 
         tasks.push(Box::pin({
             let node_client = node_client.clone();
@@ -899,88 +779,20 @@ impl SingleDiskPlot {
                             return Ok(());
                         }
 
-                        while let Some(slot_info) = slot_info_forwarder_receiver.next().await {
-                            let slot = slot_info.slot_number;
-                            let sectors_metadata = sectors_metadata.read();
-                            let sector_count = sectors_metadata.len();
-
-                            debug!(%slot, %sector_count, "Reading sectors");
-
-                            let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
-
-                            for (sector_index, sector_metadata, sector) in sectors_metadata
-                                .iter()
-                                .zip(plot_mmap.chunks_exact(sector_size))
-                                .enumerate()
-                                .map(|(sector_index, (sector, metadata))| {
-                                    (sector_index as u64 + first_sector_index, sector, metadata)
-                                })
-                            {
-                                trace!(%slot, %sector_index, "Auditing sector");
-
-                                let maybe_solution_candidates = audit_sector(
-                                    &public_key,
-                                    sector_index,
-                                    &slot_info.global_challenge,
-                                    slot_info.voting_solution_range,
-                                    sector,
-                                    sector_metadata,
-                                );
-                                let Some(solution_candidates) = maybe_solution_candidates else {
-                                    continue;
-                                };
-
-                                for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
-                                    &reward_address,
-                                    &kzg,
-                                    &erasure_coding,
-                                )? {
-                                    let solution = match maybe_solution {
-                                        Ok(solution) => solution,
-                                        Err(error) => {
-                                            error!(%slot, %sector_index, %error, "Failed to prove");
-                                            // Do not error completely on disk corruption or other
-                                            // reasons why proving might fail
-                                            continue;
-                                        }
-                                    };
-
-                                    debug!(%slot, %sector_index, "Solution found");
-                                    trace!(?solution, "Solution found");
-
-                                    solutions.push(solution);
-
-                                    if solutions.len() >= SOLUTIONS_LIMIT {
-                                        break;
-                                    }
-                                }
-
-                                if solutions.len() >= SOLUTIONS_LIMIT {
-                                    break;
-                                }
-                                // TODO: It is known that decoding is slow now and we'll only be
-                                //  able to decode a single sector within time slot reliably, in the
-                                //  future we may want allow more than one sector to be valid within
-                                //  the same disk plot.
-                                if !solutions.is_empty() {
-                                    break;
-                                }
-                            }
-
-                            let response = SolutionResponse {
-                                slot_number: slot_info.slot_number,
-                                solutions,
-                            };
-                            handlers.solution.call_simple(&response);
-                            node_client
-                                .submit_solution_response(response)
-                                .await
-                                .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse {
-                                    error,
-                                })?;
-                        }
-
-                        Ok::<_, FarmingError>(())
+                        farming::<_, PosTable>(
+                            public_key,
+                            reward_address,
+                            first_sector_index,
+                            node_client,
+                            sector_size,
+                            plot_mmap,
+                            sectors_metadata,
+                            kzg,
+                            erasure_coding,
+                            handlers,
+                            slot_info_forwarder_receiver,
+                        )
+                        .await
                     };
 
                     let farming_result = handle.block_on(select(
@@ -998,75 +810,23 @@ impl SingleDiskPlot {
                 }
             })?;
 
-        let (piece_reader, mut read_piece_receiver) = PieceReader::new();
+        let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
+            public_key,
+            pieces_in_sector,
+            first_sector_index,
+            unsafe { Mmap::map(&*plot_file)? },
+            Arc::clone(&sectors_metadata),
+            erasure_coding,
+        );
 
         let reading_join_handle = thread::Builder::new()
             .name(format!("reading-{disk_farm_index}"))
             .spawn({
-                let global_plot_mmap = unsafe { Mmap::map(&*plot_file)? };
-                #[cfg(unix)]
-                {
-                    global_plot_mmap.advise(memmap2::Advice::Random)?;
-                }
-
-                let sectors_metadata = Arc::clone(&sectors_metadata);
                 let mut stop_receiver = stop_sender.subscribe();
-                let span = span.clone();
+                let reading_fut = reading_fut.instrument(span.clone());
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let _span_guard = span.enter();
-
-                    let reading_fut = async move {
-                        while let Some(read_piece_request) = read_piece_receiver.next().await {
-                            let ReadPieceRequest {
-                                sector_index,
-                                piece_offset,
-                                response_sender,
-                            } = read_piece_request;
-
-                            if response_sender.is_canceled() {
-                                continue;
-                            }
-
-                            let (sector_metadata, sector_count) = {
-                                let sectors_metadata = sectors_metadata.read();
-
-                                let sector_offset = (sector_index - first_sector_index) as usize;
-                                let sector_count = sectors_metadata.len();
-
-                                let sector_metadata = match sectors_metadata.get(sector_offset) {
-                                    Some(sector_metadata) => sector_metadata.clone(),
-                                    None => {
-                                        error!(
-                                            %sector_index,
-                                            %first_sector_index,
-                                            %sector_count,
-                                            "Tried to read piece from sector that is not yet \
-                                            plotted"
-                                        );
-                                        continue;
-                                    }
-                                };
-
-                                (sector_metadata, sector_count)
-                            };
-
-                            let maybe_piece = read_piece::<PosTable>(
-                                &public_key,
-                                piece_offset,
-                                pieces_in_sector,
-                                sector_count,
-                                first_sector_index,
-                                &sector_metadata,
-                                &global_plot_mmap,
-                                &erasure_coding,
-                            );
-
-                            // Doesn't matter if receiver still cares about it
-                            let _ = response_sender.send(maybe_piece);
-                        }
-                    };
 
                     handle.block_on(select(
                         Box::pin(reading_fut),

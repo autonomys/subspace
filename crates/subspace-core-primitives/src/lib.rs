@@ -458,7 +458,7 @@ impl SegmentHeader {
         }
     }
 
-    /// Merkle root of the records in a segment.
+    /// Segment commitment of the records in a segment.
     pub fn segment_commitment(&self) -> SegmentCommitment {
         match self {
             Self::V0 {

@@ -220,6 +220,7 @@ pub trait Storage<Header: HeaderT> {
     fn segment_commitment(&self, segment_index: SegmentIndex) -> Option<SegmentCommitment>;
 
     /// Returns the stored segment count.
+    // TODO: Ideally should use `HistorySize` instead of `u64`
     fn number_of_segments(&self) -> u64;
 
     /// How many pieces one sector is supposed to contain (max)
