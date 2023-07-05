@@ -268,7 +268,7 @@ impl PlotMetadataHeader {
 
 /// Options used to open single dis plot
 pub struct SingleDiskPlotOptions<NC, PG> {
-    /// Path to directory where plot are stored.
+    /// Path to directory where plot is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
     pub farmer_app_info: FarmerAppInfo,

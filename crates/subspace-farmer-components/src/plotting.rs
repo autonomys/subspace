@@ -224,8 +224,6 @@ where
 
         if let Err(error) = download_sector(
             &mut raw_sector,
-            sector_offset,
-            sector_index,
             piece_getter,
             piece_getter_retry_policy,
             kzg,
@@ -243,6 +241,8 @@ where
 
             return Err(BackoffError::transient(error));
         }
+
+        debug!(%sector_offset, %sector_index, "Sector downloaded successfully");
 
         Ok(())
     })
@@ -403,8 +403,6 @@ where
 #[allow(clippy::too_many_arguments)]
 async fn download_sector<PG: PieceGetter>(
     raw_sector: &mut RawSector,
-    sector_offset: usize,
-    sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     kzg: &Kzg,
@@ -472,8 +470,6 @@ async fn download_sector<PG: PieceGetter>(
 
         piece_memory_cache.add_piece(piece_index.hash(), piece);
     }
-
-    debug!(%sector_offset, %sector_index, "Sector downloaded successfully");
 
     Ok(())
 }
