@@ -653,6 +653,7 @@ impl SingleDiskPlot {
         let handlers = Arc::<Handlers>::default();
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
+        let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
 
         let span = info_span!("single_disk_plot", %disk_farm_index);
 
@@ -664,6 +665,7 @@ impl SingleDiskPlot {
                 let kzg = kzg.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
+                let modifying_sector_index = Arc::clone(&modifying_sector_index);
                 let node_client = node_client.clone();
                 let plot_file = Arc::clone(&plot_file);
                 let error_sender = Arc::clone(&error_sender);
@@ -697,6 +699,7 @@ impl SingleDiskPlot {
                             kzg,
                             erasure_coding,
                             handlers,
+                            modifying_sector_index,
                             concurrent_plotting_semaphore,
                         )
                         .await
@@ -758,6 +761,7 @@ impl SingleDiskPlot {
                 let handle = handle.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
+                let modifying_sector_index = Arc::clone(&modifying_sector_index);
                 let sectors_metadata = Arc::clone(&sectors_metadata);
                 let mut start_receiver = start_sender.subscribe();
                 let mut stop_receiver = stop_sender.subscribe();
@@ -785,6 +789,7 @@ impl SingleDiskPlot {
                             kzg,
                             erasure_coding,
                             handlers,
+                            modifying_sector_index,
                             slot_info_forwarder_receiver,
                         )
                         .await
@@ -812,6 +817,7 @@ impl SingleDiskPlot {
             unsafe { Mmap::map(&*plot_file)? },
             Arc::clone(&sectors_metadata),
             erasure_coding,
+            modifying_sector_index,
         );
 
         let reading_join_handle = thread::Builder::new()

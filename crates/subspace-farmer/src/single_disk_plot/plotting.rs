@@ -60,6 +60,7 @@ pub(super) async fn plotting<NC, PG, PosTable>(
     kzg: Kzg,
     erasure_coding: ErasureCoding,
     handlers: Arc<Handlers>,
+    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     concurrent_plotting_semaphore: Arc<Semaphore>,
 ) -> Result<(), PlottingError>
 where
@@ -120,6 +121,10 @@ where
             &mut sector,
             &mut sector_metadata,
         );
+
+        // Inform others that this sector is being modified
+        modifying_sector_index.write().replace(sector_index);
+
         let plotted_sector = plot_sector_fut.await?;
         sector.flush()?;
         sector_metadata.flush()?;
@@ -129,6 +134,9 @@ where
         sectors_metadata
             .write()
             .push(plotted_sector.sector_metadata.clone());
+
+        // Inform others that this sector is no longer being modified
+        modifying_sector_index.write().take();
 
         info!(%sector_offset, %sector_index, "Sector plotted successfully");
 

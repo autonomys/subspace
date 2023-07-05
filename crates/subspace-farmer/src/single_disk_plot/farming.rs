@@ -77,6 +77,7 @@ pub(super) async fn farming<NC, PosTable>(
     kzg: Kzg,
     erasure_coding: ErasureCoding,
     handlers: Arc<Handlers>,
+    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     mut slot_info_notifications: mpsc::Receiver<SlotInfo>,
 ) -> Result<(), FarmingError>
 where
@@ -90,16 +91,18 @@ where
 
         debug!(%slot, %sector_count, "Reading sectors");
 
+        let modifying_sector_guard = modifying_sector_index.read();
+        let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
         let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-        for (sector_index, sector_metadata, sector) in sectors_metadata
-            .iter()
+        for ((sector_index, sector_metadata), sector) in (first_sector_index..)
+            .zip(&*sectors_metadata)
             .zip(plot_mmap.chunks_exact(sector_size))
-            .enumerate()
-            .map(|(sector_index, (sector, metadata))| {
-                (sector_index as u64 + first_sector_index, sector, metadata)
-            })
         {
+            if maybe_sector_being_modified == Some(sector_index) {
+                // Skip sector that is being modified right now
+                continue;
+            }
             trace!(%slot, %sector_index, "Auditing sector");
 
             let maybe_solution_candidates = audit_sector(
@@ -152,6 +155,7 @@ where
         }
 
         drop(sectors_metadata);
+        drop(modifying_sector_guard);
 
         let response = SolutionResponse {
             slot_number: slot_info.slot_number,

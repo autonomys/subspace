@@ -36,6 +36,7 @@ impl PieceReader {
         global_plot_mmap: Mmap,
         sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
         erasure_coding: ErasureCoding,
+        modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     ) -> (Self, impl Future<Output = ()>)
     where
         PosTable: Table,
@@ -49,6 +50,7 @@ impl PieceReader {
             global_plot_mmap,
             sectors_metadata,
             erasure_coding,
+            modifying_sector_index,
             read_piece_receiver,
         );
 
@@ -79,6 +81,7 @@ impl PieceReader {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn read_pieces<PosTable>(
     public_key: PublicKey,
     pieces_in_sector: u16,
@@ -86,6 +89,7 @@ async fn read_pieces<PosTable>(
     global_plot_mmap: Mmap,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
     erasure_coding: ErasureCoding,
+    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
 ) where
     PosTable: Table,
@@ -105,6 +109,13 @@ async fn read_pieces<PosTable>(
         } = read_piece_request;
 
         if response_sender.is_canceled() {
+            continue;
+        }
+
+        let modifying_sector_guard = modifying_sector_index.read();
+
+        if *modifying_sector_guard == Some(sector_index) {
+            // Skip sector that is being modified right now
             continue;
         }
 
