@@ -24,10 +24,10 @@ const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 /// NOTE: Unbounded but the size is not expected to be large.
 const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
 
-/// domain_block_hash => primary_block_hash
+/// domain_block_hash => consensus_block_hash
 ///
 /// Updated only when there is a new domain block produced
-const PRIMARY_HASH: &[u8] = b"primary_hash";
+const CONSENSUS_HASH: &[u8] = b"consensus_block_hash";
 
 /// domain_block_hash => latest_primary_block_hash
 ///
@@ -70,7 +70,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
         None => Ok(None),
         Some(t) => T::decode(&mut &t[..])
             .map_err(|e| {
-                ClientError::Backend(format!("Executor DB is corrupted. Decode error: {e}"))
+                ClientError::Backend(format!("Operator DB is corrupted. Decode error: {e}"))
             })
             .map(Some),
     }
@@ -78,28 +78,28 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 
 /// Write an execution receipt to aux storage, optionally prune the receipts that are
 /// too old.
-pub(super) fn write_execution_receipt<Backend, Block, PBlock>(
+pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
     head_receipt_number: NumberFor<Block>,
-    execution_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    execution_receipt: &ExecutionReceipt<NumberFor<CBlock>, CBlock::Hash, Block::Hash>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Backend: AuxStore,
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
-    let block_number = execution_receipt.primary_number;
-    let primary_hash = execution_receipt.primary_hash;
+    let block_number = execution_receipt.consensus_block_number;
+    let consensus_hash = execution_receipt.consensus_block_hash;
     let domain_hash = execution_receipt.domain_hash;
 
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
     let mut hashes_at_block_number =
-        load_decode::<_, Vec<PBlock::Hash>>(backend, block_number_key.as_slice())?
+        load_decode::<_, Vec<CBlock::Hash>>(backend, block_number_key.as_slice())?
             .unwrap_or_default();
-    hashes_at_block_number.push(primary_hash);
+    hashes_at_block_number.push(consensus_hash);
 
     let first_saved_receipt =
-        load_decode::<_, NumberFor<PBlock>>(backend, EXECUTION_RECEIPT_START)?
+        load_decode::<_, NumberFor<CBlock>>(backend, EXECUTION_RECEIPT_START)?
             .unwrap_or(block_number);
 
     let mut new_first_saved_receipt = first_saved_receipt;
@@ -110,13 +110,13 @@ where
         .saturated_into::<BlockNumber>()
         .checked_sub(PRUNING_DEPTH)
     {
-        new_first_saved_receipt = Into::<NumberFor<PBlock>>::into(delete_receipts_to) + One::one();
+        new_first_saved_receipt = Into::<NumberFor<CBlock>>::into(delete_receipts_to) + One::one();
         for receipt_to_delete in first_saved_receipt.saturated_into()..=delete_receipts_to {
             let delete_block_number_key =
                 (EXECUTION_RECEIPT_BLOCK_NUMBER, receipt_to_delete).encode();
 
             if let Some(hashes_to_delete) =
-                load_decode::<_, Vec<PBlock::Hash>>(backend, delete_block_number_key.as_slice())?
+                load_decode::<_, Vec<CBlock::Hash>>(backend, delete_block_number_key.as_slice())?
             {
                 keys_to_delete.extend(
                     hashes_to_delete
@@ -131,13 +131,13 @@ where
     backend.insert_aux(
         &[
             (
-                execution_receipt_key(primary_hash).as_slice(),
+                execution_receipt_key(consensus_hash).as_slice(),
                 execution_receipt.encode().as_slice(),
             ),
             // TODO: prune the stale mappings.
             (
-                (PRIMARY_HASH, domain_hash).encode().as_slice(),
-                primary_hash.encode().as_slice(),
+                (CONSENSUS_HASH, domain_hash).encode().as_slice(),
+                consensus_hash.encode().as_slice(),
             ),
             (
                 block_number_key.as_slice(),
@@ -166,7 +166,7 @@ where
     Number: Decode,
     PHash: Encode + Decode,
 {
-    match primary_hash_for::<Backend, Hash, PHash>(backend, domain_hash)? {
+    match consensus_block_hash_for::<Backend, Hash, PHash>(backend, domain_hash)? {
         Some(primary_block_hash) => load_decode(
             backend,
             execution_receipt_key(primary_block_hash).as_slice(),
@@ -175,10 +175,10 @@ where
     }
 }
 
-/// Load the execution receipt for given primary block hash.
+/// Load the execution receipt for given consensus block hash.
 pub(super) fn load_execution_receipt<Backend, Hash, Number, PHash>(
     backend: &Backend,
-    primary_block_hash: PHash,
+    consensus_block_hash: PHash,
 ) -> ClientResult<Option<ExecutionReceipt<Number, PHash, Hash>>>
 where
     Backend: AuxStore,
@@ -188,11 +188,11 @@ where
 {
     load_decode(
         backend,
-        execution_receipt_key(primary_block_hash).as_slice(),
+        execution_receipt_key(consensus_block_hash).as_slice(),
     )
 }
 
-pub(super) fn track_domain_hash_and_primary_hash<Backend, Hash, PHash>(
+pub(super) fn track_domain_hash_and_consensus_hash<Backend, Hash, PHash>(
     backend: &Backend,
     best_domain_hash: Hash,
     latest_primary_hash: PHash,
@@ -236,7 +236,7 @@ where
     )
 }
 
-pub(super) fn latest_primary_hash_for<Backend, Hash, PHash>(
+pub(super) fn latest_consensus_block_hash_for<Backend, Hash, PHash>(
     backend: &Backend,
     domain_hash: &Hash,
 ) -> ClientResult<Option<PHash>>
@@ -251,7 +251,7 @@ where
     )
 }
 
-pub(super) fn primary_hash_for<Backend, Hash, PHash>(
+pub(super) fn consensus_block_hash_for<Backend, Hash, PHash>(
     backend: &Backend,
     domain_hash: Hash,
 ) -> ClientResult<Option<PHash>>
@@ -260,7 +260,7 @@ where
     Hash: Encode,
     PHash: Decode,
 {
-    load_decode(backend, (PRIMARY_HASH, domain_hash).encode().as_slice())
+    load_decode(backend, (CONSENSUS_HASH, domain_hash).encode().as_slice())
 }
 
 // TODO: Unlock once domain test infra is workable again.
@@ -273,15 +273,15 @@ pub(super) fn target_receipt_is_pruned(
 }
 
 /// Writes a bad execution receipt to aux storage.
-pub(super) fn write_bad_receipt<Backend, PBlock>(
+pub(super) fn write_bad_receipt<Backend, CBlock>(
     backend: &Backend,
-    bad_receipt_number: NumberFor<PBlock>,
+    bad_receipt_number: NumberFor<CBlock>,
     bad_receipt_hash: H256,
-    trace_mismatch_info: (u32, PBlock::Hash),
+    trace_mismatch_info: (u32, CBlock::Hash),
 ) -> Result<(), ClientError>
 where
     Backend: AuxStore,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     let bad_receipt_hashes_key = (BAD_RECEIPT_HASHES, bad_receipt_number).encode();
     let mut bad_receipt_hashes: Vec<H256> =
@@ -296,7 +296,7 @@ where
         ),
     ];
 
-    let mut bad_receipt_numbers: Vec<NumberFor<PBlock>> =
+    let mut bad_receipt_numbers: Vec<NumberFor<CBlock>> =
         load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
     // The first bad receipt detected at this block number.
@@ -404,11 +404,11 @@ where
         .collect::<Vec<_>>();
 
     if !expired_receipt_numbers.is_empty() {
-        // The bad receipt had been pruned on primary chain, i.e., _finalized_.
+        // The bad receipt had been pruned on consensus chain, i.e., _finalized_.
         tracing::error!(
             ?oldest_receipt_number,
             ?expired_receipt_numbers,
-            "Bad receipt(s) had been pruned on primary chain"
+            "Bad receipt(s) had been pruned on consensus chain"
         );
 
         for expired_receipt_number in expired_receipt_numbers {
@@ -434,17 +434,17 @@ where
 }
 
 /// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
-pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, PBlock, F>(
+pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, CBlock, F>(
     backend: &Backend,
-    canonical_primary_hash_at: F,
-) -> Result<Option<(H256, u32, PBlock::Hash)>, ClientError>
+    canonical_consensus_hash_at: F,
+) -> Result<Option<(H256, u32, CBlock::Hash)>, ClientError>
 where
     Backend: AuxStore + HeaderBackend<Block>,
     Block: BlockT,
-    PBlock: BlockT,
-    F: Fn(NumberFor<PBlock>) -> sp_blockchain::Result<PBlock::Hash>,
+    CBlock: BlockT,
+    F: Fn(NumberFor<CBlock>) -> sp_blockchain::Result<CBlock::Hash>,
 {
-    let bad_receipt_numbers: Vec<NumberFor<PBlock>> =
+    let bad_receipt_numbers: Vec<NumberFor<CBlock>> =
         load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
     for bad_receipt_number in bad_receipt_numbers {
@@ -452,10 +452,10 @@ where
         let bad_receipt_hashes: Vec<H256> =
             load_decode(backend, bad_receipt_hashes_key.as_slice())?.unwrap_or_default();
 
-        let canonical_primary_hash = canonical_primary_hash_at(bad_receipt_number)?;
+        let canonical_consensus_hash = canonical_consensus_hash_at(bad_receipt_number)?;
 
         for bad_receipt_hash in bad_receipt_hashes.iter() {
-            let (trace_mismatch_index, primary_block_hash): (u32, PBlock::Hash) = load_decode(
+            let (trace_mismatch_index, consensus_block_hash): (u32, CBlock::Hash) = load_decode(
                 backend,
                 bad_receipt_mismatch_info_key(bad_receipt_hash).as_slice(),
             )?
@@ -465,11 +465,11 @@ where
                 ))
             })?;
 
-            if primary_block_hash == canonical_primary_hash {
+            if consensus_block_hash == canonical_consensus_hash {
                 return Ok(Some((
                     *bad_receipt_hash,
                     trace_mismatch_index,
-                    primary_block_hash,
+                    consensus_block_hash,
                 )));
             }
         }
@@ -489,17 +489,17 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::Mutex;
     use subspace_runtime_primitives::{BlockNumber, Hash};
-    use subspace_test_runtime::Block as PBlock;
+    use subspace_test_runtime::Block as CBlock;
     // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
     type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, Hash>;
 
-    fn create_execution_receipt(primary_number: BlockNumber) -> ExecutionReceipt {
+    fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {
-            primary_number,
-            primary_hash: H256::random(),
-            domain_number: primary_number,
+            consensus_block_number,
+            consensus_block_hash: H256::random(),
+            domain_block_number: consensus_block_number as u64, // TODO: proper type
             domain_hash: H256::random(),
             trace: Default::default(),
             trace_root: Default::default(),
@@ -546,11 +546,12 @@ mod tests {
             .unwrap()
         };
 
-        let receipt_at =
-            |primary_block_hash: Hash| load_execution_receipt(&client, primary_block_hash).unwrap();
+        let receipt_at = |consensus_block_hash: Hash| {
+            load_execution_receipt(&client, consensus_block_hash).unwrap()
+        };
 
         let write_receipt_at = |number: BlockNumber, receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, PBlock>(
+            write_execution_receipt::<_, Block, CBlock>(
                 &client,
                 number - 1, // Ideally, the receipt of previous block has been included when writing the receipt of current block.
                 receipt,
@@ -564,12 +565,12 @@ mod tests {
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let primary_hash = receipt.primary_hash;
+                let consensus_block_hash = receipt.consensus_block_hash;
                 write_receipt_at(block_number, &receipt);
-                assert_eq!(receipt_at(primary_hash), Some(receipt));
-                assert_eq!(hashes_at(block_number), Some(vec![primary_hash]));
+                assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
+                assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
                 assert_eq!(receipt_start(), Some(1));
-                primary_hash
+                consensus_block_hash
             })
             .collect::<Vec<_>>();
 
@@ -577,14 +578,14 @@ mod tests {
 
         // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is PRUNING_DEPTH.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
-        assert!(receipt_at(receipt.primary_hash).is_none());
+        assert!(receipt_at(receipt.consensus_block_hash).is_none());
         write_receipt_at(PRUNING_DEPTH + 1, &receipt);
-        assert!(receipt_at(receipt.primary_hash).is_some());
+        assert!(receipt_at(receipt.consensus_block_hash).is_some());
 
         // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is PRUNING_DEPTH + 1.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 2);
         write_receipt_at(PRUNING_DEPTH + 2, &receipt);
-        assert!(receipt_at(receipt.primary_hash).is_some());
+        assert!(receipt_at(receipt.consensus_block_hash).is_some());
 
         // ER of block #1 should be pruned.
         assert!(receipt_at(block_hash_list[0]).is_none());
@@ -595,9 +596,9 @@ mod tests {
 
         // Create PRUNING_DEPTH + 3 receipt, head_receipt_number is PRUNING_DEPTH + 2.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
-        let primary_hash1 = receipt.primary_hash;
+        let consensus_block_hash1 = receipt.consensus_block_hash;
         write_receipt_at(PRUNING_DEPTH + 3, &receipt);
-        assert!(receipt_at(primary_hash1).is_some());
+        assert!(receipt_at(consensus_block_hash1).is_some());
         // ER of block #2 should be pruned.
         assert!(receipt_at(block_hash_list[1]).is_none());
         assert!(target_receipt_is_pruned(PRUNING_DEPTH + 2, 2));
@@ -606,12 +607,12 @@ mod tests {
 
         // Multiple hashes attached to the block #(PRUNING_DEPTH + 3)
         let receipt = create_execution_receipt(PRUNING_DEPTH + 3);
-        let primary_hash2 = receipt.primary_hash;
+        let consensus_block_hash2 = receipt.consensus_block_hash;
         write_receipt_at(PRUNING_DEPTH + 3, &receipt);
-        assert!(receipt_at(primary_hash2).is_some());
+        assert!(receipt_at(consensus_block_hash2).is_some());
         assert_eq!(
             hashes_at(PRUNING_DEPTH + 3),
-            Some(vec![primary_hash1, primary_hash2])
+            Some(vec![consensus_block_hash1, consensus_block_hash2])
         );
     }
 
@@ -634,27 +635,28 @@ mod tests {
             .unwrap()
         };
 
-        let receipt_at =
-            |primary_block_hash: Hash| load_execution_receipt(&client, primary_block_hash).unwrap();
+        let receipt_at = |consensus_block_hash: Hash| {
+            load_execution_receipt(&client, consensus_block_hash).unwrap()
+        };
 
         let write_receipt_at = |head_receipt_number: BlockNumber, receipt: &ExecutionReceipt| {
-            write_execution_receipt::<_, Block, PBlock>(&client, head_receipt_number, receipt)
+            write_execution_receipt::<_, Block, CBlock>(&client, head_receipt_number, receipt)
                 .unwrap()
         };
 
         assert_eq!(receipt_start(), None);
 
         // Create PRUNING_DEPTH receipts, head_receipt_number is 0, i.e., no receipt
-        // has ever been included on primary chain.
+        // has ever been included on consensus chain.
         let block_hash_list = (1..=PRUNING_DEPTH)
             .map(|block_number| {
                 let receipt = create_execution_receipt(block_number);
-                let primary_hash = receipt.primary_hash;
+                let consensus_block_hash = receipt.consensus_block_hash;
                 write_receipt_at(0, &receipt);
-                assert_eq!(receipt_at(primary_hash), Some(receipt));
-                assert_eq!(hashes_at(block_number), Some(vec![primary_hash]));
+                assert_eq!(receipt_at(consensus_block_hash), Some(receipt));
+                assert_eq!(hashes_at(block_number), Some(vec![consensus_block_hash]));
                 assert_eq!(receipt_start(), Some(1));
-                primary_hash
+                consensus_block_hash
             })
             .collect::<Vec<_>>();
 
@@ -662,7 +664,7 @@ mod tests {
 
         // Create PRUNING_DEPTH + 1 receipt, head_receipt_number is 0.
         let receipt = create_execution_receipt(PRUNING_DEPTH + 1);
-        assert!(receipt_at(receipt.primary_hash).is_none());
+        assert!(receipt_at(receipt.consensus_block_hash).is_none());
         write_receipt_at(0, &receipt);
 
         // Create PRUNING_DEPTH + 2 receipt, head_receipt_number is 0.
@@ -699,9 +701,9 @@ mod tests {
     #[test]
     #[ignore]
     fn write_delete_prune_bad_receipt_works() {
-        struct PrimaryNumberHashMappings(Mutex<Vec<(u32, Hash)>>);
+        struct ConsensusNumberHashMappings(Mutex<Vec<(u32, Hash)>>);
 
-        impl PrimaryNumberHashMappings {
+        impl ConsensusNumberHashMappings {
             fn insert_number_to_hash_mapping(&self, block_number: u32, block_hash: Hash) {
                 let mut mappings = self.0.lock().unwrap();
                 if !mappings.contains(&(block_number, block_hash)) {
@@ -723,7 +725,7 @@ mod tests {
         let (client, backend) =
             substrate_test_runtime_client::TestClientBuilder::new().build_with_backend();
 
-        let primary_chain_client = PrimaryNumberHashMappings(Mutex::new(Vec::new()));
+        let consensus_client = ConsensusNumberHashMappings(Mutex::new(Vec::new()));
 
         let bad_receipts_at = |number: BlockNumber| -> Option<HashSet<Hash>> {
             let bad_receipt_hashes_key = (BAD_RECEIPT_HASHES, number).encode();
@@ -748,8 +750,8 @@ mod tests {
             |oldest_receipt_number: BlockNumber| -> Option<(H256, u32, Hash)> {
                 // Always check and prune the expired bad receipts before loading the first unconfirmed one.
                 prune_expired_bad_receipts(&client, oldest_receipt_number).unwrap();
-                find_first_unconfirmed_bad_receipt_info::<_, _, PBlock, _>(&client, |height| {
-                    Ok(primary_chain_client.canonical_hash(height).unwrap())
+                find_first_unconfirmed_bad_receipt_info::<_, _, CBlock, _>(&client, |height| {
+                    Ok(consensus_client.canonical_hash(height).unwrap())
                 })
                 .unwrap()
             };
@@ -767,22 +769,22 @@ mod tests {
             insert_header(backend.as_ref(), 3u64, block_hash2),
         );
 
-        primary_chain_client.insert_number_to_hash_mapping(10, block_hash1);
-        write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash1, (1, block_hash1)).unwrap();
+        consensus_client.insert_number_to_hash_mapping(10, block_hash1);
+        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash1, (1, block_hash1)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
-        primary_chain_client.insert_number_to_hash_mapping(10, block_hash2);
-        write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash2, (2, block_hash2)).unwrap();
+        consensus_client.insert_number_to_hash_mapping(10, block_hash2);
+        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash2, (2, block_hash2)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
-        primary_chain_client.insert_number_to_hash_mapping(10, block_hash3);
-        write_bad_receipt::<_, PBlock>(&client, 10, bad_receipt_hash3, (3, block_hash3)).unwrap();
+        consensus_client.insert_number_to_hash_mapping(10, block_hash3);
+        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash3, (3, block_hash3)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
 
         let (bad_receipt_hash4, block_hash4) = (
             Hash::random(),
             insert_header(backend.as_ref(), 4u64, block_hash3),
         );
-        primary_chain_client.insert_number_to_hash_mapping(20, block_hash4);
-        write_bad_receipt::<_, PBlock>(&client, 20, bad_receipt_hash4, (1, block_hash4)).unwrap();
+        consensus_client.insert_number_to_hash_mapping(20, block_hash4);
+        write_bad_receipt::<_, CBlock>(&client, 20, bad_receipt_hash4, (1, block_hash4)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
 
         assert_eq!(
@@ -837,8 +839,8 @@ mod tests {
             Hash::random(),
             insert_header(backend.as_ref(), 5u64, block_hash4),
         );
-        primary_chain_client.insert_number_to_hash_mapping(30, block_hash5);
-        write_bad_receipt::<_, PBlock>(&client, 30, bad_receipt_hash5, (1, block_hash5)).unwrap();
+        consensus_client.insert_number_to_hash_mapping(30, block_hash5);
+        write_bad_receipt::<_, CBlock>(&client, 30, bad_receipt_hash5, (1, block_hash5)).unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![30]));
         assert_eq!(bad_receipts_at(30).unwrap(), [bad_receipt_hash5].into());
         // Expired bad receipts will be removed.

@@ -17,7 +17,7 @@
 //! Subspace node implementation.
 
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_client_executor::ExecutorStreams;
+use domain_client_operator::OperatorStreams;
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -227,7 +227,7 @@ fn main() -> Result<(), Error> {
 
             let runner = cli.create_runner(&cmd.base)?;
 
-            runner.sync_run(|primary_chain_config| {
+            runner.sync_run(|consensus_chain_config| {
                 let domain_cli = DomainCli::new(
                     cmd.base
                         .base_path()?
@@ -238,7 +238,7 @@ fn main() -> Result<(), Error> {
                 let domain_config = SubstrateCli::create_configuration(
                     &domain_cli,
                     &domain_cli,
-                    primary_chain_config.tokio_handle.clone(),
+                    consensus_chain_config.tokio_handle.clone(),
                 )
                 .map_err(|error| {
                     sc_service::Error::Other(format!(
@@ -246,7 +246,7 @@ fn main() -> Result<(), Error> {
                     ))
                 })?;
 
-                cmd.run(primary_chain_config, domain_config)
+                cmd.run(consensus_chain_config, domain_config)
             })?;
         }
         Some(Subcommand::Revert(cmd)) => {
@@ -348,7 +348,7 @@ fn main() -> Result<(), Error> {
         Some(Subcommand::Domain(domain_cmd)) => match domain_cmd {
             DomainSubcommand::Benchmark(cmd) => {
                 let runner = cli.create_runner(cmd)?;
-                runner.sync_run(|primary_chain_config| {
+                runner.sync_run(|consensus_chain_config| {
                     let domain_cli = DomainCli::new(
                         cli.run
                             .base_path()?
@@ -357,7 +357,7 @@ fn main() -> Result<(), Error> {
                     );
                     let domain_config = domain_cli
                         .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
-                            primary_chain_config.tokio_handle,
+                            consensus_chain_config.tokio_handle,
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
@@ -381,27 +381,27 @@ fn main() -> Result<(), Error> {
                     }
                 })?;
             }
-            _ => unimplemented!("Executor subcommand"),
+            _ => unimplemented!("Domain subcommand"),
         },
         None => {
             let runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
-            runner.run_node_until_exit(|primary_chain_config| async move {
-                let tokio_handle = primary_chain_config.tokio_handle.clone();
-                let database_source = primary_chain_config.database.clone();
+            runner.run_node_until_exit(|consensus_chain_config| async move {
+                let tokio_handle = consensus_chain_config.tokio_handle.clone();
+                let database_source = consensus_chain_config.database.clone();
 
                 // TODO: proper value
-                let primary_block_import_throttling_buffer_size = 10;
+                let consensus_block_import_throttling_buffer_size = 10;
 
-                let mut primary_chain_node = {
+                let mut consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
-                        name = "PrimaryChain"
+                        name = "Consensus"
                     );
                     let _enter = span.enter();
 
                     let dsn_config = {
-                        let network_keypair = primary_chain_config
+                        let network_keypair = consensus_chain_config
                             .network
                             .node_key
                             .clone()
@@ -413,7 +413,7 @@ fn main() -> Result<(), Error> {
                             })?;
 
                         let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
-                            primary_chain_config
+                            consensus_chain_config
                                 .chain_spec
                                 .properties()
                                 .get("dsnBootstrapNodes")
@@ -444,7 +444,7 @@ fn main() -> Result<(), Error> {
                             keypair,
                             base_path: cli.run.base_path()?.map(|base_path| {
                                 base_path
-                                    .config_dir(primary_chain_config.chain_spec.id())
+                                    .config_dir(consensus_chain_config.chain_spec.id())
                                     .join("dsn")
                             }),
                             listen_on: cli.dsn_listen_on,
@@ -459,8 +459,8 @@ fn main() -> Result<(), Error> {
                         }
                     };
 
-                    let primary_chain_config = SubspaceConfiguration {
-                        base: primary_chain_config,
+                    let consensus_chain_config = SubspaceConfiguration {
+                        base: consensus_chain_config,
                         // Domain node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.domain_args.is_empty(),
                         subspace_networking: SubspaceNetworking::Create {
@@ -478,7 +478,7 @@ fn main() -> Result<(), Error> {
                         };
                     let partial_components =
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &primary_chain_config,
+                            &consensus_chain_config,
                             Some(&construct_domain_genesis_block_builder),
                         )
                         .map_err(|error| {
@@ -488,7 +488,7 @@ fn main() -> Result<(), Error> {
                         })?;
 
                     subspace_service::new_full::<PosTable, _, _, _>(
-                        primary_chain_config,
+                        consensus_chain_config,
                         partial_components,
                         true,
                         SlotProportion::new(3f32 / 4f32),
@@ -504,13 +504,13 @@ fn main() -> Result<(), Error> {
                 StorageMonitorService::try_spawn(
                     cli.storage_monitor,
                     database_source,
-                    &primary_chain_node.task_manager.spawn_essential_handle(),
+                    &consensus_chain_node.task_manager.spawn_essential_handle(),
                 )
                 .map_err(|error| {
                     sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
                 })?;
 
-                // Run an executor node, an optional component of Subspace full node.
+                // Run a domain node.
                 if !cli.domain_args.is_empty() {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -536,7 +536,7 @@ fn main() -> Result<(), Error> {
                         })?;
 
                     let block_importing_notification_stream = || {
-                        primary_chain_node
+                        consensus_chain_node
                             .block_importing_notification_stream
                             .subscribe()
                             .then(|block_importing_notification| async move {
@@ -548,7 +548,7 @@ fn main() -> Result<(), Error> {
                     };
 
                     let new_slot_notification_stream = || {
-                        primary_chain_node
+                        consensus_chain_node
                             .new_slot_notification_stream
                             .subscribe()
                             .then(|slot_notification| async move {
@@ -562,10 +562,10 @@ fn main() -> Result<(), Error> {
 
                     let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
 
-                    let executor_streams = ExecutorStreams {
-                        primary_block_import_throttling_buffer_size,
+                    let operator_streams = OperatorStreams {
+                        consensus_block_import_throttling_buffer_size,
                         block_importing_notification_stream: block_importing_notification_stream(),
-                        imported_block_notification_stream: primary_chain_node
+                        imported_block_notification_stream: consensus_chain_node
                             .client
                             .every_import_notification_stream(),
                         new_slot_notification_stream: new_slot_notification_stream(),
@@ -596,10 +596,10 @@ fn main() -> Result<(), Error> {
                     let domain_params = domain_service::DomainParams {
                         domain_id: domain_cli.domain_id,
                         domain_config,
-                        primary_chain_client: primary_chain_node.client.clone(),
-                        primary_network_sync_oracle: primary_chain_node.sync_service.clone(),
-                        select_chain: primary_chain_node.select_chain.clone(),
-                        executor_streams,
+                        consensus_client: consensus_chain_node.client.clone(),
+                        consensus_network_sync_oracle: consensus_chain_node.sync_service.clone(),
+                        select_chain: consensus_chain_node.select_chain.clone(),
+                        operator_streams,
                         gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                         provider: eth_provider,
                     };
@@ -621,17 +621,17 @@ fn main() -> Result<(), Error> {
                     xdm_gossip_worker_builder
                         .push_domain_tx_pool_sink(domain_cli.domain_id, domain_node.tx_pool_sink);
 
-                    primary_chain_node
+                    consensus_chain_node
                         .task_manager
                         .add_child(domain_node.task_manager);
 
                     let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                         .build::<Block, _, _>(
-                            primary_chain_node.network_service.clone(),
-                            primary_chain_node.sync_service.clone(),
+                            consensus_chain_node.network_service.clone(),
+                            consensus_chain_node.sync_service.clone(),
                         );
 
-                    primary_chain_node
+                    consensus_chain_node
                         .task_manager
                         .spawn_essential_handle()
                         .spawn_essential_blocking(
@@ -643,8 +643,8 @@ fn main() -> Result<(), Error> {
                     domain_node.network_starter.start_network();
                 }
 
-                primary_chain_node.network_starter.start_network();
-                Ok::<_, Error>(primary_chain_node.task_manager)
+                consensus_chain_node.network_starter.start_network();
+                Ok::<_, Error>(consensus_chain_node.task_manager)
             })?;
         }
     }

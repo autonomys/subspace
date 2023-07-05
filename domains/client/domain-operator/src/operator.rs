@@ -4,7 +4,7 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::DomainParentChain;
-use crate::{active_leaves, DomainImportNotifications, EssentialExecutorParams, TransactionFor};
+use crate::{active_leaves, DomainImportNotifications, OperatorParams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -18,37 +18,37 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
 // TODO: rename everything to Operator?
-/// Domain executor.
-pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
+/// Domain operator.
+pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     client: Arc<Client>,
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
-    fraud_proof_generator: FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
-    bundle_processor: BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
+    fraud_proof_generator: FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
+    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
+    domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI> Clone
-    for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI> Clone
+    for Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
             transaction_pool: self.transaction_pool.clone(),
             backend: self.backend.clone(),
@@ -59,13 +59,13 @@ where
     }
 }
 
-impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
-    Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+    Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-    PBlock::Hash: From<Block::Hash>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
+    CBlock::Hash: From<Block::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -83,15 +83,15 @@ where
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
-    PClient: HeaderBackend<PBlock>
-        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + BlockchainEvents<PBlock>
+    CClient: HeaderBackend<CBlock>
+        + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + BlockchainEvents<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
@@ -102,11 +102,11 @@ where
     pub async fn new<SC, IBNS, CIBNS, NSNS>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         select_chain: &SC,
-        params: EssentialExecutorParams<
+        params: OperatorParams<
             Block,
-            PBlock,
+            CBlock,
             Client,
-            PClient,
+            CClient,
             TransactionPool,
             Backend,
             E,
@@ -117,26 +117,25 @@ where
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
-        SC: SelectChain<PBlock>,
-        IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
-        CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
+        SC: SelectChain<CBlock>,
+        IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
+        CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
         NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     {
-        let active_leaves =
-            active_leaves(params.primary_chain_client.as_ref(), select_chain).await?;
+        let active_leaves = active_leaves(params.consensus_client.as_ref(), select_chain).await?;
 
         let parent_chain =
-            DomainParentChain::new(params.domain_id, params.primary_chain_client.clone());
+            DomainParentChain::new(params.domain_id, params.consensus_client.clone());
 
         let domain_bundle_proposer = DomainBundleProposer::new(
             params.client.clone(),
-            params.primary_chain_client.clone(),
+            params.consensus_client.clone(),
             params.transaction_pool.clone(),
         );
 
         let bundle_producer = DomainBundleProducer::new(
             params.domain_id,
-            params.primary_chain_client.clone(),
+            params.consensus_client.clone(),
             params.client.clone(),
             parent_chain.clone(),
             domain_bundle_proposer,
@@ -146,7 +145,7 @@ where
 
         let fraud_proof_generator = FraudProofGenerator::new(
             params.client.clone(),
-            params.primary_chain_client.clone(),
+            params.consensus_client.clone(),
             params.backend.clone(),
             params.code_executor,
         );
@@ -154,7 +153,7 @@ where
         let domain_block_processor = DomainBlockProcessor {
             domain_id: params.domain_id,
             client: params.client.clone(),
-            primary_chain_client: params.primary_chain_client.clone(),
+            consensus_client: params.consensus_client.clone(),
             backend: params.backend.clone(),
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
@@ -164,16 +163,16 @@ where
         let receipts_checker = ReceiptsChecker {
             domain_id: params.domain_id,
             client: params.client.clone(),
-            primary_chain_client: params.primary_chain_client.clone(),
+            consensus_client: params.consensus_client.clone(),
             fraud_proof_generator: fraud_proof_generator.clone(),
             parent_chain,
-            primary_network_sync_oracle: params.primary_network_sync_oracle,
+            consensus_network_sync_oracle: params.consensus_network_sync_oracle,
             _phantom: std::marker::PhantomData,
         };
 
         let bundle_processor = BundleProcessor::new(
             params.domain_id,
-            params.primary_chain_client.clone(),
+            params.consensus_client.clone(),
             params.client.clone(),
             params.backend.clone(),
             params.keystore,
@@ -182,23 +181,23 @@ where
         );
 
         spawn_essential.spawn_essential_blocking(
-            "domain-executor-worker",
+            "domain-operator-worker",
             None,
             crate::domain_worker_starter::start_worker(
                 spawn_essential.clone(),
-                params.primary_chain_client.clone(),
+                params.consensus_client.clone(),
                 params.client.clone(),
                 params.is_authority,
                 bundle_producer,
                 bundle_processor.clone(),
-                params.executor_streams,
+                params.operator_streams,
                 active_leaves,
             )
             .boxed(),
         );
 
         Ok(Self {
-            primary_chain_client: params.primary_chain_client,
+            consensus_client: params.consensus_client,
             client: params.client,
             transaction_pool: params.transaction_pool,
             backend: params.backend,
@@ -210,7 +209,7 @@ where
 
     pub fn fraud_proof_generator(
         &self,
-    ) -> FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E> {
+    ) -> FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
         self.fraud_proof_generator.clone()
     }
 
@@ -218,7 +217,7 @@ where
     ///
     /// NOTE: Unlike `BlockchainEvents::import_notification_stream()`, this notification won't be
     /// fired until the system domain block's receipt processing is done.
-    pub fn import_notification_stream(&self) -> DomainImportNotifications<Block, PBlock> {
+    pub fn import_notification_stream(&self) -> DomainImportNotifications<Block, CBlock> {
         let (sink, stream) = tracing_unbounded("mpsc_domain_import_notification_stream", 100);
         self.domain_block_processor
             .import_notification_sinks
@@ -231,9 +230,16 @@ where
     // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
     // `set_new_code_should_work` test to do an actual runtime upgrade
     #[doc(hidden)]
-    pub async fn process_bundles(self, primary_info: (PBlock::Hash, NumberFor<PBlock>, bool)) {
-        if let Err(err) = self.bundle_processor.process_bundles(primary_info).await {
-            tracing::error!(?primary_info, ?err, "Error at processing bundles.");
+    pub async fn process_bundles(
+        self,
+        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>, bool),
+    ) {
+        if let Err(err) = self
+            .bundle_processor
+            .process_bundles(consensus_block_info)
+            .await
+        {
+            tracing::error!(?consensus_block_info, ?err, "Error at processing bundles.");
         }
     }
 }

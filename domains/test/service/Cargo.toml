@@ -14,7 +14,7 @@ include = [
 [dependencies]
 async-trait = "0.1.68"
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../../client/consensus-relay-chain" }
-domain-client-executor = { version = "0.1.0", path = "../../client/domain-executor" }
+domain-client-operator = { version = "0.1.0", path = "../../client/domain-operator" }
 domain-eth-service = { version = "0.1.0", path = "../../client/eth-service" }
 domain-service = { version = "0.1.0", path = "../../service" }
 domain-test-primitives = { version = "0.1.0", path = "../primitives" }

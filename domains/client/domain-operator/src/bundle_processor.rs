@@ -1,4 +1,6 @@
-use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, ReceiptsChecker};
+use crate::domain_block_processor::{
+    DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
+};
 use crate::{DomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
@@ -9,50 +11,50 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::traits::{Block as BlockT, HashFor, One};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
-type DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E> = ReceiptsChecker<
+type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = ReceiptsChecker<
     Block,
     Client,
-    PBlock,
-    PClient,
+    CBlock,
+    CClient,
     Backend,
     E,
-    DomainParentChain<Block, PBlock, PClient>,
-    PBlock,
+    DomainParentChain<Block, CBlock, CClient>,
+    CBlock,
 >;
 
-pub(crate) struct BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+pub(crate) struct BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
     keystore: KeystorePtr,
-    domain_receipts_checker: DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>,
+    domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
     domain_block_preprocessor:
-        DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApiFull<Client>>,
-    domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
+        DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApiFull<Client>>,
+    domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E, BI> Clone
-    for BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, Backend, E, BI> Clone
+    for BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
             keystore: self.keystore.clone(),
@@ -63,13 +65,13 @@ where
     }
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E, BI>
-    BundleProcessor<Block, PBlock, Client, PClient, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, Backend, E, BI>
+    BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-    PBlock::Hash: From<Block::Hash>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
+    CBlock::Hash: From<Block::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -86,33 +88,33 @@ where
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
-    PClient: HeaderBackend<PBlock>
-        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CClient: HeaderBackend<CBlock>
+        + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     pub(crate) fn new(
         domain_id: DomainId,
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
         keystore: KeystorePtr,
-        domain_receipts_checker: DomainReceiptsChecker<Block, PBlock, Client, PClient, Backend, E>,
-        domain_block_processor: DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>,
+        domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
+        domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
     ) -> Self {
         let domain_block_preprocessor = DomainBlockPreprocessor::new(
             domain_id,
-            primary_chain_client.clone(),
+            consensus_client.clone(),
             RuntimeApiFull::new(client.clone()),
         );
         Self {
             domain_id,
-            primary_chain_client,
+            consensus_client,
             client,
             backend,
             keystore,
@@ -125,32 +127,34 @@ where
     // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>, bool),
+        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>, bool),
     ) -> sp_blockchain::Result<()> {
-        let (primary_hash, primary_number, is_new_best) = primary_info;
+        let (consensus_block_hash, consensus_block_number, is_new_best) = consensus_block_info;
 
-        tracing::debug!("Processing imported primary block #{primary_number},{primary_hash}");
+        tracing::debug!(
+            "Processing consensus block #{consensus_block_number},{consensus_block_hash}"
+        );
 
-        let maybe_pending_primary_blocks = self
+        let maybe_pending_consensus_blocks = self
             .domain_block_processor
-            .pending_imported_primary_blocks(primary_hash, primary_number)?;
+            .pending_imported_consensus_blocks(consensus_block_hash, consensus_block_number)?;
 
-        if let Some(PendingPrimaryBlocks {
+        if let Some(PendingConsensusBlocks {
             initial_parent,
-            primary_imports,
-        }) = maybe_pending_primary_blocks
+            consensus_imports,
+        }) = maybe_pending_consensus_blocks
         {
             tracing::trace!(
                 ?initial_parent,
-                ?primary_imports,
-                "Pending primary blocks to process"
+                ?consensus_imports,
+                "Pending consensus blocks to process"
             );
 
             let mut domain_parent = initial_parent;
 
-            for primary_info in primary_imports {
+            for consensus_info in consensus_imports {
                 if let Some(next_domain_parent) = self
-                    .process_bundles_at((primary_info.hash, primary_info.number), domain_parent)
+                    .process_bundles_at((consensus_info.hash, consensus_info.number), domain_parent)
                     .await?
                 {
                     domain_parent = next_domain_parent;
@@ -187,14 +191,14 @@ where
 
     async fn process_bundles_at(
         &self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>),
         parent_info: (Block::Hash, NumberFor<Block>),
     ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
-        let (primary_hash, primary_number) = primary_info;
+        let (consensus_block_hash, consensus_block_number) = consensus_block_info;
         let (parent_hash, parent_number) = parent_info;
 
         tracing::debug!(
-            "Building a new domain block from primary block #{primary_number},{primary_hash} \
+            "Building a new domain block from consensus block #{consensus_block_number},{consensus_block_hash} \
             on top of parent block #{parent_number},{parent_hash}"
         );
 
@@ -208,15 +212,15 @@ where
 
         let extrinsics = match self
             .domain_block_preprocessor
-            .preprocess_primary_block(primary_hash, parent_hash)?
+            .preprocess_consensus_block(consensus_block_hash, parent_hash)?
         {
             Some(exts) => exts,
             None => {
                 tracing::debug!(
-                    "No bundles and runtime upgrade for this domain in primary block {primary_info:?}, skip building domain block"
+                    "No bundles and runtime upgrade for this domain in consensus block #{consensus_block_number:?},{consensus_block_hash}, skip building domain block"
                 );
-                self.domain_block_processor.on_primary_block_processed(
-                    primary_hash,
+                self.domain_block_processor.on_consensus_block_processed(
+                    consensus_block_hash,
                     None,
                     head_receipt_number,
                 )?;
@@ -227,12 +231,20 @@ where
         let domain_block_result = self
             .domain_block_processor
             .process_domain_block(
-                (primary_hash, primary_number),
+                (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 extrinsics,
                 Digest::default(),
             )
             .await?;
+
+        // TODO: Retrieve using consensus chain runtime API
+        let head_receipt_number = domain_block_result.header_number - One::one();
+        // let head_receipt_number = self
+        // .consensus_client
+        // .runtime_api()
+        // .head_receipt_number(primary_hash, self.domain_id)?
+        // .into();
 
         assert!(
             domain_block_result.header_number > head_receipt_number,
@@ -244,14 +256,14 @@ where
             domain_block_result.header_number,
         );
 
-        self.domain_block_processor.on_primary_block_processed(
-            primary_hash,
+        self.domain_block_processor.on_consensus_block_processed(
+            consensus_block_hash,
             Some(domain_block_result),
             head_receipt_number,
         )?;
 
         self.domain_receipts_checker
-            .check_state_transition(primary_hash)?;
+            .check_state_transition(consensus_block_hash)?;
 
         Ok(Some(built_block_info))
     }

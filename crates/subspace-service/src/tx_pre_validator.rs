@@ -14,7 +14,7 @@ use subspace_fraud_proof::VerifyFraudProof;
 use subspace_transaction_pool::bundle_validator::ValidateBundle;
 use subspace_transaction_pool::PreValidateTransaction;
 
-pub struct PrimaryChainTxPreValidator<Block, Client, Verifier, BundleValidator> {
+pub struct ConsensusChainTxPreValidator<Block, Client, Verifier, BundleValidator> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed>,
     fraud_proof_verifier: Verifier,
@@ -23,7 +23,7 @@ pub struct PrimaryChainTxPreValidator<Block, Client, Verifier, BundleValidator> 
 }
 
 impl<Block, Client, Verifier, BundleValidator> Clone
-    for PrimaryChainTxPreValidator<Block, Client, Verifier, BundleValidator>
+    for ConsensusChainTxPreValidator<Block, Client, Verifier, BundleValidator>
 where
     Verifier: Clone,
     BundleValidator: Clone,
@@ -40,7 +40,7 @@ where
 }
 
 impl<Block, Client, Verifier, BundleValidator>
-    PrimaryChainTxPreValidator<Block, Client, Verifier, BundleValidator>
+    ConsensusChainTxPreValidator<Block, Client, Verifier, BundleValidator>
 {
     pub fn new(
         client: Arc<Client>,
@@ -60,7 +60,7 @@ impl<Block, Client, Verifier, BundleValidator>
 
 #[async_trait::async_trait]
 impl<Block, Client, Verifier, BundleValidator> PreValidateTransaction
-    for PrimaryChainTxPreValidator<Block, Client, Verifier, BundleValidator>
+    for ConsensusChainTxPreValidator<Block, Client, Verifier, BundleValidator>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync,

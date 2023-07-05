@@ -64,7 +64,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, RuntimeId, RuntimeType,
+        DomainId, GenesisDomain, OpaqueBundle, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
     use sp_std::fmt::Debug;
@@ -236,8 +236,6 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Can not find the block hash of given primary block number.
-        UnavailablePrimaryBlockHash,
         /// Invalid bundle.
         Bundle(BundleError),
         /// Invalid fraud proof.
@@ -255,7 +253,7 @@ mod pallet {
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
-            bundle_author: ExecutorPublicKey,
+            bundle_author: OperatorPublicKey,
         },
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
@@ -346,7 +344,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash,
-                bundle_author: opaque_bundle.into_executor_public_key(),
+                bundle_author: opaque_bundle.into_operator_public_key(),
             });
 
             Ok(())
@@ -608,9 +606,9 @@ impl<T: Config> Pallet<T> {
                         "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
                     )
                 } else if confirmation_depth_k == One::one() {
-                    header.primary_number < finalized
+                    header.consensus_block_number < finalized
                 } else {
-                    header.primary_number <= finalized
+                    header.consensus_block_number <= finalized
                 };
 
                 if is_stale_bundle {
@@ -618,7 +616,7 @@ impl<T: Config> Pallet<T> {
                         target: "runtime::domains",
                         "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
                         ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
-                        header.primary_number,
+                        header.consensus_block_number,
                     );
                     return Err(BundleError::StaleBundle);
                 }

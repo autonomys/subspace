@@ -31,21 +31,21 @@ pub enum FraudProofError {
     RuntimeApi(#[from] sp_api::ApiError),
 }
 
-pub struct FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E> {
+pub struct FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
     client: Arc<Client>,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     backend: Arc<Backend>,
     code_executor: Arc<E>,
-    _phantom: PhantomData<(Block, PBlock)>,
+    _phantom: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E> Clone
-    for FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, CBlock, Client, CClient, Backend, E> Clone
+    for FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             backend: self.backend.clone(),
             code_executor: self.code_executor.clone(),
             _phantom: self._phantom,
@@ -53,29 +53,29 @@ impl<Block, PBlock, Client, PClient, Backend, E> Clone
     }
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E>
-    FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>
+impl<Block, CBlock, Client, CClient, Backend, E>
+    FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    PClient: HeaderBackend<PBlock> + 'static,
+    CClient: HeaderBackend<CBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     pub fn new(
         client: Arc<Client>,
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         backend: Arc<Backend>,
         code_executor: Arc<E>,
     ) -> Self {
         Self {
             client,
-            primary_chain_client,
+            consensus_client,
             backend,
             code_executor,
             _phantom: Default::default(),
@@ -86,14 +86,14 @@ where
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
-        local_receipt: &ExecutionReceipt<NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        local_receipt: &ExecutionReceipt<NumberFor<CBlock>, CBlock::Hash, Block::Hash>,
         bad_receipt_hash: H256,
     ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
     where
         PCB: BlockT,
     {
         let block_hash = local_receipt.domain_hash;
-        let block_number = to_number_primitive(local_receipt.primary_number);
+        let block_number = to_number_primitive(local_receipt.consensus_block_number);
 
         let header = self.header(block_hash)?;
         let parent_header = self.header(*header.parent_hash())?;
@@ -115,14 +115,14 @@ where
             },
         )?;
 
-        let primary_parent_hash = H256::decode(
+        let consensus_parent_hash = H256::decode(
             &mut self
-                .primary_chain_client
-                .header(local_receipt.primary_hash)?
+                .consensus_client
+                .header(local_receipt.consensus_block_hash)?
                 .ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
-                        "Header not found for primary {:?}",
-                        local_receipt.primary_hash
+                        "Header not found for consensus block {:?}",
+                        local_receipt.consensus_block_hash
                     ))
                 })?
                 .parent_hash()
@@ -165,7 +165,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                primary_parent_hash,
+                consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -206,7 +206,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                primary_parent_hash,
+                consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -230,7 +230,7 @@ where
                 domain_id,
                 bad_receipt_hash,
                 parent_number,
-                primary_parent_hash,
+                consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
                 proof,

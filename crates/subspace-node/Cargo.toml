@@ -24,7 +24,7 @@ bytesize = "1.2.0"
 clap = { version = "4.2.1", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 dirs = "5.0.1"
-domain-client-executor = { version = "0.1.0", path = "../../domains/client/domain-executor" }
+domain-client-operator = { version = "0.1.0", path = "../../domains/client/domain-operator" }
 domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-service" }
 domain-service = { version = "0.1.0", path = "../../domains/service" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }

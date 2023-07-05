@@ -13,7 +13,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{InvalidTransactionProof, VerificationError};
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, Storage};
 use sp_trie::{read_trie_value, LayoutV1};
@@ -24,24 +24,24 @@ use std::sync::Arc;
 
 /// Invalid transaction proof verifier.
 pub struct InvalidTransactionProofVerifier<
-    PBlock,
-    PClient,
+    CBlock,
+    CClient,
     Hash,
     Exec,
     VerifierClient,
     DomainExtrinsicsBuilder,
 > {
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     executor: Arc<Exec>,
     verifier_client: VerifierClient,
     domain_extrinsics_builder: DomainExtrinsicsBuilder,
-    _phantom: PhantomData<(PBlock, Hash)>,
+    _phantom: PhantomData<(CBlock, Hash)>,
 }
 
-impl<PBlock, PClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder> Clone
+impl<CBlock, CClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder> Clone
     for InvalidTransactionProofVerifier<
-        PBlock,
-        PClient,
+        CBlock,
+        CClient,
         Hash,
         Exec,
         VerifierClient,
@@ -53,7 +53,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             executor: self.executor.clone(),
             verifier_client: self.verifier_client.clone(),
             domain_extrinsics_builder: self.domain_extrinsics_builder.clone(),
@@ -116,34 +116,34 @@ where
     Ok(runtime_api_light)
 }
 
-impl<PBlock, PClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
+impl<CBlock, CClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
     InvalidTransactionProofVerifier<
-        PBlock,
-        PClient,
+        CBlock,
+        CClient,
         Hash,
         Exec,
         VerifierClient,
         DomainExtrinsicsBuilder,
     >
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Hash: Encode + Decode,
-    H256: Into<PBlock::Hash>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    H256: Into<CBlock::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
+    CClient::Api: DomainsApi<CBlock, Hash>,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
     Exec: CodeExecutor + 'static,
 {
     /// Constructs a new instance of [`InvalidTransactionProofVerifier`].
     pub fn new(
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         executor: Arc<Exec>,
         verifier_client: VerifierClient,
         domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
-            primary_chain_client,
+            consensus_client,
             executor,
             verifier_client,
             domain_extrinsics_builder,
@@ -151,21 +151,23 @@ where
         }
     }
 
-    fn fetch_primary_header(
+    fn fetch_consensus_block_header(
         &self,
         domain_id: DomainId,
         block_number: u32,
-    ) -> Result<PBlock::Header, VerificationError> {
-        let primary_hash: PBlock::Hash = self
+    ) -> Result<CBlock::Header, VerificationError> {
+        let consensus_block_hash: CBlock::Hash = self
             .verifier_client
             .primary_hash(domain_id, block_number)?
             .into();
 
         let header = self
-            .primary_chain_client
-            .header(primary_hash)?
+            .consensus_client
+            .header(consensus_block_hash)?
             .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!("Header for {primary_hash} not found"))
+                sp_blockchain::Error::Backend(format!(
+                    "Header for {consensus_block_hash} not found"
+                ))
             })?;
 
         Ok(header)
@@ -188,13 +190,13 @@ where
         // - Bundle is valid and is produced by a legit executor.
         // - Bundle author, who will be slashed, can be extracted in runtime.
 
-        let header = self.fetch_primary_header(*domain_id, *block_number)?;
-        let primary_parent_hash = *header.parent_hash();
+        let header = self.fetch_consensus_block_header(*domain_id, *block_number)?;
+        let consensus_parent_hash = *header.parent_hash();
 
         let domain_runtime_code = retrieve_domain_runtime_code(
             *domain_id,
-            primary_parent_hash,
-            &self.primary_chain_client,
+            consensus_parent_hash,
+            &self.consensus_client,
         )?;
 
         // TODO: Verifiable invalid extrinsic.
@@ -240,10 +242,10 @@ pub trait VerifyInvalidTransactionProof {
     ) -> Result<(), VerificationError>;
 }
 
-impl<PBlock, Client, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
+impl<CBlock, Client, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
     VerifyInvalidTransactionProof
     for InvalidTransactionProofVerifier<
-        PBlock,
+        CBlock,
         Client,
         Hash,
         Exec,
@@ -251,13 +253,13 @@ impl<PBlock, Client, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
         DomainExtrinsicsBuilder,
     >
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Hash: Encode + Decode,
-    H256: Into<PBlock::Hash>,
-    Client: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    Client::Api: ExecutorApi<PBlock, Hash>,
+    H256: Into<CBlock::Hash>,
+    Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
+    Client::Api: DomainsApi<CBlock, Hash>,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
     Exec: CodeExecutor + 'static,
 {
     fn verify_invalid_transaction_proof(

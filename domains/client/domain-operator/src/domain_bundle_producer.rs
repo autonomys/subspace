@@ -2,16 +2,16 @@ use crate::bundle_election_solver::BundleElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
 use crate::sortition::TransactionSelector;
-use crate::utils::ExecutorSlotInfo;
+use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_domains::{
-    Bundle, DomainId, ExecutorApi, ExecutorPublicKey, ExecutorSignature, SealedBundleHeader,
+    Bundle, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
@@ -20,51 +20,51 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
 
-type OpaqueBundle<Block, PBlock> =
-    sp_domains::OpaqueBundle<NumberFor<PBlock>, <PBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
+type OpaqueBundle<Block, CBlock> =
+    sp_domains::OpaqueBundle<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
 
 pub(super) struct DomainBundleProducer<
     Block,
-    PBlock,
+    CBlock,
     ParentChainBlock,
     Client,
-    PClient,
+    CClient,
     ParentChain,
     TransactionPool,
 > where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     client: Arc<Client>,
     parent_chain: ParentChain,
-    bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
-    bundle_election_solver: BundleElectionSolver<Block, PBlock>,
-    domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
+    bundle_election_solver: BundleElectionSolver<Block, CBlock>,
+    domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
-impl<Block, PBlock, ParentChainBlock, Client, PClient, ParentChain, TransactionPool> Clone
+impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionPool> Clone
     for DomainBundleProducer<
         Block,
-        PBlock,
+        CBlock,
         ParentChainBlock,
         Client,
-        PClient,
+        CClient,
         ParentChain,
         TransactionPool,
     >
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
     ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
             parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
@@ -76,49 +76,49 @@ where
     }
 }
 
-impl<Block, PBlock, ParentChainBlock, Client, PClient, ParentChain, TransactionPool>
+impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionPool>
     DomainBundleProducer<
         Block,
-        PBlock,
+        CBlock,
         ParentChainBlock,
         Client,
-        PClient,
+        CClient,
         ParentChain,
         TransactionPool,
     >
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
     ParentChainBlock: BlockT,
-    NumberFor<Block>: Into<NumberFor<PBlock>>,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
     NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         client: Arc<Client>,
         parent_chain: ParentChain,
         domain_bundle_proposer: DomainBundleProposer<
             Block,
             Client,
-            PBlock,
-            PClient,
+            CBlock,
+            CClient,
             TransactionPool,
         >,
-        bundle_sender: Arc<BundleSender<Block, PBlock>>,
+        bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::<Block, PBlock>::new(keystore.clone());
+        let bundle_election_solver = BundleElectionSolver::<Block, CBlock>::new(keystore.clone());
         Self {
             domain_id,
-            primary_chain_client,
+            consensus_client,
             client,
             parent_chain,
             bundle_sender,
@@ -131,18 +131,19 @@ where
 
     pub(super) async fn produce_bundle(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
-        slot_info: ExecutorSlotInfo,
-    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, PBlock>>> {
-        let ExecutorSlotInfo {
+        consensus_block_info: HashAndNumber<CBlock>,
+        slot_info: OperatorSlotInfo,
+    ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
+        let OperatorSlotInfo {
             slot,
             global_challenge,
         } = slot_info;
 
-        let best_receipt_is_written = crate::aux_schema::primary_hash_for::<_, _, PBlock::Hash>(
-            &*self.client,
-            self.client.info().best_hash,
-        )?
+        let best_receipt_is_written = crate::aux_schema::consensus_block_hash_for::<
+            _,
+            _,
+            CBlock::Hash,
+        >(&*self.client, self.client.info().best_hash)?
         .is_some();
 
         // TODO: remove once the receipt generation can be done before the domain block is
@@ -187,11 +188,11 @@ where
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
             let proof_of_election = bundle_solution.proof_of_election();
-            let bundle_author = proof_of_election.executor_public_key.clone();
+            let bundle_author = proof_of_election.operator_public_key.clone();
             let tx_range = self
-                .primary_chain_client
+                .consensus_client
                 .runtime_api()
-                .domain_tx_range(primary_info.0, self.domain_id)
+                .domain_tx_range(consensus_block_info.hash, self.domain_id)
                 .map_err(|error| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Error getting tx range: {error}"
@@ -207,7 +208,7 @@ where
                 .propose_bundle_at(
                     bundle_solution,
                     slot,
-                    primary_info,
+                    consensus_block_info,
                     self.parent_chain.clone(),
                     tx_selector,
                 )
@@ -218,7 +219,7 @@ where
             let signature = self
                 .keystore
                 .sr25519_sign(
-                    ExecutorPublicKey::ID,
+                    OperatorPublicKey::ID,
                     bundle_author.as_ref(),
                     to_sign.as_ref(),
                 )
@@ -233,7 +234,7 @@ where
                     ))
                 })?;
 
-            let signature = ExecutorSignature::decode(&mut signature.as_ref()).map_err(|err| {
+            let signature = OperatorSignature::decode(&mut signature.as_ref()).map_err(|err| {
                 sp_blockchain::Error::Application(Box::from(format!(
                     "Failed to decode the signature of bundle: {err}"
                 )))

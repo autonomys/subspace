@@ -2174,14 +2174,38 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-client-executor"
+name = "domain-client-message-relayer"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "cross-domain-message-gossip",
+ "domain-runtime-primitives",
+ "futures",
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-network",
+ "sc-network-gossip",
+ "sc-utils",
+ "sp-api",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-core",
+ "sp-domains",
+ "sp-messenger",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
+name = "domain-client-operator"
 version = "0.1.0"
 dependencies = [
  "crossbeam",
  "domain-block-builder",
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
- "domain-client-executor-gossip",
  "domain-client-message-relayer",
  "domain-runtime-primitives",
  "domain-test-primitives",
@@ -2233,7 +2257,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-client-executor-gossip"
+name = "domain-client-subnet-gossip"
 version = "0.1.0"
 dependencies = [
  "futures",
@@ -2245,31 +2269,6 @@ dependencies = [
  "sc-utils",
  "sp-core",
  "sp-domains",
- "sp-runtime",
- "tracing",
-]
-
-[[package]]
-name = "domain-client-message-relayer"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "cross-domain-message-gossip",
- "domain-runtime-primitives",
- "futures",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "sc-client-api",
- "sc-consensus",
- "sc-network",
- "sc-network-gossip",
- "sc-utils",
- "sp-api",
- "sp-blockchain",
- "sp-consensus",
- "sp-core",
- "sp-domains",
- "sp-messenger",
  "sp-runtime",
  "tracing",
 ]
@@ -2350,9 +2349,9 @@ dependencies = [
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
- "domain-client-executor",
- "domain-client-executor-gossip",
  "domain-client-message-relayer",
+ "domain-client-operator",
+ "domain-client-subnet-gossip",
  "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -2419,7 +2418,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "domain-client-consensus-relay-chain",
- "domain-client-executor",
+ "domain-client-operator",
  "domain-eth-service",
  "domain-runtime-primitives",
  "domain-service",
@@ -10682,7 +10681,7 @@ dependencies = [
  "clap",
  "cross-domain-message-gossip",
  "dirs",
- "domain-client-executor",
+ "domain-client-operator",
  "domain-eth-service",
  "domain-runtime-primitives",
  "domain-service",

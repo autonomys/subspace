@@ -1,4 +1,4 @@
-use crate::{DomainId, ExecutorPublicKey, StakeWeight};
+use crate::{DomainId, OperatorPublicKey, StakeWeight};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
@@ -14,7 +14,7 @@ type LocalRandomness = [u8; core::mem::size_of::<u128>()];
 
 fn derive_local_randomness(
     vrf_output: &VrfOutput,
-    public_key: &ExecutorPublicKey,
+    public_key: &OperatorPublicKey,
     global_challenge: &Blake2b256Hash,
 ) -> Result<LocalRandomness, parity_scale_codec::Error> {
     vrf_output.make_bytes(
@@ -28,7 +28,7 @@ fn derive_local_randomness(
 pub fn derive_bundle_election_solution(
     domain_id: DomainId,
     vrf_output: &VrfOutput,
-    public_key: &ExecutorPublicKey,
+    public_key: &OperatorPublicKey,
     global_challenge: &Blake2b256Hash,
 ) -> Result<u128, parity_scale_codec::Error> {
     let local_randomness = derive_local_randomness(vrf_output, public_key, global_challenge)?;
@@ -84,7 +84,7 @@ pub enum VrfProofError {
 
 /// Verify the vrf proof generated in the bundle election.
 pub(crate) fn verify_vrf_proof(
-    public_key: &ExecutorPublicKey,
+    public_key: &OperatorPublicKey,
     vrf_signature: &VrfSignature,
     global_challenge: &Blake2b256Hash,
 ) -> Result<(), VrfProofError> {

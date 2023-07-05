@@ -1,7 +1,7 @@
 [package]
-name = "domain-client-executor"
+name = "domain-client-operator"
 version = "0.1.0"
-authors = ["Parity Technologies <admin@parity.io>"]
+authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
 
 [dependencies]
@@ -10,7 +10,6 @@ crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../consensus-relay-chain" }
-domain-client-executor-gossip = { version = "0.1.0", path = "../executor-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
 futures = "0.3.28"
 futures-timer = "3.0.1"

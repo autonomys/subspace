@@ -6,7 +6,7 @@ use sc_consensus_subspace::get_chain_constants;
 use sp_api::{HeaderT, ProvideRuntimeApi};
 use sp_blockchain::HeaderMetadata;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
-use sp_domains::{ExecutorApi, OpaqueBundle};
+use sp_domains::{DomainsApi, OpaqueBundle};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use std::collections::{HashSet, VecDeque};
@@ -39,7 +39,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProvideRuntimeApi<Block>
         + AuxStore,
-    Client::Api: ExecutorApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: DomainsApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
 {
     fn new(client: Arc<Client>) -> Self {
         let confirm_depth_k = get_chain_constants(client.as_ref())
@@ -274,7 +274,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProvideRuntimeApi<Block>
         + AuxStore,
-    Client::Api: ExecutorApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: DomainsApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
 {
     pub fn new(client: Arc<Client>) -> Self {
         BundleValidator {
@@ -352,21 +352,21 @@ where
             return Err(BundleError::DuplicatedBundle);
         }
 
-        let best_primary_number = self
+        let best_consensus_block_number = self
             .bundle_collector
             .client
             .block_number_from_id(at)?
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Can not convert BlockId {at:?} to block number"
             )))?;
-        if opaque_bundle.receipt.primary_number > best_primary_number {
+        if opaque_bundle.receipt.consensus_block_number > best_consensus_block_number {
             return Err(BundleError::ReceiptInFuture);
         }
         if let Some(expected_hash) = self
             .bundle_stored_in_last_k
-            .get_canonical_block_hash(opaque_bundle.receipt.primary_number)
+            .get_canonical_block_hash(opaque_bundle.receipt.consensus_block_number)
         {
-            if opaque_bundle.receipt.primary_hash != expected_hash {
+            if opaque_bundle.receipt.consensus_block_hash != expected_hash {
                 return Err(BundleError::ReceiptPointToUnknownBlock);
             }
         }

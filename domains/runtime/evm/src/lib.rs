@@ -169,7 +169,7 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
 impl_opaque_keys! {
     pub struct SessionKeys {
         /// Primarily used for adding the executor authority key into the keystore in the dev mode.
-        pub executor: sp_domains::ExecutorKey,
+        pub executor: sp_domains::OperatorKey,
     }
 }
 

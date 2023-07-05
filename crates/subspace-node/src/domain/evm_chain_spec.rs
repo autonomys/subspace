@@ -127,7 +127,7 @@ pub fn gemini_3e_config() -> ExecutionChainSpec<GenesisConfig> {
                 .expect("Invalid Sudo account");
             testnet_genesis(
                 vec![
-                    // Genesis executor
+                    // Genesis operator
                     AccountId::from_str("2ac6c70c106138c8cd80da6b6a0e886b7eeee249")
                         .expect("Wrong executor account address"),
                     // Sudo account
@@ -164,7 +164,7 @@ pub fn devnet_config() -> ExecutionChainSpec<GenesisConfig> {
                 .expect("Invalid Sudo account");
             testnet_genesis(
                 vec![
-                    // Genesis executor
+                    // Genesis operator
                     AccountId::from_str("cfdf9f58d9e532c3807ce62a5489cb19cfa6942d")
                         .expect("Wrong executor account address"),
                     // Sudo account

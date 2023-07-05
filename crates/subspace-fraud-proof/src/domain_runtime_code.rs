@@ -2,7 +2,7 @@ use codec::{Decode, Encode};
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
 use sp_domains::fraud_proof::VerificationError;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::Block as BlockT;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -29,18 +29,18 @@ impl DomainRuntimeCode {
     }
 }
 
-pub(crate) fn retrieve_domain_runtime_code<PBlock, PClient, Hash>(
+pub(crate) fn retrieve_domain_runtime_code<CBlock, CClient, Hash>(
     domain_id: DomainId,
-    at: PBlock::Hash,
-    primary_chain_client: &Arc<PClient>,
+    at: CBlock::Hash,
+    consensus_client: &Arc<CClient>,
 ) -> Result<DomainRuntimeCode, VerificationError>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Hash: Encode + Decode,
-    PClient: ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    CClient: ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Hash>,
 {
-    let wasm_bundle = primary_chain_client
+    let wasm_bundle = consensus_client
         .runtime_api()
         .domain_runtime_code(at, domain_id)
         .map_err(VerificationError::RuntimeApi)?

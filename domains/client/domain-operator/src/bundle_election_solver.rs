@@ -1,16 +1,16 @@
-use sp_domains::{BundleSolution, DomainId, ExecutorPublicKey};
+use sp_domains::{BundleSolution, DomainId, OperatorPublicKey};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use subspace_core_primitives::Blake2b256Hash;
 
-pub(super) struct BundleElectionSolver<Block, PBlock> {
+pub(super) struct BundleElectionSolver<Block, CBlock> {
     keystore: KeystorePtr,
-    _phantom_data: PhantomData<(Block, PBlock)>,
+    _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, PBlock> Clone for BundleElectionSolver<Block, PBlock> {
+impl<Block, CBlock> Clone for BundleElectionSolver<Block, CBlock> {
     fn clone(&self) -> Self {
         Self {
             keystore: self.keystore.clone(),
@@ -19,10 +19,10 @@ impl<Block, PBlock> Clone for BundleElectionSolver<Block, PBlock> {
     }
 }
 
-impl<Block, PBlock> BundleElectionSolver<Block, PBlock>
+impl<Block, CBlock> BundleElectionSolver<Block, CBlock>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     pub(super) fn new(keystore: KeystorePtr) -> Self {
         Self {
@@ -40,7 +40,7 @@ where
 
         if let Some(authority_id) = self
             .keystore
-            .sr25519_public_keys(ExecutorPublicKey::ID)
+            .sr25519_public_keys(OperatorPublicKey::ID)
             .into_iter()
             .next()
         {
