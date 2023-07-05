@@ -1,14 +1,10 @@
 //! This crate provides a preprocessor for the domain block, which is used to construct
-//! domain extrinsics from the primary block.
+//! domain extrinsics from the consensus block.
 //!
 //! The workflow is as follows:
-//! 1. Extract domain-specific bundles from the primary block.
+//! 1. Extract domain-specific bundles from the consensus block.
 //! 2. Compile the domain bundles into a list of extrinsics.
-//!     - System domain: Each core domain bundle in the primary block will be wrapped
-//!     in an extrinsic and then joined with the extrinsics extracted from the system
-//!     domain bundle.
-//!     - Core domain: Extrinsics extracted from the core domain bundle.
-//! 3. Shuffle the extrisnics using the seed from the primary chain.
+//! 3. Shuffle the extrisnics using the seed from the consensus chain.
 //! 4. Filter out the invalid xdm extrinsics.
 //! 5. Push back the potential new domain runtime extrisnic.
 

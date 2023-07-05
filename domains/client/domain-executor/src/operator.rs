@@ -190,7 +190,7 @@ where
                 params.is_authority,
                 bundle_producer,
                 bundle_processor.clone(),
-                params.executor_streams,
+                params.operator_streams,
                 active_leaves,
             )
             .boxed(),

@@ -68,7 +68,7 @@ pub(super) async fn start_worker<
         TransactionPool,
     >,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
-    executor_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
     Block: BlockT,
@@ -116,7 +116,7 @@ pub(super) async fn start_worker<
         imported_block_notification_stream,
         new_slot_notification_stream,
         _phantom,
-    } = executor_streams;
+    } = operator_streams;
 
     let handle_block_import_notifications_fut =
         handle_block_import_notifications::<Block, _, _, _, _, _>(

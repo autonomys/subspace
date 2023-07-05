@@ -76,9 +76,9 @@ pub enum VerificationError {
     /// `pre_state_root` in the invalid state transition proof is invalid.
     #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
     InvalidPreStateRoot,
-    /// Hash of the primary block being challenged not found.
-    #[cfg_attr(feature = "thiserror", error("primary hash not found"))]
-    PrimaryHashNotFound,
+    /// Hash of the consensus block being challenged not found.
+    #[cfg_attr(feature = "thiserror", error("consensus block hash not found"))]
+    ConsensusBlockHashNotFound,
     /// `post_state_root` not found in the state.
     #[cfg_attr(feature = "thiserror", error("`post_state_root` not found"))]
     PostStateRootNotFound,

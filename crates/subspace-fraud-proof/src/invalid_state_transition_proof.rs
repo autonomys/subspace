@@ -298,9 +298,9 @@ where
                 let parent_number =
                     <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
 
-                let primary_number = parent_number + 1;
+                let consensus_block_number = parent_number + 1;
                 let new_header = <Block as BlockT>::Header::new(
-                    primary_number,
+                    consensus_block_number,
                     Default::default(),
                     Default::default(),
                     parent_hash,
@@ -309,14 +309,14 @@ where
                 new_header.encode()
             }
             ExecutionPhase::ApplyExtrinsic(extrinsic_index) => {
-                let primary_hash = self
+                let consensus_block_hash = self
                     .verifier_client
                     .primary_hash(*domain_id, parent_number + 1)?;
                 let domain_extrinsics = self
                     .domain_extrinsics_builder
                     .build_domain_extrinsics(
                         *domain_id,
-                        primary_hash.into(),
+                        consensus_block_hash.into(),
                         domain_runtime_code.wasm_bundle.to_vec(),
                     )
                     .map_err(|_| VerificationError::FailedToBuildDomainExtrinsics)?;

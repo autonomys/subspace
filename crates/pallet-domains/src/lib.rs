@@ -236,8 +236,6 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Can not find the block hash of given primary block number.
-        UnavailablePrimaryBlockHash,
         /// Invalid bundle.
         Bundle(BundleError),
         /// Invalid fraud proof.

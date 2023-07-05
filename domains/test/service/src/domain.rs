@@ -199,7 +199,7 @@ where
             service_config,
             maybe_relayer_id,
         };
-        let executor_streams = OperatorStreams {
+        let operator_streams = OperatorStreams {
             // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
             consensus_block_import_throttling_buffer_size: 0,
@@ -221,7 +221,7 @@ where
             consensus_client: mock_consensus_node.client.clone(),
             consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
             select_chain: mock_consensus_node.select_chain.clone(),
-            executor_streams,
+            operator_streams,
             gossip_message_sink: gossip_msg_sink,
             provider: DefaultProvider,
         };

@@ -247,7 +247,7 @@ where
     pub consensus_client: Arc<CClient>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
-    pub executor_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
     pub provider: Provider,
 }
@@ -343,7 +343,7 @@ where
         consensus_client,
         consensus_network_sync_oracle,
         select_chain,
-        executor_streams,
+        operator_streams,
         gossip_message_sink,
         provider,
     } = domain_params;
@@ -448,7 +448,7 @@ where
             is_authority,
             keystore: params.keystore_container.keystore(),
             bundle_sender: Arc::new(bundle_sender),
-            executor_streams,
+            operator_streams,
             domain_confirmation_depth,
             block_import,
         },

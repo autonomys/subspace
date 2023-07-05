@@ -144,8 +144,8 @@ where
 {
     /// Block number
     pub block_number: NumberFor<Block>,
-    /// Sender for pausing the block import when executor is not fast enough to process
-    /// the primary block.
+    /// Sender for pausing the block import when operator is not fast enough to process
+    /// the consensus block.
     pub acknowledgement_sender: mpsc::Sender<()>,
 }
 

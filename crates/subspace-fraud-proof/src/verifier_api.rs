@@ -105,7 +105,7 @@ where
         _domain_block_number: u32,
     ) -> Result<H256, VerificationError> {
         // TODO: Remove entirely.
-        Err(VerificationError::PrimaryHashNotFound)
+        Err(VerificationError::ConsensusBlockHashNotFound)
     }
 
     fn state_root(

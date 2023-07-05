@@ -396,7 +396,7 @@ fn main() -> Result<(), Error> {
                 let mut consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
-                        name = "PrimaryChain"
+                        name = "Consensus"
                     );
                     let _enter = span.enter();
 
@@ -562,7 +562,7 @@ fn main() -> Result<(), Error> {
 
                     let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
 
-                    let executor_streams = OperatorStreams {
+                    let operator_streams = OperatorStreams {
                         consensus_block_import_throttling_buffer_size,
                         block_importing_notification_stream: block_importing_notification_stream(),
                         imported_block_notification_stream: consensus_chain_node
@@ -599,7 +599,7 @@ fn main() -> Result<(), Error> {
                         consensus_client: consensus_chain_node.client.clone(),
                         consensus_network_sync_oracle: consensus_chain_node.sync_service.clone(),
                         select_chain: consensus_chain_node.select_chain.clone(),
-                        executor_streams,
+                        operator_streams,
                         gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                         provider: eth_provider,
                     };

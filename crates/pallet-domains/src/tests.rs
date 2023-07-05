@@ -189,14 +189,14 @@ fn create_dummy_bundle(
 #[allow(dead_code)]
 fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
     receipt: ExecutionReceipt<BlockNumber, Hash, H256>,
 ) -> OpaqueBundle<BlockNumber, Hash, H256> {
     create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
         domain_id,
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
         receipt,
     )
 }
@@ -271,10 +271,10 @@ fn test_stale_bundle_should_be_rejected() {
     let confirmation_depth_k = ConfirmationDepthK::get();
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1..=confirmation_depth_k + 2)
         .map(|n| {
-            let primary_hash = Hash::random();
+            let consensus_block_hash = Hash::random();
             (
-                create_dummy_bundle(DOMAIN_ID, n, primary_hash),
-                primary_hash,
+                create_dummy_bundle(DOMAIN_ID, n, consensus_block_hash),
+                consensus_block_hash,
             )
         })
         .unzip();

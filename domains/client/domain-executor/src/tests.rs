@@ -26,8 +26,8 @@ use subspace_test_service::{
 };
 use tempfile::TempDir;
 
-fn number_of(primary_node: &MockConsensusNode, block_hash: Hash) -> u32 {
-    primary_node
+fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
+    consensus_node
         .client
         .number(block_hash)
         .unwrap_or_else(|err| panic!("Failed to fetch number for {block_hash}: {err}"))
@@ -45,7 +45,7 @@ async fn test_domain_block_production() {
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+    let mut ferdie = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -139,7 +139,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
-    let mut primary_node = MockConsensusNode::run(
+    let mut consensus_node = MockConsensusNode::run(
         tokio_handle.clone(),
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
@@ -151,16 +151,16 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut primary_node)
+    .build_evm_node(Role::Authority, &mut consensus_node)
     .await;
 
-    produce_blocks!(primary_node, alice, 3)
+    produce_blocks!(consensus_node, alice, 3)
         .await
-        .expect("3 primary blocks produced successfully");
+        .expect("3 consensus blocks produced successfully");
 
-    let best_primary_hash = primary_node.client.info().best_hash;
-    let best_primary_number = primary_node.client.info().best_number;
-    assert_eq!(best_primary_number, 3);
+    let best_consensus_hash = consensus_node.client.info().best_hash;
+    let best_consensus_number = consensus_node.client.info().best_number;
+    assert_eq!(best_consensus_number, 3);
 
     assert_eq!(alice.client.info().best_number, 3);
     let domain_block_2_hash = *alice
@@ -170,39 +170,39 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         .unwrap()
         .parent_hash();
 
-    let best_header = primary_node
+    let best_header = consensus_node
         .client
-        .header(best_primary_hash)
+        .header(best_consensus_hash)
         .unwrap()
         .unwrap();
 
     let parent_hash = *best_header.parent_hash();
 
-    // Primary chain forks:
+    // Consensus chain forks:
     //      3
     //   /
     // 2 -- 3a
     //   \
     //      3b -- 4
-    let slot = primary_node.produce_slot();
-    let fork_block_hash_3a = primary_node
+    let slot = consensus_node.produce_slot();
+    let fork_block_hash_3a = consensus_node
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
-        .expect("Produced first primary fork block 3a at height #3");
+        .expect("Produced first consensus fork block 3a at height #3");
     // A fork block 3a at #3 produced.
-    assert_eq!(number_of(&primary_node, fork_block_hash_3a), 3);
-    assert_ne!(fork_block_hash_3a, best_primary_hash);
+    assert_eq!(number_of(&consensus_node, fork_block_hash_3a), 3);
+    assert_ne!(fork_block_hash_3a, best_consensus_hash);
     // Best hash unchanged due to the longest chain fork choice.
-    assert_eq!(primary_node.client.info().best_hash, best_primary_hash);
+    assert_eq!(consensus_node.client.info().best_hash, best_consensus_hash);
     // Hash of block number #3 unchanged.
     assert_eq!(
-        primary_node.client.hash(3).unwrap().unwrap(),
-        best_primary_hash
+        consensus_node.client.hash(3).unwrap().unwrap(),
+        best_consensus_hash
     );
 
-    let primary_block_info =
+    let consensus_block_info =
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
-    let receipts_primary_info =
+    let receipts_consensus_info =
         |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
             (
                 bundle.receipt.consensus_block_number,
@@ -211,55 +211,59 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         };
 
     // Produce a bundle after the fork block #3a has been produced.
-    let signed_bundle = primary_node.notify_new_slot_and_wait_for_bundle(slot).await;
+    let signed_bundle = consensus_node
+        .notify_new_slot_and_wait_for_bundle(slot)
+        .await;
 
-    let expected_receipts_primary_info = primary_block_info(best_header.clone());
+    let expected_receipts_consensus_info = consensus_block_info(best_header.clone());
 
     // TODO: make MaximumReceiptDrift configurable in order to submit all the pending receipts at
     // once, now the max drift is 2, the receipts is limitted to [2, 3]. Once configurable, we
     // can make the assertation straightforward:
-    // assert_eq!(receipts_primary_info, expected_receipts_primary_info).
+    // assert_eq!(receipts_consensus_info, expected_receipts_consensus_info).
     //
     // Receipts are always collected against the current best block.
     assert_eq!(
-        receipts_primary_info(signed_bundle.unwrap()),
-        expected_receipts_primary_info
+        receipts_consensus_info(signed_bundle.unwrap()),
+        expected_receipts_consensus_info
     );
 
-    let slot = primary_node.produce_slot();
-    let fork_block_hash_3b = primary_node
+    let slot = consensus_node.produce_slot();
+    let fork_block_hash_3b = consensus_node
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
-        .expect("Produced second primary fork block 3b at height #3");
+        .expect("Produced second consensus fork block 3b at height #3");
     // Another fork block 3b at #3 produced,
-    assert_eq!(number_of(&primary_node, fork_block_hash_3b), 3);
-    assert_ne!(fork_block_hash_3b, best_primary_hash);
+    assert_eq!(number_of(&consensus_node, fork_block_hash_3b), 3);
+    assert_ne!(fork_block_hash_3b, best_consensus_hash);
     // Best hash unchanged due to the longest chain fork choice.
-    assert_eq!(primary_node.client.info().best_hash, best_primary_hash);
+    assert_eq!(consensus_node.client.info().best_hash, best_consensus_hash);
     // Hash of block number #3 unchanged.
     assert_eq!(
-        primary_node.client.hash(3).unwrap().unwrap(),
-        best_primary_hash
+        consensus_node.client.hash(3).unwrap().unwrap(),
+        best_consensus_hash
     );
 
     // Produce a bundle after the fork block #3b has been produced.
-    let signed_bundle = primary_node.notify_new_slot_and_wait_for_bundle(slot).await;
+    let signed_bundle = consensus_node
+        .notify_new_slot_and_wait_for_bundle(slot)
+        .await;
     // Receipts are always collected against the current best block.
     assert_eq!(
-        receipts_primary_info(signed_bundle.unwrap()),
-        expected_receipts_primary_info
+        receipts_consensus_info(signed_bundle.unwrap()),
+        expected_receipts_consensus_info
     );
 
     // Produce a new tip at #4.
-    let slot = primary_node.produce_slot();
+    let slot = consensus_node.produce_slot();
     produce_block_with!(
-        primary_node.produce_block_with_slot_at(slot, fork_block_hash_3b, Some(vec![])),
+        consensus_node.produce_block_with_slot_at(slot, fork_block_hash_3b, Some(vec![])),
         alice
     )
     .await
     .expect("Produce a new block on top of the second fork block at height #3");
-    let new_best_hash = primary_node.client.info().best_hash;
-    let new_best_number = primary_node.client.info().best_number;
+    let new_best_hash = consensus_node.client.info().best_hash;
+    let new_best_number = consensus_node.client.info().best_number;
     assert_eq!(new_best_number, 4);
 
     // The domain best block should be reverted to #2 because the primary block #3b and #4 do
@@ -269,26 +273,30 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 
     // Hash of block number #3 is updated to the second fork block 3b.
     assert_eq!(
-        primary_node.client.hash(3).unwrap().unwrap(),
+        consensus_node.client.hash(3).unwrap().unwrap(),
         fork_block_hash_3b
     );
 
-    let new_best_header = primary_node.client.header(new_best_hash).unwrap().unwrap();
+    let new_best_header = consensus_node
+        .client
+        .header(new_best_hash)
+        .unwrap()
+        .unwrap();
 
     assert_eq!(*new_best_header.parent_hash(), fork_block_hash_3b);
 
     // Produce a bundle after the new block #4 has been produced.
-    let (_slot, signed_bundle) = primary_node
+    let (_slot, signed_bundle) = consensus_node
         .produce_slot_and_wait_for_bundle_submission()
         .await;
 
     // In the new best fork, the receipt header number is 1 thus it produce the receipt
     // of next block namely block 2
-    let hash_2 = primary_node.client.hash(2).unwrap().unwrap();
-    let header_2 = primary_node.client.header(hash_2).unwrap().unwrap();
+    let hash_2 = consensus_node.client.hash(2).unwrap().unwrap();
+    let header_2 = consensus_node.client.header(hash_2).unwrap().unwrap();
     assert_eq!(
-        receipts_primary_info(signed_bundle.unwrap()),
-        primary_block_info(header_2)
+        receipts_consensus_info(signed_bundle.unwrap()),
+        consensus_block_info(header_2)
     );
 }
 
@@ -440,17 +448,21 @@ async fn test_executor_inherent_timestamp_is_set() {
 
     produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
 
-    let primary_api = ferdie.client.runtime_api();
-    let primary_timestamp = primary_api
+    let consensus_timestamp = ferdie
+        .client
+        .runtime_api()
         .timestamp(ferdie.client.info().best_hash)
         .unwrap();
 
-    let core_api = bob.client.runtime_api();
-    let core_timestamp = core_api.timestamp(bob.client.info().best_hash).unwrap();
+    let domain_timestamp = bob
+        .client
+        .runtime_api()
+        .timestamp(bob.client.info().best_hash)
+        .unwrap();
 
     assert_eq!(
-        primary_timestamp, core_timestamp,
-        "Timestamp should be preset on Core domain and should match Primary runtime timestamp"
+        consensus_timestamp, domain_timestamp,
+        "Timestamp should be preset on domain and must match Consensus runtime timestamp"
     );
 }
 
@@ -567,7 +579,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .await
         .unwrap();
 
-    // Produce a primary block that contains the `bad_submit_bundle_tx`
+    // Produce a consensus block that contains the `bad_submit_bundle_tx`
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
@@ -609,7 +621,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         }
     }
 
-    // Produce a primary block that contains the fraud proof, the fraud proof wil be verified
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // in the block import pipeline
     ferdie.produce_blocks(1).await.unwrap();
 }
@@ -656,7 +668,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let bad_receipt_number = bad_receipt.consensus_block_number;
     assert_ne!(bad_receipt_number, 1);
 
-    // Submit the bad receipt to the primary chain
+    // Submit the bad receipt to the consensus chain
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_bundle {
             opaque_bundle: bad_bundle,
@@ -784,8 +796,8 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 // TODO: Add a new test which simulates a situation that an executor produces a fraud proof
 // when an invalid receipt is received.
 
-// TODO: construct a minimal primary runtime code and use the `set_code` extrinsic to actually
-// cover the case that the new domain runtime are updated accordingly upon the new primary runtime.
+// TODO: construct a minimal consensus runtime code and use the `set_code` extrinsic to actually
+// cover the case that the new domain runtime are updated accordingly upon the new consensus runtime.
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn set_new_code_should_work() {
@@ -818,22 +830,22 @@ async fn set_new_code_should_work() {
     let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
 
     let best_number = alice.client.info().best_number;
-    let primary_number = best_number + 1;
+    let consensus_block_number = best_number + 1;
     // Although we're processing the bundle manually, the original bundle processor still works in
-    // the meanwhile, it's possible the executor alice already processed this primary block, expecting next
-    // primary block, in which case we use a dummy primary hash instead.
+    // the meanwhile, it's possible the executor alice already processed this consensus block, expecting next
+    // consensus block, in which case we use a dummy consensus hash instead.
     //
     // Nice to disable the built-in bundle processor and have a full control of the executor block
     // production manually.
-    let primary_hash = ferdie
+    let consensus_block_hash = ferdie
         .client
-        .hash(primary_number)
+        .hash(consensus_block_number)
         .unwrap()
         .unwrap_or_else(Hash::random);
     alice
         .operator
         .clone()
-        .process_bundles((primary_hash, primary_number, true))
+        .process_bundles((consensus_block_hash, consensus_block_number, true))
         .await;
 
     let best_hash = alice.client.info().best_hash;
@@ -907,25 +919,25 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         .unwrap();
 
     // let ferdie_client = ferdie.client.clone();
-    // let create_submit_bundle = |primary_number: BlockNumber| {
-    //     let primary_hash = ferdie_client.hash(primary_number).unwrap().unwrap();
-    //     let execution_receipt =
-    //         crate::aux_schema::load_execution_receipt(&*bob.backend, primary_hash)
-    //             .expect("Failed to load execution receipt from the local aux_db")
-    //             .unwrap_or_else(|| {
-    //                 panic!(
-    //                     "The requested execution receipt for block {primary_number} does not exist"
-    //                 )
-    //             });
+    // let create_submit_bundle = |consensus_block_number: BlockNumber| {
+    // let consensus_block_hash = ferdie_client.hash(consensus_block_number).unwrap().unwrap();
+    // let execution_receipt =
+    // crate::aux_schema::load_execution_receipt(&*bob.backend, consensus_block_hash)
+    // .expect("Failed to load execution receipt from the local aux_db")
+    // .unwrap_or_else(|| {
+    // panic!(
+    // "The requested execution receipt for block {consensus_block_number} does not exist"
+    // )
+    // });
 
-    //     let mut opaque_bundle = bundle_template.clone();
-    //     opaque_bundle.sealed_header.header.primary_number = primary_number;
-    //     opaque_bundle.sealed_header.header.primary_hash = primary_hash;
-    //     opaque_bundle.sealed_header.signature = alice_key
-    //         .pair()
-    //         .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-    //         .into();
-    //     opaque_bundle.receipt = execution_receipt;
+    // let mut opaque_bundle = bundle_template.clone();
+    // opaque_bundle.sealed_header.header.consensus_block_number = consensus_block_number;
+    // opaque_bundle.sealed_header.header.consensus_block_hash = consensus_block_hash;
+    // opaque_bundle.sealed_header.signature = alice_key
+    // .pair()
+    // .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+    // .into();
+    // opaque_bundle.receipt = execution_receipt;
 
     //     subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
     //         pallet_domains::Call::submit_bundle { opaque_bundle }.into(),

@@ -151,19 +151,24 @@ where
         }
     }
 
-    fn fetch_primary_header(
+    fn fetch_consensus_block_header(
         &self,
         domain_id: DomainId,
         block_number: u32,
     ) -> Result<CBlock::Header, VerificationError> {
-        let primary_hash: CBlock::Hash = self
+        let consensus_block_hash: CBlock::Hash = self
             .verifier_client
             .primary_hash(domain_id, block_number)?
             .into();
 
-        let header = self.consensus_client.header(primary_hash)?.ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Header for {primary_hash} not found"))
-        })?;
+        let header = self
+            .consensus_client
+            .header(consensus_block_hash)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Header for {consensus_block_hash} not found"
+                ))
+            })?;
 
         Ok(header)
     }
@@ -185,7 +190,7 @@ where
         // - Bundle is valid and is produced by a legit executor.
         // - Bundle author, who will be slashed, can be extracted in runtime.
 
-        let header = self.fetch_primary_header(*domain_id, *block_number)?;
+        let header = self.fetch_consensus_block_header(*domain_id, *block_number)?;
         let consensus_parent_hash = *header.parent_hash();
 
         let domain_runtime_code = retrieve_domain_runtime_code(

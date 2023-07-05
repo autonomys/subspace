@@ -10,7 +10,7 @@
 //! and then create an unsigned extrinsic that is put on top the bundle extrinsics.
 //!
 //! Deriving these extrinsics during fraud proof verification should be possible since
-//! verification environment will have access to primary chain.
+//! verification environment will have access to consensus chain.
 
 use crate::runtime_api::InherentExtrinsicConstructor;
 use sp_api::ProvideRuntimeApi;
@@ -19,7 +19,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// Returns required inherent extrinsics for the domain block based on the primary block.
-/// Note: primary block hash must be used to construct domain block.
+/// Note: consensus block hash must be used to construct domain block.
 // TODO: Remove once evm domain is supported.
 #[allow(dead_code)]
 pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, CBlock, CClient>(
