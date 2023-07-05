@@ -123,7 +123,7 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_hash, domain_block_hash);
 
     // Simply producing more block on fork C
-    ferdie.clear_tx_pool().unwrap();
+    ferdie.clear_tx_pool().await.unwrap();
     produce_blocks!(ferdie, alice, 10).await.unwrap();
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }

@@ -221,9 +221,12 @@ where
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
         // Although the domain block intuitively ought to use the same fork choice
         // from the corresponding primary block, it's fine to forcibly always use
-        // the longest chain for simplicity as we do not know whether or not the
-        // domain block is the new best block here, and we will manually reset the
-        // new best domain block to the correct one after processing the primary blocks
+        // the longest chain for simplicity as we manually build the domain branches
+        // by following the primary chain branches. Due to the possibility of domain
+        // branch transitioning to a lower fork caused by the change that a primary block
+        // can possibility produce no domain block, it's important to note that now we
+        // need to ensure the domain block built from the latest primary block is the
+        // new best domain block after processing each imported primary block.
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
