@@ -82,7 +82,10 @@ where
         };
         let mut sector_metadata = unsafe {
             MmapOptions::new()
-                .offset(RESERVED_PLOT_METADATA + (sector_index * sector_metadata_size as u64))
+                .offset(
+                    RESERVED_PLOT_METADATA
+                        + (u64::from(sector_index) * sector_metadata_size as u64),
+                )
                 .len(sector_metadata_size)
                 .map_mut(&metadata_file)?
         };

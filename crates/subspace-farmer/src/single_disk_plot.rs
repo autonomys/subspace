@@ -349,6 +349,18 @@ pub enum SingleDiskPlotError {
         /// Current allocated space
         allocated_space: u64,
     },
+    /// Plot is too large
+    #[error(
+        "Plot is too large: allocated {allocated_sectors} sectors ({allocated_space} bytes), max \
+        supported is {max_sectors} ({max_space} bytes). Consider creating multiple smaller plots \
+        instead."
+    )]
+    PlotTooLarge {
+        allocated_space: u64,
+        allocated_sectors: u64,
+        max_space: u64,
+        max_sectors: u16,
+    },
 }
 
 /// Errors that happen in background tasks
@@ -525,8 +537,23 @@ impl SingleDiskPlot {
         let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
         let sector_metadata_size = SectorMetadata::encoded_size();
-        let target_sector_count: SectorIndex =
-            single_disk_plot_info.allocated_space() / sector_size as u64;
+        let target_sector_count = single_disk_plot_info.allocated_space() / sector_size as u64;
+        let target_sector_count = match SectorIndex::try_from(target_sector_count) {
+            Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
+                target_sector_count
+            }
+            _ => {
+                // We use this for both count and index, hence index must not reach actual `MAX`
+                // (consensus doesn't care about this, just farmer implementation detail)
+                let max_sectors = SectorIndex::MAX - 1;
+                return Err(SingleDiskPlotError::PlotTooLarge {
+                    allocated_space: target_sector_count * sector_size as u64,
+                    allocated_sectors: target_sector_count,
+                    max_space: max_sectors as u64 * sector_size as u64,
+                    max_sectors,
+                });
+            }
+        };
 
         // TODO: Consider file locking to prevent other apps from modifying itS
         let mut metadata_file = OpenOptions::new()
@@ -543,7 +570,8 @@ impl SingleDiskPlot {
             };
 
             metadata_file.preallocate(
-                RESERVED_PLOT_METADATA + sector_metadata_size as u64 * target_sector_count,
+                RESERVED_PLOT_METADATA
+                    + sector_metadata_size as u64 * u64::from(target_sector_count),
             )?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
@@ -577,12 +605,12 @@ impl SingleDiskPlot {
             let metadata_mmap = unsafe {
                 MmapOptions::new()
                     .offset(RESERVED_PLOT_METADATA)
-                    .len(sector_metadata_size * target_sector_count as usize)
+                    .len(sector_metadata_size * usize::from(target_sector_count))
                     .map(&metadata_file)?
             };
 
             let mut sectors_metadata =
-                Vec::<SectorMetadata>::with_capacity(target_sector_count as usize);
+                Vec::<SectorMetadata>::with_capacity(usize::from(target_sector_count));
 
             for mut sector_metadata_bytes in metadata_mmap
                 .chunks_exact(sector_metadata_size)
@@ -605,7 +633,7 @@ impl SingleDiskPlot {
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
-        plot_file.preallocate(sector_size as u64 * target_sector_count)?;
+        plot_file.preallocate(sector_size as u64 * u64::from(target_sector_count))?;
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));

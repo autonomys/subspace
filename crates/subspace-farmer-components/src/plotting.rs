@@ -160,7 +160,7 @@ pub enum PlottingError {
 #[allow(clippy::too_many_arguments)]
 pub async fn plot_sector<PG, PosTable>(
     public_key: &PublicKey,
-    sector_index: u64,
+    sector_index: SectorIndex,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     farmer_protocol_info: &FarmerProtocolInfo,

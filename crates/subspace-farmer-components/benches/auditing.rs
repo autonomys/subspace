@@ -11,8 +11,8 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SegmentIndex,
-    SolutionRange,
+    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SectorIndex,
+    SegmentIndex, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -193,7 +193,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     for (sector_index, sector) in plot_mmap
                         .chunks_exact(sector_size)
                         .enumerate()
-                        .map(|(sector_index, sector)| (sector_index as u64, sector))
+                        .map(|(sector_index, sector)| (sector_index as SectorIndex, sector))
                     {
                         audit_sector(
                             black_box(&public_key),
