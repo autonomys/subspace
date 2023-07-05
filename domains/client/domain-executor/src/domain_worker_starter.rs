@@ -151,13 +151,13 @@ pub(super) async fn start_worker<
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, CBlock, _, _>(
         consensus_client.as_ref(),
-        move |primary_info, slot_info| {
+        move |consensus_block_info, slot_info| {
             bundle_producer
                 .clone()
-                .produce_bundle(primary_info, slot_info)
+                .produce_bundle(consensus_block_info.clone(), slot_info)
                 .instrument(span.clone())
                 .unwrap_or_else(move |error| {
-                    tracing::error!(?primary_info, ?error, "Error at producing bundle.");
+                    tracing::error!(?consensus_block_info, ?error, "Error at producing bundle.");
                     None
                 })
                 .boxed()

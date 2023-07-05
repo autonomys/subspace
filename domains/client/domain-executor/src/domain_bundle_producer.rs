@@ -9,7 +9,7 @@ use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_domains::{
     Bundle, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature, SealedBundleHeader,
 };
@@ -131,7 +131,7 @@ where
 
     pub(super) async fn produce_bundle(
         self,
-        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>),
+        consensus_block_info: HashAndNumber<CBlock>,
         slot_info: ExecutorSlotInfo,
     ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
         let ExecutorSlotInfo {
@@ -191,7 +191,7 @@ where
             let tx_range = self
                 .consensus_client
                 .runtime_api()
-                .domain_tx_range(consensus_block_info.0, self.domain_id)
+                .domain_tx_range(consensus_block_info.hash, self.domain_id)
                 .map_err(|error| {
                     sp_blockchain::Error::Application(Box::from(format!(
                         "Error getting tx range: {error}"

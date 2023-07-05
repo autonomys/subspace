@@ -5,7 +5,7 @@ use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainsApi, OpaqueBundle};
 use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
@@ -15,7 +15,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(
-    primary_chain_client: &CClient,
+    consensus_client: &CClient,
     bundler: BundlerFn,
     mut slots: impl Stream<Item = (ExecutorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
@@ -24,7 +24,7 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Hash>,
     BundlerFn: Fn(
-            (CBlock::Hash, NumberFor<CBlock>),
+            HashAndNumber<CBlock>,
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -38,8 +38,7 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
     while let Some((executor_slot_info, slot_acknowledgement_sender)) = slots.next().await {
         let slot = executor_slot_info.slot;
         if let Err(error) =
-            on_new_slot::<Block, CBlock, _, _>(primary_chain_client, &bundler, executor_slot_info)
-                .await
+            on_new_slot::<Block, CBlock, _, _>(consensus_client, &bundler, executor_slot_info).await
         {
             tracing::error!(
                 ?error,
@@ -63,7 +62,7 @@ pub(crate) async fn handle_block_import_notifications<
     BlocksImported,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
-    primary_chain_client: &CClient,
+    consensus_client: &CClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
     mut leaves: Vec<(CBlock::Hash, NumberFor<CBlock>, bool)>,
@@ -152,7 +151,7 @@ pub(crate) async fn handle_block_import_notifications<
                         break;
                     }
                 };
-                let header = match primary_chain_client.header(block_imported.hash) {
+                let header = match consensus_client.header(block_imported.hash) {
                     Ok(Some(header)) => header,
                     res => {
                         tracing::error!(
@@ -189,7 +188,7 @@ pub(crate) async fn handle_block_import_notifications<
 }
 
 async fn on_new_slot<Block, CBlock, CClient, BundlerFn>(
-    primary_chain_client: &CClient,
+    consensus_client: &CClient,
     bundler: &BundlerFn,
     executor_slot_info: ExecutorSlotInfo,
 ) -> Result<(), ApiError>
@@ -199,7 +198,7 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Hash>,
     BundlerFn: Fn(
-            (CBlock::Hash, NumberFor<CBlock>),
+            HashAndNumber<CBlock>,
             ExecutorSlotInfo,
         ) -> Pin<
             Box<
@@ -210,10 +209,15 @@ where
         > + Send
         + Sync,
 {
-    let best_hash = primary_chain_client.info().best_hash;
-    let best_number = primary_chain_client.info().best_number;
+    let best_hash = consensus_client.info().best_hash;
+    let best_number = consensus_client.info().best_number;
 
-    let opaque_bundle = match bundler((best_hash, best_number), executor_slot_info).await {
+    let consensus_block_info = HashAndNumber {
+        number: best_number,
+        hash: best_hash,
+    };
+
+    let opaque_bundle = match bundler(consensus_block_info, executor_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
             tracing::debug!("executor returned no bundle on bundling");
@@ -221,7 +225,7 @@ where
         }
     };
 
-    primary_chain_client
+    consensus_client
         .runtime_api()
         .submit_bundle_unsigned(best_hash, opaque_bundle)?;
 

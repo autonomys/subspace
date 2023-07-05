@@ -8,7 +8,7 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderBackend;
+use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_consensus_slots::Slot;
 use sp_domains::{BundleHeader, BundleSolution, ExecutionReceipt};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
@@ -70,7 +70,7 @@ where
         &self,
         bundle_solution: BundleSolution<Block::Hash>,
         slot: Slot,
-        primary_info: (CBlock::Hash, NumberFor<CBlock>),
+        consensus_block_info: HashAndNumber<CBlock>,
         parent_chain: ParentChain,
         tx_selector: TransactionSelector<Block, Client>,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>>
@@ -129,13 +129,11 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let (consensus_block_hash, consensus_block_number) = primary_info;
-
         let receipt = self.load_bundle_receipt(parent_number, parent_hash, parent_chain)?;
 
         let header = BundleHeader {
-            consensus_block_number,
-            consensus_block_hash,
+            consensus_block_number: consensus_block_info.number,
+            consensus_block_hash: consensus_block_info.hash,
             slot_number: slot.into(),
             extrinsics_root,
             bundle_solution,
