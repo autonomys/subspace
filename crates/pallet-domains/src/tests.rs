@@ -8,7 +8,8 @@ use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    DomainsFreezeIdentifier, ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
+    DomainsFreezeIdentifier, ExecutionReceipt, ExecutorPair, OpaqueBundle, OperatorId,
+    SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -108,8 +109,8 @@ pub enum FreezeIdentifier {
 }
 
 impl pallet_domains::FreezeIdentifier<Test> for FreezeIdentifier {
-    fn staking_freeze_id() -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking)
+    fn staking_freeze_id(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<Test> {

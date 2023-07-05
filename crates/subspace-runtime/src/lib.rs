@@ -58,7 +58,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
-use sp_domains::{DomainId, DomainsFreezeIdentifier, OpaqueBundle};
+use sp_domains::{DomainId, DomainsFreezeIdentifier, OpaqueBundle, OperatorId};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
@@ -327,8 +327,8 @@ pub enum FreezeIdentifier {
 }
 
 impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
-    fn staking_freeze_id() -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking)
+    fn staking_freeze_id(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> Self {

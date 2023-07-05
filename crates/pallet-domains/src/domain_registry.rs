@@ -4,7 +4,8 @@ use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{Config, DomainRegistry, FreezeIdentifier, NextDomainId, RuntimeRegistry};
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
+use frame_support::traits::fungible::{Inspect, MutateFreeze};
+use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
@@ -107,7 +108,8 @@ pub(crate) fn can_instantiate_domain<T: Config>(
     );
 
     ensure!(
-        T::Currency::balance_freezable(owner_account_id) >= T::DomainInstantiationDeposit::get(),
+        T::Currency::reducible_balance(owner_account_id, Preservation::Protect, Fortitude::Polite)
+            >= T::DomainInstantiationDeposit::get(),
         Error::InsufficientFund
     );
 
@@ -166,7 +168,7 @@ mod tests {
     use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, Test};
     use frame_support::traits::Currency;
-    use sp_runtime::traits::Zero;
+    use sp_runtime::traits::One;
     use sp_version::RuntimeVersion;
 
     type Balances = pallet_balances::Pallet<Test>;
@@ -283,7 +285,7 @@ mod tests {
             // Set enough fund to creator
             Balances::make_free_balance_be(
                 &creator,
-                <Test as Config>::DomainInstantiationDeposit::get(),
+                <Test as Config>::DomainInstantiationDeposit::get() + 1,
             );
 
             // `instantiate_domain` must success now
@@ -296,7 +298,13 @@ mod tests {
             assert_eq!(domain_obj.domain_config, domain_config);
             assert_eq!(NextDomainId::<Test>::get(), 1.into());
             // Fund locked up thus can't withdraw
-            assert!(Balances::usable_balance(creator) == Zero::zero(),);
+            assert!(Balances::usable_balance(creator) == One::one(),);
+
+            // cannot use the locked funds to create a new domain instance
+            assert!(
+                do_instantiate_domain::<Test>(domain_config, creator, created_at)
+                    == Err(Error::InsufficientFund)
+            )
         });
     }
 }

@@ -3,12 +3,13 @@
 use crate::pallet::{DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools};
 use crate::{BalanceOf, Config, FreezeIdentifier};
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
+use frame_support::traits::fungible::{Inspect, InspectFreeze, MutateFreeze};
+use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, ExecutorPublicKey, OperatorId};
-use sp_runtime::traits::Zero;
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::Percent;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec;
@@ -83,6 +84,7 @@ pub enum Error {
     MinimumOperatorStake,
     UnknownOperator,
     MinimumNominatorStake,
+    BalanceOverflow,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -104,17 +106,7 @@ pub(crate) fn do_register_operator<T: Config>(
             Error::MinimumOperatorStake
         );
 
-        ensure!(
-            T::Currency::balance_freezable(&operator_owner) >= amount,
-            Error::InsufficientBalance
-        );
-
-        T::Currency::set_freeze(
-            &T::FreezeIdentifier::staking_freeze_id(),
-            &operator_owner,
-            amount,
-        )
-        .map_err(|_| Error::BalanceFreeze)?;
+        freeze_account_balance_to_operator::<T>(&operator_owner, operator_id, amount)?;
 
         let domain_stake_summary = maybe_domain_stake_summary
             .as_mut()
@@ -163,17 +155,7 @@ pub(crate) fn do_nominate_operator<T: Config>(
             Error::MinimumNominatorStake
         );
 
-        ensure!(
-            T::Currency::balance_freezable(&nominator_id) >= amount,
-            Error::InsufficientBalance
-        );
-
-        T::Currency::set_freeze(
-            &T::FreezeIdentifier::staking_freeze_id(),
-            &nominator_id,
-            amount,
-        )
-        .map_err(|_| Error::BalanceFreeze)?;
+        freeze_account_balance_to_operator::<T>(&nominator_id, operator_id, amount)?;
 
         operator.pending_transfers.push(PendingTransfer {
             nominator_id,
@@ -184,13 +166,38 @@ pub(crate) fn do_nominate_operator<T: Config>(
     })
 }
 
+fn freeze_account_balance_to_operator<T: Config>(
+    who: &T::AccountId,
+    operator_id: OperatorId,
+    amount: BalanceOf<T>,
+) -> Result<(), Error> {
+    // ensure there is enough free balance to lock
+    ensure!(
+        T::Currency::reducible_balance(who, Preservation::Protect, Fortitude::Polite) >= amount,
+        Error::InsufficientBalance
+    );
+
+    let freeze_id = T::FreezeIdentifier::staking_freeze_id(operator_id);
+    // lock any previous locked balance + new deposit
+    let current_locked_balance = T::Currency::balance_frozen(&freeze_id, who);
+    let balance_to_be_locked = current_locked_balance
+        .checked_add(&amount)
+        .ok_or(Error::BalanceOverflow)?;
+
+    T::Currency::set_freeze(&freeze_id, who, balance_to_be_locked)
+        .map_err(|_| Error::BalanceFreeze)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools};
     use crate::staking::{OperatorConfig, PendingTransfer, StakingSummary, Transfer};
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
-    use frame_support::assert_ok;
+    use crate::Error;
     use frame_support::traits::fungible::Mutate;
+    use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, ExecutorPair};
     use subspace_runtime_primitives::SSC;
@@ -232,7 +239,7 @@ mod tests {
                 RuntimeOrigin::signed(operator_account),
                 domain_id,
                 operator_stake,
-                operator_config,
+                operator_config.clone(),
             );
             assert_ok!(res);
 
@@ -252,6 +259,18 @@ mod tests {
                 Balances::usable_balance(operator_account),
                 operator_free_balance - operator_stake
             );
+
+            // cannot use the locked funds to register a new operator
+            let res = Domains::register_operator(
+                RuntimeOrigin::signed(operator_account),
+                domain_id,
+                operator_stake,
+                operator_config,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::InsufficientBalance)
+            )
         });
     }
 
@@ -264,7 +283,7 @@ mod tests {
         let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
 
         let nominator_account = 2;
-        let nominator_free_balance = 200 * SSC;
+        let nominator_free_balance = 150 * SSC;
         let nominator_stake = 100 * SSC;
 
         let mut ext = new_test_ext();
@@ -318,6 +337,17 @@ mod tests {
             assert_eq!(
                 Balances::usable_balance(nominator_account),
                 nominator_free_balance - nominator_stake
+            );
+
+            // cannot use the same locked funds to stake again
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                nominator_stake,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::InsufficientBalance)
             );
         });
     }

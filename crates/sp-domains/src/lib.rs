@@ -517,7 +517,7 @@ pub type OperatorId = u64;
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
 pub enum DomainsFreezeIdentifier {
-    Staking,
+    Staking(OperatorId),
     DomainInstantiation(DomainId),
 }
 

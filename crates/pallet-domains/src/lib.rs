@@ -35,7 +35,7 @@ use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, OpaqueBundle};
+use sp_domains::{DomainId, OpaqueBundle, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
@@ -50,7 +50,7 @@ pub(crate) type FungibleFreezeId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait FreezeIdentifier<T: Config> {
-    fn staking_freeze_id() -> FungibleFreezeId<T>;
+    fn staking_freeze_id(operator_id: OperatorId) -> FungibleFreezeId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
 }
 
