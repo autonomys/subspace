@@ -254,6 +254,10 @@ where
         .iter()
         .enumerate()
         .flat_map(|(disk_farm_index, single_disk_plot)| {
+            let disk_farm_index = disk_farm_index
+                .try_into()
+                .expect("More than 256 plots are not supported, what are you even doing?!");
+
             (0 as SectorIndex..)
                 .zip(single_disk_plot.plotted_sectors())
                 .filter_map(
@@ -298,6 +302,9 @@ where
         .into_iter()
         .enumerate()
         .map(|(disk_farm_index, single_disk_plot)| {
+            let disk_farm_index = disk_farm_index
+                .try_into()
+                .expect("More than 256 plots are not supported, what are you even doing?!");
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
             let span = info_span!("farm", %disk_farm_index);

@@ -6,7 +6,7 @@ use tracing::{trace, warn};
 
 #[derive(Debug, Copy, Clone)]
 pub struct PieceDetails {
-    pub disk_farm_index: usize,
+    pub disk_farm_index: u8,
     pub sector_index: SectorIndex,
     pub piece_offset: PieceOffset,
 }
@@ -47,8 +47,8 @@ impl ReadersAndPieces {
                 return None;
             }
         };
-        let mut reader = match self.readers.get(piece_details.disk_farm_index).cloned() {
-            Some(reader) => reader,
+        let mut reader = match self.readers.get(usize::from(piece_details.disk_farm_index)) {
+            Some(reader) => reader.clone(),
             None => {
                 warn!(?piece_index_hash, ?piece_details, "Plot offset is invalid");
                 return None;
