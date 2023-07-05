@@ -10,15 +10,13 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, PieceIndex, PieceIndexHash, PieceOffset, Record, SectorIndex,
-    SegmentIndex,
+    ArchivedHistorySegment, Piece, PieceIndex, Record, SectorIndex, SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
@@ -30,7 +28,7 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_cache::PieceCache;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
-use subspace_farmer::utils::readers_and_pieces::{PieceDetails, ReadersAndPieces};
+use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
@@ -250,53 +248,39 @@ where
     info!("Collecting already plotted pieces (this will take some time)...");
 
     // Collect already plotted pieces
-    let plotted_pieces: HashMap<PieceIndexHash, PieceDetails> = single_disk_plots
-        .iter()
-        .enumerate()
-        .flat_map(|(disk_farm_index, single_disk_plot)| {
-            let disk_farm_index = disk_farm_index
-                .try_into()
-                .expect("More than 256 plots are not supported, what are you even doing?!");
+    {
+        let mut readers_and_pieces = readers_and_pieces.lock();
+        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(piece_readers));
 
-            (0 as SectorIndex..)
-                .zip(single_disk_plot.plotted_sectors())
-                .filter_map(
-                    move |(sector_index, plotted_sector_result)| match plotted_sector_result {
-                        Ok(plotted_sector) => Some(plotted_sector),
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %disk_farm_index,
-                                %sector_index,
-                                "Failed reading plotted sector on startup, skipping"
-                            );
-                            None
-                        }
-                    },
-                )
-                .flat_map(move |plotted_sector| {
-                    (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes).map(
-                        move |(piece_offset, piece_index)| {
-                            (
-                                piece_index.hash(),
-                                PieceDetails {
-                                    disk_farm_index,
-                                    sector_index: plotted_sector.sector_index,
-                                    piece_offset,
-                                },
-                            )
+        single_disk_plots
+            .iter()
+            .enumerate()
+            .for_each(|(disk_farm_index, single_disk_plot)| {
+                let disk_farm_index = disk_farm_index
+                    .try_into()
+                    .expect("More than 256 plots are not supported, what are you even doing?!");
+
+                (0 as SectorIndex..)
+                    .zip(single_disk_plot.plotted_sectors())
+                    .for_each(
+                        |(sector_index, plotted_sector_result)| match plotted_sector_result {
+                            Ok(plotted_sector) => {
+                                readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
+                            }
+                            Err(error) => {
+                                error!(
+                                    %error,
+                                    %disk_farm_index,
+                                    %sector_index,
+                                    "Failed reading plotted sector on startup, skipping"
+                                );
+                            }
                         },
-                    )
-                })
-        })
-        // We implicitly ignore duplicates here, reading just from one of the plots
-        .collect();
+                    );
+            });
+    }
 
     info!("Finished collecting already plotted pieces successfully");
-
-    readers_and_pieces
-        .lock()
-        .replace(ReadersAndPieces::new(piece_readers, plotted_pieces));
 
     let mut single_disk_plots_stream = single_disk_plots
         .into_iter()
@@ -325,52 +309,21 @@ where
 
                     let mut dropped_receiver = dropped_sender.subscribe();
 
-                    let new_pieces = {
+                    {
                         let mut readers_and_pieces = readers_and_pieces.lock();
                         let readers_and_pieces = readers_and_pieces
                             .as_mut()
                             .expect("Initial value was populated above; qed");
-
-                        let new_pieces = plotted_sector
-                            .piece_indexes
-                            .iter()
-                            .filter(|&&piece_index| {
-                                // Skip pieces that are already plotted and thus were announced
-                                // before
-                                !readers_and_pieces.contains_piece(&piece_index.hash())
-                            })
-                            .copied()
-                            .collect::<Vec<_>>();
-
-                        readers_and_pieces.add_pieces(
-                            (PieceOffset::ZERO..)
-                                .zip(plotted_sector.piece_indexes.iter().copied())
-                                .map(|(piece_offset, piece_index)| {
-                                    (
-                                        piece_index.hash(),
-                                        PieceDetails {
-                                            disk_farm_index,
-                                            sector_index,
-                                            piece_offset,
-                                        },
-                                    )
-                                }),
-                        );
-
-                        new_pieces
-                    };
-
-                    if new_pieces.is_empty() {
-                        // None of the pieces are new, nothing left to do here
-                        return;
+                        readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
                     }
 
-                    archival_storage_pieces.add_pieces(&new_pieces);
+                    archival_storage_pieces.add_pieces(&plotted_sector.piece_indexes);
 
-                    // TODO: Skip those that were already announced (because they cached)
+                    let piece_indexes = plotted_sector.piece_indexes.clone();
+                    // TODO: Remove when we no longer need announcements
                     let publish_fut = async move {
-                        let mut pieces_publishing_futures = new_pieces
-                            .into_iter()
+                        let mut pieces_publishing_futures = piece_indexes
+                            .iter()
                             .map(|piece_index| {
                                 announce_single_piece_index_hash_with_backoff(
                                     piece_index.hash(),
