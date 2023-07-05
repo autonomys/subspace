@@ -1,4 +1,5 @@
 use crate::single_disk_plot::piece_reader::PieceReader;
+use crate::utils::archival_storage_pieces::ArchivalStoragePieces;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -6,7 +7,7 @@ use subspace_core_primitives::{Piece, PieceIndexHash, PieceOffset, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
 use tracing::{trace, warn};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct PieceDetails {
     disk_farm_index: u8,
     sector_index: SectorIndex,
@@ -18,13 +19,15 @@ struct PieceDetails {
 pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndexHash, Vec<PieceDetails>>,
+    archival_storage_pieces: ArchivalStoragePieces,
 }
 
 impl ReadersAndPieces {
-    pub fn new(readers: Vec<PieceReader>) -> Self {
+    pub fn new(readers: Vec<PieceReader>, archival_storage_pieces: ArchivalStoragePieces) -> Self {
         Self {
             readers,
             pieces: HashMap::new(),
+            archival_storage_pieces,
         }
     }
 
@@ -70,7 +73,9 @@ impl ReadersAndPieces {
     }
 
     pub fn add_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
-        for (piece_offset, piece_index) in
+        let mut new_piece_indices = Vec::new();
+
+        for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
             let piece_details = PieceDetails {
@@ -85,8 +90,52 @@ impl ReadersAndPieces {
                 }
                 Entry::Vacant(entry) => {
                     entry.insert(vec![piece_details]);
+                    new_piece_indices.push(piece_index);
                 }
             }
+        }
+
+        if !new_piece_indices.is_empty() {
+            self.archival_storage_pieces.add_pieces(&new_piece_indices);
+        }
+    }
+
+    pub fn delete_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
+        let mut deleted_piece_indices = Vec::new();
+
+        for (piece_offset, &piece_index) in
+            (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
+        {
+            let searching_piece_details = PieceDetails {
+                disk_farm_index,
+                sector_index: plotted_sector.sector_index,
+                piece_offset,
+            };
+
+            if let Entry::Occupied(mut entry) = self.pieces.entry(piece_index.hash()) {
+                let piece_details = entry.get_mut();
+                if let Some(index) =
+                    piece_details
+                        .iter()
+                        .enumerate()
+                        .find_map(|(index, piece_details)| {
+                            (piece_details == &searching_piece_details).then_some(index)
+                        })
+                {
+                    piece_details.swap_remove(index);
+                }
+
+                // We do not store empty lists
+                if piece_details.is_empty() {
+                    entry.remove_entry();
+                    deleted_piece_indices.push(piece_index);
+                }
+            }
+        }
+
+        if !deleted_piece_indices.is_empty() {
+            self.archival_storage_pieces
+                .delete_pieces(&deleted_piece_indices);
         }
     }
 

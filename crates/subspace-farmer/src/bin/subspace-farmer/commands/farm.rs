@@ -31,13 +31,13 @@ use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
-use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy, PlottedSector};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, OwnedSemaphorePermit};
 use tokio::time::sleep;
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 use zeroize::Zeroizing;
@@ -250,7 +250,10 @@ where
     // Collect already plotted pieces
     {
         let mut readers_and_pieces = readers_and_pieces.lock();
-        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(piece_readers));
+        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(
+            piece_readers,
+            archival_storage_pieces,
+        ));
 
         single_disk_plots
             .iter()
@@ -292,65 +295,72 @@ where
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
             let span = info_span!("farm", %disk_farm_index);
-            let archival_storage_pieces = archival_storage_pieces.clone();
 
             // We are not going to send anything here, but dropping of sender on dropping of
             // corresponding `SingleDiskPlot` will allow us to stop background tasks.
             let (dropped_sender, _dropped_receiver) = broadcast::channel::<()>(1);
 
             // Collect newly plotted pieces
-            // TODO: Once we have replotting, this will have to be updated
+            let on_plotted_sector_callback = move |(
+                plotted_sector,
+                maybe_old_plotted_sector,
+                plotting_permit,
+            ): &(
+                PlottedSector,
+                Option<PlottedSector>,
+                Arc<OwnedSemaphorePermit>,
+            )| {
+                let _span_guard = span.enter();
+                let plotting_permit = Arc::clone(plotting_permit);
+                let node = node.clone();
+                let sector_index = plotted_sector.sector_index;
+
+                let mut dropped_receiver = dropped_sender.subscribe();
+
+                {
+                    let mut readers_and_pieces = readers_and_pieces.lock();
+                    let readers_and_pieces = readers_and_pieces
+                        .as_mut()
+                        .expect("Initial value was populated above; qed");
+
+                    if let Some(old_plotted_sector) = maybe_old_plotted_sector {
+                        readers_and_pieces.delete_sector(disk_farm_index, old_plotted_sector);
+                    }
+                    readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
+                }
+
+                let piece_indexes = plotted_sector.piece_indexes.clone();
+                // TODO: Remove when we no longer need announcements
+                let publish_fut = async move {
+                    let mut pieces_publishing_futures = piece_indexes
+                        .iter()
+                        .map(|piece_index| {
+                            announce_single_piece_index_hash_with_backoff(piece_index.hash(), &node)
+                        })
+                        .collect::<FuturesUnordered<_>>();
+
+                    while pieces_publishing_futures.next().await.is_some() {
+                        // Nothing is needed here, just driving all futures to completion
+                    }
+
+                    info!(?sector_index, "Sector publishing was successful.");
+
+                    // Release only after publishing is finished
+                    drop(plotting_permit);
+                }
+                .in_current_span();
+
+                tokio::spawn(async move {
+                    let result =
+                        select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
+                    if matches!(result, Either::Right(_)) {
+                        debug!("Piece publishing was cancelled due to shutdown.");
+                    }
+                });
+            };
+
             single_disk_plot
-                .on_sector_plotted(Arc::new(move |(plotted_sector, plotting_permit)| {
-                    let _span_guard = span.enter();
-                    let plotting_permit = Arc::clone(plotting_permit);
-                    let node = node.clone();
-                    let sector_index = plotted_sector.sector_index;
-
-                    let mut dropped_receiver = dropped_sender.subscribe();
-
-                    {
-                        let mut readers_and_pieces = readers_and_pieces.lock();
-                        let readers_and_pieces = readers_and_pieces
-                            .as_mut()
-                            .expect("Initial value was populated above; qed");
-                        readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
-                    }
-
-                    archival_storage_pieces.add_pieces(&plotted_sector.piece_indexes);
-
-                    let piece_indexes = plotted_sector.piece_indexes.clone();
-                    // TODO: Remove when we no longer need announcements
-                    let publish_fut = async move {
-                        let mut pieces_publishing_futures = piece_indexes
-                            .iter()
-                            .map(|piece_index| {
-                                announce_single_piece_index_hash_with_backoff(
-                                    piece_index.hash(),
-                                    &node,
-                                )
-                            })
-                            .collect::<FuturesUnordered<_>>();
-
-                        while pieces_publishing_futures.next().await.is_some() {
-                            // Nothing is needed here, just driving all futures to completion
-                        }
-
-                        info!(?sector_index, "Sector publishing was successful.");
-
-                        // Release only after publishing is finished
-                        drop(plotting_permit);
-                    }
-                    .in_current_span();
-
-                    tokio::spawn(async move {
-                        let result =
-                            select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
-                        if matches!(result, Either::Right(_)) {
-                            debug!("Piece publishing was cancelled due to shutdown.");
-                        }
-                    });
-                }))
+                .on_sector_plotted(Arc::new(on_plotted_sector_callback))
                 .detach();
 
             single_disk_plot.run()
