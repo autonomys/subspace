@@ -662,9 +662,11 @@ impl<T: Config> Pallet<T> {
         SuccessfulBundles::<T>::get()
     }
 
-    pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
-        // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
-        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
+    pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+        let runtime_id = DomainRegistry::<T>::get(domain_id)?
+            .domain_config
+            .runtime_id;
+        RuntimeRegistry::<T>::get(runtime_id).map(|runtime_object| runtime_object.code)
     }
 
     /// Returns the tx range for the domain.

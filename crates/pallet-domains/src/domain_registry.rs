@@ -1,5 +1,7 @@
 //! Domain registry for domains
 
+use crate::pallet::DomainStakingSummary;
+use crate::staking::StakingSummary;
 use crate::{Config, DomainRegistry, FreezeIdentifier, NextDomainId, RuntimeRegistry};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
@@ -8,7 +10,8 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, GenesisDomain, RuntimeId};
-use sp_runtime::traits::CheckedAdd;
+use sp_runtime::traits::{CheckedAdd, Zero};
+use sp_std::vec;
 use sp_std::vec::Vec;
 
 /// Domain registry specific errors
@@ -139,7 +142,16 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     )
     .map_err(|_| Error::BalanceFreeze)?;
 
-    // TODO: initialize the stake summary for this domain
+    DomainStakingSummary::<T>::insert(
+        domain_id,
+        StakingSummary {
+            current_epoch_index: 0,
+            current_total_stake: Zero::zero(),
+            next_total_stake: Zero::zero(),
+            current_operators: vec![],
+            next_operators: vec![],
+        },
+    );
 
     // TODO: initialize the genesis block in the domain block tree once we can drive the
     // genesis ER from genesis config through host function
