@@ -5,7 +5,7 @@ mod domain_tx_pre_validator;
 pub mod providers;
 pub mod rpc;
 
-pub use self::domain::{new_full, DomainExecutor, DomainParams, FullPool, NewFull};
+pub use self::domain::{new_full, DomainOperator, DomainParams, FullPool, NewFull};
 use futures::channel::oneshot;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider};

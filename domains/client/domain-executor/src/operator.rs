@@ -25,8 +25,8 @@ use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
 // TODO: rename everything to Operator?
-/// Domain executor.
-pub struct Executor<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+/// Domain operator.
+pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -41,7 +41,7 @@ where
 }
 
 impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI> Clone
-    for Executor<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+    for Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -60,7 +60,7 @@ where
 }
 
 impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
-    Executor<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+    Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -181,7 +181,7 @@ where
         );
 
         spawn_essential.spawn_essential_blocking(
-            "domain-executor-worker",
+            "domain-operator-worker",
             None,
             crate::domain_worker_starter::start_worker(
                 spawn_essential.clone(),

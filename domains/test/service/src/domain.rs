@@ -62,7 +62,7 @@ pub type Backend = TFullBackend<Block>;
 type Client<RuntimeApi, ExecutorDispatch> = FullClient<Block, RuntimeApi, ExecutorDispatch>;
 
 /// Domain executor for the test service.
-pub type DomainExecutor<RuntimeApi, ExecutorDispatch> = domain_service::DomainExecutor<
+pub type DomainOperator<RuntimeApi, ExecutorDispatch> = domain_service::DomainOperator<
     Block,
     PBlock,
     subspace_test_client::Client,
@@ -113,8 +113,8 @@ where
     pub addr: MultiaddrWithPeerId,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: RpcHandlers,
-    /// Domain executor.
-    pub executor: DomainExecutor<RuntimeApi, ExecutorDispatch>,
+    /// Domain oeprator.
+    pub operator: DomainOperator<RuntimeApi, ExecutorDispatch>,
     /// Sink to the node's tx pool
     pub tx_pool_sink: TracingUnboundedSender<Vec<u8>>,
     _phantom_data: PhantomData<(Runtime, AccountId)>,
@@ -250,7 +250,7 @@ where
             sync_service,
             network_starter,
             rpc_handlers,
-            executor,
+            operator,
             tx_pool_sink,
             ..
         } = domain_node;
@@ -279,7 +279,7 @@ where
             sync_service,
             addr,
             rpc_handlers,
-            executor,
+            operator,
             tx_pool_sink,
             _phantom_data: Default::default(),
         }

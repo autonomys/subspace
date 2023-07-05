@@ -66,18 +66,18 @@ where
     }
 }
 
-/// A list of primary blocks waiting to be processed by executor on each imported primary block
+/// A list of consensus blocks waiting to be processed by executor on each imported consensus block
 /// notification.
 ///
 /// Usually, each new domain block is built on top of the current best domain block, with the block
-/// content extracted from the incoming primary block. However, an incoming imported primary block
-/// notification can also imply multiple pending primary blocks in case of the primary chain re-org.
+/// content extracted from the incoming consensus block. However, an incoming imported consensus block
+/// notification can also imply multiple pending consensus blocks in case of the consensus chain re-org.
 #[derive(Debug)]
-pub(crate) struct PendingPrimaryBlocks<Block: BlockT, CBlock: BlockT> {
-    /// Base block used to build new domain blocks derived from the primary blocks below.
+pub(crate) struct PendingConsensusBlocks<Block: BlockT, CBlock: BlockT> {
+    /// Base block used to build new domain blocks derived from the consensus blocks below.
     pub initial_parent: (Block::Hash, NumberFor<Block>),
-    /// Pending primary blocks that need to be processed sequentially.
-    pub primary_imports: Vec<HashAndNumber<CBlock>>,
+    /// Pending consensus blocks that need to be processed sequentially.
+    pub consensus_imports: Vec<HashAndNumber<CBlock>>,
 }
 
 impl<Block, CBlock, Client, CClient, Backend, BI>
@@ -109,19 +109,19 @@ where
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 {
-    /// Returns a list of primary blocks waiting to be processed if any.
+    /// Returns a list of consensus blocks waiting to be processed if any.
     ///
-    /// It's possible to have multiple pending primary blocks that need to be processed in case
-    /// the primary chain re-org occurs.
-    pub(crate) fn pending_imported_primary_blocks(
+    /// It's possible to have multiple pending consensus blocks that need to be processed in case
+    /// the consensus chain re-org occurs.
+    pub(crate) fn pending_imported_consensus_blocks(
         &self,
         primary_hash: CBlock::Hash,
         primary_number: NumberFor<CBlock>,
-    ) -> sp_blockchain::Result<Option<PendingPrimaryBlocks<Block, CBlock>>> {
+    ) -> sp_blockchain::Result<Option<PendingConsensusBlocks<Block, CBlock>>> {
         if primary_number == One::one() {
-            return Ok(Some(PendingPrimaryBlocks {
+            return Ok(Some(PendingConsensusBlocks {
                 initial_parent: (self.client.info().genesis_hash, Zero::zero()),
-                primary_imports: vec![HashAndNumber {
+                consensus_imports: vec![HashAndNumber {
                     hash: primary_hash,
                     number: primary_number,
                 }],
@@ -158,15 +158,15 @@ where
             ?retracted,
             ?enacted,
             common_block = ?route.common_block(),
-            "Calculating PendingPrimaryBlocks on #{best_number},{best_hash:?}"
+            "Calculating PendingConsensusBlocks on #{best_number},{best_hash:?}"
         );
 
         match (retracted.is_empty(), enacted.is_empty()) {
             (true, false) => {
                 // New tip, A -> B
-                Ok(Some(PendingPrimaryBlocks {
+                Ok(Some(PendingConsensusBlocks {
                     initial_parent: (best_hash, best_number),
-                    primary_imports: enacted.to_vec(),
+                    consensus_imports: enacted.to_vec(),
                 }))
             }
             (false, true) => {
@@ -203,9 +203,9 @@ where
                     ))
                 })?;
 
-                Ok(Some(PendingPrimaryBlocks {
+                Ok(Some(PendingConsensusBlocks {
                     initial_parent: (parent_header.hash(), *parent_header.number()),
-                    primary_imports: enacted.to_vec(),
+                    consensus_imports: enacted.to_vec(),
                 }))
             }
         }
@@ -381,7 +381,7 @@ where
         Ok(())
     }
 
-    pub(crate) fn on_primary_block_processed(
+    pub(crate) fn on_consensus_block_processed(
         &self,
         primary_hash: CBlock::Hash,
         domain_block_result: Option<DomainBlockResult<Block, CBlock>>,

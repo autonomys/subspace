@@ -1,4 +1,6 @@
-use crate::domain_block_processor::{DomainBlockProcessor, PendingPrimaryBlocks, ReceiptsChecker};
+use crate::domain_block_processor::{
+    DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
+};
 use crate::{DomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
@@ -12,7 +14,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, DomainsApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::traits::{Block as BlockT, HashFor, One};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -135,24 +137,24 @@ where
 
         let maybe_pending_consensus_blocks = self
             .domain_block_processor
-            .pending_imported_primary_blocks(consensus_block_hash, consensus_block_number)?;
+            .pending_imported_consensus_blocks(consensus_block_hash, consensus_block_number)?;
 
-        if let Some(PendingPrimaryBlocks {
+        if let Some(PendingConsensusBlocks {
             initial_parent,
-            primary_imports,
+            consensus_imports,
         }) = maybe_pending_consensus_blocks
         {
             tracing::trace!(
                 ?initial_parent,
-                ?primary_imports,
+                ?consensus_imports,
                 "Pending consensus blocks to process"
             );
 
             let mut domain_parent = initial_parent;
 
-            for primary_info in primary_imports {
+            for consensus_info in consensus_imports {
                 if let Some(next_domain_parent) = self
-                    .process_bundles_at((primary_info.hash, primary_info.number), domain_parent)
+                    .process_bundles_at((consensus_info.hash, consensus_info.number), domain_parent)
                     .await?
                 {
                     domain_parent = next_domain_parent;
@@ -191,7 +193,7 @@ where
         &self,
         consensus_block_info: (CBlock::Hash, NumberFor<CBlock>),
         parent_info: (Block::Hash, NumberFor<Block>),
-    ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)> {
+    ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
         let (consensus_block_hash, consensus_block_number) = consensus_block_info;
         let (parent_hash, parent_number) = parent_info;
 
@@ -217,8 +219,8 @@ where
                 tracing::debug!(
                     "No bundles and runtime upgrade for this domain in consensus block #{consensus_block_number:?},{consensus_block_hash}, skip building domain block"
                 );
-                self.domain_block_processor.on_primary_block_processed(
-                    primary_hash,
+                self.domain_block_processor.on_consensus_block_processed(
+                    consensus_block_hash,
                     None,
                     head_receipt_number,
                 )?;
@@ -254,7 +256,7 @@ where
             domain_block_result.header_number,
         );
 
-        self.domain_block_processor.on_primary_block_processed(
+        self.domain_block_processor.on_consensus_block_processed(
             consensus_block_hash,
             Some(domain_block_result),
             head_receipt_number,

@@ -69,15 +69,15 @@ mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
 mod domain_worker_starter;
-mod executor;
 mod fraud_proof;
+mod operator;
 mod parent_chain;
 mod sortition;
 #[cfg(test)]
 mod tests;
 mod utils;
 
-pub use self::executor::Executor;
+pub use self::operator::Operator;
 pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;

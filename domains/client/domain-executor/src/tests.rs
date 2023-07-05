@@ -831,7 +831,7 @@ async fn set_new_code_should_work() {
         .unwrap()
         .unwrap_or_else(Hash::random);
     alice
-        .executor
+        .operator
         .clone()
         .process_bundles((primary_hash, primary_number, true))
         .await;

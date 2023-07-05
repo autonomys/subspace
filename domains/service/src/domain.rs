@@ -3,7 +3,7 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
-use domain_client_executor::{Executor, ExecutorStreams, OperatorParams};
+use domain_client_executor::{ExecutorStreams, Operator, OperatorParams};
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, Hash, InherentExtrinsicApi};
@@ -44,7 +44,7 @@ use substrate_frame_rpc_system::AccountNonceApi;
 
 type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
 
-pub type DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI> = Executor<
+pub type DomainOperator<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI> = Operator<
     Block,
     PBlock,
     FullClient<Block, RuntimeApi, ExecutorDispatch>,
@@ -103,8 +103,8 @@ where
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
     pub network_starter: NetworkStarter,
-    /// Executor.
-    pub executor: DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI>,
+    /// Operator.
+    pub operator: DomainOperator<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
     _phantom_data: PhantomData<AccountId>,
@@ -434,7 +434,7 @@ where
     // TODO: Implement when block tree is ready.
     let domain_confirmation_depth = 256u32;
 
-    let executor = Executor::new(
+    let operator = Operator::new(
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
         OperatorParams {
@@ -492,7 +492,7 @@ where
         sync_service,
         rpc_handlers,
         network_starter,
-        executor,
+        operator,
         tx_pool_sink: msg_sender,
         _phantom_data: Default::default(),
     };

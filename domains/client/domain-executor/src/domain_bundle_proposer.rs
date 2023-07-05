@@ -173,7 +173,7 @@ where
                 _,
                 Block::Hash,
                 NumberFor<CBlock>,
-                PBlock::Hash,
+                CBlock::Hash,
             >(&*self.client, domain_hash)?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
@@ -203,7 +203,7 @@ where
 
         if receipt_number.is_zero() {
             return Ok(ExecutionReceipt::genesis(
-                self.primary_chain_client.info().genesis_hash,
+                self.consensus_client.info().genesis_hash,
             ));
         }
 
