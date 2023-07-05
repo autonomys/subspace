@@ -9,6 +9,7 @@ use subspace_core_primitives::PieceIndex;
 use subspace_networking::{
     CuckooFilterDTO, CuckooFilterProvider, Notification, NotificationHandler,
 };
+use tracing::warn;
 
 type NotificationEventHandler = Bag<NotificationHandler, Notification>;
 
@@ -35,18 +36,25 @@ impl ArchivalStoragePieces {
         }
     }
 
-    pub fn add_pieces(&self, piece_indexes: &[PieceIndex]) -> Result<(), anyhow::Error> {
+    pub fn add_pieces(&self, piece_indexes: &[PieceIndex]) {
         let mut cuckoo_filter = self.cuckoo_filter.lock();
+        let mut last_error = None;
+
         for piece_index in piece_indexes {
-            cuckoo_filter
-                .add(piece_index)
-                .map_err(|err| anyhow::anyhow!("Cuckoo filter error: {}", err,))?;
+            if let Err(err) = cuckoo_filter.add(piece_index) {
+                last_error.replace(err);
+            }
         }
         drop(cuckoo_filter);
 
         self.listeners.call_simple(&Notification);
 
-        Ok(())
+        if let Some(err) = last_error {
+            warn!(
+                ?err,
+                "Cuckoo-filter returned an error during piece insertion."
+            );
+        }
     }
 }
 

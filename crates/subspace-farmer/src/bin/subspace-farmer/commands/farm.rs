@@ -365,15 +365,7 @@ where
                             return;
                         }
 
-                        if let Err(err) = archival_storage_pieces.add_pieces(&new_pieces) {
-                            error!(
-                                %err,
-                                %disk_farm_index,
-                                %sector_index,
-                                %sector_offset,
-                                "Couldn't add new pieces to archival storage cuckoo filter.",
-                            );
-                        }
+                        archival_storage_pieces.add_pieces(&new_pieces);
 
                         // TODO: Skip those that were already announced (because they cached)
                         let publish_fut = async move {
