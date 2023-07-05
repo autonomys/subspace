@@ -3,7 +3,7 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
-use domain_client_executor::{EssentialExecutorParams, Executor, ExecutorStreams};
+use domain_client_executor::{Executor, ExecutorStreams, OperatorParams};
 use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, Hash, InherentExtrinsicApi};
@@ -437,10 +437,10 @@ where
     let executor = Executor::new(
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
-        EssentialExecutorParams {
+        OperatorParams {
             domain_id,
-            primary_chain_client: primary_chain_client.clone(),
-            primary_network_sync_oracle,
+            consensus_client: primary_chain_client.clone(),
+            consensus_network_sync_oracle: primary_network_sync_oracle,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),

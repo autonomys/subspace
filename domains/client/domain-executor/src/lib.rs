@@ -98,25 +98,25 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
-type ExecutionReceiptFor<PBlock, Hash> =
-    ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
+type ExecutionReceiptFor<CBlock, Hash> =
+    ExecutionReceipt<NumberFor<CBlock>, <CBlock as BlockT>::Hash, Hash>;
 
 type TransactionFor<Backend, Block> =
     <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
         HashFor<Block>,
     >>::Transaction;
 
-type BundleSender<Block, PBlock> = TracingUnboundedSender<
+type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<
         <Block as BlockT>::Extrinsic,
-        NumberFor<PBlock>,
-        <PBlock as BlockT>::Hash,
+        NumberFor<CBlock>,
+        <CBlock as BlockT>::Hash,
         <Block as BlockT>::Hash,
     >,
 >;
 
 /// Notification streams from the primary chain driving the executor.
-pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
+pub struct ExecutorStreams<CBlock, IBNS, CIBNS, NSNS> {
     /// Pause the primary block import when the primary chain client
     /// runs much faster than the domain client.
     pub primary_block_import_throttling_buffer_size: u32,
@@ -130,14 +130,14 @@ pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
     pub imported_block_notification_stream: CIBNS,
     /// New slot arrives.
     pub new_slot_notification_stream: NSNS,
-    pub _phantom: PhantomData<PBlock>,
+    pub _phantom: PhantomData<CBlock>,
 }
 
-pub struct EssentialExecutorParams<
+pub struct OperatorParams<
     Block,
-    PBlock,
+    CBlock,
     Client,
-    PClient,
+    CClient,
     TransactionPool,
     Backend,
     E,
@@ -147,22 +147,22 @@ pub struct EssentialExecutorParams<
     BI,
 > where
     Block: BlockT,
-    PBlock: BlockT,
-    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
-    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
+    CBlock: BlockT,
+    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
 {
     pub domain_id: DomainId,
-    pub primary_chain_client: Arc<PClient>,
-    pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub consensus_client: Arc<CClient>,
+    pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,
     pub transaction_pool: Arc<TransactionPool>,
     pub backend: Arc<Backend>,
     pub code_executor: Arc<E>,
     pub is_authority: bool,
     pub keystore: KeystorePtr,
-    pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
-    pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
+    pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
+    pub executor_streams: ExecutorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: Arc<BI>,
 }
@@ -171,14 +171,14 @@ pub struct EssentialExecutorParams<
 ///
 /// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
 /// is only available in the imported primary block notifications.
-async fn active_leaves<PBlock, PClient, SC>(
-    client: &PClient,
+async fn active_leaves<CBlock, CClient, SC>(
+    client: &CClient,
     select_chain: &SC,
-) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
+) -> Result<Vec<BlockInfo<CBlock>>, sp_consensus::Error>
 where
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    SC: SelectChain<PBlock>,
+    CBlock: BlockT,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
+    SC: SelectChain<CBlock>,
 {
     let best_block = select_chain.best_chain().await?;
 

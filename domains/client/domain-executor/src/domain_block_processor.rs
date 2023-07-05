@@ -22,42 +22,42 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT
 use sp_runtime::Digest;
 use std::sync::Arc;
 
-pub(crate) struct DomainBlockResult<Block, PBlock>
+pub(crate) struct DomainBlockResult<Block, CBlock>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     pub header_hash: Block::Hash,
     pub header_number: NumberFor<Block>,
-    pub execution_receipt: ExecutionReceiptFor<PBlock, Block::Hash>,
+    pub execution_receipt: ExecutionReceiptFor<CBlock, Block::Hash>,
 }
 
 /// An abstracted domain block processor.
-pub(crate) struct DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
+pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
-    pub(crate) primary_chain_client: Arc<PClient>,
+    pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
     pub(crate) block_import: Arc<BI>,
-    pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, PBlock>,
+    pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, BI> Clone
-    for DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend, BI> Clone
+    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
             client: self.client.clone(),
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             backend: self.backend.clone(),
             domain_confirmation_depth: self.domain_confirmation_depth,
             block_import: self.block_import.clone(),
@@ -73,19 +73,19 @@ where
 /// content extracted from the incoming primary block. However, an incoming imported primary block
 /// notification can also imply multiple pending primary blocks in case of the primary chain re-org.
 #[derive(Debug)]
-pub(crate) struct PendingPrimaryBlocks<Block: BlockT, PBlock: BlockT> {
+pub(crate) struct PendingPrimaryBlocks<Block: BlockT, CBlock: BlockT> {
     /// Base block used to build new domain blocks derived from the primary blocks below.
     pub initial_parent: (Block::Hash, NumberFor<Block>),
     /// Pending primary blocks that need to be processed sequentially.
-    pub primary_imports: Vec<HashAndNumber<PBlock>>,
+    pub primary_imports: Vec<HashAndNumber<CBlock>>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, BI>
-    DomainBlockProcessor<Block, PBlock, Client, PClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend, BI>
+    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: Into<NumberFor<Block>>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -100,12 +100,12 @@ where
         Transaction = sp_api::TransactionFor<Client, Block>,
         Error = sp_consensus::Error,
     >,
-    PClient: HeaderBackend<PBlock>
-        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CClient: HeaderBackend<CBlock>
+        + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + 'static,
-    PClient::Api: DomainsApi<PBlock, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 {
@@ -115,9 +115,9 @@ where
     /// the primary chain re-org occurs.
     pub(crate) fn pending_imported_primary_blocks(
         &self,
-        primary_hash: PBlock::Hash,
-        primary_number: NumberFor<PBlock>,
-    ) -> sp_blockchain::Result<Option<PendingPrimaryBlocks<Block, PBlock>>> {
+        primary_hash: CBlock::Hash,
+        primary_number: NumberFor<CBlock>,
+    ) -> sp_blockchain::Result<Option<PendingPrimaryBlocks<Block, CBlock>>> {
         if primary_number == One::one() {
             return Ok(Some(PendingPrimaryBlocks {
                 initial_parent: (self.client.info().genesis_hash, Zero::zero()),
@@ -149,8 +149,7 @@ where
             )));
         }
 
-        let route =
-            sp_blockchain::tree_route(&*self.primary_chain_client, primary_from, primary_to)?;
+        let route = sp_blockchain::tree_route(&*self.consensus_client, primary_from, primary_to)?;
 
         let retracted = route.retracted();
         let enacted = route.enacted();
@@ -214,11 +213,11 @@ where
 
     pub(crate) async fn process_domain_block(
         &self,
-        (primary_hash, primary_number): (PBlock::Hash, NumberFor<PBlock>),
+        (primary_hash, primary_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
         digests: Digest,
-    ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
+    ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         // Although the domain block intuitively ought to use the same fork choice
         // from the corresponding primary block, it's fine to forcibly always use
         // the longest chain for simplicity as we manually build the domain branches
@@ -384,8 +383,8 @@ where
 
     pub(crate) fn on_primary_block_processed(
         &self,
-        primary_hash: PBlock::Hash,
-        domain_block_result: Option<DomainBlockResult<Block, PBlock>>,
+        primary_hash: CBlock::Hash,
+        domain_block_result: Option<DomainBlockResult<Block, CBlock>>,
         head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<()> {
         let domain_hash = match domain_block_result {
@@ -394,7 +393,7 @@ where
                 header_number: _,
                 execution_receipt,
             }) => {
-                crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+                crate::aux_schema::write_execution_receipt::<_, Block, CBlock>(
                     &*self.client,
                     head_receipt_number,
                     &execution_receipt,
@@ -416,13 +415,11 @@ where
                 // No new domain block produced, thus this primary block should map to the same
                 // domain block as its parent block
                 let primary_header =
-                    self.primary_chain_client
-                        .header(primary_hash)?
-                        .ok_or_else(|| {
-                            sp_blockchain::Error::Backend(format!(
-                                "Primary block header for #{primary_hash:?} not found"
-                            ))
-                        })?;
+                    self.consensus_client.header(primary_hash)?.ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Primary block header for #{primary_hash:?} not found"
+                        ))
+                    })?;
                 if !primary_header.number().is_one() {
                     crate::aux_schema::best_domain_hash_for(
                         &*self.client,
@@ -453,8 +450,8 @@ where
 pub(crate) struct ReceiptsChecker<
     Block,
     Client,
-    PBlock,
-    PClient,
+    CBlock,
+    CClient,
     Backend,
     E,
     ParentChain,
@@ -462,16 +459,16 @@ pub(crate) struct ReceiptsChecker<
 > {
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
-    pub(crate) primary_chain_client: Arc<PClient>,
-    pub(crate) primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub(crate) consensus_client: Arc<CClient>,
+    pub(crate) consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub(crate) fraud_proof_generator:
-        FraudProofGenerator<Block, PBlock, Client, PClient, Backend, E>,
+        FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
     pub(crate) parent_chain: ParentChain,
     pub(crate) _phantom: std::marker::PhantomData<ParentChainBlock>,
 }
 
-impl<Block, PBlock, Client, PClient, Backend, E, ParentChain, ParentChainBlock> Clone
-    for ReceiptsChecker<Block, PBlock, Client, PClient, Backend, E, ParentChain, ParentChainBlock>
+impl<Block, CBlock, Client, CClient, Backend, E, ParentChain, ParentChainBlock> Clone
+    for ReceiptsChecker<Block, CBlock, Client, CClient, Backend, E, ParentChain, ParentChainBlock>
 where
     Block: BlockT,
     ParentChain: Clone,
@@ -480,8 +477,8 @@ where
         Self {
             domain_id: self.domain_id,
             client: self.client.clone(),
-            primary_chain_client: self.primary_chain_client.clone(),
-            primary_network_sync_oracle: self.primary_network_sync_oracle.clone(),
+            consensus_client: self.consensus_client.clone(),
+            consensus_network_sync_oracle: self.consensus_network_sync_oracle.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             parent_chain: self.parent_chain.clone(),
             _phantom: self._phantom,
@@ -489,20 +486,20 @@ where
     }
 }
 
-impl<Block, Client, PBlock, PClient, Backend, E, ParentChain, ParentChainBlock>
-    ReceiptsChecker<Block, Client, PBlock, PClient, Backend, E, ParentChain, ParentChainBlock>
+impl<Block, Client, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+    ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
     ParentChainBlock: BlockT,
-    NumberFor<PBlock>: Into<NumberFor<Block>>,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    PClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -524,7 +521,7 @@ where
 
         self.check_receipts(receipts, fraud_proofs)?;
 
-        if self.primary_network_sync_oracle.is_major_syncing() {
+        if self.consensus_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
                 "Skip reporting unconfirmed bad receipt as the primary node is still major syncing..."
             );
@@ -641,10 +638,10 @@ where
         Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     > {
         if let Some((bad_receipt_hash, trace_mismatch_index, primary_block_hash)) =
-            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, PBlock, _>(
+            crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
                 &*self.client,
                 |height| {
-                    self.primary_chain_client.hash(height)?.ok_or_else(|| {
+                    self.consensus_client.hash(height)?.ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
                             "Primary block hash for {height} not found",
                         ))
