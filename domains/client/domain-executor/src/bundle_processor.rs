@@ -4,14 +4,15 @@ use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
-use sc_consensus::BlockImport;
+use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
+use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, ExecutorApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, One};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -124,9 +125,9 @@ where
     // TODO: Handle the returned error properly, ref to https://github.com/subspace/subspace/pull/695#discussion_r926721185
     pub(crate) async fn process_bundles(
         self,
-        primary_info: (PBlock::Hash, NumberFor<PBlock>),
+        primary_info: (PBlock::Hash, NumberFor<PBlock>, bool),
     ) -> sp_blockchain::Result<()> {
-        let (primary_hash, primary_number) = primary_info;
+        let (primary_hash, primary_number, is_new_best) = primary_info;
 
         tracing::debug!("Processing imported primary block #{primary_number},{primary_hash}");
 
@@ -148,9 +149,36 @@ where
             let mut domain_parent = initial_parent;
 
             for primary_info in primary_imports {
-                domain_parent = self
+                if let Some(next_domain_parent) = self
                     .process_bundles_at((primary_info.hash, primary_info.number), domain_parent)
+                    .await?
+                {
+                    domain_parent = next_domain_parent;
+                }
+            }
+
+            // The domain branch driving from the best primary branch should also be the best domain branch even
+            // if it is no the longest domain branch. Thus re-import the tip of the best domain branch to make it
+            // the new best block if it isn't.
+            //
+            // Note: this may cause the best domain fork switch to a shorter fork or in some case the best domain
+            // block become the ancestor block of the current best block.
+            let domain_tip = domain_parent.0;
+            if is_new_best && self.client.info().best_hash != domain_tip {
+                let header = self.client.header(domain_tip)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
+                })?;
+                let block_import_params = {
+                    let mut import_block = BlockImportParams::new(BlockOrigin::Own, header);
+                    import_block.import_existing = true;
+                    import_block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
+                    import_block.state_action = StateAction::Skip;
+                    import_block
+                };
+                self.domain_block_processor
+                    .import_domain_block(block_import_params)
                     .await?;
+                assert_eq!(domain_tip, self.client.info().best_hash);
             }
         }
 
@@ -161,7 +189,7 @@ where
         &self,
         primary_info: (PBlock::Hash, NumberFor<PBlock>),
         parent_info: (Block::Hash, NumberFor<Block>),
-    ) -> sp_blockchain::Result<(Block::Hash, NumberFor<Block>)> {
+    ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
         let (primary_hash, primary_number) = primary_info;
         let (parent_hash, parent_number) = parent_info;
 
@@ -170,9 +198,31 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        let extrinsics = self
+        // TODO: Retrieve using consensus chain runtime API
+        let head_receipt_number = parent_number;
+        // let head_receipt_number = self
+        // .primary_chain_client
+        // .runtime_api()
+        // .head_receipt_number(primary_hash, self.domain_id)?
+        // .into();
+
+        let extrinsics = match self
             .domain_block_preprocessor
-            .preprocess_primary_block(primary_hash, parent_hash)?;
+            .preprocess_primary_block(primary_hash, parent_hash)?
+        {
+            Some(exts) => exts,
+            None => {
+                tracing::debug!(
+                    "No bundles and runtime upgrade for this domain in primary block {primary_info:?}, skip building domain block"
+                );
+                self.domain_block_processor.on_primary_block_processed(
+                    primary_hash,
+                    None,
+                    head_receipt_number,
+                )?;
+                return Ok(None);
+            }
+        };
 
         let domain_block_result = self
             .domain_block_processor
@@ -184,14 +234,6 @@ where
             )
             .await?;
 
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = domain_block_result.header_number - One::one();
-        // let head_receipt_number = self
-        // .primary_chain_client
-        // .runtime_api()
-        // .head_receipt_number(primary_hash, self.domain_id)?
-        // .into();
-
         assert!(
             domain_block_result.header_number > head_receipt_number,
             "Consensus chain number must larger than execution chain number by at least 1"
@@ -202,15 +244,15 @@ where
             domain_block_result.header_number,
         );
 
-        self.domain_block_processor.on_domain_block_processed(
+        self.domain_block_processor.on_primary_block_processed(
             primary_hash,
-            domain_block_result,
+            Some(domain_block_result),
             head_receipt_number,
         )?;
 
         self.domain_receipts_checker
             .check_state_transition(primary_hash)?;
 
-        Ok(built_block_info)
+        Ok(Some(built_block_info))
     }
 }

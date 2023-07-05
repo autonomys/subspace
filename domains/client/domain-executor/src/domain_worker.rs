@@ -66,7 +66,7 @@ pub(crate) async fn handle_block_import_notifications<
     primary_chain_client: &PClient,
     best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
-    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>)>,
+    mut leaves: Vec<(PBlock::Hash, NumberFor<PBlock>, bool)>,
     mut blocks_importing: BlocksImporting,
     mut blocks_imported: BlocksImported,
     primary_block_import_throttling_buffer_size: u32,
@@ -79,7 +79,7 @@ pub(crate) async fn handle_block_import_notifications<
         + BlockchainEvents<PBlock>,
     PClient::Api: ExecutorApi<PBlock, Block::Hash>,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (PBlock::Hash, NumberFor<PBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync
@@ -92,11 +92,11 @@ pub(crate) async fn handle_block_import_notifications<
     let best_domain_number = to_number_primitive(best_domain_number);
 
     // Notify about active leaves on startup before starting the loop
-    for (hash, number) in std::mem::take(&mut leaves) {
+    for (hash, number, is_new_best) in std::mem::take(&mut leaves) {
         let _ = active_leaves.insert(hash, number);
         // Skip the blocks that have been processed by the execution chain.
         if number > best_domain_number.into() {
-            if let Err(error) = processor((hash, number)).await {
+            if let Err(error) = processor((hash, number, is_new_best)).await {
                 tracing::error!(?error, "Failed to process primary block on startup");
                 // Bring down the service as bundles processor is an essential task.
                 // TODO: more graceful shutdown.
@@ -167,6 +167,7 @@ pub(crate) async fn handle_block_import_notifications<
                     hash: header.hash(),
                     parent_hash: *header.parent_hash(),
                     number: *header.number(),
+                    is_new_best: block_imported.is_new_best,
                 };
                 let _ = block_info_sender.feed(Some(block_info)).await;
             }
@@ -235,7 +236,7 @@ async fn block_imported<PBlock, ProcessorFn>(
 where
     PBlock: BlockT,
     ProcessorFn: Fn(
-            (PBlock::Hash, NumberFor<PBlock>),
+            (PBlock::Hash, NumberFor<PBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
         + Send
         + Sync,
@@ -252,7 +253,7 @@ where
         debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
     }
 
-    processor((block_info.hash, block_info.number)).await?;
+    processor((block_info.hash, block_info.number, block_info.is_new_best)).await?;
 
     Ok(())
 }

@@ -132,11 +132,13 @@ where
         let best_number = self.client.info().best_number;
 
         let primary_hash_for_best_domain_hash =
-            crate::aux_schema::primary_hash_for(&*self.backend, best_hash)?.ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Primary hash for domain hash #{best_number},{best_hash} not found"
-                ))
-            })?;
+            crate::aux_schema::latest_primary_hash_for(&*self.client, &best_hash)?.ok_or_else(
+                || {
+                    sp_blockchain::Error::Backend(format!(
+                        "Primary hash for domain hash #{best_number},{best_hash} not found"
+                    ))
+                },
+            )?;
 
         let primary_from = primary_hash_for_best_domain_hash;
         let primary_to = primary_hash;
@@ -179,19 +181,28 @@ where
                 );
             }
             (false, false) => {
-                let common_block_number = route.common_block().number.into();
-                let parent_header = self
-                    .client
-                    .header(self.client.hash(common_block_number)?.ok_or_else(|| {
+                let (common_block_number, common_block_hash) =
+                    (route.common_block().number, route.common_block().hash);
+
+                // Get the domain block that is derived from the common primary block and use it as
+                // the initial domain parent block
+                let domain_block_hash: Block::Hash = crate::aux_schema::best_domain_hash_for(
+                    &*self.client,
+                    &common_block_hash,
+                )?
+                .ok_or_else(
+                    || {
                         sp_blockchain::Error::Backend(format!(
-                            "Header for #{common_block_number} not found"
+                            "Hash of domain block derived from primary block #{common_block_number},{common_block_hash} not found"
                         ))
-                    })?)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header for #{common_block_number} not found"
-                        ))
-                    })?;
+                    },
+                )?;
+                let parent_header = self.client.header(domain_block_hash)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Domain block header for #{:?} not found",
+                        domain_block_hash
+                    ))
+                })?;
 
                 Ok(Some(PendingPrimaryBlocks {
                     initial_parent: (parent_header.hash(), *parent_header.number()),
@@ -208,20 +219,14 @@ where
         extrinsics: Vec<Block::Extrinsic>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, PBlock>, sp_blockchain::Error> {
-        let primary_number = to_number_primitive(primary_number);
-
-        if to_number_primitive(parent_number) + 1 != primary_number {
-            return Err(sp_blockchain::Error::Application(Box::from(format!(
-                "Wrong domain parent block #{parent_number},{parent_hash} for \
-                primary block #{primary_number},{primary_hash}, the number of new \
-                domain block must match the number of corresponding primary block."
-            ))));
-        }
-
         // Although the domain block intuitively ought to use the same fork choice
         // from the corresponding primary block, it's fine to forcibly always use
-        // the longest chain for simplicity as we manually build all the domain
-        // branches by literally following the primary chain branches anyway.
+        // the longest chain for simplicity as we manually build the domain branches
+        // by following the primary chain branches. Due to the possibility of domain
+        // branch transitioning to a lower fork caused by the change that a primary block
+        // can possibility produce no domain block, it's important to note that now we
+        // need to ensure the domain block built from the latest primary block is the
+        // new best domain block after processing each imported primary block.
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
@@ -233,8 +238,9 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        if let Some(to_finalize_block_number) =
-            header_number.checked_sub(&self.domain_confirmation_depth)
+        if let Some(to_finalize_block_number) = primary_number
+            .into()
+            .checked_sub(&self.domain_confirmation_depth)
         {
             if to_finalize_block_number > self.client.info().finalized_number {
                 let to_finalize_block_hash =
@@ -276,8 +282,9 @@ where
         );
 
         let execution_receipt = ExecutionReceipt {
-            primary_number: primary_number.into(),
+            primary_number,
             primary_hash,
+            domain_number: to_number_primitive(header_number).into(),
             domain_hash: header_hash,
             trace,
             trace_root,
@@ -328,6 +335,20 @@ where
             import_block.fork_choice = Some(fork_choice);
             import_block
         };
+        self.import_domain_block(block_import_params).await?;
+
+        Ok((header_hash, header_number, state_root))
+    }
+
+    pub(crate) async fn import_domain_block(
+        &self,
+        block_import_params: BlockImportParams<Block, sp_api::TransactionFor<Client, Block>>,
+    ) -> Result<(), sp_blockchain::Error> {
+        let (header_number, header_hash, parent_hash) = (
+            *block_import_params.header.number(),
+            block_import_params.header.hash(),
+            *block_import_params.header.parent_hash(),
+        );
 
         let import_result = (&*self.block_import)
             .import_block(block_import_params)
@@ -358,42 +379,72 @@ where
             }
         }
 
-        Ok((header_hash, header_number, state_root))
+        Ok(())
     }
 
-    pub(crate) fn on_domain_block_processed(
+    pub(crate) fn on_primary_block_processed(
         &self,
         primary_hash: PBlock::Hash,
-        domain_block_result: DomainBlockResult<Block, PBlock>,
+        domain_block_result: Option<DomainBlockResult<Block, PBlock>>,
         head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<()> {
-        let DomainBlockResult {
-            header_hash,
-            header_number: _,
-            execution_receipt,
-        } = domain_block_result;
+        let domain_hash = match domain_block_result {
+            Some(DomainBlockResult {
+                header_hash,
+                header_number: _,
+                execution_receipt,
+            }) => {
+                crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
+                    &*self.client,
+                    head_receipt_number,
+                    &execution_receipt,
+                )?;
 
-        crate::aux_schema::write_execution_receipt::<_, Block, PBlock>(
-            &*self.client,
-            head_receipt_number,
-            &execution_receipt,
-        )?;
+                // Notify the imported domain block when the receipt processing is done.
+                let domain_import_notification = DomainBlockImportNotification {
+                    domain_block_hash: header_hash,
+                    primary_block_hash: primary_hash,
+                };
+                self.import_notification_sinks.lock().retain(|sink| {
+                    sink.unbounded_send(domain_import_notification.clone())
+                        .is_ok()
+                });
 
-        crate::aux_schema::track_domain_hash_to_primary_hash(
+                header_hash
+            }
+            None => {
+                // No new domain block produced, thus this primary block should map to the same
+                // domain block as its parent block
+                let primary_header =
+                    self.primary_chain_client
+                        .header(primary_hash)?
+                        .ok_or_else(|| {
+                            sp_blockchain::Error::Backend(format!(
+                                "Primary block header for #{primary_hash:?} not found"
+                            ))
+                        })?;
+                if !primary_header.number().is_one() {
+                    crate::aux_schema::best_domain_hash_for(
+                        &*self.client,
+                        primary_header.parent_hash(),
+                    )?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Domain hash for #{:?} not found",
+                            primary_header.parent_hash()
+                        ))
+                    })?
+                } else {
+                    self.client.info().genesis_hash
+                }
+            }
+        };
+
+        crate::aux_schema::track_domain_hash_and_primary_hash(
             &*self.client,
-            header_hash,
+            domain_hash,
             primary_hash,
         )?;
-
-        // Notify the imported domain block when the receipt processing is done.
-        let domain_import_notification = DomainBlockImportNotification {
-            domain_block_hash: header_hash,
-            primary_block_hash: primary_hash,
-        };
-        self.import_notification_sinks.lock().retain(|sink| {
-            sink.unbounded_send(domain_import_notification.clone())
-                .is_ok()
-        });
 
         Ok(())
     }
@@ -501,6 +552,12 @@ where
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
+            // Skip check for genesis receipt as it is generated on the domain instantiation by
+            // the consensus chain.
+            if execution_receipt.domain_number.is_zero() {
+                continue;
+            }
+
             let primary_block_hash = execution_receipt.primary_hash;
 
             let local_receipt = crate::aux_schema::load_execution_receipt::<

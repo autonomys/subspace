@@ -26,6 +26,8 @@ where
     pub parent_hash: Block::Hash,
     /// block's number.
     pub number: NumberFor<Block>,
+    /// Is this the new best block.
+    pub is_new_best: bool,
 }
 
 /// Converts a generic block number to a concrete primitive block number.

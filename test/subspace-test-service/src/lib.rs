@@ -527,6 +527,27 @@ impl MockPrimaryNode {
             .await
     }
 
+    /// Remove all tx from the tx pool
+    pub async fn clear_tx_pool(&self) -> Result<(), Box<dyn Error>> {
+        let txs: Vec<_> = self
+            .transaction_pool
+            .ready()
+            .map(|t| self.transaction_pool.hash_of(&t.data))
+            .collect();
+        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        self.transaction_pool
+            .pool()
+            .prune_known(&best_block_id, txs.as_slice())?;
+        // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
+        // all the bans as the ban time must be passed.
+        tokio::time::sleep(time::Duration::from_millis(1)).await;
+        self.transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&best_block_id)?;
+        Ok(())
+    }
+
     /// Remove a ready transaction from transaction pool.
     pub async fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
         self.transaction_pool.pool().prune_known(

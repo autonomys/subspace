@@ -399,6 +399,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainHash> {
     pub primary_number: Number,
     /// Hash of the origin primary block this receipt corresponds to.
     pub primary_hash: Hash,
+    /// Domain block number.
+    pub domain_number: Number,
     /// Hash of the domain block this receipt points to.
     pub domain_hash: DomainHash,
     /// List of storage roots collected during the domain block execution.
@@ -414,7 +416,7 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, 
     }
 }
 
-impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
+impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(
         primary_number: Number,
@@ -428,8 +430,20 @@ impl<Number: Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, Dom
         ExecutionReceipt {
             primary_number,
             primary_hash,
+            domain_number: primary_number,
             domain_hash: Default::default(),
             trace,
+            trace_root: Default::default(),
+        }
+    }
+
+    pub fn genesis(primary_genesis_hash: Hash) -> ExecutionReceipt<Number, Hash, DomainHash> {
+        ExecutionReceipt {
+            primary_number: Zero::zero(),
+            primary_hash: primary_genesis_hash,
+            domain_number: Zero::zero(),
+            domain_hash: Default::default(),
+            trace: Default::default(),
             trace_root: Default::default(),
         }
     }

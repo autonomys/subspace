@@ -207,6 +207,7 @@ where
                 hash,
                 parent_hash,
                 number,
+                is_new_best: false,
             })
         })
         .collect::<Vec<_>>();
@@ -218,6 +219,7 @@ where
         hash: best_block.hash(),
         parent_hash: *best_block.parent_hash(),
         number: *best_block.number(),
+        is_new_best: true,
     });
 
     /// The maximum number of active leaves we forward to the [`Overseer`] on startup.

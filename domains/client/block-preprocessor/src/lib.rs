@@ -273,18 +273,17 @@ where
     ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
         // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
         let domain_hash = Default::default();
-        Ok(self
-            .preprocess_primary_block(primary_hash, domain_hash)?
-            .into_iter()
-            .map(|ext| ext.encode())
-            .collect())
+        match self.preprocess_primary_block(primary_hash, domain_hash)? {
+            Some(extrinsics) => Ok(extrinsics.into_iter().map(|ext| ext.encode()).collect()),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn preprocess_primary_block(
         &self,
         primary_hash: PBlock::Hash,
         domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<Vec<Block::Extrinsic>> {
+    ) -> sp_blockchain::Result<Option<Vec<Block::Extrinsic>>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
             prepare_domain_block_elements::<Block, PBlock, _>(
                 self.domain_id,
@@ -296,6 +295,10 @@ where
             .primary_chain_client
             .runtime_api()
             .extract_successful_bundles(primary_hash, primary_extrinsics)?;
+
+        if bundles.is_empty() && maybe_new_runtime.is_none() {
+            return Ok(None);
+        }
 
         let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
 
@@ -330,7 +333,7 @@ where
             extrinsics.push(set_code_extrinsic);
         }
 
-        Ok(extrinsics)
+        Ok(Some(extrinsics))
     }
 
     fn filter_invalid_xdm_extrinsics(

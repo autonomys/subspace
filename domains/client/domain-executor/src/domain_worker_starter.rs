@@ -141,7 +141,8 @@ pub(super) async fn start_worker<
                          hash,
                          parent_hash: _,
                          number,
-                     }| (hash, number),
+                         is_new_best,
+                     }| (hash, number, is_new_best),
                 )
                 .collect(),
             Box::pin(block_importing_notification_stream),

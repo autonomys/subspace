@@ -35,10 +35,107 @@ fn number_of(primary_node: &MockPrimaryNode, block_hash: Hash) -> u32 {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
+async fn test_domain_block_production() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockPrimaryNode::run_mock_primary_node(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, &mut ferdie)
+    .await;
+
+    for i in 0..50 {
+        let (tx, slot) = if i % 2 == 0 {
+            // Produce bundle and include it in the primary block hence produce a domain block
+            let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+            // `None` means collect tx from the tx pool
+            (None, slot)
+        } else {
+            // No bundle hence not produce domain block
+            (Some(vec![]), ferdie.produce_slot())
+        };
+        ferdie
+            .produce_block_with_slot_at(slot, ferdie.client.info().best_hash, tx)
+            .await
+            .unwrap();
+    }
+    // Domain block only produced when there is bundle contains in the primary block
+    assert_eq!(ferdie.client.info().best_number, 50);
+    assert_eq!(alice.client.info().best_number, 25);
+
+    let primary_block_hash = ferdie.client.info().best_hash;
+    let domain_block_number = alice.client.info().best_number;
+    let domain_block_hash = alice.client.info().best_hash;
+
+    // Fork A
+    // Produce 5 more primary blocks and producing domain block for every primary block
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Record the block hashes for later use
+    let mut fork_b_parent_hash = ferdie.client.info().best_hash;
+    let fork_a_block_hash_3 = alice.client.info().best_hash;
+
+    produce_blocks!(ferdie, alice, 2).await.unwrap();
+    assert_eq!(alice.client.info().best_number, domain_block_number + 5);
+
+    // Fork B
+    // Produce 6 more primary blocks but only producing 3 domain blocks because there are
+    // more primary block on fork B, it will become the best fork of the domain chain
+    for _ in 0..3 {
+        let slot = ferdie.produce_slot();
+        fork_b_parent_hash = ferdie
+            .produce_block_with_slot_at(slot, fork_b_parent_hash, Some(vec![]))
+            .await
+            .unwrap();
+    }
+    assert_eq!(alice.client.info().best_number, domain_block_number + 3);
+    assert_eq!(alice.client.info().best_hash, fork_a_block_hash_3);
+
+    // Fork C
+    // Produce 10 more primary blocks and do not produce any domain block but because there are
+    // more primary block on fork C, it will become the best fork of the domain chain
+    let mut fork_c_parent_hash = primary_block_hash;
+    for _ in 0..10 {
+        let slot = ferdie.produce_slot();
+        fork_c_parent_hash = ferdie
+            .produce_block_with_slot_at(slot, fork_c_parent_hash, Some(vec![]))
+            .await
+            .unwrap();
+    }
+    // The best block fall back to an ancestor block
+    assert_eq!(alice.client.info().best_number, domain_block_number);
+    assert_eq!(alice.client.info().best_hash, domain_block_hash);
+
+    // Simply producing more block on fork C
+    ferdie.clear_tx_pool().await.unwrap();
+    produce_blocks!(ferdie, alice, 10).await.unwrap();
+    assert_eq!(alice.client.info().best_number, domain_block_number + 10);
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
-    let _ = sc_cli::LoggerBuilder::new("runtime=debug").init();
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
     let tokio_handle = tokio::runtime::Handle::current();
 
     // Start Ferdie
@@ -64,6 +161,14 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let best_primary_hash = primary_node.client.info().best_hash;
     let best_primary_number = primary_node.client.info().best_number;
     assert_eq!(best_primary_number, 3);
+
+    assert_eq!(alice.client.info().best_number, 3);
+    let domain_block_2_hash = *alice
+        .client
+        .header(alice.client.info().best_hash)
+        .unwrap()
+        .unwrap()
+        .parent_hash();
 
     let best_header = primary_node
         .client
@@ -153,7 +258,11 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let new_best_hash = primary_node.client.info().best_hash;
     let new_best_number = primary_node.client.info().best_number;
     assert_eq!(new_best_number, 4);
-    assert_eq!(alice.client.info().best_number, 4);
+
+    // The domain best block should be reverted to #2 because the primary block #3b and #4 do
+    // not contains any bundles
+    assert_eq!(alice.client.info().best_number, 2);
+    assert_eq!(alice.client.info().best_hash, domain_block_2_hash);
 
     // Hash of block number #3 is updated to the second fork block 3b.
     assert_eq!(
@@ -354,6 +463,9 @@ async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(1).await
 }
 
+// TODO: the test is ignored due to the invalid receipt can not pass the state root check
+// in the runtime now, thus can't construct `finalize_block` fraud proof, find a way to
+// bypass the check
 #[substrate_test_utils::test(flavor = "multi_thread")]
 #[ignore]
 async fn test_finalize_block_proof_creation_and_verification_should_work() {
@@ -417,13 +529,6 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Manually remove the target bundle from tx pool in case resubmit it by accident
     ferdie
         .prune_tx_from_pool(&bundle_to_tx(target_bundle.clone()))
-        .await
-        .unwrap();
-
-    // Produce one more block but using the same slot to avoid producing new bundle, this step is intend
-    // to increase the `ProofOfElection::block_number` of the next bundle such that we can skip the runtime
-    // `state_root` check for the modified `trace` when testing the `finalize_block` proof.
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
 
@@ -725,7 +830,7 @@ async fn set_new_code_should_work() {
     alice
         .executor
         .clone()
-        .process_bundles((primary_hash, primary_number))
+        .process_bundles((primary_hash, primary_number, true))
         .await;
 
     let best_hash = alice.client.info().best_hash;
@@ -788,61 +893,62 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Get a bundle from alice's tx pool and used as bundle template.
-    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let _bundle_template = bundle.unwrap();
-    let _alice_key = Sr25519Keyring::Alice;
+    let _alice_key = alice.key;
     // Drop alice in order to control the execution chain by submitting the receipts manually later.
     drop(alice);
 
-    // Wait for 5 blocks to make sure the execution receipts of block 2,3,4,5 are
-    // able to be written to the database.
-    produce_blocks!(ferdie, bob, 5).await.unwrap();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), bob)
+        .await
+        .unwrap();
 
     // let ferdie_client = ferdie.client.clone();
     // let create_submit_bundle = |primary_number: BlockNumber| {
-    // let primary_hash = ferdie_client.hash(primary_number).unwrap().unwrap();
-    // let execution_receipt =
-    // crate::aux_schema::load_execution_receipt(&*bob.backend, primary_hash)
-    // .expect("Failed to load execution receipt from the local aux_db")
-    // .unwrap_or_else(|| {
-    // panic!(
-    // "The requested execution receipt for block {primary_number} does not exist"
-    // )
-    // });
+    //     let primary_hash = ferdie_client.hash(primary_number).unwrap().unwrap();
+    //     let execution_receipt =
+    //         crate::aux_schema::load_execution_receipt(&*bob.backend, primary_hash)
+    //             .expect("Failed to load execution receipt from the local aux_db")
+    //             .unwrap_or_else(|| {
+    //                 panic!(
+    //                     "The requested execution receipt for block {primary_number} does not exist"
+    //                 )
+    //             });
 
-    // let mut opaque_bundle = bundle_template.clone();
-    // opaque_bundle.sealed_header.header.primary_number = primary_number;
-    // opaque_bundle.sealed_header.header.primary_hash = primary_hash;
-    // opaque_bundle.sealed_header.signature = alice_key
-    // .pair()
-    // .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-    // .into();
-    // opaque_bundle.receipt = execution_receipt;
+    //     let mut opaque_bundle = bundle_template.clone();
+    //     opaque_bundle.sealed_header.header.primary_number = primary_number;
+    //     opaque_bundle.sealed_header.header.primary_hash = primary_hash;
+    //     opaque_bundle.sealed_header.signature = alice_key
+    //         .pair()
+    //         .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+    //         .into();
+    //     opaque_bundle.receipt = execution_receipt;
 
-    // subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-    // pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
-    // )
-    // .into()
+    //     subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+    //         pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+    //     )
+    //     .into()
     // };
 
     // TODO: Unlock once `head_receipt_number` API is usable.
     // let ferdie_client = ferdie.client.clone();
     // let head_receipt_number = || {
-    // let best_hash = ferdie_client.info().best_hash;
-    // ferdie_client
-    // .runtime_api()
-    // .head_receipt_number(best_hash, DomainId::new(3u32))
-    // .expect("Failed to get head receipt number")
+    //     let best_hash = ferdie_client.info().best_hash;
+    //     ferdie_client
+    //         .runtime_api()
+    //         .head_receipt_number(best_hash, DomainId::SYSTEM)
+    //         .expect("Failed to get head receipt number")
     // };
 
     // ferdie
-    // .submit_transaction(create_submit_bundle(1))
-    // .await
-    // .unwrap();
+    //     .submit_transaction(create_submit_bundle(1))
+    //     .await
+    //     .unwrap();
+    // produce_blocks!(ferdie, bob, 1).await.unwrap();
     // ferdie
-    // .submit_transaction(create_submit_bundle(2))
-    // .await
-    // .unwrap();
+    //     .submit_transaction(create_submit_bundle(2))
+    //     .await
+    //     .unwrap();
     // produce_blocks!(ferdie, bob, 1).await.unwrap();
     // assert_eq!(head_receipt_number(), 2);
 }
@@ -972,12 +1078,10 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
         .unwrap();
-    produce_block_with!(
-        ferdie.produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![])),
-        alice
-    )
-    .await
-    .unwrap();
+    ferdie
+        .produce_block_with_slot_at(slot + 1, parent_hash, Some(vec![]))
+        .await
+        .unwrap();
 
     // Manually remove the retracted block's `submit_bundle_tx` from tx pool
     ferdie.prune_tx_from_pool(&submit_bundle_tx).await.unwrap();
