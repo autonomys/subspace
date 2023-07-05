@@ -162,27 +162,6 @@ where
     }
 }
 
-/// Defines relay configuration for the Node
-#[derive(Clone, Debug)]
-pub enum RelayMode {
-    /// No relay configured.
-    NoRelay,
-    /// The node enables the relay behaviour.
-    Server,
-    /// Client relay configuration (enables relay client behavior).
-    /// It uses a circuit relay server address as a parameter.
-    ///
-    /// Example: /memory/\<port>/p2p/\<server_peer_id>/p2p-circuit
-    Client(Multiaddr),
-}
-
-impl RelayMode {
-    /// Defines whether the node has its relay behavior enabled.
-    pub fn is_relay_server(&self) -> bool {
-        matches!(self, RelayMode::Server)
-    }
-}
-
 /// [`Node`] configuration.
 pub struct Config<ProviderStorage> {
     /// Identity keypair of a node used for authenticated connections.
