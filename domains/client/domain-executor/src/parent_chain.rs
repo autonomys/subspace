@@ -96,7 +96,7 @@ where
 
     fn block_body(&self, at: CBlock::Hash) -> sp_blockchain::Result<Vec<CBlock::Extrinsic>> {
         self.consensus_client.block_body(at)?.ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Primary block body for {at} not found"))
+            sp_blockchain::Error::Backend(format!("Consensus block body for {at} not found"))
         })
     }
 

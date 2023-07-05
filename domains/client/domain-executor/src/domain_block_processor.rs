@@ -115,15 +115,15 @@ where
     /// the consensus chain re-org occurs.
     pub(crate) fn pending_imported_consensus_blocks(
         &self,
-        primary_hash: CBlock::Hash,
-        primary_number: NumberFor<CBlock>,
+        consensus_block_hash: CBlock::Hash,
+        consensus_block_number: NumberFor<CBlock>,
     ) -> sp_blockchain::Result<Option<PendingConsensusBlocks<Block, CBlock>>> {
-        if primary_number == One::one() {
+        if consensus_block_number == One::one() {
             return Ok(Some(PendingConsensusBlocks {
                 initial_parent: (self.client.info().genesis_hash, Zero::zero()),
                 consensus_imports: vec![HashAndNumber {
-                    hash: primary_hash,
-                    number: primary_number,
+                    hash: consensus_block_hash,
+                    number: consensus_block_number,
                 }],
             }));
         }
@@ -131,25 +131,25 @@ where
         let best_hash = self.client.info().best_hash;
         let best_number = self.client.info().best_number;
 
-        let primary_hash_for_best_domain_hash =
-            crate::aux_schema::latest_primary_hash_for(&*self.client, &best_hash)?.ok_or_else(
-                || {
+        let consensus_block_hash_for_best_domain_hash =
+            crate::aux_schema::latest_consensus_block_hash_for(&*self.backend, &best_hash)?
+                .ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
-                        "Primary hash for domain hash #{best_number},{best_hash} not found"
+                        "Consensus hash for domain hash #{best_number},{best_hash} not found"
                     ))
-                },
-            )?;
+                })?;
 
-        let primary_from = primary_hash_for_best_domain_hash;
-        let primary_to = primary_hash;
+        let consensus_from = consensus_block_hash_for_best_domain_hash;
+        let consensus_to = consensus_block_hash;
 
-        if primary_from == primary_to {
+        if consensus_from == consensus_to {
             return Err(sp_blockchain::Error::Application(Box::from(
-                "Primary block {primary_hash:?} has already been processed.",
+                "Consensus block {consensus_block_hash:?} has already been processed.",
             )));
         }
 
-        let route = sp_blockchain::tree_route(&*self.consensus_client, primary_from, primary_to)?;
+        let route =
+            sp_blockchain::tree_route(&*self.consensus_client, consensus_from, consensus_to)?;
 
         let retracted = route.retracted();
         let enacted = route.enacted();
@@ -170,12 +170,12 @@ where
                 }))
             }
             (false, true) => {
-                tracing::debug!("Primary blocks {retracted:?} have been already processed");
+                tracing::debug!("Consensus blocks {retracted:?} have been already processed");
                 Ok(None)
             }
             (true, true) => {
                 unreachable!(
-                    "Tree route is not empty as `primary_from` and `primary_to` in tree_route() \
+                    "Tree route is not empty as `consensus_from` and `consensus_to` in tree_route() \
                     are checked above to be not the same; qed",
                 );
             }
@@ -213,7 +213,7 @@ where
 
     pub(crate) async fn process_domain_block(
         &self,
-        (primary_hash, primary_number): (CBlock::Hash, NumberFor<CBlock>),
+        (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
         digests: Digest,
@@ -233,11 +233,11 @@ where
             .await?;
 
         tracing::debug!(
-            "Built new domain block #{header_number},{header_hash} from primary block #{primary_number},{primary_hash} \
+            "Built new domain block #{header_number},{header_hash} from consensus block #{consensus_block_number},{consensus_block_hash} \
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        if let Some(to_finalize_block_number) = primary_number
+        if let Some(to_finalize_block_number) = consensus_block_number
             .into()
             .checked_sub(&self.domain_confirmation_depth)
         {
@@ -281,8 +281,8 @@ where
         );
 
         let execution_receipt = ExecutionReceipt {
-            consensus_block_number: primary_number,
-            consensus_block_hash: primary_hash,
+            consensus_block_number,
+            consensus_block_hash,
             domain_block_number: to_number_primitive(header_number) as u64, // TODO: proper type
             domain_hash: header_hash,
             trace,
@@ -330,7 +330,7 @@ where
             import_block.body = Some(body);
             import_block.state_action =
                 StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-            // Follow the primary block's fork choice.
+            // Follow the consensus block's fork choice.
             import_block.fork_choice = Some(fork_choice);
             import_block
         };
@@ -383,7 +383,7 @@ where
 
     pub(crate) fn on_consensus_block_processed(
         &self,
-        primary_hash: CBlock::Hash,
+        consensus_block_hash: CBlock::Hash,
         domain_block_result: Option<DomainBlockResult<Block, CBlock>>,
         head_receipt_number: NumberFor<Block>,
     ) -> sp_blockchain::Result<()> {
@@ -402,8 +402,9 @@ where
                 // Notify the imported domain block when the receipt processing is done.
                 let domain_import_notification = DomainBlockImportNotification {
                     domain_block_hash: header_hash,
-                    primary_block_hash: primary_hash,
+                    consensus_block_hash,
                 };
+
                 self.import_notification_sinks.lock().retain(|sink| {
                     sink.unbounded_send(domain_import_notification.clone())
                         .is_ok()
@@ -414,10 +415,12 @@ where
             None => {
                 // No new domain block produced, thus this primary block should map to the same
                 // domain block as its parent block
-                let primary_header =
-                    self.consensus_client.header(primary_hash)?.ok_or_else(|| {
+                let primary_header = self
+                    .consensus_client
+                    .header(consensus_block_hash)?
+                    .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Primary block header for #{primary_hash:?} not found"
+                            "Primary block header for #{consensus_block_hash:?} not found"
                         ))
                     })?;
                 if !primary_header.number().is_one() {
@@ -437,10 +440,10 @@ where
             }
         };
 
-        crate::aux_schema::track_domain_hash_and_primary_hash(
+        crate::aux_schema::track_domain_hash_and_consensus_hash(
             &*self.client,
             domain_hash,
-            primary_hash,
+            consensus_block_hash,
         )?;
 
         Ok(())
@@ -564,7 +567,7 @@ where
                 ParentChainBlock::Hash,
             >(&*self.client, consensus_block_hash)?
             .ok_or(sp_blockchain::Error::Backend(format!(
-                "receipt for primary block #{},{consensus_block_hash} not found",
+                "Receipt for consensus block #{},{consensus_block_hash} not found",
                 execution_receipt.consensus_block_number
             )))?;
 
@@ -637,23 +640,23 @@ where
     ) -> sp_blockchain::Result<
         Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     > {
-        if let Some((bad_receipt_hash, trace_mismatch_index, primary_block_hash)) =
+        if let Some((bad_receipt_hash, trace_mismatch_index, consensus_block_hash)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
                 &*self.client,
                 |height| {
                     self.consensus_client.hash(height)?.ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Primary block hash for {height} not found",
+                            "Consensus block hash for #{height} not found",
                         ))
                     })
                 },
             )?
         {
             let local_receipt =
-                crate::aux_schema::load_execution_receipt(&*self.client, primary_block_hash)?
+                crate::aux_schema::load_execution_receipt(&*self.client, consensus_block_hash)?
                     .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Receipt for primary block {primary_block_hash} not found"
+                            "Receipt for consensus block {consensus_block_hash} not found"
                         ))
                     })?;
 

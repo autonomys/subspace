@@ -35,10 +35,10 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
         > + Send
         + Sync,
 {
-    while let Some((executor_slot_info, slot_acknowledgement_sender)) = slots.next().await {
-        let slot = executor_slot_info.slot;
+    while let Some((operator_slot_info, slot_acknowledgement_sender)) = slots.next().await {
+        let slot = operator_slot_info.slot;
         if let Err(error) =
-            on_new_slot::<Block, CBlock, _, _>(consensus_client, &bundler, executor_slot_info).await
+            on_new_slot::<Block, CBlock, _, _>(consensus_client, &bundler, operator_slot_info).await
         {
             tracing::error!(
                 ?error,
@@ -157,7 +157,7 @@ pub(crate) async fn handle_block_import_notifications<
                         tracing::error!(
                             result = ?res,
                             header = ?block_imported.header,
-                            "Imported primary block header not found",
+                            "Imported consensus block header not found",
                         );
                         return;
                     }
@@ -179,7 +179,7 @@ pub(crate) async fn handle_block_import_notifications<
                             break;
                         }
                     };
-                // Pause the primary block import when the sink is full.
+                // Pause the consensus block import when the sink is full.
                 let _ = block_info_sender.feed(None).await;
                 let _ = acknowledgement_sender.send(()).await;
             }
@@ -190,7 +190,7 @@ pub(crate) async fn handle_block_import_notifications<
 async fn on_new_slot<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
     bundler: &BundlerFn,
-    executor_slot_info: OperatorSlotInfo,
+    operator_slot_info: OperatorSlotInfo,
 ) -> Result<(), ApiError>
 where
     Block: BlockT,
@@ -217,10 +217,11 @@ where
         hash: best_hash,
     };
 
-    let opaque_bundle = match bundler(consensus_block_info, executor_slot_info).await {
+    let slot = operator_slot_info.slot;
+    let opaque_bundle = match bundler(consensus_block_info, operator_slot_info).await {
         Some(opaque_bundle) => opaque_bundle,
         None => {
-            tracing::debug!("executor returned no bundle on bundling");
+            tracing::debug!("No bundle produced on slot {slot}");
             return Ok(());
         }
     };

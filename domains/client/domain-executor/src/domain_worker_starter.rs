@@ -126,10 +126,10 @@ pub(super) async fn start_worker<
             {
                 let span = span.clone();
 
-                move |primary_info| {
+                move |consensus_block_info| {
                     bundle_processor
                         .clone()
-                        .process_bundles(primary_info)
+                        .process_bundles(consensus_block_info)
                         .instrument(span.clone())
                         .boxed()
                 }

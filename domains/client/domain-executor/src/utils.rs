@@ -49,5 +49,5 @@ pub type DomainImportNotifications<Block, CBlock> =
 #[derive(Clone, Debug)]
 pub struct DomainBlockImportNotification<Block: BlockT, CBlock: BlockT> {
     pub domain_block_hash: Block::Hash,
-    pub primary_block_hash: CBlock::Hash,
+    pub consensus_block_hash: CBlock::Hash,
 }

@@ -180,9 +180,12 @@ where
             })
         };
 
-        let header_block_receipt_is_written =
-            crate::aux_schema::primary_hash_for::<_, _, CBlock::Hash>(&*self.client, header_hash)?
-                .is_some();
+        let header_block_receipt_is_written = crate::aux_schema::consensus_block_hash_for::<
+            _,
+            _,
+            CBlock::Hash,
+        >(&*self.client, header_hash)?
+        .is_some();
 
         // TODO: remove once the receipt generation can be done before the domain block is
         // committed to the database, in other words, only when the receipt of block N+1 has

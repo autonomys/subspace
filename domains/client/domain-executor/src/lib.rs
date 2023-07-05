@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-//! # Domain Executor
+//! # Domain Operator
 //!
 //! ## Domains
 //!
@@ -22,18 +22,18 @@
 //! framework allowing for the simple, secure and low-cost deployment of application
 //! specific blockchain called domain.
 //!
-//! ## Executors
+//! ## Operators
 //!
 //! In Subspace, the farmers offering the storage resources are responsible for maintaining
-//! the consensus layer, executors are a separate class of contributors in the system focusing
+//! the consensus layer, operators are a separate class of contributors in the system focusing
 //! on the execution layer, they provide the necessary computational resources to maintain the
-//! blockchain state by running domains. Some deposits as the stake are required to be an executor.
+//! blockchain state by running domains. Some deposits as the stake are required to be an operator.
 //!
-//! Specifically, executors have the responsibity of producing a [`Bundle`] which contains a
-//! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The executors
+//! Specifically, operators have the responsibity of producing a [`Bundle`] which contains a
+//! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The operators
 //! are primarily driven by two events from the consensus chain.
 //!
-//! - On each new slot, executors will attempt to solve a domain-specific bundle election
+//! - On each new slot, operators will attempt to solve a domain-specific bundle election
 //! challenge derived from a global randomness provided by the consensus chain. Upon finding
 //! a solution to the challenge, they will start producing a bundle: they will collect a set
 //! of extrinsics from the transaction pool which are verified to be able to cover the transaction
@@ -41,7 +41,7 @@
 //! [`Bundle`] can be constructed and then be submitted to the consensus chain. The transactions
 //! included in each bundle are uninterpretable blob from the consensus chain's persepective.
 //!
-//! - On each imported primary block, executors will extract all the needed bundles from it
+//! - On each imported consensus block, operators will extract all the needed bundles from it
 //! and convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to
 //! build a domain block. The execution trace of all the extrinsics and hooks like
 //! `initialize_block`/`finalize_block` will be recorded during the domain block execution.
@@ -49,7 +49,7 @@
 //! will be generated and stored locally.
 //!
 //! The receipt of each domain block contains all the intermediate state roots during the block
-//! execution, which will be gossiped in the executor network. All executors whether running as an
+//! execution, which will be gossiped in the domain subnet (in future). All operators whether running as an
 //! authority or a full node will compute each block and generate an execution receipt independently,
 //! once the execution receipt received from the network does not match the one produced locally,
 //! a [`FraudProof`] will be generated and reported to the consensus chain accordingly.
@@ -115,16 +115,16 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
     >,
 >;
 
-/// Notification streams from the primary chain driving the executor.
+/// Notification streams from the consensus chain driving the executor.
 pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS> {
-    /// Pause the primary block import when the primary chain client
+    /// Pause the consensus block import when the consensus chain client
     /// runs much faster than the domain client.
     pub consensus_block_import_throttling_buffer_size: u32,
     /// Notification about to be imported.
     ///
     /// Fired before the completion of entire block import pipeline.
     pub block_importing_notification_stream: IBNS,
-    /// Primary block import notification from the client.
+    /// Consensus block import notification from the client.
     ///
     /// Fired after the completion of entire block import pipeline.
     pub imported_block_notification_stream: CIBNS,
@@ -169,8 +169,8 @@ pub struct OperatorParams<
 
 /// Returns the active leaves the overseer should start with.
 ///
-/// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
-/// is only available in the imported primary block notifications.
+/// The longest chain is used as the fork choice for the leaves as the consensus block's fork choice
+/// is only available in the imported consensus block notifications.
 async fn active_leaves<CBlock, CClient, SC>(
     client: &CClient,
     select_chain: &SC,

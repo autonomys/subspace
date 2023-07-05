@@ -230,9 +230,16 @@ where
     // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
     // `set_new_code_should_work` test to do an actual runtime upgrade
     #[doc(hidden)]
-    pub async fn process_bundles(self, primary_info: (CBlock::Hash, NumberFor<CBlock>, bool)) {
-        if let Err(err) = self.bundle_processor.process_bundles(primary_info).await {
-            tracing::error!(?primary_info, ?err, "Error at processing bundles.");
+    pub async fn process_bundles(
+        self,
+        consensus_block_info: (CBlock::Hash, NumberFor<CBlock>, bool),
+    ) {
+        if let Err(err) = self
+            .bundle_processor
+            .process_bundles(consensus_block_info)
+            .await
+        {
+            tracing::error!(?consensus_block_info, ?err, "Error at processing bundles.");
         }
     }
 }
