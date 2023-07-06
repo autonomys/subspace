@@ -16,7 +16,6 @@
 
 pub mod auditing;
 pub mod file_ext;
-pub mod piece_caching;
 pub mod plotting;
 pub mod proving;
 pub mod reading;

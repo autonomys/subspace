@@ -56,6 +56,17 @@ impl ArchivalStoragePieces {
             );
         }
     }
+
+    pub fn delete_pieces(&self, piece_indexes: &[PieceIndex]) {
+        let mut cuckoo_filter = self.cuckoo_filter.lock();
+
+        for piece_index in piece_indexes {
+            cuckoo_filter.delete(piece_index);
+        }
+        drop(cuckoo_filter);
+
+        self.listeners.call_simple(&Notification);
+    }
 }
 
 impl CuckooFilterProvider for ArchivalStoragePieces {

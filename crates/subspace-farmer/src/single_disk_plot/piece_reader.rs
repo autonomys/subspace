@@ -32,10 +32,10 @@ impl PieceReader {
     pub(super) fn new<PosTable>(
         public_key: PublicKey,
         pieces_in_sector: u16,
-        first_sector_index: SectorIndex,
         global_plot_mmap: Mmap,
         sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
         erasure_coding: ErasureCoding,
+        modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     ) -> (Self, impl Future<Output = ()>)
     where
         PosTable: Table,
@@ -45,10 +45,10 @@ impl PieceReader {
         let reading_fut = read_pieces::<PosTable>(
             public_key,
             pieces_in_sector,
-            first_sector_index,
             global_plot_mmap,
             sectors_metadata,
             erasure_coding,
+            modifying_sector_index,
             read_piece_receiver,
         );
 
@@ -79,13 +79,14 @@ impl PieceReader {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn read_pieces<PosTable>(
     public_key: PublicKey,
     pieces_in_sector: u16,
-    first_sector_index: SectorIndex,
     global_plot_mmap: Mmap,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
     erasure_coding: ErasureCoding,
+    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
 ) where
     PosTable: Table,
@@ -108,18 +109,23 @@ async fn read_pieces<PosTable>(
             continue;
         }
 
+        let modifying_sector_guard = modifying_sector_index.read();
+
+        if *modifying_sector_guard == Some(sector_index) {
+            // Skip sector that is being modified right now
+            continue;
+        }
+
         let (sector_metadata, sector_count) = {
             let sectors_metadata = sectors_metadata.read();
 
-            let sector_offset = (sector_index - first_sector_index) as usize;
-            let sector_count = sectors_metadata.len();
+            let sector_count = sectors_metadata.len() as SectorIndex;
 
-            let sector_metadata = match sectors_metadata.get(sector_offset) {
+            let sector_metadata = match sectors_metadata.get(sector_index as usize) {
                 Some(sector_metadata) => sector_metadata.clone(),
                 None => {
                     error!(
                         %sector_index,
-                        %first_sector_index,
                         %sector_count,
                         "Tried to read piece from sector that is not yet \
                         plotted"
@@ -136,7 +142,6 @@ async fn read_pieces<PosTable>(
             piece_offset,
             pieces_in_sector,
             sector_count,
-            first_sector_index,
             &sector_metadata,
             &global_plot_mmap,
             &erasure_coding,
@@ -152,8 +157,7 @@ fn read_piece<PosTable>(
     public_key: &PublicKey,
     piece_offset: PieceOffset,
     pieces_in_sector: u16,
-    sector_count: usize,
-    first_sector_index: SectorIndex,
+    sector_count: SectorIndex,
     sector_metadata: &SectorMetadata,
     global_plot: &[u8],
     erasure_coding: &ErasureCoding,
@@ -162,24 +166,12 @@ where
     PosTable: Table,
 {
     let sector_index = sector_metadata.sector_index;
-    if sector_index < first_sector_index {
-        warn!(
-            %sector_index,
-            %piece_offset,
-            %sector_count,
-            %first_sector_index,
-            "Incorrect first sector index"
-        );
-        return None;
-    }
-    let sector_offset = (sector_index - first_sector_index) as usize;
     // Sector must be plotted
-    if sector_offset >= sector_count {
+    if sector_index >= sector_count {
         warn!(
             %sector_index,
             %piece_offset,
             %sector_count,
-            %first_sector_index,
             "Incorrect sector offset"
         );
         return None;
@@ -190,7 +182,6 @@ where
             %sector_index,
             %piece_offset,
             %sector_count,
-            %first_sector_index,
             "Incorrect piece offset"
         );
         return None;
@@ -199,7 +190,7 @@ where
     let sector_id = SectorId::new(public_key.hash(), sector_index);
     let sector_size = sector_size(pieces_in_sector);
     // TODO: Would be nicer to have list of plots here and just index it
-    let sector = &global_plot[sector_size * sector_offset..][..sector_size];
+    let sector = &global_plot[sector_index as usize * sector_size..][..sector_size];
 
     let piece = match reading::read_piece::<PosTable>(
         piece_offset,
@@ -214,7 +205,6 @@ where
                 %sector_index,
                 %piece_offset,
                 %sector_count,
-                %first_sector_index,
                 %error,
                 "Failed to read piece from sector"
             );
