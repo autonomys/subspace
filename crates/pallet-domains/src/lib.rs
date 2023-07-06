@@ -152,6 +152,16 @@ mod pallet {
         /// Identifier used for Freezing the funds used for staking.
         type FreezeIdentifier: FreezeIdentifier<Self>;
 
+        /// The block tree pruning depth, its value should <= `BlockHashCount` because we
+        /// need the consensus block hash to verify execution receipt, which is used to
+        /// construct the node of the block tree.
+        #[pallet::constant]
+        type BlockTreePruningDepth: Get<Self::DomainNumber>;
+
+        /// The maximum fork at the same height allowed in the block tree.
+        #[pallet::constant]
+        type MaxBlockTreeFork: Get<u32>;
+
         /// The maximum block size limit for all domain.
         #[pallet::constant]
         type MaxDomainBlockSize: Get<u32>;

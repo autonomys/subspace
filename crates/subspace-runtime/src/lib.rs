@@ -69,6 +69,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use static_assertions::const_assert;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
@@ -456,7 +457,6 @@ impl pallet_offences_subspace::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
@@ -472,7 +472,13 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
+    pub const BlockTreePruningDepth: u32 = 256;
+    pub const MaxBlockTreeFork: u32 = 32;
 }
+
+// `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
+// execution receipt, which is used to construct the node of the block tree.
+const_assert!(BlockTreePruningDepth::get() <= BlockHashCount::get());
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -493,6 +499,8 @@ impl pallet_domains::Config for Runtime {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type MaxBlockTreeFork = MaxBlockTreeFork;
 }
 
 parameter_types! {

@@ -22,9 +22,9 @@ mod benchmarks {
     /// - The receipts will prune a expired receipt
     #[benchmark]
     fn submit_system_bundle() {
-        let receipts_pruning_depth = T::ReceiptsPruningDepth::get().saturated_into::<u32>();
+        let receipts_pruning_depth = T::BlockTreePruningDepth::get().saturated_into::<u32>();
 
-        // Import `ReceiptsPruningDepth` number of receipts which will be pruned later
+        // Import `BlockTreePruningDepth` number of receipts which will be pruned later
         run_to_block::<T>(1, receipts_pruning_depth);
         for i in 0..receipts_pruning_depth {
             let receipt = ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i));
@@ -82,9 +82,9 @@ mod benchmarks {
     /// - The fraud proof will revert the maximal possible number of receipts
     #[benchmark]
     fn submit_system_domain_invalid_state_transition_proof() {
-        let receipts_pruning_depth = T::ReceiptsPruningDepth::get().saturated_into::<u32>();
+        let receipts_pruning_depth = T::BlockTreePruningDepth::get().saturated_into::<u32>();
 
-        // Import `ReceiptsPruningDepth` number of receipts which will be revert later
+        // Import `BlockTreePruningDepth` number of receipts which will be revert later
         run_to_block::<T>(1, receipts_pruning_depth);
         for i in 0..receipts_pruning_depth {
             let receipt = ExecutionReceipt::dummy(i.into(), block_hash_n::<T>(i));
@@ -101,7 +101,7 @@ mod benchmarks {
             (receipts_pruning_depth - 1).into()
         );
 
-        // Construct a fraud proof that will revert `ReceiptsPruningDepth` number of receipts
+        // Construct a fraud proof that will revert `BlockTreePruningDepth` number of receipts
         let proof: FraudProof<T::BlockNumber, T::Hash> =
             FraudProof::InvalidStateTransition(dummy_invalid_state_transition_proof(DOMAIN_ID, 0));
 
