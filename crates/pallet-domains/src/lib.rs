@@ -65,8 +65,9 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_nominate_operator, do_register_operator, Error as StakingError, Nominator,
-        OperatorConfig, OperatorPool, PendingTransfer, StakingSummary,
+        do_nominate_operator, do_register_operator, do_switch_operator_domain,
+        Error as StakingError, Nominator, OperatorConfig, OperatorPool, PendingTransfer,
+        StakingSummary,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -230,6 +231,12 @@ mod pallet {
     pub(super) type OperatorPools<T: Config> =
         StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>, T::Share>, OptionQuery>;
 
+    /// Temporary hold of all the operators who decided to switch to another domain.
+    /// Once epoch is complete, these operators are added to new domains under next_operators.
+    #[pallet::storage]
+    pub(super) type PendingOperatorSwitches<T: Config> =
+        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+
     #[pallet::storage]
     pub(super) type Nominators<T: Config> = StorageDoubleMap<
         _,
@@ -373,6 +380,10 @@ mod pallet {
         },
         DomainInstantiated {
             domain_id: DomainId,
+        },
+        DomainOperatorSwitched {
+            old_domain_id: DomainId,
+            new_domain_id: DomainId,
         },
     }
 
@@ -581,6 +592,27 @@ mod pallet {
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(7)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn switch_operator_domain(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+            new_domain_id: DomainId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let old_domain_id = do_switch_operator_domain::<T>(who, operator_id, new_domain_id)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainOperatorSwitched {
+                old_domain_id,
+                new_domain_id,
+            });
 
             Ok(())
         }

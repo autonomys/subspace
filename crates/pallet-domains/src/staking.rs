@@ -1,7 +1,8 @@
 //! Staking for domains
 
 use crate::pallet::{
-    DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools, PendingTransfers,
+    DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools, PendingOperatorSwitches,
+    PendingTransfers,
 };
 use crate::{BalanceOf, Config, FreezeIdentifier};
 use codec::{Decode, Encode};
@@ -20,6 +21,7 @@ use sp_std::vec::Vec;
 pub struct OperatorPool<Balance, Share> {
     pub signing_key: OperatorPublicKey,
     pub current_domain_id: DomainId,
+    pub next_domain_id: DomainId,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
     /// Total active stake for the current pool.
@@ -81,6 +83,7 @@ pub enum Error {
     UnknownOperator,
     MinimumNominatorStake,
     BalanceOverflow,
+    NotOperatorOwner,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -117,6 +120,7 @@ pub(crate) fn do_register_operator<T: Config>(
         let operator = OperatorPool {
             signing_key,
             current_domain_id: domain_id,
+            next_domain_id: domain_id,
             minimum_nominator_stake,
             nomination_tax,
             current_total_stake: Zero::zero(),
@@ -187,10 +191,52 @@ fn freeze_account_balance_to_operator<T: Config>(
     Ok(())
 }
 
+pub(crate) fn do_switch_operator_domain<T: Config>(
+    operator_owner: T::AccountId,
+    operator_id: OperatorId,
+    new_domain_id: DomainId,
+) -> Result<DomainId, Error> {
+    ensure!(
+        OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
+        Error::NotOperatorOwner
+    );
+
+    ensure!(
+        DomainStakingSummary::<T>::contains_key(new_domain_id),
+        Error::DomainNotInitialized
+    );
+
+    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
+        let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
+        operator_pool.next_domain_id = new_domain_id;
+
+        // remove operator from next_operators from current domains.
+        // operator is added to the next_operators of the new domain once the
+        // current domain epoch is finished.
+        DomainStakingSummary::<T>::try_mutate(
+            operator_pool.current_domain_id,
+            |maybe_domain_stake_summary| {
+                let stake_summary = maybe_domain_stake_summary
+                    .as_mut()
+                    .ok_or(Error::DomainNotInitialized)?;
+                stake_summary
+                    .next_operators
+                    .retain(|val| *val != operator_id);
+                Ok(())
+            },
+        )?;
+
+        PendingOperatorSwitches::<T>::append(operator_pool.current_domain_id, operator_id);
+
+        Ok(operator_pool.current_domain_id)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools, PendingTransfers,
+        DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools,
+        PendingOperatorSwitches, PendingTransfers,
     };
     use crate::staking::{OperatorConfig, OperatorPool, PendingTransfer, StakingSummary, Transfer};
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
@@ -199,6 +245,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, OperatorPair};
+    use sp_runtime::traits::Zero;
     use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
@@ -250,6 +297,7 @@ mod tests {
                 OperatorPool {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
+                    next_domain_id: domain_id,
                     minimum_nominator_stake: 0,
                     nomination_tax: Default::default(),
                     current_total_stake: 0,
@@ -361,6 +409,83 @@ mod tests {
                 res,
                 Error::<Test>::Staking(crate::staking::Error::InsufficientBalance)
             );
+        });
+    }
+
+    #[test]
+    fn switch_domain_operator() {
+        let old_domain_id = DomainId::new(0);
+        let new_domain_id = DomainId::new(1);
+        let operator_account = 1;
+        let operator_id = 1;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            DomainStakingSummary::<Test>::insert(
+                old_domain_id,
+                StakingSummary {
+                    current_epoch_index: 0,
+                    current_total_stake: 0,
+                    next_total_stake: 0,
+                    current_operators: vec![operator_id],
+                    next_operators: vec![operator_id],
+                },
+            );
+
+            DomainStakingSummary::<Test>::insert(
+                new_domain_id,
+                StakingSummary {
+                    current_epoch_index: 0,
+                    current_total_stake: 0,
+                    next_total_stake: 0,
+                    current_operators: vec![],
+                    next_operators: vec![],
+                },
+            );
+
+            OperatorIdOwner::<Test>::insert(operator_id, operator_account);
+            OperatorPools::<Test>::insert(
+                operator_id,
+                OperatorPool {
+                    signing_key: pair.public(),
+                    current_domain_id: old_domain_id,
+                    next_domain_id: old_domain_id,
+                    minimum_nominator_stake: 100 * SSC,
+                    nomination_tax: Default::default(),
+                    current_total_stake: Zero::zero(),
+                    next_total_stake: Zero::zero(),
+                    total_shares: Zero::zero(),
+                    is_frozen: false,
+                },
+            );
+
+            let res = Domains::switch_operator_domain(
+                RuntimeOrigin::signed(operator_account),
+                operator_id,
+                new_domain_id,
+            );
+            assert_ok!(res);
+
+            let old_domain_stake_summary =
+                DomainStakingSummary::<Test>::get(old_domain_id).unwrap();
+            assert!(!old_domain_stake_summary
+                .next_operators
+                .contains(&operator_id));
+
+            let new_domain_stake_summary =
+                DomainStakingSummary::<Test>::get(new_domain_id).unwrap();
+            assert!(!new_domain_stake_summary
+                .next_operators
+                .contains(&operator_id));
+
+            let operator_pool = OperatorPools::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator_pool.current_domain_id, old_domain_id);
+            assert_eq!(operator_pool.next_domain_id, new_domain_id);
+            assert_eq!(
+                PendingOperatorSwitches::<Test>::get(old_domain_id).unwrap(),
+                vec![operator_id]
+            )
         });
     }
 }
