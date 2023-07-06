@@ -14,7 +14,8 @@ struct PieceDetails {
     piece_offset: PieceOffset,
 }
 
-/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers.
+/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers,
+/// it also maintains filter in given [`ArchivalStoragePieces`].
 #[derive(Debug)]
 pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,

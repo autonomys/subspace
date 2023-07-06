@@ -255,13 +255,14 @@ where
             archival_storage_pieces,
         ));
 
-        single_disk_plots
-            .iter()
-            .enumerate()
-            .for_each(|(disk_farm_index, single_disk_plot)| {
-                let disk_farm_index = disk_farm_index
-                    .try_into()
-                    .expect("More than 256 plots are not supported, what are you even doing?!");
+        single_disk_plots.iter().enumerate().try_for_each(
+            |(disk_farm_index, single_disk_plot)| {
+                let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
+                    anyhow!(
+                        "More than 256 plots are not supported, consider running multiple farmer \
+                        instances"
+                    )
+                })?;
 
                 (0 as SectorIndex..)
                     .zip(single_disk_plot.plotted_sectors())
@@ -280,7 +281,10 @@ where
                             }
                         },
                     );
-            });
+
+                Ok::<_, anyhow::Error>(())
+            },
+        )?;
     }
 
     info!("Finished collecting already plotted pieces successfully");
@@ -289,9 +293,9 @@ where
         .into_iter()
         .enumerate()
         .map(|(disk_farm_index, single_disk_plot)| {
-            let disk_farm_index = disk_farm_index
-                .try_into()
-                .expect("More than 256 plots are not supported, what are you even doing?!");
+            let disk_farm_index = disk_farm_index.try_into().expect(
+                "More than 256 plots are not supported, this is checked above already; qed",
+            );
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
             let node = node.clone();
             let span = info_span!("farm", %disk_farm_index);
