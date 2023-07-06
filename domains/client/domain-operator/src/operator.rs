@@ -24,7 +24,6 @@ use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
-// TODO: rename everything to Operator?
 /// Domain operator.
 pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
 where
@@ -78,11 +77,6 @@ where
         + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b BI: sc_consensus::BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -93,9 +87,14 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    for<'b> &'b BI: sc_consensus::BlockImport<
+        Block,
+        Transaction = sp_api::TransactionFor<Client, Block>,
+        Error = sp_consensus::Error,
+    >,
     BI: Send + Sync + 'static,
 {
     /// Create a new instance.

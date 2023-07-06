@@ -1,4 +1,4 @@
-use crate::bundle_election_solver::BundleElectionSolver;
+use crate::bundle_producer_election_solver::BundleProducerElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
 use crate::sortition::TransactionSelector;
@@ -45,7 +45,7 @@ pub(super) struct DomainBundleProducer<
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
-    bundle_election_solver: BundleElectionSolver<Block, CBlock>,
+    bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
@@ -73,7 +73,7 @@ where
             parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             keystore: self.keystore.clone(),
-            bundle_election_solver: self.bundle_election_solver.clone(),
+            bundle_producer_election_solver: self.bundle_producer_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -103,7 +103,6 @@ where
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
         consensus_client: Arc<CClient>,
@@ -119,7 +118,8 @@ where
         bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::<Block, CBlock>::new(keystore.clone());
+        let bundle_producer_election_solver =
+            BundleProducerElectionSolver::<Block, CBlock>::new(keystore.clone());
         Self {
             domain_id,
             consensus_client,
@@ -127,7 +127,7 @@ where
             parent_chain,
             bundle_sender,
             keystore,
-            bundle_election_solver,
+            bundle_producer_election_solver,
             domain_bundle_proposer,
             _phantom_data: PhantomData,
         }
@@ -186,8 +186,8 @@ where
         }
 
         if let Some(bundle_solution) = self
-            .bundle_election_solver
-            .solve_bundle_election_challenge(self.domain_id, global_challenge)?
+            .bundle_producer_election_solver
+            .solve_challenge(self.domain_id, global_challenge)?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 

@@ -64,7 +64,7 @@ where
     }
 }
 
-/// A list of consensus blocks waiting to be processed by executor on each imported consensus block
+/// A list of consensus blocks waiting to be processed by operator on each imported consensus block
 /// notification.
 ///
 /// Usually, each new domain block is built on top of the current best domain block, with the block
@@ -230,8 +230,9 @@ where
             .await?;
 
         tracing::debug!(
-            "Built new domain block #{header_number},{header_hash} from consensus block #{consensus_block_number},{consensus_block_hash} \
-            on top of parent block #{parent_number},{parent_hash}"
+            "Built new domain block #{header_number},{header_hash} from \
+            consensus block #{consensus_block_number},{consensus_block_hash} \
+            on top of parent domain block #{parent_number},{parent_hash}"
         );
 
         if let Some(to_finalize_block_number) = consensus_block_number
@@ -327,7 +328,6 @@ where
             import_block.body = Some(body);
             import_block.state_action =
                 StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-            // Follow the consensus block's fork choice.
             import_block.fork_choice = Some(fork_choice);
             import_block
         };
@@ -417,7 +417,7 @@ where
                     .header(consensus_block_hash)?
                     .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Consensus block header for #{consensus_block_hash:?} not found"
+                            "Header for consensus block {consensus_block_hash:?} not found"
                         ))
                     })?;
                 if !consensus_header.number().is_one() {
@@ -425,7 +425,7 @@ where
                     crate::aux_schema::best_domain_hash_for(&*self.client, consensus_parent_hash)?
                         .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Domain hash for #{consensus_parent_hash:?} not found",
+                            "Domain hash for consensus block {consensus_parent_hash:?} not found",
                         ))
                     })?
                 } else {

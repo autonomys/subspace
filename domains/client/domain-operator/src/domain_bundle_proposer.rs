@@ -89,7 +89,8 @@ where
             res = t1 => res,
             _ = t2 => {
                 tracing::warn!(
-                    "Timeout fired waiting for transaction pool at #{parent_number}, proceeding with production."
+                    "Timeout fired waiting for transaction pool at #{parent_number},{parent_hash}, \
+                    proceeding with bundle production."
                 );
                 self.transaction_pool.ready()
             }
@@ -100,11 +101,6 @@ where
 
         let start = time::Instant::now();
 
-        // TODO: Select transactions properly from the transaction pool
-        //
-        // Selection policy:
-        // - minimize the transaction equivocation.
-        // - maximize the executor computation power.
         let mut extrinsics = Vec::new();
 
         for pending_tx in pending_iterator {

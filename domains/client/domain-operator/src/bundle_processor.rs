@@ -217,7 +217,8 @@ where
             Some(exts) => exts,
             None => {
                 tracing::debug!(
-                    "No bundles and runtime upgrade for this domain in consensus block #{consensus_block_number:?},{consensus_block_hash}, skip building domain block"
+                    "Skip building new domain block, no bundles and runtime upgrade for this domain \
+                    in consensus block #{consensus_block_number:?},{consensus_block_hash}"
                 );
                 self.domain_block_processor.on_consensus_block_processed(
                     consensus_block_hash,

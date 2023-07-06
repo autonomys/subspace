@@ -5,12 +5,12 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use subspace_core_primitives::Blake2b256Hash;
 
-pub(super) struct BundleElectionSolver<Block, CBlock> {
+pub(super) struct BundleProducerElectionSolver<Block, CBlock> {
     keystore: KeystorePtr,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock> Clone for BundleElectionSolver<Block, CBlock> {
+impl<Block, CBlock> Clone for BundleProducerElectionSolver<Block, CBlock> {
     fn clone(&self) -> Self {
         Self {
             keystore: self.keystore.clone(),
@@ -19,7 +19,7 @@ impl<Block, CBlock> Clone for BundleElectionSolver<Block, CBlock> {
     }
 }
 
-impl<Block, CBlock> BundleElectionSolver<Block, CBlock>
+impl<Block, CBlock> BundleProducerElectionSolver<Block, CBlock>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -31,7 +31,7 @@ where
         }
     }
 
-    pub(super) fn solve_bundle_election_challenge(
+    pub(super) fn solve_challenge(
         &self,
         domain_id: DomainId,
         _global_challenge: Blake2b256Hash,
