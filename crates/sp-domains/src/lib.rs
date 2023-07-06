@@ -17,12 +17,12 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub mod bundle_election;
+pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
 
-use bundle_election::VrfProofError;
+use bundle_producer_election::VrfProofError;
 use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -215,10 +215,9 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
 pub struct ProofOfElection<DomainHash> {
     /// Domain id.
     pub domain_id: DomainId,
-    /// VRF output.
-    pub vrf_output: VrfOutput,
-    /// VRF proof.
-    pub vrf_proof: VrfProof,
+    /// VRF signature.
+    pub vrf_signature: VrfSignature,
+    // TODO: operator_id
     /// VRF public key.
     pub operator_public_key: OperatorPublicKey,
     /// Global challenge.
@@ -235,22 +234,17 @@ pub struct ProofOfElection<DomainHash> {
 
 impl<DomainHash> ProofOfElection<DomainHash> {
     pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
-        bundle_election::verify_vrf_proof(
+        bundle_producer_election::verify_vrf_proof(
             &self.operator_public_key,
-            // TODO: Maybe we want to store signature in the struct rather than separate fields,
-            //  such that we don't need to clone here?
-            &VrfSignature {
-                output: self.vrf_output.clone(),
-                proof: self.vrf_proof.clone(),
-            },
+            &self.vrf_signature,
             &self.global_challenge,
         )
     }
 
     /// Computes the VRF hash.
     pub fn vrf_hash(&self) -> Blake2b256Hash {
-        let mut bytes = self.vrf_output.encode();
-        bytes.append(&mut self.vrf_proof.encode());
+        let mut bytes = self.vrf_signature.output.encode();
+        bytes.append(&mut self.vrf_signature.proof.encode());
         blake2b_256_hash(&bytes)
     }
 }
@@ -260,10 +254,13 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
     pub fn dummy(domain_id: DomainId, operator_public_key: OperatorPublicKey) -> Self {
         let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
         let proof_bytes = vec![0u8; VrfProof::max_encoded_len()];
+        let vrf_signature = VrfSignature {
+            output: VrfOutput::decode(&mut output_bytes.as_slice()).unwrap(),
+            proof: VrfProof::decode(&mut proof_bytes.as_slice()).unwrap(),
+        };
         Self {
             domain_id,
-            vrf_output: VrfOutput::decode(&mut output_bytes.as_slice()).unwrap(),
-            vrf_proof: VrfProof::decode(&mut proof_bytes.as_slice()).unwrap(),
+            vrf_signature,
             operator_public_key,
             global_challenge: Blake2b256Hash::default(),
             storage_proof: StorageProof::empty(),

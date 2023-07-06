@@ -46,26 +46,27 @@ pub fn derive_bundle_election_solution(
     Ok(election_solution)
 }
 
-/// Returns the election threshold based on the stake weight proportion and slot probability.
-pub fn calculate_bundle_election_threshold(
-    stake_weight: StakeWeight,
-    total_stake_weight: StakeWeight,
-    slot_probability: (u64, u64),
+/// Returns the election threshold based on the operator stake proportion and slot probability.
+pub fn calculate_threshold(
+    operator_stake: StakeWeight,
+    total_domain_stake: StakeWeight,
+    bundle_slot_probability: (u64, u64),
 ) -> u128 {
     // The calculation is written for not causing the overflow, which might be harder to
     // understand, the formula in a readable form is as followes:
     //
-    //              slot_probability.0      stake_weight
-    // threshold =  ------------------ * --------------------- * u128::MAX
-    //              slot_probability.1    total_stake_weight
+    //              bundle_slot_probability.0      operator_stake
+    // threshold =  ------------------------- * --------------------- * u128::MAX
+    //              bundle_slot_probability.1    total_domain_stake
     //
     // TODO: better to have more audits on this calculation.
-    u128::MAX / u128::from(slot_probability.1) * u128::from(slot_probability.0) / total_stake_weight
-        * stake_weight
+    u128::MAX / u128::from(bundle_slot_probability.1) * u128::from(bundle_slot_probability.0)
+        / total_domain_stake
+        * operator_stake
 }
 
 pub fn is_election_solution_within_threshold(election_solution: u128, threshold: u128) -> bool {
-    election_solution <= threshold
+    election_solution < threshold
 }
 
 /// Make a VRF inout.
