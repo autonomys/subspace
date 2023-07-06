@@ -381,7 +381,11 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotted: Handler<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
+    sector_plotted: Handler<(
+        PlottedSector,
+        Option<PlottedSector>,
+        Arc<OwnedSemaphorePermit>,
+    )>,
     solution: Handler<SolutionResponse>,
 }
 
@@ -895,9 +899,9 @@ impl SingleDiskPlot {
             move |(sector_index, sector_metadata)| {
                 let sector_id = SectorId::new(public_key.hash(), sector_index);
 
-                let mut piece_indexes = Vec::with_capacity(self.pieces_in_sector.into());
+                let mut piece_indexes = Vec::with_capacity(usize::from(self.pieces_in_sector));
                 (PieceOffset::ZERO..)
-                    .take(self.pieces_in_sector.into())
+                    .take(usize::from(self.pieces_in_sector))
                     .map(|piece_offset| {
                         sector_id.derive_piece_index(
                             piece_offset,
@@ -930,7 +934,11 @@ impl SingleDiskPlot {
     /// throttling of the plotting process is desired.
     pub fn on_sector_plotted(
         &self,
-        callback: HandlerFn<(PlottedSector, Arc<OwnedSemaphorePermit>)>,
+        callback: HandlerFn<(
+            PlottedSector,
+            Option<PlottedSector>,
+            Arc<OwnedSemaphorePermit>,
+        )>,
     ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
     }

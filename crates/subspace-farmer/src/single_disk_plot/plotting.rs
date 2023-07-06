@@ -4,14 +4,16 @@ use memmap2::{MmapMut, MmapOptions};
 use parity_scale_codec::Encode;
 use parking_lot::RwLock;
 use std::fs::File;
-use std::io;
 use std::num::NonZeroU16;
 use std::sync::Arc;
+use std::{io, mem};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PublicKey, SectorIndex};
+use subspace_core_primitives::{PieceOffset, PublicKey, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetter, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
+};
 use subspace_farmer_components::sector::SectorMetadata;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
@@ -130,18 +132,56 @@ where
 
         metadata_header.sector_count += 1;
         metadata_header_mmap.copy_from_slice(metadata_header.encode().as_slice());
-        sectors_metadata
-            .write()
-            .push(plotted_sector.sector_metadata.clone());
+        let maybe_old_sector_metadata = {
+            let mut sectors_metadata = sectors_metadata.write();
+            // If exists then we're replotting, otherwise we create sector for the first time
+            if let Some(existing_sector_metadata) = sectors_metadata.get_mut(sector_index as usize)
+            {
+                let mut sector_metadata_tmp = plotted_sector.sector_metadata.clone();
+                mem::swap(existing_sector_metadata, &mut sector_metadata_tmp);
+                Some(sector_metadata_tmp)
+            } else {
+                sectors_metadata.push(plotted_sector.sector_metadata.clone());
+                None
+            }
+        };
+
+        let old_plotted_sector = maybe_old_sector_metadata.map(|old_sector_metadata| {
+            let old_history_size = old_sector_metadata.history_size;
+
+            PlottedSector {
+                sector_id: plotted_sector.sector_id,
+                sector_index: plotted_sector.sector_index,
+                sector_metadata: old_sector_metadata,
+                piece_indexes: {
+                    let mut piece_indexes = Vec::with_capacity(usize::from(pieces_in_sector));
+                    (PieceOffset::ZERO..)
+                        .take(usize::from(pieces_in_sector))
+                        .map(|piece_offset| {
+                            plotted_sector.sector_id.derive_piece_index(
+                                piece_offset,
+                                old_history_size,
+                                farmer_app_info.protocol_info.max_pieces_in_sector,
+                                farmer_app_info.protocol_info.recent_segments,
+                                farmer_app_info.protocol_info.recent_history_fraction,
+                            )
+                        })
+                        .collect_into(&mut piece_indexes);
+                    piece_indexes
+                },
+            }
+        });
 
         // Inform others that this sector is no longer being modified
         modifying_sector_index.write().take();
 
         info!(%sector_index, "Sector plotted successfully");
 
-        handlers
-            .sector_plotted
-            .call_simple(&(plotted_sector, Arc::new(plotting_permit)));
+        handlers.sector_plotted.call_simple(&(
+            plotted_sector,
+            old_plotted_sector,
+            Arc::new(plotting_permit),
+        ));
     }
 
     Ok(())
