@@ -188,10 +188,12 @@ mod tests {
     use super::*;
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
-    use crate::tests::{new_test_ext, Test};
+    use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
     use frame_support::traits::Currency;
+    use sp_domains::GenesisReceiptExtension;
     use sp_runtime::traits::One;
     use sp_version::RuntimeVersion;
+    use std::sync::Arc;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -210,6 +212,9 @@ mod tests {
         };
 
         let mut ext = new_test_ext();
+        ext.register_extension(GenesisReceiptExtension::new(Arc::new(
+            GenesisStateRootGenerater,
+        )));
         ext.execute_with(|| {
             assert_eq!(NextDomainId::<Test>::get(), 0.into());
 
