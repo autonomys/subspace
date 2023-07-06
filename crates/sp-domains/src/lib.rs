@@ -555,7 +555,7 @@ pub trait GenerateGenesisStateRoot: Send + Sync {
     fn generate_genesis_state_root(
         &self,
         runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        runtime_code: Vec<u8>,
     ) -> Option<H256>;
 }
 
@@ -579,13 +579,13 @@ pub trait Domain {
     fn generate_genesis_state_root(
         &mut self,
         runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        runtime_code: Vec<u8>,
     ) -> Option<H256> {
         use sp_externalities::ExternalitiesExt;
 
         self.extension::<GenesisReceiptExtension>()
             .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(runtime_type, raw_runtime_genesis_config)
+            .generate_genesis_state_root(runtime_type, runtime_code)
     }
 }
 
