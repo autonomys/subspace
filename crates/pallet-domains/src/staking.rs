@@ -1,8 +1,8 @@
 //! Staking for domains
 
 use crate::pallet::{
-    DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools, PendingOperatorSwitches,
-    PendingTransfers,
+    DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools,
+    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingTransfers,
 };
 use crate::{BalanceOf, Config, FreezeIdentifier};
 use codec::{Decode, Encode};
@@ -84,6 +84,7 @@ pub enum Error {
     MinimumNominatorStake,
     BalanceOverflow,
     NotOperatorOwner,
+    OperatorPoolFrozen,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -149,9 +150,11 @@ pub(crate) fn do_nominate_operator<T: Config>(
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
-    let operator = OperatorPools::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+    let operator_pool = OperatorPools::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+
+    ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
     ensure!(
-        amount >= operator.minimum_nominator_stake,
+        amount >= operator_pool.minimum_nominator_stake,
         Error::MinimumNominatorStake
     );
 
@@ -208,6 +211,8 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
 
     OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
         let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
+
+        ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
         operator_pool.next_domain_id = new_domain_id;
 
         // remove operator from next_operators from current domains.
@@ -232,11 +237,46 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
     })
 }
 
+pub(crate) fn do_deregister_operator<T: Config>(
+    operator_owner: T::AccountId,
+    operator_id: OperatorId,
+) -> Result<(), Error> {
+    ensure!(
+        OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
+        Error::NotOperatorOwner
+    );
+
+    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
+        let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
+
+        ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
+        operator_pool.is_frozen = true;
+
+        DomainStakingSummary::<T>::try_mutate(
+            operator_pool.current_domain_id,
+            |maybe_domain_stake_summary| {
+                let stake_summary = maybe_domain_stake_summary
+                    .as_mut()
+                    .ok_or(Error::DomainNotInitialized)?;
+
+                stake_summary
+                    .next_operators
+                    .retain(|val| *val != operator_id);
+                Ok(())
+            },
+        )?;
+
+        PendingOperatorDeregistrations::<T>::append(operator_id);
+
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
         DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools,
-        PendingOperatorSwitches, PendingTransfers,
+        PendingOperatorDeregistrations, PendingOperatorSwitches, PendingTransfers,
     };
     use crate::staking::{OperatorConfig, OperatorPool, PendingTransfer, StakingSummary, Transfer};
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
@@ -486,6 +526,93 @@ mod tests {
                 PendingOperatorSwitches::<Test>::get(old_domain_id).unwrap(),
                 vec![operator_id]
             )
+        });
+    }
+
+    #[test]
+    fn operator_deregistration() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_id = 1;
+        let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            DomainStakingSummary::<Test>::insert(
+                domain_id,
+                StakingSummary {
+                    current_epoch_index: 0,
+                    current_total_stake: 0,
+                    next_total_stake: 0,
+                    current_operators: vec![operator_id],
+                    next_operators: vec![operator_id],
+                },
+            );
+
+            OperatorIdOwner::<Test>::insert(operator_id, operator_account);
+            OperatorPools::<Test>::insert(
+                operator_id,
+                OperatorPool {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    next_domain_id: domain_id,
+                    minimum_nominator_stake: 100 * SSC,
+                    nomination_tax: Default::default(),
+                    current_total_stake: Zero::zero(),
+                    next_total_stake: Zero::zero(),
+                    total_shares: Zero::zero(),
+                    is_frozen: false,
+                },
+            );
+
+            let res =
+                Domains::deregister_operator(RuntimeOrigin::signed(operator_account), operator_id);
+            assert_ok!(res);
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id));
+
+            let operator_pool = OperatorPools::<Test>::get(operator_id).unwrap();
+            assert!(operator_pool.is_frozen);
+
+            assert!(PendingOperatorDeregistrations::<Test>::get()
+                .unwrap()
+                .contains(&operator_id));
+
+            // domain switch will not work since the operator pool is frozen
+            let new_domain_id = DomainId::new(1);
+            DomainStakingSummary::<Test>::insert(
+                new_domain_id,
+                StakingSummary {
+                    current_epoch_index: 0,
+                    current_total_stake: 0,
+                    next_total_stake: 0,
+                    current_operators: vec![],
+                    next_operators: vec![],
+                },
+            );
+            let res = Domains::switch_operator_domain(
+                RuntimeOrigin::signed(operator_account),
+                operator_id,
+                new_domain_id,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorPoolFrozen)
+            );
+
+            // nominations will not work since the pool is frozen
+            let nominator_account = 100;
+            let nominator_stake = 100 * SSC;
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                nominator_stake,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::OperatorPoolFrozen)
+            );
         });
     }
 }

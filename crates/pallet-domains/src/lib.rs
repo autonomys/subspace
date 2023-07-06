@@ -65,9 +65,9 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_nominate_operator, do_register_operator, do_switch_operator_domain,
-        Error as StakingError, Nominator, OperatorConfig, OperatorPool, PendingTransfer,
-        StakingSummary,
+        do_deregister_operator, do_nominate_operator, do_register_operator,
+        do_switch_operator_domain, Error as StakingError, Nominator, OperatorConfig, OperatorPool,
+        PendingTransfer, StakingSummary,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -257,6 +257,12 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Operators who chose to deregister from a domain.
+    /// Stored here temporarily until domain epoch is complete.
+    #[pallet::storage]
+    pub(super) type PendingOperatorDeregistrations<T: Config> =
+        StorageValue<_, Vec<OperatorId>, OptionQuery>;
+
     /// Stores the next domain id.
     #[pallet::storage]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
@@ -384,6 +390,9 @@ mod pallet {
         DomainOperatorSwitched {
             old_domain_id: DomainId,
             new_domain_id: DomainId,
+        },
+        OperatorDeregistered {
+            operator_id: OperatorId,
         },
     }
 
@@ -613,6 +622,22 @@ mod pallet {
                 old_domain_id,
                 new_domain_id,
             });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(8)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn deregister_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            do_deregister_operator::<T>(who, operator_id).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::OperatorDeregistered { operator_id });
 
             Ok(())
         }
