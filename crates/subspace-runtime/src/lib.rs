@@ -77,7 +77,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange, U256,
+    SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -751,6 +751,15 @@ impl_runtime_apis! {
 
         fn slot_duration() -> SlotDuration {
             SlotDuration::from_millis(Subspace::slot_duration())
+        }
+
+        fn genesis_slot() -> Option<SlotNumber> {
+            let slot = SlotNumber::from(Subspace::genesis_slot());
+            if slot == 0 {
+                None
+            } else {
+                Some(slot)
+            }
         }
 
         fn global_randomnesses() -> GlobalRandomnesses {

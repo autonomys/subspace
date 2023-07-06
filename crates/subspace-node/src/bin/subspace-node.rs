@@ -458,8 +458,8 @@ fn main() -> Result<(), Error> {
                             piece_cache_size: cli.piece_cache_size.as_u64(),
                         },
                         sync_from_dsn: cli.sync_from_dsn,
-                        enable_subspace_block_relay: cli.enable_subspace_block_relay
-                            || cli.run.is_dev().unwrap_or(false),
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay,
+                        enable_pot_clock_master: cli.enable_pot_clock_master,
                     };
 
                     let construct_domain_genesis_block_builder =

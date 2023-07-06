@@ -248,6 +248,10 @@ pub struct Cli {
     /// instead of the default substrate handler.
     #[arg(long)]
     pub enable_subspace_block_relay: bool,
+
+    /// Enable clock master processing for proof of time.
+    #[arg(long)]
+    pub enable_pot_clock_master: bool,
 }
 
 impl SubstrateCli for Cli {

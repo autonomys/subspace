@@ -44,9 +44,11 @@ use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
+use core::iter::Iterator;
 use core::num::NonZeroU64;
 use core::simd::Simd;
 use derive_more::{Add, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
@@ -229,15 +231,35 @@ impl PosProof {
 }
 
 /// Proof of time key(input to the encryption).
-#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, From, Into, Encode, Decode)]
 pub struct PotKey(PotBytes);
 
+impl PotKey {
+    /// Returns the initial key for bootstrapping.
+    pub fn initial_key() -> Self {
+        let initial_bytes = [
+            0x9a, 0x84, 0x94, 0x0f, 0xfe, 0xf5, 0xb0, 0xd7, 0x01, 0x99, 0xfc, 0x67, 0xf4, 0x6e,
+            0xa2, 0x7a,
+        ];
+        PotKey(initial_bytes)
+    }
+}
+
 /// Proof of time seed (input to the encryption).
-#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, From, Into, Encode, Decode)]
 pub struct PotSeed(PotBytes);
 
+impl PotSeed {
+    /// Builds the seed from block hash (e.g) used to create initial seed from
+    /// genesis block hash.
+    #[inline]
+    pub fn from_block_hash(block_hash: BlockHash) -> Self {
+        Self(pot_bytes_from_hash_256(block_hash))
+    }
+}
+
 /// Proof of time ciphertext (output from the encryption).
-#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, From, Into, Encode, Decode)]
 pub struct PotCheckpoint(PotBytes);
 
 /// Proof of time.
@@ -254,7 +276,7 @@ pub struct PotProof {
     pub key: PotKey,
 
     /// The encrypted outputs from each stage.
-    pub checkpoints: Vec<PotCheckpoint>,
+    pub checkpoints: NonEmptyVec<PotCheckpoint>,
 
     /// Hash of last block at injection point.
     pub injected_block_hash: BlockHash,
@@ -266,7 +288,7 @@ impl PotProof {
         slot_number: SlotNumber,
         seed: PotSeed,
         key: PotKey,
-        checkpoints: Vec<PotCheckpoint>,
+        checkpoints: NonEmptyVec<PotCheckpoint>,
         injected_block_hash: BlockHash,
     ) -> Self {
         Self {
@@ -279,15 +301,61 @@ impl PotProof {
     }
 
     /// Returns the last check point.
-    pub fn output(&self) -> Option<PotCheckpoint> {
-        self.checkpoints.last().cloned()
+    pub fn output(&self) -> PotCheckpoint {
+        self.checkpoints.last()
     }
 
     /// Derives the global randomness from the output.
-    pub fn derive_global_randomness(&self) -> Option<Blake2b256Hash> {
-        self.output()
-            .map(|checkpoint| blake2b_256_hash(&PotBytes::from(checkpoint)))
+    pub fn derive_global_randomness(&self) -> Blake2b256Hash {
+        blake2b_256_hash(&PotBytes::from(self.output()))
     }
+
+    /// Derives the next seed based on the injected randomness.
+    pub fn next_seed(&self, injected_hash: Option<BlockHash>) -> PotSeed {
+        match injected_hash {
+            Some(injected_hash) => {
+                // Next seed = Hash(last checkpoint + injected hash).
+                let mut bytes = self.output().0.to_vec();
+                bytes.append(&mut injected_hash.to_vec());
+                PotSeed::from(pot_bytes_from_hash_256(blake2b_256_hash(&bytes)))
+            }
+            None => {
+                // No injected randomness, next seed = last checkpoint.
+                PotSeed::from(self.output().0)
+            }
+        }
+    }
+
+    /// Derives the next key from the hash of the current seed.
+    pub fn next_key(&self) -> PotKey {
+        PotKey::from(pot_bytes_from_hash_256(blake2b_256_hash(&self.seed.0)))
+    }
+}
+
+impl fmt::Display for PotProof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "PotProof: [slot={}, seed={}, key={}, injected={}, checkpoints={}]",
+            self.slot_number,
+            hex::encode(self.seed.0),
+            hex::encode(self.key.0),
+            hex::encode(self.injected_block_hash),
+            self.checkpoints.len()
+        )
+    }
+}
+
+/// Helper to convert the 32 byte hash to 16 bytes.
+fn pot_bytes_from_hash_256(hash: Blake2b256Hash) -> PotBytes {
+    let mut h: [u8; 16] = Default::default();
+    h.copy_from_slice(&hash[0..16]);
+
+    let mut l: [u8; 16] = Default::default();
+    l.copy_from_slice(&hash[16..32]);
+
+    let r = u128::from_be_bytes(h) ^ u128::from_be_bytes(l);
+    r.to_be_bytes()
 }
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
@@ -974,5 +1042,56 @@ impl SectorId {
             "History size is not zero, so result is not zero even if expires immediately; qed",
         );
         Some(HistorySize::from(expiration_history_size))
+    }
+}
+
+/// A Vec<> that enforces the invariant that it cannot be empty.
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct NonEmptyVec<T>(Vec<T>);
+
+/// Error codes for `NonEmptyVec`.
+#[derive(Debug)]
+pub enum NonEmptyVecErr {
+    /// Tried to create with an empty Vec
+    EmptyVec,
+}
+
+#[allow(clippy::len_without_is_empty)]
+impl<T: Clone> NonEmptyVec<T> {
+    /// Creates the Vec.
+    pub fn new(vec: Vec<T>) -> Result<Self, NonEmptyVecErr> {
+        if vec.is_empty() {
+            return Err(NonEmptyVecErr::EmptyVec);
+        }
+
+        Ok(Self(vec))
+    }
+
+    /// Returns the number of entries.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns the slice of the entries.
+    pub fn as_slice(&self) -> &[T] {
+        self.0.as_slice()
+    }
+
+    /// Returns an iterator for the entries.
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &T> + '_> {
+        Box::new(self.0.iter())
+    }
+
+    /// Returns the last entry.
+    pub fn last(&self) -> T {
+        self.0
+            .last()
+            .expect("NonEmptyVec::last(): collection cannot be empty")
+            .clone()
+    }
+
+    /// Adds an entry to the end.
+    pub fn push(&mut self, entry: T) {
+        self.0.push(entry);
     }
 }

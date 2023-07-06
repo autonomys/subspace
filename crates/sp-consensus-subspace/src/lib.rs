@@ -45,7 +45,7 @@ use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
+    SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
     REWARD_SIGNATURE_LENGTH,
 };
 #[cfg(feature = "std")]
@@ -512,6 +512,10 @@ sp_api::decl_runtime_apis! {
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> SlotDuration;
+
+        /// Returns the slot number of the genesis block.
+        /// Returns None if the genesis block is not yet built.
+        fn genesis_slot() -> Option<SlotNumber>;
 
         /// Global randomnesses used for deriving global challenges.
         fn global_randomnesses() -> GlobalRandomnesses;

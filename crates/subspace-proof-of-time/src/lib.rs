@@ -3,7 +3,16 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 mod pot_aes;
 
-use subspace_core_primitives::{BlockHash, PotKey, PotProof, PotSeed, SlotNumber};
+use subspace_core_primitives::{
+    BlockHash, NonEmptyVec, NonEmptyVecErr, PotKey, PotProof, PotSeed, SlotNumber,
+};
+
+#[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+pub enum PotCreationError {
+    #[cfg_attr(feature = "thiserror", error("Failed to initialize checkpoints"))]
+    CheckpointInitFailed(NonEmptyVecErr),
+}
 
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
@@ -43,19 +52,21 @@ impl ProofOfTime {
         key: PotKey,
         slot_number: SlotNumber,
         injected_block_hash: BlockHash,
-    ) -> PotProof {
-        PotProof::new(
+    ) -> Result<PotProof, PotCreationError> {
+        let checkpoints = NonEmptyVec::new(pot_aes::create(
+            &seed,
+            &key,
+            self.num_checkpoints,
+            self.checkpoint_iterations,
+        ))
+        .map_err(PotCreationError::CheckpointInitFailed)?;
+        Ok(PotProof::new(
             slot_number,
             seed,
             key,
-            pot_aes::create(
-                &seed,
-                &key,
-                self.num_checkpoints,
-                self.checkpoint_iterations,
-            ),
+            checkpoints,
             injected_block_hash,
-        )
+        ))
     }
 
     /// Verifies the proof.
@@ -72,7 +83,7 @@ impl ProofOfTime {
         let result = pot_aes::verify_parallel(
             &proof.seed,
             &proof.key,
-            &proof.checkpoints,
+            proof.checkpoints.as_slice(),
             self.checkpoint_iterations,
         );
 
@@ -80,7 +91,7 @@ impl ProofOfTime {
         let result = pot_aes::verify_sequential(
             &proof.seed,
             &proof.key,
-            &proof.checkpoints,
+            &proof.checkpoints.as_slice(),
             self.checkpoint_iterations,
         );
 

@@ -289,7 +289,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_domains: true,
                     enable_transfer: true,
-                    confirmation_depth_k: 5,
+                    confirmation_depth_k: 100,
                 },
             )
         },
@@ -343,7 +343,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     enable_domains: true,
                     enable_transfer: true,
-                    confirmation_depth_k: 1,
+                    confirmation_depth_k: 100,
                 },
             )
         },
