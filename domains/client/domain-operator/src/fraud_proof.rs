@@ -1,5 +1,5 @@
 use crate::utils::to_number_primitive;
-use crate::TransactionFor;
+use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
 use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
@@ -8,7 +8,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
-use sp_domains::{DomainId, ExecutionReceipt};
+use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_trie::StorageProof;
@@ -86,7 +86,7 @@ where
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
-        local_receipt: &ExecutionReceipt<NumberFor<CBlock>, CBlock::Hash, Block::Hash>,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
     ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
     where

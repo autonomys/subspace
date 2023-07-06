@@ -1,11 +1,11 @@
 //! Schema for executor in the aux-db.
 
+use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
-use sp_domains::ExecutionReceipt;
 use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
 
@@ -29,26 +29,26 @@ const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
 /// Updated only when there is a new domain block produced
 const CONSENSUS_HASH: &[u8] = b"consensus_block_hash";
 
-/// domain_block_hash => latest_primary_block_hash
+/// domain_block_hash => latest_consensus_block_hash
 ///
-/// It's important to note that a primary block could possibly contain no bundles for a specific domain,
-/// leading to the situation where multiple primary blocks could correspond to the same domain block.
+/// It's important to note that a consensus block could possibly contain no bundles for a specific domain,
+/// leading to the situation where multiple consensus blocks could correspond to the same domain block.
 ///
-/// PrimaryBlock10 --> DomainBlock5
-/// PrimaryBlock11 --> DomainBlock5
-/// PrimaryBlock12 --> DomainBlock5
+/// ConsensusBlock10 --> DomainBlock5
+/// ConsensusBlock11 --> DomainBlock5
+/// ConsensusBlock12 --> DomainBlock5
 ///
-/// This mapping is designed to track the most recent primary block that derives the domain block
-/// identified by `domain_block_hash`, e.g., Hash(DomainBlock5) => Hash(PrimaryBlock12).
-const LATEST_PRIMARY_HASH: &[u8] = b"latest_primary_hash";
+/// This mapping is designed to track the most recent consensus block that derives the domain block
+/// identified by `domain_block_hash`, e.g., Hash(DomainBlock5) => Hash(ConsensusBlock12).
+const LATEST_CONSENSUS_HASH: &[u8] = b"latest_consensus_hash";
 
-/// primary_block_hash => best_domain_block_hash
+/// consensus_block_hash => best_domain_block_hash
 ///
-/// This mapping tracks the mapping of a primary block and the corresponding domain block derived
-/// until this primary block:
-/// - Hash(PrimaryBlock10) => Hash(DomainBlock5)
-/// - Hash(PrimaryBlock11) => Hash(DomainBlock5)
-/// - Hash(PrimaryBlock12) => Hash(DomainBlock5)
+/// This mapping tracks the mapping of a consensus block and the corresponding domain block derived
+/// until this consensus block:
+/// - Hash(ConsensusBlock10) => Hash(DomainBlock5)
+/// - Hash(ConsensusBlock11) => Hash(DomainBlock5)
+/// - Hash(ConsensusBlock12) => Hash(DomainBlock5)
 const BEST_DOMAIN_HASH: &[u8] = b"best_domain_hash";
 
 /// Prune the execution receipts when they reach this number.
@@ -81,7 +81,7 @@ fn load_decode<Backend: AuxStore, T: Decode>(
 pub(super) fn write_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
     head_receipt_number: NumberFor<Block>,
-    execution_receipt: &ExecutionReceipt<NumberFor<CBlock>, CBlock::Hash, Block::Hash>,
+    execution_receipt: &ExecutionReceiptFor<Block, CBlock>,
 ) -> Result<(), sp_blockchain::Error>
 where
     Backend: AuxStore,
@@ -156,35 +156,33 @@ where
 }
 
 /// Load the execution receipt for given domain block hash.
-pub(super) fn load_execution_receipt_by_domain_hash<Backend, Hash, Number, PHash>(
+pub(super) fn load_execution_receipt_by_domain_hash<Backend, Block, CBlock>(
     backend: &Backend,
-    domain_hash: Hash,
-) -> ClientResult<Option<ExecutionReceipt<Number, PHash, Hash>>>
+    domain_hash: Block::Hash,
+) -> ClientResult<Option<ExecutionReceiptFor<Block, CBlock>>>
 where
     Backend: AuxStore,
-    Hash: Encode + Decode,
-    Number: Decode,
-    PHash: Encode + Decode,
+    Block: BlockT,
+    CBlock: BlockT,
 {
-    match consensus_block_hash_for::<Backend, Hash, PHash>(backend, domain_hash)? {
-        Some(primary_block_hash) => load_decode(
+    match consensus_block_hash_for::<Backend, Block::Hash, CBlock::Hash>(backend, domain_hash)? {
+        Some(consensus_block_hash) => load_decode(
             backend,
-            execution_receipt_key(primary_block_hash).as_slice(),
+            execution_receipt_key(consensus_block_hash).as_slice(),
         ),
         None => Ok(None),
     }
 }
 
 /// Load the execution receipt for given consensus block hash.
-pub(super) fn load_execution_receipt<Backend, Hash, Number, PHash>(
+pub(super) fn load_execution_receipt<Backend, Block, CBlock>(
     backend: &Backend,
-    consensus_block_hash: PHash,
-) -> ClientResult<Option<ExecutionReceipt<Number, PHash, Hash>>>
+    consensus_block_hash: CBlock::Hash,
+) -> ClientResult<Option<ExecutionReceiptFor<Block, CBlock>>>
 where
     Backend: AuxStore,
-    Hash: Decode,
-    Number: Decode,
-    PHash: Encode + Decode,
+    Block: BlockT,
+    CBlock: BlockT,
 {
     load_decode(
         backend,
@@ -195,7 +193,7 @@ where
 pub(super) fn track_domain_hash_and_consensus_hash<Backend, Hash, PHash>(
     backend: &Backend,
     best_domain_hash: Hash,
-    latest_primary_hash: PHash,
+    latest_consensus_hash: PHash,
 ) -> ClientResult<()>
 where
     Backend: AuxStore,
@@ -207,13 +205,15 @@ where
     backend.insert_aux(
         &[
             (
-                (LATEST_PRIMARY_HASH, best_domain_hash.clone())
+                (LATEST_CONSENSUS_HASH, best_domain_hash.clone())
                     .encode()
                     .as_slice(),
-                latest_primary_hash.encode().as_slice(),
+                latest_consensus_hash.encode().as_slice(),
             ),
             (
-                (BEST_DOMAIN_HASH, latest_primary_hash).encode().as_slice(),
+                (BEST_DOMAIN_HASH, latest_consensus_hash)
+                    .encode()
+                    .as_slice(),
                 best_domain_hash.encode().as_slice(),
             ),
         ],
@@ -221,33 +221,33 @@ where
     )
 }
 
-pub(super) fn best_domain_hash_for<Backend, Hash, PHash>(
+pub(super) fn best_domain_hash_for<Backend, Hash, CHash>(
     backend: &Backend,
-    primary_hash: &PHash,
+    consensus_hash: &CHash,
 ) -> ClientResult<Option<Hash>>
 where
     Backend: AuxStore,
     Hash: Decode,
-    PHash: Encode,
+    CHash: Encode,
 {
     load_decode(
         backend,
-        (BEST_DOMAIN_HASH, primary_hash).encode().as_slice(),
+        (BEST_DOMAIN_HASH, consensus_hash).encode().as_slice(),
     )
 }
 
-pub(super) fn latest_consensus_block_hash_for<Backend, Hash, PHash>(
+pub(super) fn latest_consensus_block_hash_for<Backend, Hash, CHash>(
     backend: &Backend,
     domain_hash: &Hash,
-) -> ClientResult<Option<PHash>>
+) -> ClientResult<Option<CHash>>
 where
     Backend: AuxStore,
     Hash: Encode,
-    PHash: Decode,
+    CHash: Decode,
 {
     load_decode(
         backend,
-        (LATEST_PRIMARY_HASH, domain_hash).encode().as_slice(),
+        (LATEST_CONSENSUS_HASH, domain_hash).encode().as_slice(),
     )
 }
 
@@ -493,13 +493,13 @@ mod tests {
     // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
-    type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, Hash>;
+    type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash>;
 
     fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {
             consensus_block_number,
             consensus_block_hash: H256::random(),
-            domain_block_number: consensus_block_number as u64, // TODO: proper type
+            domain_block_number: consensus_block_number,
             domain_hash: H256::random(),
             trace: Default::default(),
             trace_root: Default::default(),
@@ -547,7 +547,7 @@ mod tests {
         };
 
         let receipt_at = |consensus_block_hash: Hash| {
-            load_execution_receipt(&client, consensus_block_hash).unwrap()
+            load_execution_receipt::<_, Block, CBlock>(&client, consensus_block_hash).unwrap()
         };
 
         let write_receipt_at = |number: BlockNumber, receipt: &ExecutionReceipt| {
@@ -636,7 +636,7 @@ mod tests {
         };
 
         let receipt_at = |consensus_block_hash: Hash| {
-            load_execution_receipt(&client, consensus_block_hash).unwrap()
+            load_execution_receipt::<_, Block, CBlock>(&client, consensus_block_hash).unwrap()
         };
 
         let write_receipt_at = |head_receipt_number: BlockNumber, receipt: &ExecutionReceipt| {

@@ -32,19 +32,21 @@ impl From<InvalidTransactionCode> for TransactionValidity {
 /// Object for performing the pre-validation in the transaction pool
 /// before calling into the regular `validate_transaction` runtime api.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum PreValidationObject<Block, DomainHash>
+pub enum PreValidationObject<Block, DomainNumber, DomainHash>
 where
     Block: BlockT,
 {
     Null,
     FraudProof(FraudProof<NumberFor<Block>, Block::Hash>),
-    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>),
+    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>),
 }
 
 sp_api::decl_runtime_apis! {
     /// API for extracting the pre-validation objects in the primary chain transaction pool wrapper.
-    pub trait PreValidationObjectApi<DomainHash: Encode + Decode> {
+    pub trait PreValidationObjectApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
         /// Extract the pre-validation object from the given extrinsic.
-        fn extract_pre_validation_object(extrinsics: Block::Extrinsic) -> PreValidationObject<Block, DomainHash>;
+        fn extract_pre_validation_object(
+            extrinsics: Block::Extrinsic,
+        ) -> PreValidationObject<Block, DomainNumber, DomainHash>;
     }
 }

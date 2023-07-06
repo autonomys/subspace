@@ -62,8 +62,8 @@
 #![feature(drain_filter)]
 
 mod aux_schema;
-mod bundle_election_solver;
 mod bundle_processor;
+mod bundle_producer_election_solver;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
@@ -98,8 +98,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
-type ExecutionReceiptFor<CBlock, Hash> =
-    ExecutionReceipt<NumberFor<CBlock>, <CBlock as BlockT>::Hash, Hash>;
+type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
 
 type TransactionFor<Backend, Block> =
     <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
@@ -111,6 +115,7 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
         <Block as BlockT>::Extrinsic,
         NumberFor<CBlock>,
         <CBlock as BlockT>::Hash,
+        NumberFor<Block>,
         <Block as BlockT>::Hash,
     >,
 >;
@@ -167,7 +172,7 @@ pub struct OperatorParams<
     pub block_import: Arc<BI>,
 }
 
-/// Returns the active leaves the overseer should start with.
+/// Returns the active leaves the operator should start with.
 ///
 /// The longest chain is used as the fork choice for the leaves as the consensus block's fork choice
 /// is only available in the imported consensus block notifications.
@@ -222,7 +227,7 @@ where
         is_new_best: true,
     });
 
-    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
+    /// The maximum number of active leaves we forward to the [`Operator`] on startup.
     const MAX_ACTIVE_LEAVES: usize = 4;
 
     Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())

@@ -51,7 +51,8 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: DomainsApi<CBlock, domain_runtime_primitives::Hash>,
+    PClient::Api:
+        DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, domain_runtime_primitives::Hash>,
     Executor: CodeExecutor,
 {
     /// Constructs a new instance of [`DomainExtrinsicsBuilder`].
@@ -75,7 +76,8 @@ where
         + Send
         + Sync
         + 'static,
-    PClient::Api: DomainsApi<CBlock, domain_runtime_primitives::Hash>,
+    PClient::Api:
+        DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, domain_runtime_primitives::Hash>,
     Executor: CodeExecutor,
 {
     fn build_domain_extrinsics(

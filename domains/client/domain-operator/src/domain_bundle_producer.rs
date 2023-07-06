@@ -1,4 +1,4 @@
-use crate::bundle_election_solver::BundleElectionSolver;
+use crate::bundle_producer_election_solver::BundleProducerElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
 use crate::sortition::TransactionSelector;
@@ -20,8 +20,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
 
-type OpaqueBundle<Block, CBlock> =
-    sp_domains::OpaqueBundle<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Hash>;
+type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
 
 pub(super) struct DomainBundleProducer<
     Block,
@@ -41,7 +45,7 @@ pub(super) struct DomainBundleProducer<
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
-    bundle_election_solver: BundleElectionSolver<Block, CBlock>,
+    bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
@@ -69,7 +73,7 @@ where
             parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             keystore: self.keystore.clone(),
-            bundle_election_solver: self.bundle_election_solver.clone(),
+            bundle_producer_election_solver: self.bundle_producer_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -95,11 +99,10 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
         consensus_client: Arc<CClient>,
@@ -115,7 +118,8 @@ where
         bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_election_solver = BundleElectionSolver::<Block, CBlock>::new(keystore.clone());
+        let bundle_producer_election_solver =
+            BundleProducerElectionSolver::<Block, CBlock>::new(keystore.clone());
         Self {
             domain_id,
             consensus_client,
@@ -123,7 +127,7 @@ where
             parent_chain,
             bundle_sender,
             keystore,
-            bundle_election_solver,
+            bundle_producer_election_solver,
             domain_bundle_proposer,
             _phantom_data: PhantomData,
         }
@@ -168,7 +172,7 @@ where
 
             // Executor is lagging behind the receipt chain on its parent chain as another executor
             // already processed a block higher than the local best and submitted the receipt to
-            // the parent chain, we ought to catch up with the primary block processing before
+            // the parent chain, we ought to catch up with the consensus block processing before
             // producing new bundle.
             !domain_best_number.is_zero() && domain_best_number <= head_receipt_number
         };
@@ -182,8 +186,8 @@ where
         }
 
         if let Some(bundle_solution) = self
-            .bundle_election_solver
-            .solve_bundle_election_challenge(self.domain_id, global_challenge)?
+            .bundle_producer_election_solver
+            .solve_challenge(self.domain_id, global_challenge)?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 

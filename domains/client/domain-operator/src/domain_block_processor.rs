@@ -1,8 +1,6 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::{
-    to_number_primitive, DomainBlockImportNotification, DomainImportNotificationSinks,
-};
+use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -29,7 +27,7 @@ where
 {
     pub header_hash: Block::Hash,
     pub header_number: NumberFor<Block>,
-    pub execution_receipt: ExecutionReceiptFor<CBlock, Block::Hash>,
+    pub execution_receipt: ExecutionReceiptFor<Block, CBlock>,
 }
 
 /// An abstracted domain block processor.
@@ -66,7 +64,7 @@ where
     }
 }
 
-/// A list of consensus blocks waiting to be processed by executor on each imported consensus block
+/// A list of consensus blocks waiting to be processed by operator on each imported consensus block
 /// notification.
 ///
 /// Usually, each new domain block is built on top of the current best domain block, with the block
@@ -105,7 +103,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 {
@@ -183,7 +181,7 @@ where
                 let (common_block_number, common_block_hash) =
                     (route.common_block().number, route.common_block().hash);
 
-                // Get the domain block that is derived from the common primary block and use it as
+                // Get the domain block that is derived from the common consensus block and use it as
                 // the initial domain parent block
                 let domain_block_hash: Block::Hash = crate::aux_schema::best_domain_hash_for(
                     &*self.client,
@@ -192,14 +190,13 @@ where
                 .ok_or_else(
                     || {
                         sp_blockchain::Error::Backend(format!(
-                            "Hash of domain block derived from primary block #{common_block_number},{common_block_hash} not found"
+                            "Hash of domain block derived from consensus block #{common_block_number},{common_block_hash} not found"
                         ))
                     },
                 )?;
                 let parent_header = self.client.header(domain_block_hash)?.ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
-                        "Domain block header for #{:?} not found",
-                        domain_block_hash
+                        "Domain block header for #{domain_block_hash:?} not found",
                     ))
                 })?;
 
@@ -219,13 +216,13 @@ where
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         // Although the domain block intuitively ought to use the same fork choice
-        // from the corresponding primary block, it's fine to forcibly always use
+        // from the corresponding consensus block, it's fine to forcibly always use
         // the longest chain for simplicity as we manually build the domain branches
-        // by following the primary chain branches. Due to the possibility of domain
-        // branch transitioning to a lower fork caused by the change that a primary block
+        // by following the consensus chain branches. Due to the possibility of domain
+        // branch transitioning to a lower fork caused by the change that a consensus block
         // can possibility produce no domain block, it's important to note that now we
-        // need to ensure the domain block built from the latest primary block is the
-        // new best domain block after processing each imported primary block.
+        // need to ensure the consensus block built from the latest consensus block is the
+        // new best domain block after processing each imported consensus block.
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
@@ -233,8 +230,9 @@ where
             .await?;
 
         tracing::debug!(
-            "Built new domain block #{header_number},{header_hash} from consensus block #{consensus_block_number},{consensus_block_hash} \
-            on top of parent block #{parent_number},{parent_hash}"
+            "Built new domain block #{header_number},{header_hash} from \
+            consensus block #{consensus_block_number},{consensus_block_hash} \
+            on top of parent domain block #{parent_number},{parent_hash}"
         );
 
         if let Some(to_finalize_block_number) = consensus_block_number
@@ -283,7 +281,7 @@ where
         let execution_receipt = ExecutionReceipt {
             consensus_block_number,
             consensus_block_hash,
-            domain_block_number: to_number_primitive(header_number) as u64, // TODO: proper type
+            domain_block_number: header_number,
             domain_hash: header_hash,
             trace,
             trace_root,
@@ -330,7 +328,6 @@ where
             import_block.body = Some(body);
             import_block.state_action =
                 StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-            // Follow the consensus block's fork choice.
             import_block.fork_choice = Some(fork_choice);
             import_block
         };
@@ -413,25 +410,22 @@ where
                 header_hash
             }
             None => {
-                // No new domain block produced, thus this primary block should map to the same
+                // No new domain block produced, thus this consensus block should map to the same
                 // domain block as its parent block
-                let primary_header = self
+                let consensus_header = self
                     .consensus_client
                     .header(consensus_block_hash)?
                     .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Primary block header for #{consensus_block_hash:?} not found"
+                            "Header for consensus block {consensus_block_hash:?} not found"
                         ))
                     })?;
-                if !primary_header.number().is_one() {
-                    crate::aux_schema::best_domain_hash_for(
-                        &*self.client,
-                        primary_header.parent_hash(),
-                    )?
-                    .ok_or_else(|| {
+                if !consensus_header.number().is_one() {
+                    let consensus_parent_hash = consensus_header.parent_hash();
+                    crate::aux_schema::best_domain_hash_for(&*self.client, consensus_parent_hash)?
+                        .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Domain hash for #{:?} not found",
-                            primary_header.parent_hash()
+                            "Domain hash for consensus block {consensus_parent_hash:?} not found",
                         ))
                     })?
                 } else {
@@ -502,7 +496,7 @@ where
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -546,7 +540,7 @@ where
 
     fn check_receipts(
         &self,
-        receipts: Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>,
+        receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
@@ -562,9 +556,8 @@ where
 
             let local_receipt = crate::aux_schema::load_execution_receipt::<
                 _,
-                Block::Hash,
-                NumberFor<Block>,
-                ParentChainBlock::Hash,
+                Block,
+                ParentChainBlock,
             >(&*self.client, consensus_block_hash)?
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Receipt for consensus block #{},{consensus_block_hash} not found",
@@ -652,13 +645,15 @@ where
                 },
             )?
         {
-            let local_receipt =
-                crate::aux_schema::load_execution_receipt(&*self.client, consensus_block_hash)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Receipt for consensus block {consensus_block_hash} not found"
-                        ))
-                    })?;
+            let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
+                &*self.client,
+                consensus_block_hash,
+            )?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Receipt for consensus block {consensus_block_hash} not found"
+                ))
+            })?;
 
             let fraud_proof = self
                 .fraud_proof_generator

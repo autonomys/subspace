@@ -1,5 +1,5 @@
 use codec::Encode;
-use domain_runtime_primitives::Hash;
+use domain_runtime_primitives::{BlockNumber, Hash};
 use parking_lot::{Mutex, RwLock};
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus_subspace::get_chain_constants;
@@ -39,7 +39,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProvideRuntimeApi<Block>
         + AuxStore,
-    Client::Api: DomainsApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: DomainsApi<Block, BlockNumber, Hash> + SubspaceApi<Block, FarmerPublicKey>,
 {
     fn new(client: Arc<Client>) -> Self {
         let confirm_depth_k = get_chain_constants(client.as_ref())
@@ -274,7 +274,7 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + ProvideRuntimeApi<Block>
         + AuxStore,
-    Client::Api: DomainsApi<Block, Hash> + SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: DomainsApi<Block, BlockNumber, Hash> + SubspaceApi<Block, FarmerPublicKey>,
 {
     pub fn new(client: Arc<Client>) -> Self {
         BundleValidator {
@@ -317,26 +317,28 @@ impl From<sp_blockchain::Error> for BundleError {
     }
 }
 
-pub trait ValidateBundle<Block: BlockT, DomainHash: Encode> {
+pub trait ValidateBundle<Block: BlockT, DomainNumber: Encode, DomainHash: Encode> {
     // For consensus chain, check the duplicated bundle and receipts.
     // For system domain, checks nothing.
     fn validate_bundle(
         &self,
         at: &BlockId<Block>,
-        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
+        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>,
     ) -> Result<(), BundleError>;
 }
 
-impl<Block, DomainHash, Client> ValidateBundle<Block, DomainHash> for BundleValidator<Block, Client>
+impl<Block, DomainNumber, DomainHash, Client> ValidateBundle<Block, DomainNumber, DomainHash>
+    for BundleValidator<Block, Client>
 where
     Block: BlockT,
+    DomainNumber: Encode,
     DomainHash: Encode,
     Client: HeaderBackend<Block>,
 {
     fn validate_bundle(
         &self,
         at: &BlockId<Block>,
-        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>,
+        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>,
     ) -> Result<(), BundleError> {
         // The hash used here must be the same as what is maintaining in `bundle_stored_in_last_k`,
         // namely the hash of `OpaqueBundle`

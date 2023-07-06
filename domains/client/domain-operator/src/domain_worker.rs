@@ -14,6 +14,13 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
+type OpaqueBundleFor<Block, CBlock> = OpaqueBundle<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
+
 pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
     bundler: BundlerFn,
@@ -22,17 +29,12 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,
-        ) -> Pin<
-            Box<
-                dyn Future<
-                        Output = Option<OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Hash>>,
-                    > + Send,
-            >,
-        > + Send
+        ) -> Pin<Box<dyn Future<Output = Option<OpaqueBundleFor<Block, CBlock>>> + Send>>
+        + Send
         + Sync,
 {
     while let Some((operator_slot_info, slot_acknowledgement_sender)) = slots.next().await {
@@ -76,7 +78,7 @@ pub(crate) async fn handle_block_import_notifications<
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     ProcessorFn: Fn(
             (CBlock::Hash, NumberFor<CBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -196,17 +198,12 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,
-        ) -> Pin<
-            Box<
-                dyn Future<
-                        Output = Option<OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Hash>>,
-                    > + Send,
-            >,
-        > + Send
+        ) -> Pin<Box<dyn Future<Output = Option<OpaqueBundleFor<Block, CBlock>>> + Send>>
+        + Send
         + Sync,
 {
     let best_hash = consensus_client.info().best_hash;

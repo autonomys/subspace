@@ -36,7 +36,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use subspace_runtime_primitives::opaque::Block as PBlock;
+use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
@@ -64,7 +64,7 @@ type Client<RuntimeApi, ExecutorDispatch> = FullClient<Block, RuntimeApi, Execut
 /// Domain executor for the test service.
 pub type DomainOperator<RuntimeApi, ExecutorDispatch> = domain_service::DomainOperator<
     Block,
-    PBlock,
+    CBlock,
     subspace_test_client::Client,
     RuntimeApi,
     ExecutorDispatch,

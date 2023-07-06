@@ -87,26 +87,26 @@ pub(super) async fn start_worker<
         + InherentExtrinsicApi<Block>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b BI: BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
-    BI: Send + Sync + 'static,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    for<'b> &'b BI: BlockImport<
+        Block,
+        Transaction = sp_api::TransactionFor<Client, Block>,
+        Error = sp_consensus::Error,
+    >,
+    BI: Send + Sync + 'static,
 {
     let span = tracing::Span::current();
 

@@ -40,6 +40,7 @@ use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use core::mem;
 use core::num::NonZeroU64;
+use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -442,7 +443,8 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
+    type DomainNumber = DomainNumber;
+    type DomainHash = DomainHash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
@@ -774,24 +776,24 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
             crate::domains::extract_pre_validation_object(extrinsic)
         }
     }
 
-    impl sp_domains::DomainsApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
         fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
             crate::domains::extract_successful_bundles(extrinsics)
         }
 

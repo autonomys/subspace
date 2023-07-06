@@ -119,6 +119,7 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
+    type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
@@ -145,7 +146,7 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 fn create_dummy_receipt(
     consensus_block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> ExecutionReceipt<BlockNumber, Hash, H256> {
+) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256> {
     ExecutionReceipt {
         consensus_block_number,
         consensus_block_hash,
@@ -164,7 +165,7 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     consensus_block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, H256> {
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
     let execution_receipt = create_dummy_receipt(consensus_block_number, consensus_block_hash);
@@ -191,9 +192,9 @@ fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
     consensus_block_number: BlockNumber,
     consensus_block_hash: Hash,
-    receipt: ExecutionReceipt<BlockNumber, Hash, H256>,
-) -> OpaqueBundle<BlockNumber, Hash, H256> {
-    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
+    receipt: ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256>,
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
+    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, BlockNumber, H256>(
         domain_id,
         consensus_block_number,
         consensus_block_hash,

@@ -6,7 +6,7 @@ use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, DomainCoreApi, Hash, InherentExtrinsicApi};
+use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::Stream;
 use jsonrpsee::tracing;
@@ -68,7 +68,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -159,7 +159,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -291,7 +291,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
     SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,

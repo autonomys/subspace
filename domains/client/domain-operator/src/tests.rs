@@ -79,7 +79,7 @@ async fn test_domain_block_production() {
     assert_eq!(ferdie.client.info().best_number, 50);
     assert_eq!(alice.client.info().best_number, 25);
 
-    let primary_block_hash = ferdie.client.info().best_hash;
+    let consensus_block_hash = ferdie.client.info().best_hash;
     let domain_block_number = alice.client.info().best_number;
     let domain_block_hash = alice.client.info().best_hash;
 
@@ -110,7 +110,7 @@ async fn test_domain_block_production() {
     // Fork C
     // Produce 10 more primary blocks and do not produce any domain block but because there are
     // more primary block on fork C, it will become the best fork of the domain chain
-    let mut fork_c_parent_hash = primary_block_hash;
+    let mut fork_c_parent_hash = consensus_block_hash;
     for _ in 0..10 {
         let slot = ferdie.produce_slot();
         fork_c_parent_hash = ferdie
@@ -203,7 +203,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let consensus_block_info =
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_consensus_info =
-        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
+        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, u32, sp_core::H256>| {
             (
                 bundle.receipt.consensus_block_number,
                 bundle.receipt.consensus_block_hash,
@@ -406,11 +406,10 @@ async fn test_executor_full_node_catching_up() {
         .unwrap();
     assert_eq!(
         alice_block_hash, bob_block_hash,
-        "Executor authority node and full node must have the same state"
+        "Domain authority node and full node must have the same state"
     );
 }
 
-// TODO: Unlock test when evm domain is supported in DecEx v2.
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn test_executor_inherent_timestamp_is_set() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");

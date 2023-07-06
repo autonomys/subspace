@@ -35,7 +35,7 @@ use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
-use domain_runtime_primitives::Hash as DomainHash;
+use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -288,10 +288,10 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
-        + DomainsApi<Block, DomainHash>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, DomainNumber, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
-        + SubspaceApi<Block, FarmerPublicKey>,
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -463,8 +463,8 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
-        + DomainsApi<Block, DomainHash>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+        + DomainsApi<Block, DomainNumber, DomainHash>
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     /// Task manager.
@@ -550,10 +550,10 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
-        + DomainsApi<Block, DomainHash>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, DomainNumber, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
-        + SubspaceApi<Block, FarmerPublicKey>,
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     I: BlockImport<
             Block,

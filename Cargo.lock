@@ -10985,6 +10985,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cross-domain-message-gossip",
+ "domain-runtime-primitives",
  "futures",
  "futures-timer",
  "jsonrpsee",
