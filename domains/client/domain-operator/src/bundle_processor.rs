@@ -161,7 +161,7 @@ where
                 }
             }
 
-            // The domain branch driving from the best primary branch should also be the best domain branch even
+            // The domain branch driving from the best consensus branch should also be the best domain branch even
             // if it is no the longest domain branch. Thus re-import the tip of the best domain branch to make it
             // the new best block if it isn't.
             //
@@ -205,9 +205,9 @@ where
         // TODO: Retrieve using consensus chain runtime API
         let head_receipt_number = parent_number;
         // let head_receipt_number = self
-        // .primary_chain_client
+        // .consensus_client
         // .runtime_api()
-        // .head_receipt_number(primary_hash, self.domain_id)?
+        // .head_receipt_number(consensus_block_hash, self.domain_id)?
         // .into();
 
         let extrinsics = match self
@@ -243,7 +243,7 @@ where
         // let head_receipt_number = self
         // .consensus_client
         // .runtime_api()
-        // .head_receipt_number(primary_hash, self.domain_id)?
+        // .head_receipt_number(consensus_block_hash, self.domain_id)?
         // .into();
 
         assert!(

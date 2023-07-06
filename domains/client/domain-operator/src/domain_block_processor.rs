@@ -181,7 +181,7 @@ where
                 let (common_block_number, common_block_hash) =
                     (route.common_block().number, route.common_block().hash);
 
-                // Get the domain block that is derived from the common primary block and use it as
+                // Get the domain block that is derived from the common consensus block and use it as
                 // the initial domain parent block
                 let domain_block_hash: Block::Hash = crate::aux_schema::best_domain_hash_for(
                     &*self.client,
@@ -190,14 +190,13 @@ where
                 .ok_or_else(
                     || {
                         sp_blockchain::Error::Backend(format!(
-                            "Hash of domain block derived from primary block #{common_block_number},{common_block_hash} not found"
+                            "Hash of domain block derived from consensus block #{common_block_number},{common_block_hash} not found"
                         ))
                     },
                 )?;
                 let parent_header = self.client.header(domain_block_hash)?.ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
-                        "Domain block header for #{:?} not found",
-                        domain_block_hash
+                        "Domain block header for #{domain_block_hash:?} not found",
                     ))
                 })?;
 
@@ -217,13 +216,13 @@ where
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         // Although the domain block intuitively ought to use the same fork choice
-        // from the corresponding primary block, it's fine to forcibly always use
+        // from the corresponding consensus block, it's fine to forcibly always use
         // the longest chain for simplicity as we manually build the domain branches
-        // by following the primary chain branches. Due to the possibility of domain
-        // branch transitioning to a lower fork caused by the change that a primary block
+        // by following the consensus chain branches. Due to the possibility of domain
+        // branch transitioning to a lower fork caused by the change that a consensus block
         // can possibility produce no domain block, it's important to note that now we
-        // need to ensure the domain block built from the latest primary block is the
-        // new best domain block after processing each imported primary block.
+        // need to ensure the consensus block built from the latest consensus block is the
+        // new best domain block after processing each imported consensus block.
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
         let (header_hash, header_number, state_root) = self
@@ -411,25 +410,22 @@ where
                 header_hash
             }
             None => {
-                // No new domain block produced, thus this primary block should map to the same
+                // No new domain block produced, thus this consensus block should map to the same
                 // domain block as its parent block
-                let primary_header = self
+                let consensus_header = self
                     .consensus_client
                     .header(consensus_block_hash)?
                     .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Primary block header for #{consensus_block_hash:?} not found"
+                            "Consensus block header for #{consensus_block_hash:?} not found"
                         ))
                     })?;
-                if !primary_header.number().is_one() {
-                    crate::aux_schema::best_domain_hash_for(
-                        &*self.client,
-                        primary_header.parent_hash(),
-                    )?
-                    .ok_or_else(|| {
+                if !consensus_header.number().is_one() {
+                    let consensus_parent_hash = consensus_header.parent_hash();
+                    crate::aux_schema::best_domain_hash_for(&*self.client, consensus_parent_hash)?
+                        .ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!(
-                            "Domain hash for #{:?} not found",
-                            primary_header.parent_hash()
+                            "Domain hash for #{consensus_parent_hash:?} not found",
                         ))
                     })?
                 } else {

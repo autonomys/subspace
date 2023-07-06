@@ -10,27 +10,27 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
-pub struct GossipWorker<PBlock, Block, Executor>
+pub struct GossipWorker<CBlock, Block, Executor>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block>,
+    Executor: GossipMessageHandler<CBlock, Block>,
 {
-    gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
+    gossip_validator: Arc<GossipValidator<CBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    bundle_receiver: BundleReceiver<Block, PBlock>,
+    bundle_receiver: BundleReceiver<Block, CBlock>,
 }
 
-impl<PBlock, Block, Executor> GossipWorker<PBlock, Block, Executor>
+impl<CBlock, Block, Executor> GossipWorker<CBlock, Block, Executor>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block>,
+    Executor: GossipMessageHandler<CBlock, Block>,
 {
     pub(super) fn new(
-        gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
+        gossip_validator: Arc<GossipValidator<CBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-        bundle_receiver: BundleReceiver<Block, PBlock>,
+        bundle_receiver: BundleReceiver<Block, CBlock>,
     ) -> Self {
         Self {
             gossip_validator,
@@ -39,8 +39,8 @@ where
         }
     }
 
-    fn gossip_bundle(&self, bundle: BundleFor<Block, PBlock>) {
-        let outgoing_message: GossipMessage<PBlock, Block> = bundle.into();
+    fn gossip_bundle(&self, bundle: BundleFor<Block, CBlock>) {
+        let outgoing_message: GossipMessage<CBlock, Block> = bundle.into();
         let encoded_message = outgoing_message.encode();
         self.gossip_validator.note_rebroadcasted(&encoded_message);
         self.gossip_engine
@@ -54,7 +54,7 @@ where
                 .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
-                    GossipMessage::<PBlock, Block>::decode(&mut &notification.message[..]).ok()
+                    GossipMessage::<CBlock, Block>::decode(&mut &notification.message[..]).ok()
                 }),
         );
 

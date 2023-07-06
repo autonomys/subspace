@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// This is used by the System domain to validate Extrinsics.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub fn verify_xdm_with_primary_chain_client<CClient, PBlock, Block, SRE>(
+pub fn verify_xdm_with_consensus_client<CClient, CBlock, Block, SRE>(
     _domain_id: DomainId,
     consensus_client: &Arc<CClient>,
     at: Block::Hash,
@@ -21,12 +21,12 @@ pub fn verify_xdm_with_primary_chain_client<CClient, PBlock, Block, SRE>(
     extrinsic: &Block::Extrinsic,
 ) -> Result<bool, Error>
 where
-    CClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    CClient::Api: DomainsApi<PBlock, NumberFor<Block>, Block::Hash>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
-    PBlock::Hash: From<Block::Hash>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>>,
+    CBlock::Hash: From<Block::Hash>,
     SRE: StateRootExtractor<Block>,
 {
     if let Ok(_state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {

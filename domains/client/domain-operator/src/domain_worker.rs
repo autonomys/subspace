@@ -14,6 +14,13 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
+type OpaqueBundleFor<Block, CBlock> = OpaqueBundle<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
+
 pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
     bundler: BundlerFn,
@@ -26,20 +33,8 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,
-        ) -> Pin<
-            Box<
-                dyn Future<
-                        Output = Option<
-                            OpaqueBundle<
-                                NumberFor<CBlock>,
-                                CBlock::Hash,
-                                NumberFor<Block>,
-                                Block::Hash,
-                            >,
-                        >,
-                    > + Send,
-            >,
-        > + Send
+        ) -> Pin<Box<dyn Future<Output = Option<OpaqueBundleFor<Block, CBlock>>> + Send>>
+        + Send
         + Sync,
 {
     while let Some((operator_slot_info, slot_acknowledgement_sender)) = slots.next().await {
@@ -207,20 +202,8 @@ where
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,
-        ) -> Pin<
-            Box<
-                dyn Future<
-                        Output = Option<
-                            OpaqueBundle<
-                                NumberFor<CBlock>,
-                                CBlock::Hash,
-                                NumberFor<Block>,
-                                Block::Hash,
-                            >,
-                        >,
-                    > + Send,
-            >,
-        > + Send
+        ) -> Pin<Box<dyn Future<Output = Option<OpaqueBundleFor<Block, CBlock>>> + Send>>
+        + Send
         + Sync,
 {
     let best_hash = consensus_client.info().best_hash;

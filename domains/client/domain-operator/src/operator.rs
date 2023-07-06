@@ -226,7 +226,7 @@ where
         stream
     }
 
-    /// Processes the bundles extracted from the primary block.
+    /// Processes the bundles extracted from the consensus block.
     // TODO: Remove this whole method, `self.bundle_processor` as a property and fix
     // `set_new_code_should_work` test to do an actual runtime upgrade
     #[doc(hidden)]

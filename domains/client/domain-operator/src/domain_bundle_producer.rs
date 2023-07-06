@@ -172,7 +172,7 @@ where
 
             // Executor is lagging behind the receipt chain on its parent chain as another executor
             // already processed a block higher than the local best and submitted the receipt to
-            // the parent chain, we ought to catch up with the primary block processing before
+            // the parent chain, we ought to catch up with the consensus block processing before
             // producing new bundle.
             !domain_best_number.is_zero() && domain_best_number <= head_receipt_number
         };

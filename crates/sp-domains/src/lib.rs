@@ -423,11 +423,11 @@ impl<Number: Copy + Zero, Hash, DomainNumber: Zero, DomainHash: Default>
     }
 
     pub fn genesis(
-        primary_genesis_hash: Hash,
+        consensus_genesis_block_hash: Hash,
     ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash> {
         ExecutionReceipt {
             consensus_block_number: Zero::zero(),
-            consensus_block_hash: primary_genesis_hash,
+            consensus_block_hash: consensus_genesis_block_hash,
             domain_block_number: Zero::zero(),
             domain_hash: Default::default(),
             trace: Default::default(),
