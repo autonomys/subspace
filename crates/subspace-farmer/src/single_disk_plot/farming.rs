@@ -27,7 +27,7 @@ const SOLUTIONS_LIMIT: usize = 1;
 /// Errors that happen during farming
 #[derive(Debug, Error)]
 pub enum FarmingError {
-    /// Failed to substribe to slot info notifications
+    /// Failed to subscribe to slot info notifications
     #[error("Failed to substribe to slot info notifications: {error}")]
     FailedToSubscribeSlotInfo {
         /// Lower-level error

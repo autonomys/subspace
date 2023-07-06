@@ -8,8 +8,8 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::farming::farming;
 pub use crate::single_disk_plot::farming::FarmingError;
 use crate::single_disk_plot::piece_reader::PieceReader;
-use crate::single_disk_plot::plotting::plotting;
 pub use crate::single_disk_plot::plotting::PlottingError;
+use crate::single_disk_plot::plotting::{plotting, replotting};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
@@ -656,6 +656,9 @@ impl SingleDiskPlot {
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
         let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
+        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(0);
+        // Some sectors may already be plotted, skip them
+        let sectors_indices_left_to_plot = metadata_header.sector_count..target_sector_count;
 
         let span = info_span!("single_disk_plot", %disk_farm_index);
 
@@ -690,7 +693,6 @@ impl SingleDiskPlot {
                             pieces_in_sector,
                             sector_size,
                             sector_metadata_size,
-                            target_sector_count,
                             metadata_header,
                             metadata_header_mmap,
                             plot_file,
@@ -702,6 +704,7 @@ impl SingleDiskPlot {
                             handlers,
                             modifying_sector_index,
                             concurrent_plotting_semaphore,
+                            sectors_to_plot_receiver,
                         )
                         .await
                     };
@@ -720,6 +723,17 @@ impl SingleDiskPlot {
                     }
                 }
             })?;
+
+        tasks.push(Box::pin(replotting(
+            public_key.hash(),
+            sectors_indices_left_to_plot,
+            target_sector_count,
+            farmer_app_info.protocol_info.history_size.segment_index(),
+            farmer_app_info.protocol_info.min_sector_lifetime,
+            node_client.clone(),
+            Arc::clone(&sectors_metadata),
+            sectors_to_plot_sender,
+        )));
 
         let (mut slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
 

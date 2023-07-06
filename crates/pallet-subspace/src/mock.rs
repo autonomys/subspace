@@ -408,6 +408,7 @@ pub fn create_signed_vote(
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
     let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);

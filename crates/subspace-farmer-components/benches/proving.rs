@@ -73,6 +73,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
     let solution_range = SolutionRange::MAX;
     let reward_address = PublicKey::default();

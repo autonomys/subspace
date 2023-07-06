@@ -250,6 +250,7 @@ where
                 sector_expiration: SegmentIndex::from(100),
                 recent_segments: chain_constants.recent_segments(),
                 recent_history_fraction: chain_constants.recent_history_fraction(),
+                min_sector_lifetime: chain_constants.min_sector_lifetime(),
             };
 
             FarmerAppInfo {
@@ -581,6 +582,7 @@ where
         Ok(())
     }
 
+    // TODO: Remove as unnecessary, `segment_headers` can be used instead
     async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,
