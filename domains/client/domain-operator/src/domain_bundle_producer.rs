@@ -45,7 +45,7 @@ pub(super) struct DomainBundleProducer<
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
-    bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock>,
+    bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock, CClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
@@ -118,8 +118,10 @@ where
         bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_producer_election_solver =
-            BundleProducerElectionSolver::<Block, CBlock>::new(keystore.clone());
+        let bundle_producer_election_solver = BundleProducerElectionSolver::<Block, CBlock, _>::new(
+            keystore.clone(),
+            consensus_client.clone(),
+        );
         Self {
             domain_id,
             consensus_client,
@@ -185,10 +187,12 @@ where
             return Ok(None);
         }
 
-        if let Some(bundle_solution) = self
-            .bundle_producer_election_solver
-            .solve_challenge(self.domain_id, global_challenge)?
-        {
+        if let Some(bundle_solution) = self.bundle_producer_election_solver.solve_challenge(
+            slot,
+            consensus_block_info.hash,
+            self.domain_id,
+            global_challenge,
+        )? {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
             let proof_of_election = bundle_solution.proof_of_election();

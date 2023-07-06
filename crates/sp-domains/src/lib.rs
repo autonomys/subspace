@@ -235,6 +235,7 @@ pub struct ProofOfElection<DomainHash> {
 impl<DomainHash> ProofOfElection<DomainHash> {
     pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
         bundle_producer_election::verify_vrf_proof(
+            self.domain_id,
             &self.operator_public_key,
             &self.vrf_signature,
             &self.global_challenge,

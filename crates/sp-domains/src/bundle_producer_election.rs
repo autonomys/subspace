@@ -2,48 +2,20 @@ use crate::{DomainId, OperatorPublicKey, StakeWeight};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
-use sp_core::sr25519::vrf::{VrfInput, VrfOutput, VrfSignature};
-use subspace_core_primitives::crypto::blake2b_256_hash_list;
+use sp_core::sr25519::vrf::{VrfOutput, VrfSignature, VrfTranscript};
 use subspace_core_primitives::Blake2b256Hash;
 
-const VRF_TRANSCRIPT_LABEL: &[u8] = b"executor";
+const VRF_TRANSCRIPT_LABEL: &[u8] = b"bundle_producer_election";
 
-const LOCAL_RANDOMNESS_CONTEXT: &[u8] = b"bundle_election_local_randomness_context";
-
-type LocalRandomness = [u8; core::mem::size_of::<u128>()];
-
-fn derive_local_randomness(
-    vrf_output: &VrfOutput,
-    public_key: &OperatorPublicKey,
-    global_challenge: &Blake2b256Hash,
-) -> Result<LocalRandomness, parity_scale_codec::Error> {
-    vrf_output.make_bytes(
-        LOCAL_RANDOMNESS_CONTEXT,
-        &make_local_randomness_input(global_challenge),
-        public_key.as_ref(),
+/// Generates a domain-specific vrf transcript from given global_challenge.
+pub fn make_transcript(domain_id: DomainId, global_challenge: &Blake2b256Hash) -> VrfTranscript {
+    VrfTranscript::new(
+        VRF_TRANSCRIPT_LABEL,
+        &[
+            (b"domain", &domain_id.to_le_bytes()),
+            (b"global_challenge", global_challenge.as_ref()),
+        ],
     )
-}
-
-/// Returns the domain-specific solution for the challenge of producing a bundle.
-pub fn derive_bundle_election_solution(
-    domain_id: DomainId,
-    vrf_output: &VrfOutput,
-    public_key: &OperatorPublicKey,
-    global_challenge: &Blake2b256Hash,
-) -> Result<u128, parity_scale_codec::Error> {
-    let local_randomness = derive_local_randomness(vrf_output, public_key, global_challenge)?;
-    let local_domain_randomness =
-        blake2b_256_hash_list(&[&domain_id.to_le_bytes(), &local_randomness]);
-
-    let election_solution = u128::from_le_bytes(
-        local_domain_randomness
-            .split_at(core::mem::size_of::<u128>())
-            .0
-            .try_into()
-            .expect("Local domain randomness must fit into u128; qed"),
-    );
-
-    Ok(election_solution)
 }
 
 /// Returns the election threshold based on the operator stake proportion and slot probability.
@@ -65,16 +37,18 @@ pub fn calculate_threshold(
         * operator_stake
 }
 
-pub fn is_election_solution_within_threshold(election_solution: u128, threshold: u128) -> bool {
-    election_solution < threshold
-}
+pub fn is_below_threshold(vrf_output: &VrfOutput, threshold: u128) -> bool {
+    let vrf_output = u128::from_le_bytes(
+        vrf_output
+            .0
+            .to_bytes()
+            .split_at(core::mem::size_of::<u128>())
+            .0
+            .try_into()
+            .expect("VrfOutput is 32 bytes which must fit into u128; qed"),
+    );
 
-/// Make a VRF inout.
-pub fn make_local_randomness_input(global_challenge: &Blake2b256Hash) -> VrfInput {
-    VrfInput::new(
-        VRF_TRANSCRIPT_LABEL,
-        &[(b"global challenge", global_challenge)],
-    )
+    vrf_output < threshold
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -85,12 +59,13 @@ pub enum VrfProofError {
 
 /// Verify the vrf proof generated in the bundle election.
 pub(crate) fn verify_vrf_proof(
+    domain_id: DomainId,
     public_key: &OperatorPublicKey,
     vrf_signature: &VrfSignature,
     global_challenge: &Blake2b256Hash,
 ) -> Result<(), VrfProofError> {
     if !public_key.as_inner_ref().vrf_verify(
-        &make_local_randomness_input(global_challenge).into(),
+        &make_transcript(domain_id, global_challenge).into(),
         vrf_signature,
     ) {
         return Err(VrfProofError::BadProof);
