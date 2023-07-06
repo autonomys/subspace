@@ -21,6 +21,7 @@ pub mod bundle_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
+pub mod v2;
 
 use bundle_election::VrfProofError;
 use merkle_tree::Witness;
