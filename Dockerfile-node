@@ -29,12 +29,20 @@ COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
 COPY rust-toolchain.toml /code/rust-toolchain.toml
 
+# Build only dependencies to cache them, so we can reuse this layer in later builds
+RUN \
+    /root/.cargo/bin/cargo build \
+        --locked \
+        -Z build-std \
+        --profile $PROFILE \
+        --bin subspace-node \
+        --target $(uname -p)-unknown-linux-gnu
+
 COPY crates /code/crates
 COPY domains /code/domains
 COPY orml /code/orml
 COPY test /code/test
 
-# Up until this line all Rust images in this repo should be the same to share the same layers
 
 ARG SUBSTRATE_CLI_GIT_COMMIT_HASH
 
