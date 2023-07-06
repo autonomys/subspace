@@ -211,3 +211,24 @@ pub(crate) fn process_execution_receipt<T: Config>(
     }
     Ok(())
 }
+
+/// Import the genesis receipt to the block tree
+pub(crate) fn import_genesis_receipt<T: Config>(
+    domain_id: DomainId,
+    genesis_receipt: ExecutionReceiptOf<T>,
+) {
+    let er_hash = genesis_receipt.hash();
+    let domain_block_number = genesis_receipt.domain_block_number;
+    let domain_block = DomainBlock {
+        execution_receipt: genesis_receipt,
+        operator_ids: sp_std::vec![],
+    };
+    // NOTE: no need to upate the head receipt number as we are using `ValueQuery`
+    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
+        er_hashes.try_insert(er_hash)
+            .expect(
+                "Must not exceed MaxBlockTreeFork as the genesis receipt is the first and only receipt at block #0; qed"
+            );
+    });
+    DomainBlocks::<T>::insert(er_hash, domain_block);
+}

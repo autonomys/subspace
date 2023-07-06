@@ -289,13 +289,8 @@ mod pallet {
 
     /// The domain registry
     #[pallet::storage]
-    pub(super) type DomainRegistry<T: Config> = StorageMap<
-        _,
-        Identity,
-        DomainId,
-        DomainObject<T::BlockNumber, T::Hash, T::AccountId>,
-        OptionQuery,
-    >;
+    pub(super) type DomainRegistry<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainObject<T::BlockNumber, T::AccountId>, OptionQuery>;
 
     /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
     /// which can be used get the domain block in `DomainBlocks`
@@ -339,6 +334,12 @@ mod pallet {
     #[pallet::storage]
     pub(super) type HeadDomainNumber<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+
+    /// The genesis domian that scheduled to register at block #1, should be removed once
+    /// https://github.com/paritytech/substrate/issues/14541 is resolved.
+    #[pallet::storage]
+    type PendingGenesisDomain<T: Config> =
+        StorageValue<_, GenesisDomain<T::AccountId>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -720,25 +721,11 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            // Delay the genesis domain register to block #1 due to the required `GenesisReceiptExtension` is not
+            // registered during genesis storage build, remove once https://github.com/paritytech/substrate/issues/14541
+            // is resolved.
             if let Some(genesis_domain) = &self.genesis_domain {
-                // Register the genesis domain runtime
-                let runtime_id = register_runtime_at_genesis::<T>(
-                    genesis_domain.runtime_name.clone(),
-                    genesis_domain.runtime_type.clone(),
-                    genesis_domain.runtime_version.clone(),
-                    genesis_domain.code.clone(),
-                    Zero::zero(),
-                )
-                .expect("Genesis runtime registration must always succeed");
-
-                // Instantiate the genesis domain
-                let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                do_instantiate_domain::<T>(
-                    domain_config,
-                    genesis_domain.owner_account_id.clone(),
-                    Zero::zero(),
-                )
-                .expect("Genesis domain instantiation must always succeed");
+                PendingGenesisDomain::<T>::set(Some(genesis_domain.clone()));
             }
         }
     }
@@ -747,6 +734,29 @@ mod pallet {
     // TODO: proper benchmark
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
+            if block_number.is_one() {
+                if let Some(ref genesis_domain) = PendingGenesisDomain::<T>::take() {
+                    // Register the genesis domain runtime
+                    let runtime_id = register_runtime_at_genesis::<T>(
+                        genesis_domain.runtime_name.clone(),
+                        genesis_domain.runtime_type.clone(),
+                        genesis_domain.runtime_version.clone(),
+                        genesis_domain.code.clone(),
+                        Zero::zero(),
+                    )
+                    .expect("Genesis runtime registration must always succeed");
+
+                    // Instantiate the genesis domain
+                    let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
+                    do_instantiate_domain::<T>(
+                        domain_config,
+                        genesis_domain.owner_account_id.clone(),
+                        Zero::zero(),
+                    )
+                    .expect("Genesis domain instantiation must always succeed");
+                }
+            }
+
             do_upgrade_runtimes::<T>(block_number);
 
             let results = SuccessfulBundles::<T>::clear(u32::MAX, None);

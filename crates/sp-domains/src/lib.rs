@@ -475,7 +475,9 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(
+    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+)]
 pub struct GenesisDomain<AccountId> {
     // Domain runtime items
     pub runtime_name: Vec<u8>,
