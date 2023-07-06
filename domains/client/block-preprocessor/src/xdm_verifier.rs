@@ -22,7 +22,7 @@ pub fn verify_xdm_with_primary_chain_client<CClient, PBlock, Block, SRE>(
 ) -> Result<bool, Error>
 where
     CClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    CClient::Api: DomainsApi<PBlock, Block::Hash>,
+    CClient::Api: DomainsApi<PBlock, NumberFor<Block>, Block::Hash>,
     Block: BlockT,
     PBlock: BlockT,
     NumberFor<PBlock>: From<NumberFor<Block>>,

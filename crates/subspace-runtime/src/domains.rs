@@ -1,4 +1,5 @@
 use crate::{Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
+use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_domains::fraud_proof::FraudProof;
@@ -11,7 +12,7 @@ use subspace_verification::derive_randomness;
 
 pub(crate) fn extract_successful_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
     let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
@@ -31,7 +32,7 @@ pub(crate) fn extract_successful_bundles(
 pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
     let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
@@ -69,7 +70,7 @@ pub(crate) fn extract_fraud_proofs(
 
 pub(crate) fn extract_pre_validation_object(
     extrinsic: UncheckedExtrinsic,
-) -> PreValidationObject<Block, domain_runtime_primitives::Hash> {
+) -> PreValidationObject<Block, DomainNumber, DomainHash> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(fraud_proof)

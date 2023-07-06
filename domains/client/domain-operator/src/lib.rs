@@ -98,8 +98,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
 
-type ExecutionReceiptFor<CBlock, Hash> =
-    ExecutionReceipt<NumberFor<CBlock>, <CBlock as BlockT>::Hash, Hash>;
+type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
 
 type TransactionFor<Backend, Block> =
     <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
@@ -111,6 +115,7 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
         <Block as BlockT>::Extrinsic,
         NumberFor<CBlock>,
         <CBlock as BlockT>::Hash,
+        NumberFor<Block>,
         <Block as BlockT>::Hash,
     >,
 >;

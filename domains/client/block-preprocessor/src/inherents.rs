@@ -15,7 +15,7 @@
 use crate::runtime_api::InherentExtrinsicConstructor;
 use sp_api::ProvideRuntimeApi;
 use sp_domains::DomainsApi;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 
 /// Returns required inherent extrinsics for the domain block based on the primary block.
@@ -32,7 +32,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     DomainRuntimeApi: InherentExtrinsicConstructor<Block>,
 {
     let moment = consensus_client

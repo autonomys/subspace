@@ -93,7 +93,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,

@@ -91,7 +91,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,

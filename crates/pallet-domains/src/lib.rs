@@ -66,7 +66,10 @@ mod pallet {
     use sp_domains::{
         DomainId, GenesisDomain, OpaqueBundle, OperatorPublicKey, RuntimeId, RuntimeType,
     };
-    use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
+    use sp_runtime::traits::{
+        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
+        Zero,
+    };
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
@@ -74,6 +77,21 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// Domain block number type.
+        type DomainNumber: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaybeDisplay
+            + AtLeast32BitUnsigned
+            + Default
+            + Bounded
+            + Copy
+            + sp_std::hash::Hash
+            + sp_std::str::FromStr
+            + MaxEncodedLen
+            + TypeInfo;
 
         /// Domain block hash type.
         type DomainHash: Parameter
@@ -325,7 +343,7 @@ mod pallet {
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -574,7 +592,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_submit_bundle(
-        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
         // TODO: Validate domain block tree
         Ok(())
@@ -585,7 +603,7 @@ impl<T: Config> Pallet<T> {
             sealed_header,
             receipt: _,
             extrinsics: _,
-        }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
         if !sealed_header.verify_signature() {
             return Err(BundleError::BadSignature);
@@ -672,7 +690,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(
-        opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) {
         let slot = opaque_bundle.sealed_header.header.slot_number;
         let extrincis_count = opaque_bundle.extrinsics.len();

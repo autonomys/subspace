@@ -22,14 +22,21 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,
         ) -> Pin<
             Box<
                 dyn Future<
-                        Output = Option<OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Hash>>,
+                        Output = Option<
+                            OpaqueBundle<
+                                NumberFor<CBlock>,
+                                CBlock::Hash,
+                                NumberFor<Block>,
+                                Block::Hash,
+                            >,
+                        >,
                     > + Send,
             >,
         > + Send
@@ -76,7 +83,7 @@ pub(crate) async fn handle_block_import_notifications<
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     ProcessorFn: Fn(
             (CBlock::Hash, NumberFor<CBlock>, bool),
         ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
@@ -196,14 +203,21 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,
         ) -> Pin<
             Box<
                 dyn Future<
-                        Output = Option<OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Hash>>,
+                        Output = Option<
+                            OpaqueBundle<
+                                NumberFor<CBlock>,
+                                CBlock::Hash,
+                                NumberFor<Block>,
+                                Block::Hash,
+                            >,
+                        >,
                     > + Send,
             >,
         > + Send

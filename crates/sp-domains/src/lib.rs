@@ -307,18 +307,18 @@ impl<DomainHash: Default> BundleSolution<DomainHash> {
 
 /// Domain bundle.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct Bundle<Extrinsic, Number, Hash, DomainHash> {
+pub struct Bundle<Extrinsic, Number, Hash, DomainNumber, DomainHash> {
     /// Sealed bundle header.
     pub sealed_header: SealedBundleHeader<Number, Hash, DomainHash>,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
-    pub receipt: ExecutionReceipt<Number, Hash, DomainHash>,
+    pub receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash>,
     /// The accompanying extrinsics.
     pub extrinsics: Vec<Extrinsic>,
 }
 
-impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
-    Bundle<Extrinsic, Number, Hash, DomainHash>
+impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainNumber: Encode, DomainHash: Encode>
+    Bundle<Extrinsic, Number, Hash, DomainNumber, DomainHash>
 {
     /// Returns the hash of this bundle.
     pub fn hash(&self) -> H256 {
@@ -345,11 +345,14 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
 }
 
 /// Bundle with opaque extrinsics.
-pub type OpaqueBundle<Number, Hash, DomainHash> = Bundle<OpaqueExtrinsic, Number, Hash, DomainHash>;
+pub type OpaqueBundle<Number, Hash, DomainNumber, DomainHash> =
+    Bundle<OpaqueExtrinsic, Number, Hash, DomainNumber, DomainHash>;
 
-impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash, DomainHash> {
+impl<Extrinsic: Encode, Number, Hash, DomainNumber, DomainHash>
+    Bundle<Extrinsic, Number, Hash, DomainNumber, DomainHash>
+{
     /// Convert a bundle with generic extrinsic to a bundle with opaque extrinsic.
-    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainHash> {
+    pub fn into_opaque_bundle(self) -> OpaqueBundle<Number, Hash, DomainNumber, DomainHash> {
         let Bundle {
             sealed_header,
             receipt,
@@ -372,14 +375,13 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
 
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ExecutionReceipt<Number, Hash, DomainHash> {
+pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash> {
     /// Consensus block number.
     pub consensus_block_number: Number,
     /// Hash of the origin consensus block this receipt corresponds to.
     pub consensus_block_hash: Hash,
-    // TODO: Introduce another generic DomainNumber or use Number or use even BlockNumber primitive?
     /// Domain block number.
-    pub domain_block_number: u64,
+    pub domain_block_number: DomainNumber,
     /// Hash of the domain block this receipt points to.
     pub domain_hash: DomainHash,
     /// List of storage roots collected during the domain block execution.
@@ -388,19 +390,23 @@ pub struct ExecutionReceipt<Number, Hash, DomainHash> {
     pub trace_root: Blake2b256Hash,
 }
 
-impl<Number: Encode, Hash: Encode, DomainHash: Encode> ExecutionReceipt<Number, Hash, DomainHash> {
+impl<Number: Encode, Hash: Encode, DomainNumber: Encode, DomainHash: Encode>
+    ExecutionReceipt<Number, Hash, DomainNumber, DomainHash>
+{
     /// Returns the hash of this execution receipt.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
 }
 
-impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Hash, DomainHash> {
+impl<Number: Copy + Zero, Hash, DomainNumber: Zero, DomainHash: Default>
+    ExecutionReceipt<Number, Hash, DomainNumber, DomainHash>
+{
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(
         consensus_block_number: Number,
         consensus_block_hash: Hash,
-    ) -> ExecutionReceipt<Number, Hash, DomainHash> {
+    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash> {
         let trace = if consensus_block_number.is_zero() {
             Vec::new()
         } else {
@@ -409,14 +415,16 @@ impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Ha
         ExecutionReceipt {
             consensus_block_number,
             consensus_block_hash,
-            domain_block_number: 1u64,
+            domain_block_number: Zero::zero(),
             domain_hash: Default::default(),
             trace,
             trace_root: Default::default(),
         }
     }
 
-    pub fn genesis(primary_genesis_hash: Hash) -> ExecutionReceipt<Number, Hash, DomainHash> {
+    pub fn genesis(
+        primary_genesis_hash: Hash,
+    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash> {
         ExecutionReceipt {
             consensus_block_number: Zero::zero(),
             consensus_block_hash: primary_genesis_hash,
@@ -429,16 +437,16 @@ impl<Number: Copy + Zero, Hash, DomainHash: Default> ExecutionReceipt<Number, Ha
 }
 
 /// List of [`OpaqueBundle`].
-pub type OpaqueBundles<Block, DomainHash> =
-    Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHash>>;
+pub type OpaqueBundles<Block, DomainNumber, DomainHash> =
+    Vec<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>>;
 
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainHash>(
+pub fn create_dummy_bundle_with_receipts_generic<BlockNumber, Hash, DomainNumber, DomainHash>(
     domain_id: DomainId,
     consensus_block_number: BlockNumber,
     consensus_block_hash: Hash,
-    receipt: ExecutionReceipt<BlockNumber, Hash, DomainHash>,
-) -> OpaqueBundle<BlockNumber, Hash, DomainHash>
+    receipt: ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>,
+) -> OpaqueBundle<BlockNumber, Hash, DomainNumber, DomainHash>
 where
     BlockNumber: Encode + Default,
     Hash: Encode + Default,
@@ -569,14 +577,14 @@ pub trait Domain {
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
-    pub trait DomainsApi<DomainHash: Encode + Decode> {
+    pub trait DomainsApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHash>);
+        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>);
 
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> OpaqueBundles<Block, DomainHash>;
+        ) -> OpaqueBundles<Block, DomainNumber, DomainHash>;
 
         /// Returns the hash of successfully submitted bundles.
         fn successful_bundle_hashes() -> Vec<H256>;

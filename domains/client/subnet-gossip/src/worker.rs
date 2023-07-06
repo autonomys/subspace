@@ -1,12 +1,12 @@
 use crate::{
-    topic, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
+    topic, BundleFor, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator,
+    LOG_TARGET,
 };
 use futures::{future, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
-use sp_domains::Bundle;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
@@ -39,10 +39,7 @@ where
         }
     }
 
-    fn gossip_bundle(
-        &self,
-        bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) {
+    fn gossip_bundle(&self, bundle: BundleFor<Block, PBlock>) {
         let outgoing_message: GossipMessage<PBlock, Block> = bundle.into();
         let encoded_message = outgoing_message.encode();
         self.gossip_validator.note_rebroadcasted(&encoded_message);

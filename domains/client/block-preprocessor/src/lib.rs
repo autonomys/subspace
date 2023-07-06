@@ -56,7 +56,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
 {
     let extrinsics = consensus_client.block_body(block_hash)?.ok_or_else(|| {
         sp_blockchain::Error::Backend(format!("BlockBody of {block_hash:?} unavailable"))
@@ -97,7 +97,7 @@ where
 }
 
 fn compile_own_domain_bundles<Block, CBlock>(
-    bundles: OpaqueBundles<CBlock, Block::Hash>,
+    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash>,
 ) -> Vec<Block::Extrinsic>
 where
     Block: BlockT,
@@ -246,7 +246,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
 {
     pub fn new(
         domain_id: DomainId,

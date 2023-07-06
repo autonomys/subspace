@@ -38,7 +38,7 @@ impl<Block, Client, CBlock, CClient, TransactionPool> Clone
 
 pub(super) type ProposeBundleOutput<Block, CBlock> = (
     BundleHeader<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
-    ExecutionReceiptFor<CBlock, <Block as BlockT>::Hash>,
+    ExecutionReceiptFor<Block, CBlock>,
     Vec<<Block as BlockT>::Extrinsic>,
 );
 
@@ -148,7 +148,7 @@ where
         header_number: NumberFor<Block>,
         header_hash: Block::Hash,
         parent_chain: ParentChain,
-    ) -> sp_blockchain::Result<ExecutionReceiptFor<CBlock, Block::Hash>>
+    ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>>
     where
         ParentChainBlock: BlockT,
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -167,12 +167,10 @@ where
         );
 
         let load_receipt = |domain_hash, block_number| {
-            crate::aux_schema::load_execution_receipt_by_domain_hash::<
-                _,
-                Block::Hash,
-                NumberFor<CBlock>,
-                CBlock::Hash,
-            >(&*self.client, domain_hash)?
+            crate::aux_schema::load_execution_receipt_by_domain_hash::<_, Block, CBlock>(
+                &*self.client,
+                domain_hash,
+            )?
             .ok_or_else(|| {
                 sp_blockchain::Error::Backend(format!(
                     "Receipt of domain block #{block_number},{domain_hash} not found"

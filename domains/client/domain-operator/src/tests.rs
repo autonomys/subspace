@@ -203,7 +203,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let consensus_block_info =
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_consensus_info =
-        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, sp_core::H256>| {
+        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, u32, sp_core::H256>| {
             (
                 bundle.receipt.consensus_block_number,
                 bundle.receipt.consensus_block_hash,

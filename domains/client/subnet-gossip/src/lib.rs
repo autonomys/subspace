@@ -31,6 +31,14 @@ const LOG_TARGET: &str = "gossip::operator";
 
 const DOMAIN_SUBNET_PROTOCOL_NAME: &str = "/subspace/operator/1";
 
+type BundleFor<Block, CBlock> = Bundle<
+    <Block as BlockT>::Extrinsic,
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
+
 // TODO: proper timeout
 /// Timeout for rebroadcasting messages.
 /// The default value used in network-gossip is 1100ms.
@@ -56,17 +64,14 @@ fn topic<Block: BlockT>() -> Block::Hash {
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<CBlock: BlockT, Block: BlockT> {
-    Bundle(Bundle<Block::Extrinsic, NumberFor<CBlock>, CBlock::Hash, Block::Hash>),
+    Bundle(BundleFor<Block, CBlock>),
 }
 
-impl<CBlock: BlockT, Block: BlockT>
-    From<Bundle<Block::Extrinsic, NumberFor<CBlock>, CBlock::Hash, Block::Hash>>
+impl<CBlock: BlockT, Block: BlockT> From<BundleFor<Block, CBlock>>
     for GossipMessage<CBlock, Block>
 {
     #[inline]
-    fn from(
-        bundle: Bundle<Block::Extrinsic, NumberFor<CBlock>, CBlock::Hash, Block::Hash>,
-    ) -> Self {
+    fn from(bundle: BundleFor<Block, CBlock>) -> Self {
         Self::Bundle(bundle)
     }
 }
@@ -98,10 +103,7 @@ where
     type Error: Debug;
 
     /// Validates and applies when a transaction bundle was received.
-    fn on_bundle(
-        &self,
-        bundle: &Bundle<Block::Extrinsic, NumberFor<CBlock>, CBlock::Hash, Block::Hash>,
-    ) -> Result<Action, Self::Error>;
+    fn on_bundle(&self, bundle: &BundleFor<Block, CBlock>) -> Result<Action, Self::Error>;
 }
 
 /// Validator for the gossip messages.
@@ -252,14 +254,7 @@ where
     }
 }
 
-type BundleReceiver<Block, CBlock> = TracingUnboundedReceiver<
-    Bundle<
-        <Block as BlockT>::Extrinsic,
-        NumberFor<CBlock>,
-        <CBlock as BlockT>::Hash,
-        <Block as BlockT>::Hash,
-    >,
->;
+type BundleReceiver<Block, CBlock> = TracingUnboundedReceiver<BundleFor<Block, CBlock>>;
 
 /// Parameters to run the executor gossip service.
 pub struct ExecutorGossipParams<CBlock: BlockT, Block: BlockT, Network, GossipSync, Operator> {

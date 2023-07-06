@@ -29,16 +29,17 @@ impl DomainRuntimeCode {
     }
 }
 
-pub(crate) fn retrieve_domain_runtime_code<CBlock, CClient, Hash>(
+pub(crate) fn retrieve_domain_runtime_code<CBlock, CClient, Number, Hash>(
     domain_id: DomainId,
     at: CBlock::Hash,
     consensus_client: &Arc<CClient>,
 ) -> Result<DomainRuntimeCode, VerificationError>
 where
     CBlock: BlockT,
+    Number: Encode + Decode,
     Hash: Encode + Decode,
     CClient: ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Hash>,
+    CClient::Api: DomainsApi<CBlock, Number, Hash>,
 {
     let wasm_bundle = consensus_client
         .runtime_api()

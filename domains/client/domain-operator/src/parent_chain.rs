@@ -40,7 +40,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         &self,
         at: ParentChainBlock::Hash,
         extrinsics: Vec<ParentChainBlock::Extrinsic>,
-    ) -> Result<Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>, sp_api::ApiError>;
+    ) -> Result<Vec<ExecutionReceiptFor<Block, ParentChainBlock>>, sp_api::ApiError>;
 
     fn extract_fraud_proofs(
         &self,
@@ -88,7 +88,7 @@ where
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
 {
     fn best_hash(&self) -> CBlock::Hash {
         self.consensus_client.info().best_hash
@@ -140,7 +140,7 @@ where
         &self,
         _at: CBlock::Hash,
         _extrinsics: Vec<CBlock::Extrinsic>,
-    ) -> Result<Vec<ExecutionReceiptFor<CBlock, Block::Hash>>, sp_api::ApiError> {
+    ) -> Result<Vec<ExecutionReceiptFor<Block, CBlock>>, sp_api::ApiError> {
         // TODO: Implement when proceeding to fraud proof v2.
         Ok(Vec::new())
         // self.consensus_client

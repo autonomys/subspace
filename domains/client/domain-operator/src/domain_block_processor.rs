@@ -1,8 +1,6 @@
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::{
-    to_number_primitive, DomainBlockImportNotification, DomainImportNotificationSinks,
-};
+use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -29,7 +27,7 @@ where
 {
     pub header_hash: Block::Hash,
     pub header_number: NumberFor<Block>,
-    pub execution_receipt: ExecutionReceiptFor<CBlock, Block::Hash>,
+    pub execution_receipt: ExecutionReceiptFor<Block, CBlock>,
 }
 
 /// An abstracted domain block processor.
@@ -105,7 +103,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 {
@@ -283,7 +281,7 @@ where
         let execution_receipt = ExecutionReceipt {
             consensus_block_number,
             consensus_block_hash,
-            domain_block_number: to_number_primitive(header_number) as u64, // TODO: proper type
+            domain_block_number: header_number,
             domain_hash: header_hash,
             trace,
             trace_root,
@@ -502,7 +500,7 @@ where
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
@@ -546,7 +544,7 @@ where
 
     fn check_receipts(
         &self,
-        receipts: Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>,
+        receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
@@ -562,9 +560,8 @@ where
 
             let local_receipt = crate::aux_schema::load_execution_receipt::<
                 _,
-                Block::Hash,
-                NumberFor<Block>,
-                ParentChainBlock::Hash,
+                Block,
+                ParentChainBlock,
             >(&*self.client, consensus_block_hash)?
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Receipt for consensus block #{},{consensus_block_hash} not found",
@@ -652,13 +649,15 @@ where
                 },
             )?
         {
-            let local_receipt =
-                crate::aux_schema::load_execution_receipt(&*self.client, consensus_block_hash)?
-                    .ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Receipt for consensus block {consensus_block_hash} not found"
-                        ))
-                    })?;
+            let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
+                &*self.client,
+                consensus_block_hash,
+            )?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Receipt for consensus block {consensus_block_hash} not found"
+                ))
+            })?;
 
             let fraud_proof = self
                 .fraud_proof_generator
