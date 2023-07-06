@@ -66,8 +66,8 @@ mod pallet {
     };
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator,
-        do_switch_operator_domain, Error as StakingError, Nominator, OperatorConfig, OperatorPool,
-        PendingTransfer, StakingSummary,
+        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator,
+        OperatorConfig, OperatorPool, StakingSummary, Withdraw,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -249,11 +249,24 @@ mod pallet {
     >;
 
     #[pallet::storage]
-    pub(super) type PendingTransfers<T: Config> = StorageMap<
+    pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
         _,
         Identity,
         OperatorId,
-        Vec<PendingTransfer<NominatorId<T>, BalanceOf<T>>>,
+        Identity,
+        NominatorId<T>,
+        BalanceOf<T>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        NominatorId<T>,
+        Withdraw<BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -393,6 +406,10 @@ mod pallet {
         },
         OperatorDeregistered {
             operator_id: OperatorId,
+        },
+        WithdrewStake {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
         },
     }
 
@@ -638,6 +655,26 @@ mod pallet {
             do_deregister_operator::<T>(who, operator_id).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::OperatorDeregistered { operator_id });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(9)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn withdraw_stake(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+            withdraw: Withdraw<BalanceOf<T>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            do_withdraw_stake::<T>(operator_id, who.clone(), withdraw).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::WithdrewStake {
+                operator_id,
+                nominator_id: who,
+            });
 
             Ok(())
         }

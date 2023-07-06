@@ -1,10 +1,10 @@
 //! Staking for domains
 
 use crate::pallet::{
-    DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools,
-    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingTransfers,
+    DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, OperatorPools,
+    PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches, PendingWithdrawals,
 };
-use crate::{BalanceOf, Config, FreezeIdentifier};
+use crate::{BalanceOf, Config, FreezeIdentifier, NominatorId};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectFreeze, MutateFreeze};
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -12,8 +12,8 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey};
-use sp_runtime::traits::{CheckedAdd, Zero};
-use sp_runtime::Percent;
+use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
+use sp_runtime::{Perbill, Percent};
 use sp_std::vec::Vec;
 
 /// Type that represents an operator pool details.
@@ -26,8 +26,8 @@ pub struct OperatorPool<Balance, Share> {
     pub nomination_tax: Percent,
     /// Total active stake for the current pool.
     pub current_total_stake: Balance,
-    /// Total stake for the current pool in the next epoch.
-    pub next_total_stake: Balance,
+    /// Total rewards this operator received this current epoch.
+    pub current_epoch_rewards: Balance,
     /// Total shares of the nominators and the operator in this pool.
     pub total_shares: Share,
     pub is_frozen: bool,
@@ -40,16 +40,9 @@ pub struct Nominator<Share> {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub enum Transfer<Balance> {
-    Withdraw(Balance),
-    Deposit(Balance),
-}
-
-/// Type that represents a pending transfer
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct PendingTransfer<NominatorId, Balance> {
-    pub nominator_id: NominatorId,
-    pub transfer: Transfer<Balance>,
+pub enum Withdraw<Balance> {
+    All,
+    Some(Balance),
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -58,8 +51,6 @@ pub struct StakingSummary<OperatorId, Balance> {
     pub current_epoch_index: EpochIndex,
     /// Total active stake for the current epoch.
     pub current_total_stake: Balance,
-    /// Total stake for the next epoch.
-    pub next_total_stake: Balance,
     /// Current operators for this epoch
     pub current_operators: Vec<OperatorId>,
     /// Operators for the next epoch.
@@ -83,8 +74,11 @@ pub enum Error {
     UnknownOperator,
     MinimumNominatorStake,
     BalanceOverflow,
+    BalanceUnderflow,
     NotOperatorOwner,
     OperatorPoolFrozen,
+    UnknownNominator,
+    ExistingFullWithdraw,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -125,7 +119,7 @@ pub(crate) fn do_register_operator<T: Config>(
             minimum_nominator_stake,
             nomination_tax,
             current_total_stake: Zero::zero(),
-            next_total_stake: Zero::zero(),
+            current_epoch_rewards: Zero::zero(),
             total_shares: Zero::zero(),
             is_frozen: false,
         };
@@ -133,13 +127,7 @@ pub(crate) fn do_register_operator<T: Config>(
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.push(operator_id);
         // update pending transfers
-        PendingTransfers::<T>::append(
-            operator_id,
-            PendingTransfer {
-                nominator_id: operator_owner,
-                transfer: Transfer::Deposit(amount),
-            },
-        );
+        PendingDeposits::<T>::insert(operator_id, operator_owner, amount);
 
         Ok(operator_id)
     })
@@ -153,19 +141,21 @@ pub(crate) fn do_nominate_operator<T: Config>(
     let operator_pool = OperatorPools::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
     ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
+
+    let updated_total_deposit = match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
+        None => amount,
+        Some(existing_deposit) => existing_deposit
+            .checked_add(&amount)
+            .ok_or(Error::BalanceOverflow)?,
+    };
+
     ensure!(
-        amount >= operator_pool.minimum_nominator_stake,
+        updated_total_deposit >= operator_pool.minimum_nominator_stake,
         Error::MinimumNominatorStake
     );
 
     freeze_account_balance_to_operator::<T>(&nominator_id, operator_id, amount)?;
-    PendingTransfers::<T>::append(
-        operator_id,
-        PendingTransfer {
-            nominator_id,
-            transfer: Transfer::Deposit(amount),
-        },
-    );
+    PendingDeposits::<T>::insert(operator_id, nominator_id, updated_total_deposit);
 
     Ok(())
 }
@@ -272,20 +262,108 @@ pub(crate) fn do_deregister_operator<T: Config>(
     })
 }
 
+pub(crate) fn do_withdraw_stake<T: Config>(
+    operator_id: OperatorId,
+    nominator_id: NominatorId<T>,
+    withdraw: Withdraw<BalanceOf<T>>,
+) -> Result<(), Error> {
+    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
+        let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
+        ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
+
+        let nominator = Nominators::<T>::get(operator_id, nominator_id.clone())
+            .ok_or(Error::UnknownNominator)?;
+
+        let operator_owner =
+            OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+
+        let withdraw = match PendingWithdrawals::<T>::get(operator_id, nominator_id.clone()) {
+            None => withdraw,
+            Some(existing_withdraw) => match (existing_withdraw, withdraw) {
+                (Withdraw::All, _) => {
+                    // there is an existing full withdraw, error out
+                    return Err(Error::ExistingFullWithdraw);
+                }
+                (_, Withdraw::All) => {
+                    // there is exisiting withdrawal with specific amount,
+                    // since the new intent is complete withdrawl, use this instead
+                    Withdraw::All
+                }
+                (Withdraw::Some(previous_withdraw), Withdraw::Some(new_withdraw)) => {
+                    // combine both withdrawls into single one
+                    Withdraw::Some(
+                        previous_withdraw
+                            .checked_add(&new_withdraw)
+                            .ok_or(Error::BalanceOverflow)?,
+                    )
+                }
+            },
+        };
+
+        match withdraw {
+            Withdraw::All => {
+                // if nominator is the operator pool owner and trying to withdraw all, then error out
+                if operator_owner == nominator_id {
+                    return Err(Error::MinimumOperatorStake);
+                }
+
+                PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
+            }
+            Withdraw::Some(withdraw_amount) => {
+                let total_pool_stake = operator_pool
+                    .current_total_stake
+                    .checked_add(&operator_pool.current_epoch_rewards)
+                    .ok_or(Error::BalanceOverflow)?;
+
+                let nominator_share =
+                    Perbill::from_rational(nominator.shares, operator_pool.total_shares);
+
+                let nominator_staked_amount = nominator_share * total_pool_stake;
+
+                let nominator_remaining_amount = nominator_staked_amount
+                    .checked_sub(&withdraw_amount)
+                    .ok_or(Error::BalanceUnderflow)?;
+
+                if operator_owner == nominator_id {
+                    // for operator pool owner, the remaining amount should not be less than MinimumOperatorStake,
+                    if nominator_remaining_amount < T::MinOperatorStake::get() {
+                        return Err(Error::MinimumOperatorStake);
+                    }
+
+                    PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
+
+                    // for just a nominator, if remaining amount falls below MinimumNominator stake, then withdraw all
+                    // else withdraw the asked amount only
+                } else if nominator_remaining_amount < operator_pool.minimum_nominator_stake {
+                    PendingWithdrawals::<T>::insert(operator_id, nominator_id, Withdraw::All);
+                } else {
+                    PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
+                }
+            }
+        }
+
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, NextOperatorId, OperatorIdOwner, OperatorPools,
-        PendingOperatorDeregistrations, PendingOperatorSwitches, PendingTransfers,
+        DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, OperatorPools,
+        PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches,
+        PendingWithdrawals,
     };
-    use crate::staking::{OperatorConfig, OperatorPool, PendingTransfer, StakingSummary, Transfer};
+    use crate::staking::{
+        Error as StakingError, Nominator, OperatorConfig, OperatorPool, StakingSummary, Withdraw,
+    };
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
-    use crate::Error;
+    use crate::{BalanceOf, Error, NominatorId};
     use frame_support::traits::fungible::Mutate;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, OperatorPair};
     use sp_runtime::traits::Zero;
+    use std::vec;
     use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
@@ -309,7 +387,6 @@ mod tests {
                 StakingSummary {
                     current_epoch_index: 0,
                     current_total_stake: 0,
-                    next_total_stake: 0,
                     current_operators: vec![],
                     next_operators: vec![],
                 },
@@ -341,19 +418,13 @@ mod tests {
                     minimum_nominator_stake: 0,
                     nomination_tax: Default::default(),
                     current_total_stake: 0,
-                    next_total_stake: 0,
+                    current_epoch_rewards: 0,
                     total_shares: 0,
                     is_frozen: false,
                 }
             );
-            let pending_transfers = PendingTransfers::<Test>::get(0).unwrap();
-            assert_eq!(
-                pending_transfers[0],
-                PendingTransfer {
-                    nominator_id: operator_account,
-                    transfer: Transfer::Deposit(operator_stake),
-                }
-            );
+            let pending_deposit = PendingDeposits::<Test>::get(0, operator_account).unwrap();
+            assert_eq!(pending_deposit, operator_stake);
 
             assert_eq!(
                 Balances::usable_balance(operator_account),
@@ -397,7 +468,6 @@ mod tests {
                 StakingSummary {
                     current_epoch_index: 0,
                     current_total_stake: 0,
-                    next_total_stake: 0,
                     current_operators: vec![],
                     next_operators: vec![],
                 },
@@ -425,30 +495,25 @@ mod tests {
             );
             assert_ok!(res);
 
-            let pending_transfers = PendingTransfers::<Test>::get(0).unwrap();
-            assert_eq!(
-                pending_transfers[1],
-                PendingTransfer {
-                    nominator_id: nominator_account,
-                    transfer: Transfer::Deposit(nominator_stake),
-                }
-            );
+            let pending_deposit = PendingDeposits::<Test>::get(0, operator_account).unwrap();
+            assert_eq!(pending_deposit, operator_stake);
+            let pending_deposit = PendingDeposits::<Test>::get(0, nominator_account).unwrap();
+            assert_eq!(pending_deposit, nominator_stake);
 
             assert_eq!(
                 Balances::usable_balance(nominator_account),
                 nominator_free_balance - nominator_stake
             );
 
-            // cannot use the same locked funds to stake again
+            // another transfer with an existing transfer in place should lead to single
             let res = Domains::nominate_operator(
                 RuntimeOrigin::signed(nominator_account),
                 operator_id,
-                nominator_stake,
+                40 * SSC,
             );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::InsufficientBalance)
-            );
+            assert_ok!(res);
+            let pending_deposit = PendingDeposits::<Test>::get(0, nominator_account).unwrap();
+            assert_eq!(pending_deposit, nominator_stake + 40 * SSC);
         });
     }
 
@@ -467,7 +532,6 @@ mod tests {
                 StakingSummary {
                     current_epoch_index: 0,
                     current_total_stake: 0,
-                    next_total_stake: 0,
                     current_operators: vec![operator_id],
                     next_operators: vec![operator_id],
                 },
@@ -478,7 +542,6 @@ mod tests {
                 StakingSummary {
                     current_epoch_index: 0,
                     current_total_stake: 0,
-                    next_total_stake: 0,
                     current_operators: vec![],
                     next_operators: vec![],
                 },
@@ -494,7 +557,7 @@ mod tests {
                     minimum_nominator_stake: 100 * SSC,
                     nomination_tax: Default::default(),
                     current_total_stake: Zero::zero(),
-                    next_total_stake: Zero::zero(),
+                    current_epoch_rewards: Zero::zero(),
                     total_shares: Zero::zero(),
                     is_frozen: false,
                 },
@@ -534,7 +597,7 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_id = 1;
-        let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -543,7 +606,6 @@ mod tests {
                 StakingSummary {
                     current_epoch_index: 0,
                     current_total_stake: 0,
-                    next_total_stake: 0,
                     current_operators: vec![operator_id],
                     next_operators: vec![operator_id],
                 },
@@ -559,7 +621,7 @@ mod tests {
                     minimum_nominator_stake: 100 * SSC,
                     nomination_tax: Default::default(),
                     current_total_stake: Zero::zero(),
-                    next_total_stake: Zero::zero(),
+                    current_epoch_rewards: Zero::zero(),
                     total_shares: Zero::zero(),
                     is_frozen: false,
                 },
@@ -586,7 +648,6 @@ mod tests {
                 StakingSummary {
                     current_epoch_index: 0,
                     current_total_stake: 0,
-                    next_total_stake: 0,
                     current_operators: vec![],
                     next_operators: vec![],
                 },
@@ -614,5 +675,292 @@ mod tests {
                 Error::<Test>::Staking(crate::staking::Error::OperatorPoolFrozen)
             );
         });
+    }
+
+    type WithdrawWithResult = Vec<(Withdraw<BalanceOf<Test>>, Result<(), StakingError>)>;
+
+    struct WithdrawParams {
+        minimum_nominator_stake: BalanceOf<Test>,
+        total_stake: BalanceOf<Test>,
+        nominators: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
+        operator_reward: BalanceOf<Test>,
+        nominator_id: NominatorId<Test>,
+        withdraws: WithdrawWithResult,
+        expected_withdraw: Option<Withdraw<BalanceOf<Test>>>,
+    }
+
+    fn withdraw_stake(params: WithdrawParams) {
+        let WithdrawParams {
+            minimum_nominator_stake,
+            total_stake,
+            nominators,
+            operator_reward,
+            nominator_id,
+            withdraws,
+            expected_withdraw,
+        } = params;
+        let domain_id = DomainId::new(0);
+        let operator_account = 0;
+        let operator_id = 0;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            DomainStakingSummary::<Test>::insert(
+                domain_id,
+                StakingSummary {
+                    current_epoch_index: 0,
+                    current_total_stake: total_stake,
+                    current_operators: vec![operator_id],
+                    next_operators: vec![operator_id],
+                },
+            );
+
+            OperatorIdOwner::<Test>::insert(operator_id, operator_account);
+
+            let mut total_shares = Zero::zero();
+            for (nominator_id, shares) in nominators {
+                Nominators::<Test>::insert(operator_id, nominator_id, Nominator { shares });
+                total_shares += shares
+            }
+
+            OperatorPools::<Test>::insert(
+                operator_id,
+                OperatorPool {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    next_domain_id: domain_id,
+                    minimum_nominator_stake,
+                    nomination_tax: Default::default(),
+                    current_total_stake: total_stake,
+                    current_epoch_rewards: operator_reward,
+                    total_shares,
+                    is_frozen: false,
+                },
+            );
+
+            for (withdraw, expected_result) in withdraws {
+                let res = Domains::withdraw_stake(
+                    RuntimeOrigin::signed(nominator_id),
+                    operator_id,
+                    withdraw,
+                );
+                assert_eq!(
+                    res,
+                    expected_result.map_err(|err| Error::<Test>::Staking(err).into())
+                );
+            }
+
+            assert_eq!(
+                PendingWithdrawals::<Test>::get(operator_id, nominator_id),
+                expected_withdraw
+            )
+        });
+    }
+
+    #[test]
+    fn withdraw_stake_operator_all() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 0,
+            withdraws: vec![(Withdraw::All, Err(StakingError::MinimumOperatorStake))],
+            expected_withdraw: None,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_operator_below_minimum() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 0,
+            withdraws: vec![(
+                Withdraw::Some(65 * SSC),
+                Err(StakingError::MinimumOperatorStake),
+            )],
+            expected_withdraw: None,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_operator_below_minimum_no_rewards() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 0,
+            withdraws: vec![(
+                Withdraw::Some(51 * SSC),
+                Err(StakingError::MinimumOperatorStake),
+            )],
+            expected_withdraw: None,
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_operator_above_minimum() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 0,
+            withdraws: vec![(Withdraw::Some(64 * SSC), Ok(()))],
+            expected_withdraw: Some(Withdraw::Some(64 * SSC)),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_operator_above_minimum_multiple_withdraws_error() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 0,
+            withdraws: vec![
+                (Withdraw::Some(60 * SSC), Ok(())),
+                (
+                    Withdraw::Some(5 * SSC),
+                    Err(StakingError::MinimumOperatorStake),
+                ),
+            ],
+            expected_withdraw: Some(Withdraw::Some(60 * SSC)),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_operator_above_minimum_multiple_withdraws() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 0,
+            withdraws: vec![
+                (Withdraw::Some(60 * SSC), Ok(())),
+                (Withdraw::Some(4 * SSC), Ok(())),
+            ],
+            expected_withdraw: Some(Withdraw::Some(64 * SSC)),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_operator_above_minimum_no_rewards() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 0,
+            withdraws: vec![(Withdraw::Some(49 * SSC), Ok(()))],
+            expected_withdraw: Some(Withdraw::Some(49 * SSC)),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_below_minimum() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 1,
+            withdraws: vec![(Withdraw::Some(45 * SSC), Ok(()))],
+            expected_withdraw: Some(Withdraw::All),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_below_minimum_no_reward() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(Withdraw::Some(45 * SSC), Ok(()))],
+            expected_withdraw: Some(Withdraw::All),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_above_minimum() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 1,
+            withdraws: vec![(Withdraw::Some(44 * SSC), Ok(()))],
+            expected_withdraw: Some(Withdraw::Some(44 * SSC)),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_above_minimum_multiple_withdraw_all() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 1,
+            withdraws: vec![
+                (Withdraw::Some(40 * SSC), Ok(())),
+                (Withdraw::Some(5 * SSC), Ok(())),
+            ],
+            expected_withdraw: Some(Withdraw::All),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_withdraw_all() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 1,
+            withdraws: vec![(Withdraw::All, Ok(()))],
+            expected_withdraw: Some(Withdraw::All),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_withdraw_all_multiple_withdraws_error() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: 20 * SSC,
+            nominator_id: 1,
+            withdraws: vec![
+                (Withdraw::All, Ok(())),
+                (
+                    Withdraw::Some(10 * SSC),
+                    Err(StakingError::ExistingFullWithdraw),
+                ),
+            ],
+            expected_withdraw: Some(Withdraw::All),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_above_minimum_no_rewards() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(Withdraw::Some(39 * SSC), Ok(()))],
+            expected_withdraw: Some(Withdraw::Some(39 * SSC)),
+        })
     }
 }
