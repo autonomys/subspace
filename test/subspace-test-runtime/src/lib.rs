@@ -891,14 +891,16 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 }
 
 fn extract_successful_bundles(
+    domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
 ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
-    let successful_bundles = Domains::successful_bundles();
+    let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if successful_bundles.contains(&opaque_bundle.hash()) =>
+                if opaque_bundle.domain_id() == domain_id
+                    && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
                 Some(opaque_bundle)
             }
@@ -913,7 +915,7 @@ fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
-    let successful_bundles = Domains::successful_bundles();
+    let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
@@ -1179,13 +1181,14 @@ impl_runtime_apis! {
         }
 
         fn extract_successful_bundles(
+            domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
-            extract_successful_bundles(extrinsics)
+            extract_successful_bundles(domain_id, extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
-            Domains::successful_bundles()
+            Domains::successful_bundles_of_all_domains()
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {

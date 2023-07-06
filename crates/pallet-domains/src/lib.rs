@@ -194,7 +194,7 @@ mod pallet {
 
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
-    pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
+    pub(super) type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
 
     /// Stores the next runtime id.
     #[pallet::storage]
@@ -442,7 +442,7 @@ mod pallet {
 
             let bundle_hash = opaque_bundle.hash();
 
-            SuccessfulBundles::<T>::append(bundle_hash);
+            SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 
             Self::note_domain_bundle(domain_id);
 
@@ -629,11 +629,13 @@ mod pallet {
     // TODO: proper benchmark
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            SuccessfulBundles::<T>::kill();
-
             do_upgrade_runtimes::<T>(block_number);
 
-            Weight::zero()
+            let results = SuccessfulBundles::<T>::clear(u32::MAX, None);
+            let db_weight = T::DbWeight::get();
+            db_weight
+                .reads(results.loops as u64)
+                .saturating_add(db_weight.writes(1))
         }
 
         fn on_finalize(_: T::BlockNumber) {
@@ -703,8 +705,16 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    pub fn successful_bundles() -> Vec<H256> {
-        SuccessfulBundles::<T>::get()
+    pub fn successful_bundles(domain_id: DomainId) -> Vec<H256> {
+        SuccessfulBundles::<T>::get(domain_id)
+    }
+
+    pub fn successful_bundles_of_all_domains() -> Vec<H256> {
+        let mut res = Vec::new();
+        for mut bundles in SuccessfulBundles::<T>::iter_values() {
+            res.append(&mut bundles);
+        }
+        res
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {

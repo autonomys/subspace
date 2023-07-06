@@ -597,6 +597,7 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(
+            domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash>;
 

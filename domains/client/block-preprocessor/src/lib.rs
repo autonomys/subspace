@@ -288,7 +288,7 @@ where
         let bundles = self
             .consensus_client
             .runtime_api()
-            .extract_successful_bundles(consensus_block_hash, primary_extrinsics)?;
+            .extract_successful_bundles(consensus_block_hash, self.domain_id, primary_extrinsics)?;
 
         if bundles.is_empty() && maybe_new_runtime.is_none() {
             return Ok(None);

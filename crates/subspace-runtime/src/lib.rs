@@ -828,13 +828,14 @@ impl_runtime_apis! {
         }
 
         fn extract_successful_bundles(
+            domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
-            crate::domains::extract_successful_bundles(extrinsics)
+            crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
-            Domains::successful_bundles()
+            Domains::successful_bundles_of_all_domains()
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
