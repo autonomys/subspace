@@ -3,7 +3,7 @@ use crate::sector::{SectorContentsMap, SectorMetadata};
 use std::collections::VecDeque;
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SolutionRange};
+use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SectorIndex, SolutionRange};
 use subspace_verification::is_within_solution_range;
 
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ pub(crate) struct ChunkCandidate {
 /// and seek back afterwards if necessary).
 pub fn audit_sector<'a>(
     public_key: &'a PublicKey,
-    sector_index: u64,
+    sector_index: SectorIndex,
     global_challenge: &Blake2b256Hash,
     solution_range: SolutionRange,
     sector: &'a [u8],

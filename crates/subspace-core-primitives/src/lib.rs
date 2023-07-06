@@ -489,7 +489,7 @@ impl SegmentHeader {
 }
 
 /// Sector index in consensus
-pub type SectorIndex = u64;
+pub type SectorIndex = u16;
 
 // TODO: Versioned solution enum
 /// Farmer solution for slot challenge.

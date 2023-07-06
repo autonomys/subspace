@@ -1,4 +1,3 @@
-use crate::piece_caching::PieceMemoryCache;
 use crate::sector::{
     sector_record_chunks_size, sector_size, RawSector, RecordMetadata, SectorContentsMap,
     SectorMetadata,
@@ -161,8 +160,7 @@ pub enum PlottingError {
 #[allow(clippy::too_many_arguments)]
 pub async fn plot_sector<PG, PosTable>(
     public_key: &PublicKey,
-    sector_offset: usize,
-    sector_index: u64,
+    sector_index: SectorIndex,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     farmer_protocol_info: &FarmerProtocolInfo,
@@ -171,7 +169,6 @@ pub async fn plot_sector<PG, PosTable>(
     pieces_in_sector: u16,
     sector_output: &mut [u8],
     sector_metadata_output: &mut [u8],
-    piece_memory_cache: PieceMemoryCache,
 ) -> Result<PlottedSector, PlottingError>
 where
     PG: PieceGetter,
@@ -224,18 +221,14 @@ where
 
         if let Err(error) = download_sector(
             &mut raw_sector,
-            sector_offset,
-            sector_index,
             piece_getter,
             piece_getter_retry_policy,
             kzg,
             &piece_indexes,
-            piece_memory_cache.clone(),
         )
         .await
         {
             warn!(
-                %sector_offset,
                 %sector_index,
                 %error,
                 "Sector plotting attempt failed, will retry later"
@@ -243,6 +236,8 @@ where
 
             return Err(BackoffError::transient(error));
         }
+
+        debug!(%sector_index, "Sector downloaded successfully");
 
         Ok(())
     })
@@ -400,16 +395,12 @@ where
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn download_sector<PG: PieceGetter>(
     raw_sector: &mut RawSector,
-    sector_offset: usize,
-    sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     kzg: &Kzg,
     piece_indexes: &[PieceIndex],
-    piece_memory_cache: PieceMemoryCache,
 ) -> Result<(), PlottingError> {
     // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
     //  concurrency from there
@@ -419,10 +410,6 @@ async fn download_sector<PG: PieceGetter>(
         .iter()
         .map(|piece_index| async {
             let piece_index = *piece_index;
-
-            if let Some(piece) = piece_memory_cache.get_piece(&piece_index.hash()) {
-                return (piece_index, Ok(Some(piece)));
-            }
 
             let piece_result = piece_getter
                 .get_piece(piece_index, piece_getter_retry_policy)
@@ -469,11 +456,7 @@ async fn download_sector<PG: PieceGetter>(
             commitment: *commitment,
             witness: *witness,
         });
-
-        piece_memory_cache.add_piece(piece_index.hash(), piece);
     }
-
-    debug!(%sector_offset, %sector_index, "Sector downloaded successfully");
 
     Ok(())
 }
