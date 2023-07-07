@@ -70,6 +70,7 @@ mod pallet {
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
+    use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
     use frame_support::weights::Weight;
@@ -82,7 +83,9 @@ mod pallet {
         DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, OperatorId, RuntimeId,
         RuntimeType,
     };
-    use sp_runtime::traits::{BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero};
+    use sp_runtime::traits::{
+        AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero,
+    };
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
@@ -116,6 +119,19 @@ mod pallet {
 
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
+
+        /// Type representing the shares in the staking protocol.
+        type Share: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + AtLeast32BitUnsigned
+            + FullCodec
+            + Copy
+            + Default
+            + TypeInfo
+            + MaxEncodedLen
+            + IsType<BalanceOf<Self>>;
 
         /// Identifier used for Freezing the funds used for staking.
         type FreezeIdentifier: FreezeIdentifier<Self>;
@@ -196,7 +212,7 @@ mod pallet {
 
     #[pallet::storage]
     pub(super) type OperatorPools<T: Config> =
-        StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>>, OptionQuery>;
+        StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>, T::Share>, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type Nominators<T: Config> = StorageDoubleMap<
@@ -205,7 +221,7 @@ mod pallet {
         OperatorId,
         Identity,
         NominatorId<T>,
-        Nominator<BalanceOf<T>>,
+        Nominator<T::Share>,
         OptionQuery,
     >;
 
@@ -339,7 +355,7 @@ mod pallet {
         },
         OperatorNominated {
             operator_id: OperatorId,
-            nominator_id: T::AccountId,
+            nominator_id: NominatorId<T>,
         },
         DomainInstantiated {
             domain_id: DomainId,

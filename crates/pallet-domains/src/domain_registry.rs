@@ -285,7 +285,8 @@ mod tests {
             // Set enough fund to creator
             Balances::make_free_balance_be(
                 &creator,
-                <Test as Config>::DomainInstantiationDeposit::get() + 1,
+                <Test as Config>::DomainInstantiationDeposit::get()
+                    + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
             // `instantiate_domain` must success now

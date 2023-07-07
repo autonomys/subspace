@@ -17,7 +17,7 @@ use sp_std::vec::Vec;
 
 /// Type that represents an operator pool details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct OperatorPool<Balance> {
+pub struct OperatorPool<Balance, Share> {
     pub signing_key: ExecutorPublicKey,
     pub current_domain_id: DomainId,
     pub minimum_nominator_stake: Balance,
@@ -27,14 +27,14 @@ pub struct OperatorPool<Balance> {
     /// Total stake for the current pool in the next epoch.
     pub next_total_stake: Balance,
     /// Total shares of the nominators and the operator in this pool.
-    pub total_shares: Balance,
+    pub total_shares: Share,
     pub is_frozen: bool,
 }
 
 /// Type that represents a nominator's details under a specific operator pool
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct Nominator<Balance> {
-    pub shares: Balance,
+pub struct Nominator<Share> {
+    pub shares: Share,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

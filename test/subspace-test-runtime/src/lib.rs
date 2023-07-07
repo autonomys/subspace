@@ -537,6 +537,7 @@ impl pallet_domains::Config for Runtime {
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
+    type Share = Balance;
 }
 
 parameter_types! {

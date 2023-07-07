@@ -120,7 +120,7 @@ impl pallet_domains::FreezeIdentifier<Test> for FreezeIdentifier {
 
 parameter_types! {
     pub const MaxFreezes: u32 = 10;
-    pub const ExistentialDeposit: u64 = 1;
+    pub const ExistentialDeposit: Balance = 1;
 }
 
 impl pallet_balances::Config for Test {
@@ -160,6 +160,7 @@ impl pallet_domains::Config for Test {
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
+    type Share = Balance;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
