@@ -221,6 +221,11 @@ impl Default for PosProof {
 impl PosProof {
     /// Size of proof of space proof in bytes.
     pub const SIZE: usize = 17 * 8;
+
+    /// Proof hash.
+    pub fn hash(&self) -> Blake2b256Hash {
+        blake2b_256_hash(&self.0)
+    }
 }
 
 /// Proof of time key(input to the encryption).

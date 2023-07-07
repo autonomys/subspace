@@ -287,8 +287,10 @@ where
 
                     *encoded_chunk_used = true;
 
-                    // NOTE: Quality is already hashed in the `subspace-chiapos` library
-                    Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(*quality.to_bytes()))
+                    Some(
+                        Simd::from(record_chunk.to_bytes())
+                            ^ Simd::from(quality.create_proof().hash()),
+                    )
                 })
                 // Make sure above filter function (and corresponding `encoded_chunk_used` update)
                 // happen at most as many times as there is number of chunks in the record,
