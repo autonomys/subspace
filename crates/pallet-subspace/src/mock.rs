@@ -402,7 +402,6 @@ pub fn create_signed_vote(
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(SegmentIndex::ZERO),
         max_pieces_in_sector: MAX_PIECES_IN_SECTOR,
-        sector_expiration: SegmentIndex::ONE,
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),

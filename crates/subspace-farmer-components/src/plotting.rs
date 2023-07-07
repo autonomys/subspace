@@ -193,8 +193,6 @@ where
     }
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
-    let current_segment_index = farmer_protocol_info.history_size.segment_index();
-    let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
         .take(pieces_in_sector.into())
@@ -384,7 +382,6 @@ where
         pieces_in_sector,
         s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
         history_size: farmer_protocol_info.history_size,
-        expires_at,
     };
 
     sector_metadata_output.copy_from_slice(&sector_metadata.encode());
