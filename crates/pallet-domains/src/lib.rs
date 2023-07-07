@@ -27,6 +27,7 @@ mod tests;
 pub mod domain_registry;
 pub mod runtime_registry;
 mod staking;
+mod staking_epoch;
 pub mod weights;
 
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
