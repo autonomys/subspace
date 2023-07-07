@@ -231,7 +231,6 @@ where
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size,
         max_pieces_in_sector: pieces_in_sector,
-        sector_expiration: SegmentIndex::from(100),
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),

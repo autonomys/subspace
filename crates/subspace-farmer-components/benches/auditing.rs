@@ -12,7 +12,7 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SectorIndex,
-    SegmentIndex, SolutionRange,
+    SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -64,7 +64,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
         max_pieces_in_sector: pieces_in_sector,
-        sector_expiration: SegmentIndex::ONE,
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),
@@ -96,7 +95,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
             s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
             history_size: farmer_protocol_info.history_size,
-            expires_at: Default::default(),
         };
 
         (

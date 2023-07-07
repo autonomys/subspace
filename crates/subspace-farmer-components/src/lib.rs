@@ -24,7 +24,7 @@ mod segment_reconstruction;
 
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
-use subspace_core_primitives::{HistorySize, SegmentIndex};
+use subspace_core_primitives::HistorySize;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
@@ -38,8 +38,6 @@ pub struct FarmerProtocolInfo {
     pub history_size: HistorySize,
     /// How many pieces one sector is supposed to contain (max)
     pub max_pieces_in_sector: u16,
-    /// Number of segments after which sector expires
-    pub sector_expiration: SegmentIndex,
     /// Number of latest archived segments that are considered "recent history".
     pub recent_segments: HistorySize,
     /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
