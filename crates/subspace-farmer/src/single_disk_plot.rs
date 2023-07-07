@@ -9,7 +9,7 @@ use crate::single_disk_plot::farming::farming;
 pub use crate::single_disk_plot::farming::FarmingError;
 use crate::single_disk_plot::piece_reader::PieceReader;
 pub use crate::single_disk_plot::plotting::PlottingError;
-use crate::single_disk_plot::plotting::{plotting, replotting};
+use crate::single_disk_plot::plotting::{plotting, plotting_scheduler};
 use crate::utils::JoinOnDrop;
 use bytesize::ByteSize;
 use derive_more::{Display, From};
@@ -724,7 +724,7 @@ impl SingleDiskPlot {
                 }
             })?;
 
-        tasks.push(Box::pin(replotting(
+        tasks.push(Box::pin(plotting_scheduler(
             public_key.hash(),
             sectors_indices_left_to_plot,
             target_sector_count,

@@ -36,6 +36,8 @@ use tracing::{debug, info, trace, warn};
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 /// Get piece retry attempts number.
 const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
+/// Size of the cache of archived segments for the purposes of faster sector expiration checks.
+const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
 
 /// Errors that happen during plotting
 #[derive(Debug, Error)]
@@ -242,7 +244,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn replotting<NC>(
+pub(super) async fn plotting_scheduler<NC>(
     public_key_hash: Blake2b256Hash,
     sectors_indices_left_to_plot: Range<SectorIndex>,
     target_sector_count: SectorIndex,
@@ -325,10 +327,8 @@ where
 
         let mut sector_indices_to_replot = Vec::new();
         let mut sectors_to_check = Vec::with_capacity(usize::from(target_sector_count));
-        // TODO: Move constant to the top of the file
-        const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize =
-            NonZeroUsize::new(1000).expect("Not zero; qed");
         let mut archived_segment_commitments_cache = LruCache::new(ARCHIVED_SEGMENTS_CACHE_SIZE);
+
         while let Some(()) = archived_segments_receiver.next().await {
             let archived_segment_header = last_archived_segment.load(Ordering::SeqCst);
 
