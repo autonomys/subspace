@@ -181,6 +181,9 @@ const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
     HistorySize::new(NonZeroU64::new(1).expect("Not zero; qed")),
     HistorySize::new(NonZeroU64::new(10).expect("Not zero; qed")),
 );
+/// Minimum lifetime of a plotted sector, measured in archived segment.
+const MIN_SECTOR_LIFETIME: HistorySize =
+    HistorySize::new(NonZeroU64::new(4).expect("Not zero; qed"));
 
 /// The block weight for 2 seconds of compute
 const BLOCK_WEIGHT_FOR_2_SEC: Weight =
@@ -266,6 +269,7 @@ parameter_types! {
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
     pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
     pub const RecentHistoryFraction: (HistorySize, HistorySize) = RECENT_HISTORY_FRACTION;
+    pub const MinSectorLifetime: HistorySize = MIN_SECTOR_LIFETIME;
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
@@ -289,6 +293,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;

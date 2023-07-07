@@ -44,4 +44,6 @@ pub struct FarmerProtocolInfo {
     pub recent_segments: HistorySize,
     /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
     pub recent_history_fraction: (HistorySize, HistorySize),
+    /// Minimum lifetime of a plotted sector, measured in archived segment
+    pub min_sector_lifetime: HistorySize,
 }

@@ -245,6 +245,7 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(1).unwrap()),
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
+    pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -257,6 +258,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;

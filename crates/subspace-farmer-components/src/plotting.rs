@@ -255,7 +255,7 @@ where
         .for_each(|((piece_offset, record), mut encoded_chunks_used)| {
             // Derive PoSpace table
             let pos_table = PosTable::generate(
-                &sector_id.evaluation_seed(piece_offset, farmer_protocol_info.history_size),
+                &sector_id.derive_evaluation_seed(piece_offset, farmer_protocol_info.history_size),
             );
 
             let source_record_chunks = record

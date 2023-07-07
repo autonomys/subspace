@@ -224,6 +224,10 @@ mod pallet {
         #[pallet::constant]
         type RecentHistoryFraction: Get<(HistorySize, HistorySize)>;
 
+        /// Minimum lifetime of a plotted sector, measured in archived segment.
+        #[pallet::constant]
+        type MinSectorLifetime: Get<HistorySize>;
+
         /// Number of votes expected per block.
         ///
         /// This impacts solution range for votes in consensus.
@@ -1059,6 +1063,7 @@ impl<T: Config> Pallet<T> {
                 T::RecentHistoryFraction::get().0,
                 T::RecentHistoryFraction::get().1,
             ),
+            min_sector_lifetime: T::MinSectorLifetime::get(),
         }
     }
 }
@@ -1209,6 +1214,7 @@ enum CheckVoteError {
     SlotInThePast,
     BadRewardSignature(SignatureError),
     UnknownSegmentCommitment,
+    InvalidHistorySize,
     InvalidSolution(String),
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
@@ -1227,6 +1233,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::SlotInThePast => InvalidTransaction::Stale,
             CheckVoteError::BadRewardSignature(_) => InvalidTransaction::BadProof,
             CheckVoteError::UnknownSegmentCommitment => InvalidTransaction::Call,
+            CheckVoteError::InvalidHistorySize => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
             CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
@@ -1386,6 +1393,14 @@ fn check_vote<T: Config>(
             return Err(CheckVoteError::UnknownSegmentCommitment);
         };
 
+    let sector_expiration_check_segment_commitment = Pallet::<T>::segment_commitment(
+        solution
+            .history_size
+            .sector_expiration_check(T::MinSectorLifetime::get())
+            .ok_or(CheckVoteError::InvalidHistorySize)?
+            .segment_index(),
+    );
+
     if let Err(error) = verify_solution(
         solution.into(),
         slot.into(),
@@ -1397,6 +1412,9 @@ fn check_vote<T: Config>(
                 segment_commitment,
                 recent_segments,
                 recent_history_fraction,
+                min_sector_lifetime: T::MinSectorLifetime::get(),
+                current_history_size: Pallet::<T>::history_size(),
+                sector_expiration_check_segment_commitment,
             }),
         })
             .into(),

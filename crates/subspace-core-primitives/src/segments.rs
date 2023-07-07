@@ -144,6 +144,13 @@ impl HistorySize {
     pub fn segment_index(&self) -> SegmentIndex {
         SegmentIndex::from(self.0.get() - 1)
     }
+
+    /// History size at which expiration check for sector happens.
+    ///
+    /// Returns `None` on overflow.
+    pub fn sector_expiration_check(&self, min_sector_lifetime: Self) -> Option<Self> {
+        self.0.checked_add(min_sector_lifetime.0.get()).map(Self)
+    }
 }
 
 /// Recorded history segment before archiving is applied.
