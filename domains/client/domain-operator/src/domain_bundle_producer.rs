@@ -214,7 +214,6 @@ where
                 .domain_bundle_proposer
                 .propose_bundle_at(
                     proof_of_election,
-                    slot,
                     consensus_block_info,
                     self.parent_chain.clone(),
                     tx_selector,

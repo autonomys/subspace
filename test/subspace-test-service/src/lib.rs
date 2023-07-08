@@ -512,7 +512,7 @@ impl MockConsensusNode {
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
             {
-                if opaque_bundle.sealed_header.header.slot_number == slot {
+                if opaque_bundle.sealed_header.slot_number() == slot {
                     return Some(opaque_bundle);
                 }
             }

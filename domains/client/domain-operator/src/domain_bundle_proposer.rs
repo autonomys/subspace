@@ -9,7 +9,6 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
-use sp_consensus_slots::Slot;
 use sp_domains::{BundleHeader, ExecutionReceipt, ProofOfElection};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
 use std::marker::PhantomData;
@@ -69,7 +68,6 @@ where
     pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
         proof_of_election: ProofOfElection<Block::Hash>,
-        slot: Slot,
         consensus_block_info: HashAndNumber<CBlock>,
         parent_chain: ParentChain,
         tx_selector: TransactionSelector<Block, Client>,
@@ -130,7 +128,6 @@ where
         let header = BundleHeader {
             consensus_block_number: consensus_block_info.number,
             consensus_block_hash: consensus_block_info.hash,
-            slot_number: slot.into(),
             extrinsics_root,
             proof_of_election,
         };

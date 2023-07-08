@@ -201,7 +201,6 @@ fn create_dummy_bundle(
     let header = BundleHeader {
         consensus_block_number,
         consensus_block_hash,
-        slot_number: 0u64,
         extrinsics_root: Default::default(),
         proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
     };

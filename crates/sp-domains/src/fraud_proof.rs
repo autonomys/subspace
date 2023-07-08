@@ -1,5 +1,3 @@
-#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-use crate::BundleHeader;
 use crate::{DomainId, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -280,36 +278,6 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
     /// Returns the hash of this bundle equivocation proof.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
-    }
-
-    // TODO: remove this later.
-    /// Constructs a dummy bundle equivocation proof.
-    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy_at(domain_id: DomainId, slot_number: u64) -> Self {
-        use sp_application_crypto::UncheckedFrom;
-
-        let dummy_header = SealedBundleHeader {
-            header: BundleHeader {
-                consensus_block_number: Number::from(0u32),
-                consensus_block_hash: Hash::default(),
-                slot_number,
-                extrinsics_root: H256::default(),
-                proof_of_election: crate::ProofOfElection::dummy(
-                    domain_id,
-                    crate::OperatorPublicKey::unchecked_from([0u8; 32]),
-                ),
-            },
-            signature: crate::OperatorSignature::unchecked_from([0u8; 64]),
-        };
-
-        Self {
-            domain_id,
-            offender: AccountId::decode(&mut sp_runtime::traits::TrailingZeroInput::zeroes())
-                .expect("Failed to create zero account"),
-            slot: slot_number.into(),
-            first_header: dummy_header.clone(),
-            second_header: dummy_header,
-        }
     }
 }
 

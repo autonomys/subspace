@@ -154,8 +154,6 @@ pub struct BundleHeader<Number, Hash, DomainHash> {
     pub consensus_block_number: Number,
     /// The hash of consensus block corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
-    /// The slot number.
-    pub slot_number: u64,
     /// The merkle root of the extrinsics.
     pub extrinsics_root: H256,
     /// Proof of bundle producer election.
@@ -199,6 +197,10 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
         BlakeTwo256::hash_of(self)
     }
 
+    pub fn slot_number(&self) -> u64 {
+        self.header.proof_of_election.slot_number
+    }
+
     /// Returns whether the signature is valid.
     pub fn verify_signature(&self) -> bool {
         self.header
@@ -212,13 +214,15 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
 pub struct ProofOfElection<DomainHash> {
     /// Domain id.
     pub domain_id: DomainId,
+    /// The slot number.
+    pub slot_number: u64,
+    /// Global challenge.
+    pub global_challenge: Blake2b256Hash,
     /// VRF signature.
     pub vrf_signature: VrfSignature,
     // TODO: operator_id
     /// VRF public key.
     pub operator_public_key: OperatorPublicKey,
-    /// Global challenge.
-    pub global_challenge: Blake2b256Hash,
     // TODO: added temporarily in order to not change a lot of code to make it compile, remove later.
     pub _phandom: DomainHash,
 }
@@ -252,9 +256,10 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
         };
         Self {
             domain_id,
+            slot_number: 0u64,
+            global_challenge: Blake2b256Hash::default(),
             vrf_signature,
             operator_public_key,
-            global_challenge: Blake2b256Hash::default(),
             _phandom: Default::default(),
         }
     }
@@ -408,7 +413,6 @@ where
         header: BundleHeader {
             consensus_block_number,
             consensus_block_hash,
-            slot_number: 0u64,
             extrinsics_root: Default::default(),
             proof_of_election: ProofOfElection::dummy(
                 domain_id,
