@@ -27,9 +27,17 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const LOG_TARGET: &str = "gossip::executor";
+const LOG_TARGET: &str = "gossip::operator";
 
-const EXECUTOR_PROTOCOL_NAME: &str = "/subspace/executor/1";
+const DOMAIN_SUBNET_PROTOCOL_NAME: &str = "/subspace/operator/1";
+
+type BundleFor<Block, CBlock> = Bundle<
+    <Block as BlockT>::Extrinsic,
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
 
 // TODO: proper timeout
 /// Timeout for rebroadcasting messages.
@@ -40,33 +48,30 @@ type MessageHash = [u8; 8];
 
 /// Returns the configuration value to use in
 /// [`sc_network::config::FullNetworkConfiguration::add_notification_protocol`].
-pub fn executor_gossip_peers_set_config() -> NonDefaultSetConfig {
-    let mut cfg = NonDefaultSetConfig::new(EXECUTOR_PROTOCOL_NAME.into(), 1024 * 1024);
+pub fn domain_subnet_gossip_peers_set_config() -> NonDefaultSetConfig {
+    let mut cfg = NonDefaultSetConfig::new(DOMAIN_SUBNET_PROTOCOL_NAME.into(), 1024 * 1024);
     cfg.allow_non_reserved(25, 25);
     cfg
 }
 
 /// Gossip engine messages topic.
 fn topic<Block: BlockT>() -> Block::Hash {
-    <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"executor")
+    <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"operator")
 }
 
-/// Executor gossip message type.
+/// Operator gossip message type.
 ///
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
-pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
-    Bundle(Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
+pub enum GossipMessage<CBlock: BlockT, Block: BlockT> {
+    Bundle(BundleFor<Block, CBlock>),
 }
 
-impl<PBlock: BlockT, Block: BlockT>
-    From<Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
-    for GossipMessage<PBlock, Block>
+impl<CBlock: BlockT, Block: BlockT> From<BundleFor<Block, CBlock>>
+    for GossipMessage<CBlock, Block>
 {
     #[inline]
-    fn from(
-        bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) -> Self {
+    fn from(bundle: BundleFor<Block, CBlock>) -> Self {
         Self::Bundle(bundle)
     }
 }
@@ -88,43 +93,40 @@ impl Action {
     }
 }
 
-/// Handler for the messages received from the executor gossip network.
-pub trait GossipMessageHandler<PBlock, Block>
+/// Handler for the messages received from the domain subnet.
+pub trait GossipMessageHandler<CBlock, Block>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
 {
     /// Error type.
     type Error: Debug;
 
     /// Validates and applies when a transaction bundle was received.
-    fn on_bundle(
-        &self,
-        bundle: &Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) -> Result<Action, Self::Error>;
+    fn on_bundle(&self, bundle: &BundleFor<Block, CBlock>) -> Result<Action, Self::Error>;
 }
 
 /// Validator for the gossip messages.
-pub struct GossipValidator<PBlock, Block, Executor>
+pub struct GossipValidator<CBlock, Block, Operator>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block>,
+    Operator: GossipMessageHandler<CBlock, Block>,
 {
     topic: Block::Hash,
-    executor: Executor,
+    executor: Operator,
     next_rebroadcast: Mutex<Instant>,
     known_rebroadcasted: RwLock<HashSet<MessageHash>>,
-    _phantom_data: PhantomData<PBlock>,
+    _phantom_data: PhantomData<CBlock>,
 }
 
-impl<PBlock, Block, Executor> GossipValidator<PBlock, Block, Executor>
+impl<CBlock, Block, Operator> GossipValidator<CBlock, Block, Operator>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block>,
+    Operator: GossipMessageHandler<CBlock, Block>,
 {
-    pub fn new(executor: Executor) -> Self {
+    pub fn new(executor: Operator) -> Self {
         Self {
             topic: topic::<Block>(),
             executor,
@@ -139,7 +141,7 @@ where
         known_rebroadcasted.insert(twox_64(encoded_message));
     }
 
-    fn validate_message(&self, msg: GossipMessage<PBlock, Block>) -> ValidationResult<Block::Hash> {
+    fn validate_message(&self, msg: GossipMessage<CBlock, Block>) -> ValidationResult<Block::Hash> {
         match msg {
             GossipMessage::Bundle(bundle) => {
                 let outcome = self.executor.on_bundle(&bundle);
@@ -162,11 +164,11 @@ where
     }
 }
 
-impl<PBlock, Block, Executor> Validator<Block> for GossipValidator<PBlock, Block, Executor>
+impl<CBlock, Block, Operator> Validator<Block> for GossipValidator<CBlock, Block, Operator>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block> + Send + Sync,
+    Operator: GossipMessageHandler<CBlock, Block> + Send + Sync,
 {
     fn new_peer(
         &self,
@@ -184,7 +186,7 @@ where
         _sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
-        match GossipMessage::<PBlock, Block>::decode(&mut data) {
+        match GossipMessage::<CBlock, Block>::decode(&mut data) {
             Ok(msg) => {
                 tracing::debug!(target: LOG_TARGET, ?msg, "Validating incoming message");
                 self.validate_message(msg)
@@ -209,7 +211,7 @@ where
         Box::new(move |_topic, mut data| {
             let msg_hash = twox_64(data);
             // TODO: can be expired due to the message itself might be too old?
-            let _msg = match GossipMessage::<PBlock, Block>::decode(&mut data) {
+            let _msg = match GossipMessage::<CBlock, Block>::decode(&mut data) {
                 Ok(msg) => msg,
                 Err(_) => return true,
             };
@@ -247,54 +249,47 @@ where
                 return do_rebroadcast;
             }
 
-            GossipMessage::<PBlock, Block>::decode(&mut data).is_ok()
+            GossipMessage::<CBlock, Block>::decode(&mut data).is_ok()
         })
     }
 }
 
-type BundleReceiver<Block, PBlock> = TracingUnboundedReceiver<
-    Bundle<
-        <Block as BlockT>::Extrinsic,
-        NumberFor<PBlock>,
-        <PBlock as BlockT>::Hash,
-        <Block as BlockT>::Hash,
-    >,
->;
+type BundleReceiver<Block, CBlock> = TracingUnboundedReceiver<BundleFor<Block, CBlock>>;
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, GossipSync, Executor> {
+pub struct ExecutorGossipParams<CBlock: BlockT, Block: BlockT, Network, GossipSync, Operator> {
     /// Substrate network service.
     pub network: Network,
     /// Syncing service an event stream for peers.
     pub sync: Arc<GossipSync>,
-    /// Executor instance.
-    pub executor: Executor,
+    /// Operator instance.
+    pub operator: Operator,
     /// Stream of transaction bundle produced locally.
-    pub bundle_receiver: BundleReceiver<Block, PBlock>,
+    pub bundle_receiver: BundleReceiver<Block, CBlock>,
 }
 
 /// Starts the executor gossip worker.
-pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor>(
-    gossip_params: ExecutorGossipParams<PBlock, Block, Network, GossipSync, Executor>,
+pub async fn start_gossip_worker<CBlock, Block, Network, GossipSync, Operator>(
+    gossip_params: ExecutorGossipParams<CBlock, Block, Network, GossipSync, Operator>,
 ) where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
     Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
-    Executor: GossipMessageHandler<PBlock, Block> + Send + Sync + 'static,
+    Operator: GossipMessageHandler<CBlock, Block> + Send + Sync + 'static,
     GossipSync: GossipSyncing<Block> + 'static,
 {
     let ExecutorGossipParams {
         network,
         sync,
-        executor,
+        operator,
         bundle_receiver,
     } = gossip_params;
 
-    let gossip_validator = Arc::new(GossipValidator::new(executor));
+    let gossip_validator = Arc::new(GossipValidator::new(operator));
     let gossip_engine = GossipEngine::new(
         network,
         sync,
-        EXECUTOR_PROTOCOL_NAME,
+        DOMAIN_SUBNET_PROTOCOL_NAME,
         gossip_validator.clone(),
         None,
     );

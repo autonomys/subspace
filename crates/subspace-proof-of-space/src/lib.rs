@@ -14,8 +14,6 @@
 
 #[cfg(feature = "chia")]
 pub mod chia;
-#[cfg(feature = "chia-legacy")]
-pub mod chia_legacy;
 #[cfg(feature = "chia")]
 pub mod chiapos;
 #[cfg(feature = "shim")]
@@ -35,9 +33,6 @@ pub trait Quality {
 /// Proof of space table type
 #[derive(Debug, Clone, Copy)]
 pub enum PosTableType {
-    /// Chia table
-    #[cfg(feature = "chia-legacy")]
-    ChiaLegacy,
     /// Chia table
     #[cfg(feature = "chia")]
     Chia,

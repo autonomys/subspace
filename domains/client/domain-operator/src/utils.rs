@@ -8,7 +8,7 @@ use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
-pub(super) struct ExecutorSlotInfo {
+pub(super) struct OperatorSlotInfo {
     /// Slot
     pub(super) slot: Slot,
     /// Global challenge
@@ -26,6 +26,8 @@ where
     pub parent_hash: Block::Hash,
     /// block's number.
     pub number: NumberFor<Block>,
+    /// Is this the new best block.
+    pub is_new_best: bool,
 }
 
 /// Converts a generic block number to a concrete primitive block number.
@@ -38,14 +40,14 @@ where
         .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"))
 }
 
-pub type DomainImportNotificationSinks<Block, PBlock> =
-    Arc<Mutex<Vec<TracingUnboundedSender<DomainBlockImportNotification<Block, PBlock>>>>>;
+pub type DomainImportNotificationSinks<Block, CBlock> =
+    Arc<Mutex<Vec<TracingUnboundedSender<DomainBlockImportNotification<Block, CBlock>>>>>;
 
-pub type DomainImportNotifications<Block, PBlock> =
-    TracingUnboundedReceiver<DomainBlockImportNotification<Block, PBlock>>;
+pub type DomainImportNotifications<Block, CBlock> =
+    TracingUnboundedReceiver<DomainBlockImportNotification<Block, CBlock>>;
 
 #[derive(Clone, Debug)]
-pub struct DomainBlockImportNotification<Block: BlockT, PBlock: BlockT> {
+pub struct DomainBlockImportNotification<Block: BlockT, CBlock: BlockT> {
     pub domain_block_hash: Block::Hash,
-    pub primary_block_hash: PBlock::Hash,
+    pub consensus_block_hash: CBlock::Hash,
 }

@@ -32,10 +32,10 @@ use crate::genesis_block_builder::SubspaceGenesisBlockBuilder;
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
 use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
-use crate::tx_pre_validator::PrimaryChainTxPreValidator;
+use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
-use domain_runtime_primitives::Hash as DomainHash;
+use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -71,7 +71,7 @@ use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, Subspac
 use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
-use sp_domains::{ExecutorApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
+use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -256,7 +256,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            PrimaryChainTxPreValidator<
+            ConsensusChainTxPreValidator<
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -288,10 +288,10 @@ where
         + OffchainWorkerApi<Block>
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
-        + ExecutorApi<Block, DomainHash>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, DomainNumber, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
-        + SubspaceApi<Block, FarmerPublicKey>,
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -373,7 +373,7 @@ where
         Arc::new(invalid_state_transition_proof_verifier),
     );
 
-    let tx_pre_validator = PrimaryChainTxPreValidator::new(
+    let tx_pre_validator = ConsensusChainTxPreValidator::new(
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier.clone(),
@@ -463,8 +463,8 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
-        + ExecutorApi<Block, DomainHash>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>,
+        + DomainsApi<Block, DomainNumber, DomainHash>
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     /// Task manager.
@@ -499,7 +499,7 @@ where
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
-    PrimaryChainTxPreValidator<
+    ConsensusChainTxPreValidator<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
         FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -519,7 +519,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
         FullPool<
             Block,
             FullClient<RuntimeApi, ExecutorDispatch>,
-            PrimaryChainTxPreValidator<
+            ConsensusChainTxPreValidator<
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
@@ -550,10 +550,10 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
-        + ExecutorApi<Block, DomainHash>
+        + SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, DomainNumber, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, domain_runtime_primitives::Hash>
-        + SubspaceApi<Block, FarmerPublicKey>,
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     I: BlockImport<
             Block,

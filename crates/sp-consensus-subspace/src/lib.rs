@@ -321,6 +321,8 @@ pub enum ChainConstants {
         recent_segments: HistorySize,
         /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
         recent_history_fraction: (HistorySize, HistorySize),
+        /// Minimum lifetime of a plotted sector, measured in archived segment.
+        min_sector_lifetime: HistorySize,
     },
 }
 
@@ -372,6 +374,15 @@ impl ChainConstants {
             ..
         } = self;
         *recent_history_fraction
+    }
+
+    /// Minimum lifetime of a plotted sector, measured in archived segment.
+    pub fn min_sector_lifetime(&self) -> HistorySize {
+        let Self::V0 {
+            min_sector_lifetime,
+            ..
+        } = self;
+        *min_sector_lifetime
     }
 }
 

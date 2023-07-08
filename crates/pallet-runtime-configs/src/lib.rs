@@ -27,10 +27,10 @@ mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
-    /// Whether to disable the executor calls.
+    /// Whether to disable the calls in pallet-domains.
     #[pallet::storage]
-    #[pallet::getter(fn enable_executor)]
-    pub type EnableExecutor<T> = StorageValue<_, bool, ValueQuery>;
+    #[pallet::getter(fn enable_domains)]
+    pub type EnableDomains<T> = StorageValue<_, bool, ValueQuery>;
 
     /// Whether to disable the normal balances transfer calls.
     #[pallet::storage]
@@ -45,7 +45,7 @@ mod pallet {
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
-        pub enable_executor: bool,
+        pub enable_domains: bool,
         pub enable_transfer: bool,
         pub confirmation_depth_k: T::BlockNumber,
     }
@@ -54,7 +54,7 @@ mod pallet {
         #[inline]
         fn default() -> Self {
             Self {
-                enable_executor: false,
+                enable_domains: false,
                 enable_transfer: false,
                 confirmation_depth_k: T::BlockNumber::from(100u32),
             }
@@ -65,7 +65,7 @@ mod pallet {
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
             let Self {
-                enable_executor,
+                enable_domains,
                 enable_transfer,
                 confirmation_depth_k,
             } = self;
@@ -75,7 +75,7 @@ mod pallet {
                 "ConfirmationDepthK can not be zero"
             );
 
-            <EnableExecutor<T>>::put(enable_executor);
+            <EnableDomains<T>>::put(enable_domains);
             <EnableTransfer<T>>::put(enable_transfer);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
         }

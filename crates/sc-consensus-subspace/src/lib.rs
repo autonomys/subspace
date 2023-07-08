@@ -79,8 +79,8 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
-    SolutionRange,
+    Blake2b256Hash, HistorySize, PublicKey, SectorId, SegmentCommitment, SegmentHeader,
+    SegmentIndex, Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -144,8 +144,8 @@ where
 {
     /// Block number
     pub block_number: NumberFor<Block>,
-    /// Sender for pausing the block import when executor is not fast enough to process
-    /// the primary block.
+    /// Sender for pausing the block import when operator is not fast enough to process
+    /// the consensus block.
     pub acknowledgement_sender: mpsc::Sender<()>,
 }
 
@@ -238,9 +238,20 @@ pub enum Error<Header: HeaderT> {
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
-    /// Merkle Root not found
+    /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),
+    /// Sector expired
+    #[error("Sector expired")]
+    SectorExpired {
+        /// Expiration history size
+        expiration_history_size: HistorySize,
+        /// Current history size
+        current_history_size: HistorySize,
+    },
+    /// Invalid history size
+    #[error("Invalid history size")]
+    InvalidHistorySize,
     /// Only root plot public key is allowed
     #[error("Only root plot public key is allowed")]
     OnlyRootPlotPublicKeyAllowed,
@@ -297,6 +308,14 @@ where
                     Error::InvalidAuditChunkOffset
                 }
                 VerificationPrimitiveError::InvalidChunkWitness => Error::InvalidChunkWitness,
+                VerificationPrimitiveError::SectorExpired {
+                    expiration_history_size,
+                    current_history_size,
+                } => Error::SectorExpired {
+                    expiration_history_size,
+                    current_history_size,
+                },
+                VerificationPrimitiveError::InvalidHistorySize => Error::InvalidHistorySize,
             },
         }
     }
@@ -982,6 +1001,16 @@ where
 
         let segment_commitment =
             maybe_segment_commitment.ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
+        let sector_expiration_check_segment_commitment = aux_schema::load_segment_commitment(
+            self.client.as_ref(),
+            subspace_digest_items
+                .pre_digest
+                .solution
+                .history_size
+                .sector_expiration_check(chain_constants.min_sector_lifetime())
+                .ok_or(Error::InvalidHistorySize)?
+                .segment_index(),
+        )?;
 
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
@@ -997,6 +1026,12 @@ where
                     segment_commitment,
                     recent_segments: chain_constants.recent_segments(),
                     recent_history_fraction: chain_constants.recent_history_fraction(),
+                    min_sector_lifetime: chain_constants.min_sector_lifetime(),
+                    // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
+                    //  should (though we don't support fast sync yet, so doesn't matter in
+                    //  practice)
+                    current_history_size: self.client.runtime_api().history_size(parent_hash)?,
+                    sector_expiration_check_segment_commitment,
                 }),
             },
             &self.subspace_link.kzg,

@@ -8,7 +8,7 @@ use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::{
     create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    DomainsFreezeIdentifier, ExecutionReceipt, ExecutorPair, OpaqueBundle, OperatorId,
+    DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId, OperatorPair,
     SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
@@ -145,6 +145,7 @@ parameter_types! {
 
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
+    type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
@@ -172,14 +173,15 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 fn create_dummy_receipt(
-    primary_number: BlockNumber,
-    primary_hash: Hash,
-) -> ExecutionReceipt<BlockNumber, Hash, H256> {
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
+) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256> {
     ExecutionReceipt {
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
+        domain_block_number: consensus_block_number,
         domain_hash: H256::random(),
-        trace: if primary_number == 0 {
+        trace: if consensus_block_number == 0 {
             Vec::new()
         } else {
             vec![H256::random(), H256::random()]
@@ -190,16 +192,16 @@ fn create_dummy_receipt(
 
 fn create_dummy_bundle(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, H256> {
-    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
+    let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
-    let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
+    let execution_receipt = create_dummy_receipt(consensus_block_number, consensus_block_hash);
 
     let header = BundleHeader {
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
         bundle_solution: BundleSolution::dummy(domain_id, pair.public()),
@@ -217,14 +219,14 @@ fn create_dummy_bundle(
 #[allow(dead_code)]
 fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
-    receipt: ExecutionReceipt<BlockNumber, Hash, H256>,
-) -> OpaqueBundle<BlockNumber, Hash, H256> {
-    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
+    receipt: ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256>,
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
+    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, BlockNumber, H256>(
         domain_id,
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
         receipt,
     )
 }
@@ -299,10 +301,10 @@ fn test_stale_bundle_should_be_rejected() {
     let confirmation_depth_k = ConfirmationDepthK::get();
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1..=confirmation_depth_k + 2)
         .map(|n| {
-            let primary_hash = Hash::random();
+            let consensus_block_hash = Hash::random();
             (
-                create_dummy_bundle(DOMAIN_ID, n, primary_hash),
-                primary_hash,
+                create_dummy_bundle(DOMAIN_ID, n, consensus_block_hash),
+                consensus_block_hash,
             )
         })
         .unzip();

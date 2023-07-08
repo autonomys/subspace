@@ -41,6 +41,7 @@ use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
+use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -184,6 +185,9 @@ const RECENT_HISTORY_FRACTION: (HistorySize, HistorySize) = (
     HistorySize::new(NonZeroU64::new(1).expect("Not zero; qed")),
     HistorySize::new(NonZeroU64::new(10).expect("Not zero; qed")),
 );
+/// Minimum lifetime of a plotted sector, measured in archived segment.
+const MIN_SECTOR_LIFETIME: HistorySize =
+    HistorySize::new(NonZeroU64::new(4).expect("Not zero; qed"));
 
 /// The block weight for 2 seconds of compute
 const BLOCK_WEIGHT_FOR_2_SEC: Weight =
@@ -269,6 +273,7 @@ parameter_types! {
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
     pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
     pub const RecentHistoryFraction: (HistorySize, HistorySize) = RECENT_HISTORY_FRACTION;
+    pub const MinSectorLifetime: HistorySize = MIN_SECTOR_LIFETIME;
     // Disable solution range adjustment at the start of chain.
     // Root origin must enable later
     pub const ShouldAdjustSolutionRange: bool = false;
@@ -292,6 +297,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -470,7 +476,8 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
+    type DomainNumber = DomainNumber;
+    type DomainHash = DomainHash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -805,24 +812,24 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
             crate::domains::extract_pre_validation_object(extrinsic)
         }
     }
 
-    impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
         fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
             crate::domains::extract_successful_bundles(extrinsics)
         }
 

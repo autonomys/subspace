@@ -1,36 +1,36 @@
 use crate::{
-    topic, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
+    topic, BundleFor, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator,
+    LOG_TARGET,
 };
 use futures::{future, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
-use sp_domains::Bundle;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
-pub struct GossipWorker<PBlock, Block, Executor>
+pub struct GossipWorker<CBlock, Block, Executor>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block>,
+    Executor: GossipMessageHandler<CBlock, Block>,
 {
-    gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
+    gossip_validator: Arc<GossipValidator<CBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    bundle_receiver: BundleReceiver<Block, PBlock>,
+    bundle_receiver: BundleReceiver<Block, CBlock>,
 }
 
-impl<PBlock, Block, Executor> GossipWorker<PBlock, Block, Executor>
+impl<CBlock, Block, Executor> GossipWorker<CBlock, Block, Executor>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
     Block: BlockT,
-    Executor: GossipMessageHandler<PBlock, Block>,
+    Executor: GossipMessageHandler<CBlock, Block>,
 {
     pub(super) fn new(
-        gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
+        gossip_validator: Arc<GossipValidator<CBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-        bundle_receiver: BundleReceiver<Block, PBlock>,
+        bundle_receiver: BundleReceiver<Block, CBlock>,
     ) -> Self {
         Self {
             gossip_validator,
@@ -39,11 +39,8 @@ where
         }
     }
 
-    fn gossip_bundle(
-        &self,
-        bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) {
-        let outgoing_message: GossipMessage<PBlock, Block> = bundle.into();
+    fn gossip_bundle(&self, bundle: BundleFor<Block, CBlock>) {
+        let outgoing_message: GossipMessage<CBlock, Block> = bundle.into();
         let encoded_message = outgoing_message.encode();
         self.gossip_validator.note_rebroadcasted(&encoded_message);
         self.gossip_engine
@@ -57,7 +54,7 @@ where
                 .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
-                    GossipMessage::<PBlock, Block>::decode(&mut &notification.message[..]).ok()
+                    GossipMessage::<CBlock, Block>::decode(&mut &notification.message[..]).ok()
                 }),
         );
 

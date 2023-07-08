@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
-use domain_client_executor::ExecutorStreams;
+use domain_client_operator::OperatorStreams;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
@@ -36,9 +36,9 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use subspace_runtime_primitives::opaque::Block as PBlock;
+use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Index as Nonce;
-use subspace_test_service::MockPrimaryNode;
+use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
     BlockchainEventsExt, RpcHandlersExt, RpcTransactionError, RpcTransactionOutput,
@@ -62,9 +62,9 @@ pub type Backend = TFullBackend<Block>;
 type Client<RuntimeApi, ExecutorDispatch> = FullClient<Block, RuntimeApi, ExecutorDispatch>;
 
 /// Domain executor for the test service.
-pub type DomainExecutor<RuntimeApi, ExecutorDispatch> = domain_service::DomainExecutor<
+pub type DomainOperator<RuntimeApi, ExecutorDispatch> = domain_service::DomainOperator<
     Block,
-    PBlock,
+    CBlock,
     subspace_test_client::Client,
     RuntimeApi,
     ExecutorDispatch,
@@ -113,8 +113,8 @@ where
     pub addr: MultiaddrWithPeerId,
     /// RPCHandlers to make RPC queries.
     pub rpc_handlers: RpcHandlers,
-    /// Domain executor.
-    pub executor: DomainExecutor<RuntimeApi, ExecutorDispatch>,
+    /// Domain oeprator.
+    pub operator: DomainOperator<RuntimeApi, ExecutorDispatch>,
     /// Sink to the node's tx pool
     pub tx_pool_sink: TracingUnboundedSender<Vec<u8>>,
     _phantom_data: PhantomData<(Runtime, AccountId)>,
@@ -169,7 +169,7 @@ where
         domain_nodes_exclusive: bool,
         run_relayer: bool,
         role: Role,
-        mock_primary_node: &mut MockPrimaryNode,
+        mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
         let service_config = node_config(
             domain_id,
@@ -199,29 +199,29 @@ where
             service_config,
             maybe_relayer_id,
         };
-        let executor_streams = ExecutorStreams {
-            // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
+        let operator_streams = OperatorStreams {
+            // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
-            primary_block_import_throttling_buffer_size: 0,
-            block_importing_notification_stream: mock_primary_node
+            consensus_block_import_throttling_buffer_size: 0,
+            block_importing_notification_stream: mock_consensus_node
                 .block_importing_notification_stream(),
-            imported_block_notification_stream: mock_primary_node
+            imported_block_notification_stream: mock_consensus_node
                 .client
                 .every_import_notification_stream(),
-            new_slot_notification_stream: mock_primary_node.new_slot_notification_stream(),
+            new_slot_notification_stream: mock_consensus_node.new_slot_notification_stream(),
             _phantom: Default::default(),
         };
 
-        let gossip_msg_sink = mock_primary_node
+        let gossip_msg_sink = mock_consensus_node
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
-            primary_chain_client: mock_primary_node.client.clone(),
-            primary_network_sync_oracle: mock_primary_node.sync_service.clone(),
-            select_chain: mock_primary_node.select_chain.clone(),
-            executor_streams,
+            consensus_client: mock_consensus_node.client.clone(),
+            consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
+            select_chain: mock_consensus_node.select_chain.clone(),
+            operator_streams,
             gossip_message_sink: gossip_msg_sink,
             provider: DefaultProvider,
         };
@@ -250,13 +250,13 @@ where
             sync_service,
             network_starter,
             rpc_handlers,
-            executor,
+            operator,
             tx_pool_sink,
             ..
         } = domain_node;
 
         if role.is_authority() {
-            mock_primary_node
+            mock_consensus_node
                 .xdm_gossip_worker_builder()
                 .push_domain_tx_pool_sink(domain_id, tx_pool_sink.clone());
         }
@@ -279,7 +279,7 @@ where
             sync_service,
             addr,
             rpc_handlers,
-            executor,
+            operator,
             tx_pool_sink,
             _phantom_data: Default::default(),
         }
@@ -402,7 +402,7 @@ impl DomainNodeBuilder {
     pub async fn build_evm_node(
         self,
         role: Role,
-        mock_primary_node: &mut MockPrimaryNode,
+        mock_consensus_node: &mut MockConsensusNode,
     ) -> EvmDomainNode {
         DomainNode::build(
             DomainId::new(3u32),
@@ -413,7 +413,7 @@ impl DomainNodeBuilder {
             self.domain_nodes_exclusive,
             self.run_relayer,
             role,
-            mock_primary_node,
+            mock_consensus_node,
         )
         .await
     }

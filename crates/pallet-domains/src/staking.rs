@@ -10,7 +10,7 @@ use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, EpochIndex, ExecutorPublicKey, OperatorId};
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::Percent;
 use sp_std::vec::Vec;
@@ -18,7 +18,7 @@ use sp_std::vec::Vec;
 /// Type that represents an operator pool details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct OperatorPool<Balance, Share> {
-    pub signing_key: ExecutorPublicKey,
+    pub signing_key: OperatorPublicKey,
     pub current_domain_id: DomainId,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
@@ -66,7 +66,7 @@ pub struct StakingSummary<OperatorId, Balance> {
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct OperatorConfig<Balance> {
-    pub signing_key: ExecutorPublicKey,
+    pub signing_key: OperatorPublicKey,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
 }
@@ -198,7 +198,7 @@ mod tests {
     use frame_support::traits::fungible::Mutate;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, ExecutorPair};
+    use sp_domains::{DomainId, OperatorPair};
     use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
@@ -210,7 +210,7 @@ mod tests {
         let operator_account = 1;
         let operator_free_balance = 1500 * SSC;
         let operator_stake = 1000 * SSC;
-        let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
@@ -292,7 +292,7 @@ mod tests {
         let operator_account = 1;
         let operator_free_balance = 1500 * SSC;
         let operator_stake = 1000 * SSC;
-        let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let nominator_account = 2;
         let nominator_free_balance = 150 * SSC;

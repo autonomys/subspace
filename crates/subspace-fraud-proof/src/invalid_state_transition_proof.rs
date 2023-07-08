@@ -15,7 +15,7 @@ use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, RuntimeCode};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_state_machine::backend::AsTrieBackend;
@@ -182,24 +182,24 @@ where
 
 /// Invalid state transition proof verifier.
 pub struct InvalidStateTransitionProofVerifier<
-    PBlock,
-    PClient,
+    CBlock,
+    CClient,
     Exec,
     Hash,
     VerifierClient,
     DomainExtrinsicsBuilder,
 > {
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     executor: Exec,
     verifier_client: VerifierClient,
     domain_extrinsics_builder: DomainExtrinsicsBuilder,
-    _phantom: PhantomData<(PBlock, Hash)>,
+    _phantom: PhantomData<(CBlock, Hash)>,
 }
 
-impl<PBlock, PClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
+impl<CBlock, CClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
     for InvalidStateTransitionProofVerifier<
-        PBlock,
-        PClient,
+        CBlock,
+        CClient,
         Exec,
         Hash,
         VerifierClient,
@@ -212,7 +212,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             executor: self.executor.clone(),
             verifier_client: self.verifier_client.clone(),
             domain_extrinsics_builder: self.domain_extrinsics_builder.clone(),
@@ -221,38 +221,38 @@ where
     }
 }
 
-impl<PBlock, PClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
+impl<CBlock, CClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
     InvalidStateTransitionProofVerifier<
-        PBlock,
-        PClient,
+        CBlock,
+        CClient,
         Exec,
         Hash,
         VerifierClient,
         DomainExtrinsicsBuilder,
     >
 where
-    PBlock: BlockT,
-    H256: Into<PBlock::Hash>,
-    PClient: ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    CBlock: BlockT,
+    H256: Into<CBlock::Hash>,
+    CClient: ProvideRuntimeApi<CBlock> + Send + Sync,
+    CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
 {
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         executor: Exec,
         verifier_client: VerifierClient,
         domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
-            primary_chain_client,
+            consensus_client,
             executor,
             verifier_client,
             domain_extrinsics_builder,
-            _phantom: PhantomData::<(PBlock, Hash)>,
+            _phantom: PhantomData::<(CBlock, Hash)>,
         }
     }
 
@@ -270,7 +270,7 @@ where
         let InvalidStateTransitionProof {
             domain_id,
             parent_number,
-            primary_parent_hash,
+            consensus_parent_hash,
             pre_state_root,
             post_state_root,
             proof,
@@ -280,8 +280,8 @@ where
 
         let domain_runtime_code = crate::domain_runtime_code::retrieve_domain_runtime_code(
             *domain_id,
-            (*primary_parent_hash).into(),
-            &self.primary_chain_client,
+            (*consensus_parent_hash).into(),
+            &self.consensus_client,
         )?;
 
         let runtime_code = RuntimeCode {
@@ -298,9 +298,9 @@ where
                 let parent_number =
                     <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
 
-                let primary_number = parent_number + 1;
+                let consensus_block_number = parent_number + 1;
                 let new_header = <Block as BlockT>::Header::new(
-                    primary_number,
+                    consensus_block_number,
                     Default::default(),
                     Default::default(),
                     parent_hash,
@@ -309,14 +309,14 @@ where
                 new_header.encode()
             }
             ExecutionPhase::ApplyExtrinsic(extrinsic_index) => {
-                let primary_hash = self
+                let consensus_block_hash = self
                     .verifier_client
                     .primary_hash(*domain_id, parent_number + 1)?;
                 let domain_extrinsics = self
                     .domain_extrinsics_builder
                     .build_domain_extrinsics(
                         *domain_id,
-                        primary_hash.into(),
+                        consensus_block_hash.into(),
                         domain_runtime_code.wasm_bundle.to_vec(),
                     )
                     .map_err(|_| VerificationError::FailedToBuildDomainExtrinsics)?;
@@ -340,7 +340,7 @@ where
         .map_err(VerificationError::BadProof)?;
 
         let new_post_state_root =
-            execution_phase.decode_execution_result::<PBlock::Header>(execution_result)?;
+            execution_phase.decode_execution_result::<CBlock::Header>(execution_result)?;
         let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())?;
 
         if new_post_state_root == *post_state_root {
@@ -363,10 +363,10 @@ pub trait VerifyInvalidStateTransitionProof {
     ) -> Result<(), VerificationError>;
 }
 
-impl<PBlock, C, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
+impl<CBlock, C, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
     VerifyInvalidStateTransitionProof
     for InvalidStateTransitionProofVerifier<
-        PBlock,
+        CBlock,
         C,
         Exec,
         Hash,
@@ -374,14 +374,14 @@ impl<PBlock, C, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
         DomainExtrinsicsBuilder,
     >
 where
-    PBlock: BlockT,
-    H256: Into<PBlock::Hash>,
-    C: ProvideRuntimeApi<PBlock> + Send + Sync,
-    C::Api: ExecutorApi<PBlock, Hash>,
+    CBlock: BlockT,
+    H256: Into<CBlock::Hash>,
+    C: ProvideRuntimeApi<CBlock> + Send + Sync,
+    C::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     Exec: CodeExecutor + Clone + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<PBlock>,
+    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
 {
     fn verify_invalid_state_transition_proof(
         &self,

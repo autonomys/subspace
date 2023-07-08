@@ -164,6 +164,7 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(1).unwrap()),
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
+    pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
     pub const RecordSize: u32 = 3840;
     pub const ExpectedVotesPerBlock: u32 = 9;
     pub const ReplicationFactor: u16 = 1;
@@ -181,6 +182,7 @@ impl Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -400,23 +402,22 @@ pub fn create_signed_vote(
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(SegmentIndex::ZERO),
         max_pieces_in_sector: MAX_PIECES_IN_SECTOR,
-        sector_expiration: SegmentIndex::ONE,
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
     let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);
 
-    for (sector_offset, sector_index) in iter::from_fn(|| Some(rand::random())).enumerate() {
+    for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = vec![0; sector_size];
         let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
-            sector_offset,
             sector_index,
             archived_history_segment,
             PieceGetterRetryPolicy::default(),
@@ -426,7 +427,6 @@ pub fn create_signed_vote(
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
-            Default::default(),
         ))
         .unwrap();
 

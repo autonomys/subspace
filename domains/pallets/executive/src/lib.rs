@@ -329,7 +329,7 @@ where
 
         // Note the storage root before finalizing the block so that the block imported during the
         // syncing processs produces the same storage root with the one processed based on
-        // the primary block.
+        // the consensus block.
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 
         // post-extrinsics book-keeping

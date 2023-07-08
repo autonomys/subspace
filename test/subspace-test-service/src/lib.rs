@@ -20,6 +20,7 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
+use domain_runtime_primitives::BlockNumber as DomainNumber;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use jsonrpsee::RpcModule;
@@ -73,7 +74,7 @@ use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVeri
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
-use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
+use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, FraudProofVerifier, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
@@ -179,10 +180,10 @@ pub fn node_config(
 type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, Block>, Block>;
 
 type TxPreValidator =
-    PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+    ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
-/// A mock Subspace primary node instance used for testing.
-pub struct MockPrimaryNode {
+/// A mock Subspace consensus node instance used for testing.
+pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
     pub task_manager: TaskManager,
     /// Client's instance.
@@ -212,7 +213,7 @@ pub struct MockPrimaryNode {
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
     block_import: MockBlockImport<
-        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, H256>,
+        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, DomainNumber, H256>,
         Client,
         Block,
     >,
@@ -222,13 +223,13 @@ pub struct MockPrimaryNode {
     log_prefix: &'static str,
 }
 
-impl MockPrimaryNode {
-    /// Run a mock primary node
-    pub fn run_mock_primary_node(
+impl MockConsensusNode {
+    /// Run a mock consensus node
+    pub fn run(
         tokio_handle: tokio::runtime::Handle,
         key: Sr25519Keyring,
         base_path: BasePath,
-    ) -> MockPrimaryNode {
+    ) -> MockConsensusNode {
         let log_prefix = key.into();
 
         let mut config = node_config(tokio_handle, key, vec![], false, false, false, base_path);
@@ -237,7 +238,7 @@ impl MockPrimaryNode {
         // by `TemporarilyBanned`
         config.transaction_pool.ban_time = time::Duration::from_millis(0);
 
-        config.network.node_name = format!("{} (MockPrimaryChain)", config.network.node_name);
+        config.network.node_name = format!("{} (Consensus)", config.network.node_name);
         let span = sc_tracing::tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
             name = config.network.node_name.as_str()
@@ -278,7 +279,7 @@ impl MockPrimaryNode {
             Arc::new(invalid_state_transition_proof_verifier),
         );
 
-        let tx_pre_validator = PrimaryChainTxPreValidator::new(
+        let tx_pre_validator = ConsensusChainTxPreValidator::new(
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             proof_verifier.clone(),
@@ -371,7 +372,7 @@ impl MockPrimaryNode {
             key.to_account_id(),
         );
 
-        MockPrimaryNode {
+        MockConsensusNode {
             task_manager,
             client,
             backend,
@@ -391,11 +392,11 @@ impl MockPrimaryNode {
         }
     }
 
-    /// Start the mock primary node network
+    /// Start the mock consensus node network
     pub fn start_network(&mut self) {
         self.network_starter
             .take()
-            .expect("mock primary node network have not started yet")
+            .expect("mock consensus node network have not started yet")
             .start_network();
     }
 
@@ -439,7 +440,7 @@ impl MockPrimaryNode {
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
         slot: Slot,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, H256>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256>> {
         let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
@@ -473,7 +474,10 @@ impl MockPrimaryNode {
     /// Produce a new slot and wait for a bundle produced at this slot.
     pub async fn produce_slot_and_wait_for_bundle_submission(
         &mut self,
-    ) -> (Slot, Option<OpaqueBundle<NumberFor<Block>, Hash, H256>>) {
+    ) -> (
+        Slot,
+        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256>>,
+    ) {
         let slot = self.produce_slot();
 
         let bundle = self.notify_new_slot_and_wait_for_bundle(slot).await;
@@ -501,7 +505,7 @@ impl MockPrimaryNode {
     pub fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, H256>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
@@ -527,6 +531,27 @@ impl MockPrimaryNode {
             .await
     }
 
+    /// Remove all tx from the tx pool
+    pub async fn clear_tx_pool(&self) -> Result<(), Box<dyn Error>> {
+        let txs: Vec<_> = self
+            .transaction_pool
+            .ready()
+            .map(|t| self.transaction_pool.hash_of(&t.data))
+            .collect();
+        let best_block_id = BlockId::Hash(self.client.info().best_hash);
+        self.transaction_pool
+            .pool()
+            .prune_known(&best_block_id, txs.as_slice())?;
+        // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
+        // all the bans as the ban time must be passed.
+        tokio::time::sleep(time::Duration::from_millis(1)).await;
+        self.transaction_pool
+            .pool()
+            .validated_pool()
+            .clear_stale(&best_block_id)?;
+        Ok(())
+    }
+
     /// Remove a ready transaction from transaction pool.
     pub async fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
         self.transaction_pool.pool().prune_known(
@@ -544,7 +569,7 @@ impl MockPrimaryNode {
     }
 }
 
-impl MockPrimaryNode {
+impl MockConsensusNode {
     async fn collect_txn_from_pool(
         &self,
         parent_number: NumberFor<Block>,
@@ -847,7 +872,7 @@ where
                     // It is necessary to notify the subscriber twice for each importing block in the test to ensure
                     // the imported block must be fully processed by the executor when all acknowledgements responded.
                     // This is because the `futures::channel::mpsc::channel` used in the executor have 1 slot even the
-                    // `primary_block_import_throttling_buffer_size` is set to 0 in the test, notify one more time can
+                    // `consensus_block_import_throttling_buffer_size` is set to 0 in the test, notify one more time can
                     // ensure the previously sent `block_imported` notification must be fully processed by the executor
                     // when the second acknowledgements responded.
                     // Please see https://github.com/subspace/subspace/pull/1363#discussion_r1162571291 for more details.

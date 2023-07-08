@@ -3,10 +3,10 @@ use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::DomainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
-use domain_client_executor::{EssentialExecutorParams, Executor, ExecutorStreams};
 use domain_client_message_relayer::GossipMessageSink;
+use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, DomainCoreApi, Hash, InherentExtrinsicApi};
+use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::Stream;
 use jsonrpsee::tracing;
@@ -28,7 +28,7 @@ use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
@@ -44,31 +44,31 @@ use substrate_frame_rpc_system::AccountNonceApi;
 
 type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
 
-pub type DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI> = Executor<
+pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI> = Operator<
     Block,
-    PBlock,
+    CBlock,
     FullClient<Block, RuntimeApi, ExecutorDispatch>,
-    PClient,
-    FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+    CClient,
+    FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     FullBackend<Block>,
     NativeElseWasmExecutor<ExecutorDispatch>,
     DomainBlockImport<BI>,
 >;
 
 /// Domain full node along with some other components.
-pub struct NewFull<C, CodeExecutor, PBlock, PClient, RuntimeApi, ExecutorDispatch, AccountId, BI>
+pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, ExecutorDispatch, AccountId, BI>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
-    PBlock::Hash: From<Hash>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>>,
+    CBlock::Hash: From<Hash>,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -103,35 +103,35 @@ where
     pub rpc_handlers: sc_service::RpcHandlers,
     /// Network starter.
     pub network_starter: NetworkStarter,
-    /// Executor.
-    pub executor: DomainExecutor<Block, PBlock, PClient, RuntimeApi, ExecutorDispatch, BI>,
+    /// Operator.
+    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
     _phantom_data: PhantomData<AccountId>,
 }
 
-type DomainTxPreValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
+type DomainTxPreValidator<CBlock, CClient, RuntimeApi, ExecutorDispatch> =
     crate::domain_tx_pre_validator::DomainTxPreValidator<
         Block,
-        PBlock,
+        CBlock,
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        PClient,
+        CClient,
         RuntimeApiFull<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
     >;
 
-pub type FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch> =
+pub type FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch> =
     subspace_transaction_pool::FullPool<
         Block,
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        DomainTxPreValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+        DomainTxPreValidator<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     >;
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, ExecutorDispatch, PBlock, PClient, BIMP>(
+fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     block_import_provider: &BIMP,
 ) -> Result<
     PartialComponents<
@@ -139,7 +139,7 @@ fn new_partial<RuntimeApi, ExecutorDispatch, PBlock, PClient, BIMP>(
         FullBackend<Block>,
         (),
         sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-        FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+        FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
@@ -150,16 +150,16 @@ fn new_partial<RuntimeApi, ExecutorDispatch, PBlock, PClient, BIMP>(
     sc_service::Error,
 >
 where
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
-    PBlock::Hash: From<Hash>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>>,
+    CBlock::Hash: From<Hash>,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -203,7 +203,7 @@ where
         domain_id,
         client.clone(),
         Box::new(task_manager.spawn_handle()),
-        primary_chain_client,
+        consensus_client,
         RuntimeApiFull::new(client.clone()),
     );
 
@@ -238,24 +238,24 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<PBlock, PClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>
+pub struct DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>
 where
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     pub domain_id: DomainId,
     pub domain_config: DomainConfiguration<AccountId>,
-    pub primary_chain_client: Arc<PClient>,
-    pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub consensus_client: Arc<CClient>,
+    pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
-    pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
+    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
     pub provider: Provider,
 }
 
 /// Builds service for a domain full node.
 pub async fn new_full<
-    PBlock,
-    PClient,
+    CBlock,
+    CClient,
     SC,
     IBNS,
     CIBNS,
@@ -265,13 +265,13 @@ pub async fn new_full<
     AccountId,
     Provider,
 >(
-    domain_params: DomainParams<PBlock, PClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>,
+    domain_params: DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
         NativeElseWasmExecutor<ExecutorDispatch>,
-        PBlock,
-        PClient,
+        CBlock,
+        CClient,
         RuntimeApi,
         ExecutorDispatch,
         AccountId,
@@ -279,22 +279,22 @@ pub async fn new_full<
     >,
 >
 where
-    PBlock: BlockT,
-    NumberFor<PBlock>: From<NumberFor<Block>> + Into<u32>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: From<NumberFor<Block>> + Into<u32>,
     <Block as BlockT>::Hash: From<Hash>,
-    PBlock::Hash: From<Hash>,
-    PClient: HeaderBackend<PBlock>
-        + HeaderMetadata<PBlock, Error = sp_blockchain::Error>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
-        + BlockchainEvents<PBlock>
+    CBlock::Hash: From<Hash>,
+    CClient: HeaderBackend<CBlock>
+        + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + BlockchainEvents<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Hash>,
-    SC: SelectChain<PBlock>,
-    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
-    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
+    SC: SelectChain<CBlock>,
+    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
@@ -326,11 +326,11 @@ where
     Provider: RpcProvider<
             Block,
             FullClient<Block, RuntimeApi, ExecutorDispatch>,
-            FullPool<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+            FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
             FullChainApiWrapper<
                 Block,
                 FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                DomainTxPreValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
+                DomainTxPreValidator<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
             >,
             TFullBackend<Block>,
             AccountId,
@@ -340,10 +340,10 @@ where
     let DomainParams {
         domain_id,
         domain_config,
-        primary_chain_client,
-        primary_network_sync_oracle,
+        consensus_client,
+        consensus_network_sync_oracle,
         select_chain,
-        executor_streams,
+        operator_streams,
         gossip_message_sink,
         provider,
     } = domain_params;
@@ -354,7 +354,7 @@ where
     let params = new_partial(
         &domain_config.service_config,
         domain_id,
-        primary_chain_client.clone(),
+        consensus_client.clone(),
         &provider,
     )?;
 
@@ -369,7 +369,7 @@ where
         sc_network::config::FullNetworkConfiguration::new(&domain_config.service_config.network);
 
     net_config.add_notification_protocol(
-        domain_client_executor_gossip::executor_gossip_peers_set_config(),
+        domain_client_subnet_gossip::domain_subnet_gossip_peers_set_config(),
     );
 
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
@@ -426,21 +426,21 @@ where
     let spawn_essential = task_manager.spawn_essential_handle();
     let (bundle_sender, _bundle_receiver) = tracing_unbounded("domain_bundle_stream", 100);
 
-    // let domain_confirmation_depth = primary_chain_client
+    // let domain_confirmation_depth = consensus_client
     // .runtime_api()
-    // .receipts_pruning_depth(primary_chain_client.info().best_hash)
+    // .receipts_pruning_depth(consensus_client.info().best_hash)
     // .map_err(|err| sc_service::error::Error::Application(Box::new(err)))?
     // .into();
     // TODO: Implement when block tree is ready.
     let domain_confirmation_depth = 256u32;
 
-    let executor = Executor::new(
+    let operator = Operator::new(
         Box::new(task_manager.spawn_essential_handle()),
         &select_chain,
-        EssentialExecutorParams {
+        OperatorParams {
             domain_id,
-            primary_chain_client: primary_chain_client.clone(),
-            primary_network_sync_oracle,
+            consensus_client: consensus_client.clone(),
+            consensus_network_sync_oracle,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
@@ -448,7 +448,7 @@ where
             is_authority,
             keystore: params.keystore_container.keystore(),
             bundle_sender: Arc::new(bundle_sender),
-            executor_streams,
+            operator_streams,
             domain_confirmation_depth,
             block_import,
         },
@@ -492,7 +492,7 @@ where
         sync_service,
         rpc_handlers,
         network_starter,
-        executor,
+        operator,
         tx_pool_sink: msg_sender,
         _phantom_data: Default::default(),
     };

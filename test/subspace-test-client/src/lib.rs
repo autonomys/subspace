@@ -40,7 +40,7 @@ use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_service::tx_pre_validator::PrimaryChainTxPreValidator;
+use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_transaction_pool::bundle_validator::BundleValidator;
@@ -76,7 +76,7 @@ pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
 type TxPreValidator =
-    PrimaryChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+    ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
 /// Run a farmer.
 pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)
@@ -226,23 +226,21 @@ where
     let history_size = HistorySize::from(SegmentIndex::ZERO);
     let mut sector = vec![0u8; sector_size(pieces_in_sector)];
     let mut sector_metadata = vec![0u8; SectorMetadata::encoded_size()];
-    let sector_offset = 0;
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size,
         max_pieces_in_sector: pieces_in_sector,
-        sector_expiration: SegmentIndex::from(100),
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
 
     let plotted_sector = plot_sector::<_, PosTable>(
         &public_key,
-        sector_offset,
         sector_index,
         &archived_segment.pieces,
         PieceGetterRetryPolicy::default(),
@@ -252,7 +250,6 @@ where
         pieces_in_sector,
         &mut sector,
         &mut sector_metadata,
-        Default::default(),
     )
     .await
     .expect("Plotting one sector in memory must not fail");

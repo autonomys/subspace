@@ -133,9 +133,9 @@ where
                         .find_quality(s_bucket.into())
                         .expect("encoded_chunk_used implies quality exists for this chunk; qed");
 
-                    // NOTE: Quality is already hashed in the `subspace-chiapos` library
-                    record_chunk =
-                        Simd::to_array(Simd::from(record_chunk) ^ Simd::from(*quality.to_bytes()));
+                    record_chunk = Simd::to_array(
+                        Simd::from(record_chunk) ^ Simd::from(quality.create_proof().hash()),
+                    );
                 }
 
                 maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(|error| {
@@ -285,7 +285,7 @@ where
             &sector_metadata.s_bucket_offsets(),
             &sector_contents_map,
             &PosTable::generate(
-                &sector_id.evaluation_seed(piece_offset, sector_metadata.history_size),
+                &sector_id.derive_evaluation_seed(piece_offset, sector_metadata.history_size),
             ),
             sector,
         )?,

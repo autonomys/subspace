@@ -80,11 +80,12 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExecutorPublicKey, GenesisDomain, OpaqueBundle, OperatorId, RuntimeId,
+        DomainId, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
         RuntimeType,
     };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, MaybeDisplay, SimpleBitOps, Zero,
+        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
+        Zero,
     };
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
@@ -93,6 +94,21 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+
+        /// Domain block number type.
+        type DomainNumber: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + MaybeDisplay
+            + AtLeast32BitUnsigned
+            + Default
+            + Bounded
+            + Copy
+            + sp_std::hash::Hash
+            + sp_std::str::FromStr
+            + MaxEncodedLen
+            + TypeInfo;
 
         /// Domain block hash type.
         type DomainHash: Parameter
@@ -315,8 +331,6 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Can not find the block hash of given primary block number.
-        UnavailablePrimaryBlockHash,
         /// Invalid bundle.
         Bundle(BundleError),
         /// Invalid fraud proof.
@@ -336,7 +350,7 @@ mod pallet {
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
-            bundle_author: ExecutorPublicKey,
+            bundle_author: OperatorPublicKey,
         },
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
@@ -416,7 +430,7 @@ mod pallet {
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -435,7 +449,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash,
-                bundle_author: opaque_bundle.into_executor_public_key(),
+                bundle_author: opaque_bundle.into_operator_public_key(),
             });
 
             Ok(())
@@ -709,7 +723,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_submit_bundle(
-        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
         // TODO: Validate domain block tree
         Ok(())
@@ -720,7 +734,7 @@ impl<T: Config> Pallet<T> {
             sealed_header,
             receipt: _,
             extrinsics: _,
-        }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
         if !sealed_header.verify_signature() {
             return Err(BundleError::BadSignature);
@@ -741,9 +755,9 @@ impl<T: Config> Pallet<T> {
                         "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
                     )
                 } else if confirmation_depth_k == One::one() {
-                    header.primary_number < finalized
+                    header.consensus_block_number < finalized
                 } else {
-                    header.primary_number <= finalized
+                    header.consensus_block_number <= finalized
                 };
 
                 if is_stale_bundle {
@@ -751,7 +765,7 @@ impl<T: Config> Pallet<T> {
                         target: "runtime::domains",
                         "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
                         ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
-                        header.primary_number,
+                        header.consensus_block_number,
                     );
                     return Err(BundleError::StaleBundle);
                 }
@@ -807,7 +821,7 @@ where
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
     pub fn submit_bundle_unsigned(
-        opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainHash>,
+        opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) {
         let slot = opaque_bundle.sealed_header.header.slot_number;
         let extrincis_count = opaque_bundle.extrinsics.len();

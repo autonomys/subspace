@@ -6,7 +6,6 @@ use std::ops::{Deref, DerefMut};
 use std::{mem, slice};
 use subspace_core_primitives::{
     HistorySize, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorIndex,
-    SegmentIndex,
 };
 use thiserror::Error;
 
@@ -48,8 +47,6 @@ pub struct SectorMetadata {
     pub s_bucket_sizes: Box<[u16; Record::NUM_S_BUCKETS]>,
     /// Size of the blockchain history at time of sector creation
     pub history_size: HistorySize,
-    /// Sector expiration, defined as sector of the archived history of the blockchain
-    pub expires_at: SegmentIndex,
 }
 
 impl SectorMetadata {
@@ -87,7 +84,6 @@ impl SectorMetadata {
             // SAFETY: Data structure filled with zeroes is a valid invariant
             s_bucket_sizes: unsafe { Box::new_zeroed().assume_init() },
             history_size: HistorySize::from(NonZeroU64::new(1).expect("1 is not 0; qed")),
-            expires_at: SegmentIndex::default(),
         };
 
         default.encoded_size()
