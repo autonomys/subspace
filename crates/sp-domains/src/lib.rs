@@ -24,9 +24,7 @@ pub mod transaction;
 
 use bundle_election::VrfProofError;
 use merkle_tree::Witness;
-#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-use parity_scale_codec::MaxEncodedLen;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_api::RuntimeVersion;
@@ -96,6 +94,7 @@ pub type StakeWeight = u128;
     TypeInfo,
     Serialize,
     Deserialize,
+    MaxEncodedLen,
 )]
 pub struct DomainId(u32);
 
@@ -507,6 +506,21 @@ impl PassBy for RuntimeType {
 
 /// Type representing the runtime ID.
 pub type RuntimeId = u32;
+
+/// Type representing domain epoch.
+pub type EpochIndex = u32;
+
+/// Type representing operator ID
+pub type OperatorId = u64;
+
+/// Domains specific Identifier for Balances freeze.
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum DomainsFreezeIdentifier {
+    Staking(OperatorId),
+    DomainInstantiation(DomainId),
+}
 
 /// Domains specific digest item.
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]

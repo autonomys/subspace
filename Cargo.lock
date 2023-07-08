@@ -6327,6 +6327,7 @@ dependencies = [
  "sp-trie",
  "sp-version",
  "subspace-core-primitives",
+ "subspace-runtime-primitives",
 ]
 
 [[package]]

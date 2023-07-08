@@ -26,22 +26,33 @@ mod tests;
 
 pub mod domain_registry;
 pub mod runtime_registry;
+mod staking;
 pub mod weights;
 
-use frame_support::traits::{Currency, Get};
+use frame_support::traits::fungible::{Inspect, InspectFreeze};
+use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, OpaqueBundle};
+use sp_domains::{DomainId, OpaqueBundle, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
-/// The balance type used by the currency system.
-pub type BalanceOf<T> =
-    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+pub(crate) type BalanceOf<T> =
+    <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
+
+pub(crate) type FungibleFreezeId<T> =
+    <<T as Config>::Currency as InspectFreeze<<T as frame_system::Config>::AccountId>>::Id;
+
+pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
+
+pub trait FreezeIdentifier<T: Config> {
+    fn staking_freeze_id(operator_id: OperatorId) -> FungibleFreezeId<T>;
+    fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
+}
 
 #[frame_support::pallet]
 mod pallet {
@@ -53,10 +64,15 @@ mod pallet {
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
         ScheduledRuntimeUpgrade,
     };
+    use crate::staking::{
+        do_nominate_operator, do_register_operator, Error as StakingError, Nominator,
+        OperatorConfig, OperatorPool, PendingTransfer, StakingSummary,
+    };
     use crate::weights::WeightInfo;
-    use crate::{calculate_tx_range, BalanceOf};
+    use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
+    use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
-    use frame_support::traits::LockableCurrency;
+    use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -64,7 +80,8 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, GenesisDomain, OpaqueBundle, OperatorPublicKey, RuntimeId, RuntimeType,
+        DomainId, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
+        RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
@@ -116,6 +133,25 @@ mod pallet {
         /// Delay before a domain runtime is upgraded.
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
+        /// Currency type used by the domains for staking and other currency related stuff.
+        type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
+
+        /// Type representing the shares in the staking protocol.
+        type Share: Parameter
+            + Member
+            + MaybeSerializeDeserialize
+            + Debug
+            + AtLeast32BitUnsigned
+            + FullCodec
+            + Copy
+            + Default
+            + TypeInfo
+            + MaxEncodedLen
+            + IsType<BalanceOf<Self>>;
+
+        /// Identifier used for Freezing the funds used for staking.
+        type FreezeIdentifier: FreezeIdentifier<Self>;
+
         /// The maximum block size limit for all domain.
         #[pallet::constant]
         type MaxDomainBlockSize: Get<u32>;
@@ -136,9 +172,6 @@ mod pallet {
         #[pallet::constant]
         type DomainInstantiationDeposit: Get<BalanceOf<Self>>;
 
-        /// The currency trait.
-        type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
-
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
 
@@ -150,6 +183,9 @@ mod pallet {
 
         /// Expected bundles to be produced per adjustment interval.
         type ExpectedBundlesPerInterval: Get<u64>;
+
+        /// Minimum operator stake required to become operator of a domain.
+        type MinOperatorStake: Get<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -176,6 +212,41 @@ mod pallet {
         Identity,
         RuntimeId,
         ScheduledRuntimeUpgrade,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub(super) type NextOperatorId<T> = StorageValue<_, OperatorId, ValueQuery>;
+
+    #[pallet::storage]
+    pub(super) type OperatorIdOwner<T: Config> =
+        StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type DomainStakingSummary<T: Config> =
+        StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type OperatorPools<T: Config> =
+        StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>, T::Share>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type Nominators<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        NominatorId<T>,
+        Nominator<T::Share>,
+        OptionQuery,
+    >;
+
+    #[pallet::storage]
+    pub(super) type PendingTransfers<T: Config> = StorageMap<
+        _,
+        Identity,
+        OperatorId,
+        Vec<PendingTransfer<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
 
@@ -246,6 +317,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<StakingError> for Error<T> {
+        fn from(err: StakingError) -> Self {
+            Error::Staking(err)
+        }
+    }
+
     impl<T> From<DomainRegistryError> for Error<T> {
         fn from(err: DomainRegistryError) -> Self {
             Error::DomainRegistry(err)
@@ -260,6 +337,8 @@ mod pallet {
         FraudProof,
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
+        /// Staking related errors.
+        Staking(StakingError),
         /// Domain registry specific errors
         DomainRegistry(DomainRegistryError),
     }
@@ -283,6 +362,14 @@ mod pallet {
         },
         DomainRuntimeUpgraded {
             runtime_id: RuntimeId,
+        },
+        OperatorRegistered {
+            operator_id: OperatorId,
+            domain_id: DomainId,
+        },
+        OperatorNominated {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
         },
         DomainInstantiated {
             domain_id: DomainId,
@@ -441,6 +528,48 @@ mod pallet {
         #[pallet::call_index(4)]
         #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
         // TODO: proper benchmark
+        pub fn register_operator(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            amount: BalanceOf<T>,
+            config: OperatorConfig<BalanceOf<T>>,
+        ) -> DispatchResult {
+            let owner = ensure_signed(origin)?;
+
+            let operator_id = do_register_operator::<T>(owner, domain_id, amount, config)
+                .map_err(Error::<T>::from)?;
+            Self::deposit_event(Event::OperatorRegistered {
+                operator_id,
+                domain_id,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(5)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn nominate_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            let nominator_id = ensure_signed(origin)?;
+
+            do_nominate_operator::<T>(operator_id, nominator_id.clone(), amount)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::OperatorNominated {
+                operator_id,
+                nominator_id,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(6)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
@@ -578,9 +707,11 @@ impl<T: Config> Pallet<T> {
         SuccessfulBundles::<T>::get()
     }
 
-    pub fn domain_runtime_code(_domain_id: DomainId) -> Option<Vec<u8>> {
-        // TODO: Retrive the runtime_id for given domain_id and then get the correct runtime_object
-        RuntimeRegistry::<T>::get(0u32).map(|runtime_object| runtime_object.code)
+    pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+        let runtime_id = DomainRegistry::<T>::get(domain_id)?
+            .domain_config
+            .runtime_id;
+        RuntimeRegistry::<T>::get(runtime_id).map(|runtime_object| runtime_object.code)
     }
 
     /// Returns the tx range for the domain.

@@ -1,19 +1,19 @@
 //! Domain registry for domains
 
-use crate::{Config, DomainRegistry, NextDomainId, RuntimeRegistry};
+use crate::pallet::DomainStakingSummary;
+use crate::staking::StakingSummary;
+use crate::{Config, DomainRegistry, FreezeIdentifier, NextDomainId, RuntimeRegistry};
 use codec::{Decode, Encode};
-use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
+use frame_support::traits::fungible::{Inspect, MutateFreeze};
+use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, GenesisDomain, RuntimeId};
-use sp_runtime::traits::CheckedAdd;
+use sp_runtime::traits::{CheckedAdd, Zero};
+use sp_std::vec;
 use sp_std::vec::Vec;
-
-const DOMAIN_INSTANCE_ID: LockIdentifier = *b"domains ";
-
-pub type EpochIndex = u32;
 
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -26,6 +26,7 @@ pub enum Error {
     RuntimeNotFound,
     InsufficientFund,
     DomainNameTooLong,
+    BalanceFreeze,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -107,7 +108,8 @@ pub(crate) fn can_instantiate_domain<T: Config>(
     );
 
     ensure!(
-        T::Currency::free_balance(owner_account_id) >= T::DomainInstantiationDeposit::get(),
+        T::Currency::reducible_balance(owner_account_id, Preservation::Protect, Fortitude::Polite)
+            >= T::DomainInstantiationDeposit::get(),
         Error::InsufficientFund
     );
 
@@ -121,16 +123,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
-    // Lock up fund of the domain instance creator
-    T::Currency::set_lock(
-        DOMAIN_INSTANCE_ID,
-        &owner_account_id,
-        T::DomainInstantiationDeposit::get(),
-        WithdrawReasons::all(),
-    );
-
     let domain_obj = DomainObject {
-        owner_account_id,
+        owner_account_id: owner_account_id.clone(),
         created_at,
         // TODO: drive the `genesis_receipt_hash` from genesis config through host function
         genesis_receipt_hash: T::Hash::default(),
@@ -142,7 +136,24 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     let next_domain_id = domain_id.checked_add(&1.into()).ok_or(Error::MaxDomainId)?;
     NextDomainId::<T>::set(next_domain_id);
 
-    // TODO: initialize the stake summary for this domain
+    // Lock up fund of the domain instance creator
+    T::Currency::set_freeze(
+        &T::FreezeIdentifier::domain_instantiation_id(domain_id),
+        &owner_account_id,
+        T::DomainInstantiationDeposit::get(),
+    )
+    .map_err(|_| Error::BalanceFreeze)?;
+
+    DomainStakingSummary::<T>::insert(
+        domain_id,
+        StakingSummary {
+            current_epoch_index: 0,
+            current_total_stake: Zero::zero(),
+            next_total_stake: Zero::zero(),
+            current_operators: vec![],
+            next_operators: vec![],
+        },
+    );
 
     // TODO: initialize the genesis block in the domain block tree once we can drive the
     // genesis ER from genesis config through host function
@@ -156,7 +167,11 @@ mod tests {
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, Test};
+    use frame_support::traits::Currency;
+    use sp_runtime::traits::One;
     use sp_version::RuntimeVersion;
+
+    type Balances = pallet_balances::Pallet<Test>;
 
     #[test]
     fn test_domain_instantiation() {
@@ -268,9 +283,10 @@ mod tests {
                 Err(Error::InsufficientFund)
             );
             // Set enough fund to creator
-            <Test as Config>::Currency::make_free_balance_be(
+            Balances::make_free_balance_be(
                 &creator,
-                <Test as Config>::DomainInstantiationDeposit::get(),
+                <Test as Config>::DomainInstantiationDeposit::get()
+                    + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
             );
 
             // `instantiate_domain` must success now
@@ -283,13 +299,13 @@ mod tests {
             assert_eq!(domain_obj.domain_config, domain_config);
             assert_eq!(NextDomainId::<Test>::get(), 1.into());
             // Fund locked up thus can't withdraw
-            assert!(<Test as Config>::Currency::ensure_can_withdraw(
-                &creator,
-                1,
-                WithdrawReasons::all(),
-                <Test as Config>::DomainInstantiationDeposit::get() - 1
+            assert!(Balances::usable_balance(creator) == One::one(),);
+
+            // cannot use the locked funds to create a new domain instance
+            assert!(
+                do_instantiate_domain::<Test>(domain_config, creator, created_at)
+                    == Err(Error::InsufficientFund)
             )
-            .is_err());
         });
     }
 }

@@ -38,6 +38,7 @@ pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
@@ -49,6 +50,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_feeds::feed_processor::FeedProcessor;
 pub use pallet_subspace::AllowAuthoringBy;
+use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT};
 use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::{
@@ -57,10 +59,12 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
-use sp_domains::{DomainId, OpaqueBundle};
+use sp_domains::{DomainId, DomainsFreezeIdentifier, OpaqueBundle, OperatorId};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
+use sp_runtime::{
+    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill, SaturatedConversion,
+};
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -321,6 +325,28 @@ parameter_types! {
     pub const ExistentialDeposit: Balance = 500 * SHANNON;
 }
 
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum FreezeIdentifier {
+    Domains(DomainsFreezeIdentifier),
+}
+
+impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
+    fn staking_freeze_id(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+    }
+
+    fn domain_instantiation_id(domain_id: DomainId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::DomainInstantiation(domain_id))
+    }
+}
+
+parameter_types! {
+    // TODO: revisit this
+    pub const MaxFreezes: u32 = 100;
+}
+
 impl pallet_balances::Config for Runtime {
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
@@ -333,8 +359,8 @@ impl pallet_balances::Config for Runtime {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
-    type FreezeIdentifier = ();
-    type MaxFreezes = ();
+    type FreezeIdentifier = FreezeIdentifier;
+    type MaxFreezes = MaxFreezes;
     type RuntimeHoldReason = ();
     type MaxHolds = ();
 }
@@ -437,6 +463,8 @@ parameter_types! {
     pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
+    // Minimum Operator stake is 2 * MaximumBlockWeight * WeightToFee
+    pub MinOperatorStake: Balance = Balance::saturated_from(2 * BLOCK_WEIGHT_FOR_2_SEC.ref_time());
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
@@ -452,16 +480,19 @@ impl pallet_domains::Config for Runtime {
     type DomainHash = DomainHash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type Currency = Balances;
+    type FreezeIdentifier = FreezeIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
+    type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
-    type Currency = Balances;
+    type Share = Balance;
 }
 
 parameter_types! {
