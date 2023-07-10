@@ -229,7 +229,9 @@ fn create_dummy_bundle_with_receipts(
     )
 }
 
+// TODO: Unblock once bundle producer election v2 is finished.
 #[test]
+#[ignore]
 fn test_stale_bundle_should_be_rejected() {
     // Small macro in order to be more readable.
     //

@@ -34,14 +34,14 @@ use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
-use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
+use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent, RuntimeAppPublic};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, Randomness, U256};
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
@@ -444,6 +444,11 @@ pub struct GenesisDomain<AccountId> {
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
+
+    // Genesis operator
+    pub signing_key: OperatorPublicKey,
+    pub minimum_nominator_stake: Balance,
+    pub nomination_tax: Percent,
 }
 
 /// Types of runtime pallet domains currently supports

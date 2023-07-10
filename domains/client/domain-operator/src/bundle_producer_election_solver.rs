@@ -45,7 +45,7 @@ where
 
     pub(super) fn solve_challenge(
         &self,
-        _slot: Slot,
+        slot: Slot,
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
@@ -84,11 +84,15 @@ where
                     );
 
                     if is_below_threshold(&vrf_signature.output, threshold) {
-                        // TODO: Proper ProofOfElection
-                        return Ok(Some(ProofOfElection::dummy(
+                        let proof_of_election = ProofOfElection {
                             domain_id,
-                            operator_signing_key,
-                        )));
+                            slot_number: slot.into(),
+                            global_challenge,
+                            vrf_signature,
+                            operator_public_key: operator_signing_key,
+                            _phandom: Default::default(),
+                        };
+                        return Ok(Some(proof_of_election));
                     }
                 }
             }

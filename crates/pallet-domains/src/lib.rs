@@ -91,7 +91,9 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
         Zero,
     };
+    use sp_runtime::SaturatedConversion;
     use sp_std::fmt::Debug;
+    use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
 
@@ -619,12 +621,53 @@ mod pallet {
 
                 // Instantiate the genesis domain
                 let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                do_instantiate_domain::<T>(
-                    domain_config,
-                    genesis_domain.owner_account_id.clone(),
-                    Zero::zero(),
+                let domain_owner = genesis_domain.owner_account_id.clone();
+                let domain_id =
+                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), Zero::zero())
+                        .expect("Genesis domain instantiation must always succeed");
+
+                // Register domain_owner as the genesis operator.
+                let operator_config = OperatorConfig {
+                    signing_key: genesis_domain.signing_key.clone(),
+                    minimum_nominator_stake: genesis_domain
+                        .minimum_nominator_stake
+                        .saturated_into(),
+                    nomination_tax: genesis_domain.nomination_tax,
+                };
+                let operator_stake = T::MinOperatorStake::get();
+                let operator_id = do_register_operator::<T>(
+                    domain_owner.clone(),
+                    domain_id,
+                    operator_stake,
+                    operator_config,
                 )
-                .expect("Genesis domain instantiation must always succeed");
+                .expect("Genesis operator registration must succeed");
+
+                // Self-Nominate the genesis operator.
+                do_nominate_operator::<T>(
+                    operator_id,
+                    domain_owner,
+                    genesis_domain.minimum_nominator_stake.saturated_into(),
+                )
+                .expect("Genesis nominator registration must succeed");
+
+                // TODO: Enact the epoch transition logic properly.
+                OperatorPools::<T>::mutate(operator_id, |maybe_operator| {
+                    let operator = maybe_operator
+                        .as_mut()
+                        .expect("Genesis operator must exist");
+                    operator.current_total_stake = operator_stake;
+                });
+                DomainStakingSummary::<T>::insert(
+                    domain_id,
+                    StakingSummary {
+                        current_epoch_index: 0,
+                        current_total_stake: operator_stake,
+                        next_total_stake: Zero::zero(),
+                        current_operators: vec![operator_id],
+                        next_operators: vec![],
+                    },
+                );
             }
         }
     }
