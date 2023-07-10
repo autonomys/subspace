@@ -208,6 +208,7 @@ pub struct ProofOfElection<DomainHash> {
     pub domain_id: DomainId,
     /// The slot number.
     pub slot_number: u64,
+    // TODO: Use global_randomness instead.
     /// Global challenge.
     pub global_challenge: Blake2b256Hash,
     /// VRF signature.
