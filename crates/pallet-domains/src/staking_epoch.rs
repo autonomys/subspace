@@ -3,11 +3,13 @@
 #![allow(dead_code)]
 
 use crate::pallet::{
-    DomainStakingSummary, Nominators, Operators, PendingOperatorSwitches, PendingOperatorUnlocks,
+    DomainStakingSummary, Nominators, Operators, PendingOperatorDeregistrations,
+    PendingOperatorSwitches, PendingOperatorUnlocks,
 };
 use crate::{Config, FreezeIdentifier, NominatorId};
 use frame_support::log::error;
 use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
+use sp_core::Get;
 use sp_domains::{DomainId, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
 use sp_runtime::Perbill;
@@ -57,9 +59,29 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     })
 }
 
+pub(crate) fn do_finalize_operator_deregistrations<T: Config>(
+    domain_id: DomainId,
+    consensus_block_number: T::BlockNumber,
+) {
+    let stake_withdrawal_locking_period = T::StakeWithdrawalLockingPeriod::get();
+    let unlock_block_number = match consensus_block_number
+        .checked_add(&stake_withdrawal_locking_period)
+    {
+        None => {
+            error!("Failed to compute unlock domain block number: {consensus_block_number:?} + {stake_withdrawal_locking_period:?}",);
+            return;
+        }
+        Some(unlock_block_number) => unlock_block_number,
+    };
+
+    if let Some(operators) = PendingOperatorDeregistrations::<T>::take(domain_id) {
+        PendingOperatorUnlocks::<T>::insert(domain_id, unlock_block_number, operators)
+    }
+}
+
 pub(crate) fn do_unlock_operators<T: Config>(
     domain_id: DomainId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: T::BlockNumber,
 ) {
     if let Some(operators) = PendingOperatorUnlocks::<T>::take(domain_id, domain_block_number) {
         for operator_id in operators {
@@ -128,11 +150,14 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, Nominators, OperatorIdOwner, Operators, PendingOperatorSwitches,
-        PendingOperatorUnlocks,
+        DomainStakingSummary, Nominators, OperatorIdOwner, Operators,
+        PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
     };
     use crate::staking::{Nominator, Operator, StakingSummary};
-    use crate::staking_epoch::{do_finalize_switch_operator_domain, do_unlock_operators};
+    use crate::staking_epoch::{
+        do_finalize_operator_deregistrations, do_finalize_switch_operator_domain,
+        do_unlock_operators,
+    };
     use crate::tests::{new_test_ext, Test};
     use crate::{BalanceOf, Config, FreezeIdentifier as FreezeIdentifierT, NominatorId};
     use frame_support::assert_ok;
@@ -304,5 +329,45 @@ mod tests {
     #[test]
     fn unlock_operator_with_rewards() {
         unlock_operator(vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)], 20 * SSC);
+    }
+
+    #[test]
+    fn finalize_operator_deregistration() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_id = 1;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            create_required_state(RequiredStateParams {
+                domain_id,
+                total_domain_stake: 0,
+                current_operators: vec![],
+                operator_id,
+                operator_account,
+                operator: Operator {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    next_domain_id: domain_id,
+                    minimum_nominator_stake: 100 * SSC,
+                    nomination_tax: Default::default(),
+                    current_total_stake: Zero::zero(),
+                    current_epoch_rewards: Zero::zero(),
+                    total_shares: Zero::zero(),
+                    is_frozen: true,
+                },
+            });
+
+            PendingOperatorDeregistrations::<Test>::append(domain_id, operator_id);
+            let current_consensus_block_number = 100;
+            do_finalize_operator_deregistrations::<Test>(domain_id, current_consensus_block_number);
+
+            let expected_unlock = 100 + crate::tests::StakeWithdrawalLockingPeriod::get();
+            assert_eq!(
+                PendingOperatorUnlocks::<Test>::get(domain_id, expected_unlock),
+                Some(vec![operator_id])
+            )
+        });
     }
 }

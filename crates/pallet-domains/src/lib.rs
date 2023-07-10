@@ -190,6 +190,9 @@ mod pallet {
 
         /// Minimum operator stake required to become operator of a domain.
         type MinOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Minimum number of blocks after which any finalized withdrawls are released to nominators.
+        type StakeWithdrawalLockingPeriod: Get<Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -285,7 +288,7 @@ mod pallet {
         Identity,
         DomainId,
         Identity,
-        T::DomainNumber,
+        T::BlockNumber,
         Vec<OperatorId>,
         OptionQuery,
     >;
