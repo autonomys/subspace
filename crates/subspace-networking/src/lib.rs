@@ -19,6 +19,7 @@
 #![warn(missing_docs)]
 
 mod behavior;
+mod connected_peers;
 mod create;
 mod node;
 mod node_runner;
