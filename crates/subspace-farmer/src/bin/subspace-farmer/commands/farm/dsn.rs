@@ -303,10 +303,9 @@ pub(super) fn configure_dsn(
         max_pending_outgoing_connections: pending_out_connections,
         max_established_incoming_connections: in_connections,
         max_pending_incoming_connections: pending_in_connections,
-        target_connections,
-        // TODO: add permanent connections with different peers types
+        general_target_connections: target_connections,
         // maintain permanent connections between farmers
-        connection_decision_handler: Arc::new(|peer_info| {
+        special_connection_decision_handler: Arc::new(|peer_info| {
             matches!(peer_info, PeerInfo::Farmer { .. })
         }),
         ..default_config

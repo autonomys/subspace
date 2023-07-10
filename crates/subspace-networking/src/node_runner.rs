@@ -1,7 +1,7 @@
-use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
-};
-use crate::behavior::{provider_storage, Behavior, Event};
+use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
+use crate::behavior::{
+    provider_storage, Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
+PEERS_ADDRESSES_BATCH_SIZE};
 use crate::connected_peers::Event as ConnectedPeersEvent;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
@@ -13,6 +13,7 @@ use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
 use bytes::Bytes;
+use either::{Either, Left, Right};
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
@@ -113,8 +114,10 @@ where
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
-    /// Defines whether we maintain a persistent connection.
-    connection_decision_handler: ConnectionDecisionHandler,
+    /// Defines whether we maintain a persistent connection for common peers.
+    general_connection_decision_handler: ConnectionDecisionHandler,
+    /// Defines whether we maintain a persistent connection for special peers.
+    special_connection_decision_handler: ConnectionDecisionHandler,
     /// Randomness generator used for choosing Kademlia addresses.
     rng: StdRng,
 }
@@ -134,7 +137,8 @@ where
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
     pub(crate) protocol_version: String,
-    pub(crate) connection_decision_handler: ConnectionDecisionHandler,
+    pub(crate) general_connection_decision_handler: ConnectionDecisionHandler,
+    pub(crate) special_connection_decision_handler: ConnectionDecisionHandler,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -153,7 +157,8 @@ where
             temporary_bans,
             metrics,
             protocol_version,
-            connection_decision_handler,
+            general_connection_decision_handler,
+            special_connection_decision_handler,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -175,7 +180,8 @@ where
             metrics,
             established_connections: HashMap::new(),
             protocol_version,
-            connection_decision_handler,
+            general_connection_decision_handler,
+            special_connection_decision_handler,
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
         }
     }
@@ -272,8 +278,11 @@ where
             SwarmEvent::Behaviour(Event::PeerInfo(event)) => {
                 self.handle_peer_info_event(event).await;
             }
-            SwarmEvent::Behaviour(Event::ConnectedPeers(event)) => {
-                self.handle_connected_peers_event(event).await;
+            SwarmEvent::Behaviour(Event::GeneralConnectedPeers(event)) => {
+                self.handle_connected_peers_event(Left(event)).await;
+            }
+            SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
+                self.handle_connected_peers_event(Right(event)).await;
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -801,25 +810,44 @@ where
         trace!(?event, "Peer info event.");
 
         if let Ok(PeerInfoSuccess::Received(peer_info)) = event.result {
-            let keep_alive = (self.connection_decision_handler)(&peer_info);
+            let keep_alive = (self.general_connection_decision_handler)(&peer_info);
 
             self.swarm
                 .behaviour_mut()
-                .connected_peers
+                .general_connected_peers
                 .update_keep_alive_status(event.peer_id, keep_alive);
+
+            let farmer_keep_alive = (self.special_connection_decision_handler)(&peer_info);
+
+            self.swarm
+                .behaviour_mut()
+                .special_connected_peers
+                .update_keep_alive_status(event.peer_id, farmer_keep_alive);
         }
     }
 
-    async fn handle_connected_peers_event(&mut self, event: ConnectedPeersEvent) {
+    async fn handle_connected_peers_event(
+        &mut self,
+        event: Either<
+            ConnectedPeersEvent<GeneralConnectedPeersInstance>,
+            ConnectedPeersEvent<SpecialConnectedPeersInstance>,
+        >,
+    ) {
         trace!(?event, "Connected peers event.");
 
-        match event {
-            ConnectedPeersEvent::NewDialingCandidatesRequested => {
-                let peers = self.get_peers_to_dial().await;
+        let peers = self.get_peers_to_dial().await;
 
+        match event {
+            Left(ConnectedPeersEvent::NewDialingCandidatesRequested(..)) => {
                 self.swarm
                     .behaviour_mut()
-                    .connected_peers
+                    .general_connected_peers
+                    .add_peers_to_dial(peers);
+            }
+            Right(ConnectedPeersEvent::NewDialingCandidatesRequested(..)) => {
+                self.swarm
+                    .behaviour_mut()
+                    .special_connected_peers
                     .add_peers_to_dial(&peers);
             }
         }
