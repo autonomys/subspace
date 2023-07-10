@@ -7,9 +7,8 @@ use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId, OperatorPair,
-    SealedBundleHeader,
+    create_dummy_bundle_with_receipts_generic, BundleHeader, DomainId, DomainsFreezeIdentifier,
+    ExecutionReceipt, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection, SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -204,7 +203,7 @@ fn create_dummy_bundle(
         consensus_block_hash,
         slot_number: 0u64,
         extrinsics_root: Default::default(),
-        bundle_solution: BundleSolution::dummy(domain_id, pair.public()),
+        proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
     };
 
     let signature = pair.sign(header.hash().as_ref());

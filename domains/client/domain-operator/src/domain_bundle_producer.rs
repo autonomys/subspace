@@ -187,7 +187,7 @@ where
             return Ok(None);
         }
 
-        if let Some(bundle_solution) = self.bundle_producer_election_solver.solve_challenge(
+        if let Some(proof_of_election) = self.bundle_producer_election_solver.solve_challenge(
             slot,
             consensus_block_info.hash,
             self.domain_id,
@@ -195,7 +195,6 @@ where
         )? {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
-            let proof_of_election = bundle_solution.proof_of_election();
             let bundle_author = proof_of_election.operator_public_key.clone();
             let tx_range = self
                 .consensus_client
@@ -214,7 +213,7 @@ where
             let (bundle_header, receipt, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
-                    bundle_solution,
+                    proof_of_election,
                     slot,
                     consensus_block_info,
                     self.parent_chain.clone(),

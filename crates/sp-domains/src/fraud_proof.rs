@@ -184,6 +184,8 @@ pub enum VerificationError {
 }
 
 /// Fraud proof.
+// TODO: Revisit when fraud proof v2 is implemented.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProof<Number, Hash> {
     InvalidStateTransition(InvalidStateTransitionProof),
@@ -292,7 +294,7 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
                 consensus_block_hash: Hash::default(),
                 slot_number,
                 extrinsics_root: H256::default(),
-                bundle_solution: crate::BundleSolution::dummy(
+                proof_of_election: crate::ProofOfElection::dummy(
                     domain_id,
                     crate::OperatorPublicKey::unchecked_from([0u8; 32]),
                 ),

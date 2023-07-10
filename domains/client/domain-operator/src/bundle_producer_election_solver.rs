@@ -2,7 +2,7 @@ use sp_consensus_slots::Slot;
 use sp_domains::bundle_producer_election::{
     calculate_threshold, is_below_threshold, make_transcript,
 };
-use sp_domains::{BundleSolution, DomainId, OperatorPublicKey};
+use sp_domains::{DomainId, OperatorPublicKey, ProofOfElection};
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
@@ -45,7 +45,7 @@ where
         _consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<BundleSolution<Block::Hash>>> {
+    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
         // TODO: Fetch doamin state properly
         let current_operators = vec![0u64];
         let total_domain_stake = 100u128;
@@ -80,8 +80,8 @@ where
                     );
 
                     if is_below_threshold(&vrf_signature.output, threshold) {
-                        // TODO: Proper BundleSolution
-                        return Ok(Some(BundleSolution::dummy(
+                        // TODO: Proper ProofOfElection
+                        return Ok(Some(ProofOfElection::dummy(
                             domain_id,
                             operator_signing_key.into(),
                         )));

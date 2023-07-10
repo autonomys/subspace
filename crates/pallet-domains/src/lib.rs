@@ -56,6 +56,9 @@ pub trait FreezeIdentifier<T: Config> {
 
 #[frame_support::pallet]
 mod pallet {
+    // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
+    #![allow(clippy::large_enum_variant)]
+
     use crate::domain_registry::{
         do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
     };

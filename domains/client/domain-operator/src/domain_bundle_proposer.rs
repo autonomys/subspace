@@ -10,7 +10,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_consensus_slots::Slot;
-use sp_domains::{BundleHeader, BundleSolution, ExecutionReceipt};
+use sp_domains::{BundleHeader, ExecutionReceipt, ProofOfElection};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -68,7 +68,7 @@ where
 
     pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
-        bundle_solution: BundleSolution<Block::Hash>,
+        proof_of_election: ProofOfElection<Block::Hash>,
         slot: Slot,
         consensus_block_info: HashAndNumber<CBlock>,
         parent_chain: ParentChain,
@@ -132,7 +132,7 @@ where
             consensus_block_hash: consensus_block_info.hash,
             slot_number: slot.into(),
             extrinsics_root,
-            bundle_solution,
+            proof_of_election,
         };
 
         Ok((header, receipt, extrinsics))

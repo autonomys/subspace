@@ -23,7 +23,6 @@ pub mod merkle_tree;
 pub mod transaction;
 
 use bundle_producer_election::VrfProofError;
-use merkle_tree::Witness;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
@@ -39,10 +38,9 @@ use sp_runtime::{DigestItem, OpaqueExtrinsic, RuntimeAppPublic};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
-use sp_trie::StorageProof;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber, Randomness, U256};
+use subspace_core_primitives::{Blake2b256Hash, Randomness, U256};
 use subspace_runtime_primitives::Moment;
 
 /// Key type for Operator.
@@ -160,8 +158,8 @@ pub struct BundleHeader<Number, Hash, DomainHash> {
     pub slot_number: u64,
     /// The merkle root of the extrinsics.
     pub extrinsics_root: H256,
-    /// Solution of the bundle election.
-    pub bundle_solution: BundleSolution<DomainHash>,
+    /// Proof of bundle producer election.
+    pub proof_of_election: ProofOfElection<DomainHash>,
 }
 
 impl<Number: Encode, Hash: Encode, DomainHash: Encode> BundleHeader<Number, Hash, DomainHash> {
@@ -204,8 +202,7 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
     /// Returns whether the signature is valid.
     pub fn verify_signature(&self) -> bool {
         self.header
-            .bundle_solution
-            .proof_of_election()
+            .proof_of_election
             .operator_public_key
             .verify(&self.pre_hash(), &self.signature)
     }
@@ -222,14 +219,8 @@ pub struct ProofOfElection<DomainHash> {
     pub operator_public_key: OperatorPublicKey,
     /// Global challenge.
     pub global_challenge: Blake2b256Hash,
-    /// Storage proof containing the partial state for verifying the bundle election.
-    pub storage_proof: StorageProof,
-    /// State root corresponding to the storage proof above.
-    pub system_state_root: DomainHash,
-    /// Number of the system domain block at which the proof of election was created.
-    pub system_block_number: BlockNumber,
-    /// Block hash corresponding to the `block_number` above.
-    pub system_block_hash: DomainHash,
+    // TODO: added temporarily in order to not change a lot of code to make it compile, remove later.
+    pub _phandom: DomainHash,
 }
 
 impl<DomainHash> ProofOfElection<DomainHash> {
@@ -264,40 +255,7 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             vrf_signature,
             operator_public_key,
             global_challenge: Blake2b256Hash::default(),
-            storage_proof: StorageProof::empty(),
-            system_state_root: Default::default(),
-            system_block_number: Default::default(),
-            system_block_hash: Default::default(),
-        }
-    }
-}
-
-/// Domain bundle election solution.
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleSolution<DomainHash> {
-    /// Authority's stake weight.
-    authority_stake_weight: StakeWeight,
-    /// Authority membership witness.
-    authority_witness: Witness,
-    /// Proof of election
-    proof_of_election: ProofOfElection<DomainHash>,
-}
-
-impl<DomainHash> BundleSolution<DomainHash> {
-    pub fn proof_of_election(&self) -> &ProofOfElection<DomainHash> {
-        &self.proof_of_election
-    }
-}
-
-impl<DomainHash: Default> BundleSolution<DomainHash> {
-    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy(domain_id: DomainId, operator_public_key: OperatorPublicKey) -> Self {
-        let proof_of_election = ProofOfElection::dummy(domain_id, operator_public_key);
-
-        Self {
-            authority_stake_weight: Default::default(),
-            authority_witness: Default::default(),
-            proof_of_election,
+            _phandom: Default::default(),
         }
     }
 }
@@ -324,18 +282,13 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainNumber: Encode, Doma
 
     /// Returns the domain_id of this bundle.
     pub fn domain_id(&self) -> DomainId {
-        self.sealed_header
-            .header
-            .bundle_solution
-            .proof_of_election()
-            .domain_id
+        self.sealed_header.header.proof_of_election.domain_id
     }
 
     /// Consumes [`Bundle`] to extract the inner operator public key.
     pub fn into_operator_public_key(self) -> OperatorPublicKey {
         self.sealed_header
             .header
-            .bundle_solution
             .proof_of_election
             .operator_public_key
     }
@@ -457,7 +410,7 @@ where
             consensus_block_hash,
             slot_number: 0u64,
             extrinsics_root: Default::default(),
-            bundle_solution: BundleSolution::dummy(
+            proof_of_election: ProofOfElection::dummy(
                 domain_id,
                 OperatorPublicKey::unchecked_from([0u8; 32]),
             ),
