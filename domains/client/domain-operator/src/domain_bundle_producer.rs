@@ -11,7 +11,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_domains::{
-    Bundle, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature, SealedBundleHeader,
+    Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
+    SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
@@ -19,6 +20,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
+use subspace_runtime_primitives::Balance;
 
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
@@ -99,7 +101,8 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+        + BundleProducerElectionApi<CBlock, Balance>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {

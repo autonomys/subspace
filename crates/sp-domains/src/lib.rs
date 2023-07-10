@@ -22,7 +22,7 @@ pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
 
-use bundle_producer_election::VrfProofError;
+use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
@@ -569,5 +569,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the current Tx range for the given domain Id.
         fn domain_tx_range(domain_id: DomainId) -> U256;
+    }
+
+    pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
+        fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>>;
     }
 }

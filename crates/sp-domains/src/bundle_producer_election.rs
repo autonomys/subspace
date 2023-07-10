@@ -1,8 +1,9 @@
-use crate::{DomainId, OperatorPublicKey, StakeWeight};
+use crate::{DomainId, OperatorId, OperatorPublicKey, StakeWeight};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
 use sp_core::sr25519::vrf::{VrfOutput, VrfSignature, VrfTranscript};
+use sp_std::vec::Vec;
 use subspace_core_primitives::Blake2b256Hash;
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"bundle_producer_election";
@@ -49,6 +50,13 @@ pub fn is_below_threshold(vrf_output: &VrfOutput, threshold: u128) -> bool {
     );
 
     vrf_output < threshold
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleProducerElectionParams<Balance> {
+    pub current_operators: Vec<OperatorId>,
+    pub total_domain_stake: Balance,
+    pub bundle_slot_probability: (u64, u64),
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]

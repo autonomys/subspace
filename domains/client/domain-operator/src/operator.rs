@@ -18,11 +18,12 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::DomainsApi;
+use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
+use subspace_runtime_primitives::Balance;
 
 /// Domain operator.
 pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
@@ -85,7 +86,8 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+        + BundleProducerElectionApi<CBlock, Balance>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,

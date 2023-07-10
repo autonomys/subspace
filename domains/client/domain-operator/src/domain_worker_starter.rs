@@ -33,11 +33,12 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::DomainsApi;
+use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
+use subspace_runtime_primitives::Balance;
 use tracing::Instrument;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -93,7 +94,8 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+        + BundleProducerElectionApi<CBlock, Balance>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,

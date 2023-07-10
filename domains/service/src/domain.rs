@@ -28,7 +28,7 @@ use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
@@ -291,7 +291,8 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>
+        + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
     SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,

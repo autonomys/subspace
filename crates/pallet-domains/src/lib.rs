@@ -34,6 +34,7 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
+use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, OpaqueBundle, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
@@ -723,6 +724,22 @@ impl<T: Config> Pallet<T> {
             .map(|state| state.tx_range)
             .ok()
             .unwrap_or_else(Self::initial_tx_range)
+    }
+
+    pub fn bundle_producer_election_params(
+        domain_id: DomainId,
+    ) -> Option<BundleProducerElectionParams<BalanceOf<T>>> {
+        match (
+            DomainRegistry::<T>::get(domain_id),
+            DomainStakingSummary::<T>::get(domain_id),
+        ) {
+            (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
+                current_operators: stake_summary.current_operators,
+                total_domain_stake: stake_summary.current_total_stake,
+                bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
+            }),
+            _ => None,
+        }
     }
 
     fn pre_dispatch_submit_bundle(

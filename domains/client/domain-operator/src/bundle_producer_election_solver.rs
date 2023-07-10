@@ -1,14 +1,16 @@
+use sp_api::ProvideRuntimeApi;
 use sp_consensus_slots::Slot;
 use sp_domains::bundle_producer_election::{
-    calculate_threshold, is_below_threshold, make_transcript,
+    calculate_threshold, is_below_threshold, make_transcript, BundleProducerElectionParams,
 };
-use sp_domains::{DomainId, OperatorPublicKey, ProofOfElection};
+use sp_domains::{BundleProducerElectionApi, DomainId, OperatorPublicKey, ProofOfElection};
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Blake2b256Hash;
+use subspace_runtime_primitives::Balance;
 
 pub(super) struct BundleProducerElectionSolver<Block, CBlock, CClient> {
     keystore: KeystorePtr,
@@ -30,6 +32,8 @@ impl<Block, CBlock, CClient> BundleProducerElectionSolver<Block, CBlock, CClient
 where
     Block: BlockT,
     CBlock: BlockT,
+    CClient: ProvideRuntimeApi<CBlock>,
+    CClient::Api: BundleProducerElectionApi<CBlock, Balance>,
 {
     pub(super) fn new(keystore: KeystorePtr, consensus_client: Arc<CClient>) -> Self {
         Self {
@@ -42,14 +46,22 @@ where
     pub(super) fn solve_challenge(
         &self,
         _slot: Slot,
-        _consensus_block_hash: CBlock::Hash,
+        consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
     ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
-        // TODO: Fetch doamin state properly
-        let current_operators = vec![0u64];
-        let total_domain_stake = 100u128;
-        let bundle_slot_probability = (1, 1);
+        let BundleProducerElectionParams {
+            current_operators,
+            total_domain_stake,
+            bundle_slot_probability,
+        } = match self
+            .consensus_client
+            .runtime_api()
+            .bundle_producer_election_params(consensus_block_hash, domain_id)?
+        {
+            Some(params) => params,
+            None => return Ok(None),
+        };
 
         let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
 
