@@ -573,5 +573,7 @@ sp_api::decl_runtime_apis! {
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
         fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>>;
+
+        fn operator_info(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)>;
     }
 }

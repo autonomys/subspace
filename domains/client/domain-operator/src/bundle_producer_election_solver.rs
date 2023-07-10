@@ -65,26 +65,18 @@ where
 
         let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
 
-        for _operator_id in current_operators {
-            // TODO: Fetch signing_key for this operator_id
-            // let operator_signing_key = self.consensus_client.signing_key(consensus_block_hash, operator_id);
-
-            let maybe_signing_key = self
-                .keystore
-                .sr25519_public_keys(OperatorPublicKey::ID)
-                .into_iter()
-                .next();
-
-            if let Some(operator_signing_key) = maybe_signing_key {
+        for operator_id in current_operators {
+            if let Some((operator_signing_key, operator_stake)) = self
+                .consensus_client
+                .runtime_api()
+                .operator_info(consensus_block_hash, operator_id)?
+            {
                 if let Ok(Some(vrf_signature)) = Keystore::sr25519_vrf_sign(
                     &*self.keystore,
                     OperatorPublicKey::ID,
-                    &operator_signing_key,
+                    &operator_signing_key.clone().into(),
                     &vrf_sign_data,
                 ) {
-                    // TODO: Fetch operator_stake properly
-                    let operator_stake = 100u128;
-
                     let threshold = calculate_threshold(
                         operator_stake,
                         total_domain_stake,
@@ -95,7 +87,7 @@ where
                         // TODO: Proper ProofOfElection
                         return Ok(Some(ProofOfElection::dummy(
                             domain_id,
-                            operator_signing_key.into(),
+                            operator_signing_key,
                         )));
                     }
                 }

@@ -36,7 +36,7 @@ pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, OpaqueBundle, OperatorId};
+use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_std::vec::Vec;
@@ -740,6 +740,11 @@ impl<T: Config> Pallet<T> {
             }),
             _ => None,
         }
+    }
+
+    pub fn operator_info(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
+        OperatorPools::<T>::get(operator_id)
+            .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
     fn pre_dispatch_submit_bundle(

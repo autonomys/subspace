@@ -60,7 +60,7 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::{DomainId, DomainsFreezeIdentifier, OpaqueBundle, OperatorId};
+use sp_domains::{DomainId, DomainsFreezeIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
@@ -859,6 +859,10 @@ impl_runtime_apis! {
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
         fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>> {
             Domains::bundle_producer_election_params(domain_id)
+        }
+
+        fn operator_info(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
+            Domains::operator_info(operator_id)
         }
     }
 
