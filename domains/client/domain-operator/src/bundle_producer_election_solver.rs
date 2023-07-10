@@ -49,7 +49,7 @@ where
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         global_challenge: Blake2b256Hash,
-    ) -> sp_blockchain::Result<Option<ProofOfElection<Block::Hash>>> {
+    ) -> sp_blockchain::Result<Option<(ProofOfElection<Block::Hash>, OperatorPublicKey)>> {
         let BundleProducerElectionParams {
             current_operators,
             total_domain_stake,
@@ -89,10 +89,10 @@ where
                             slot_number: slot.into(),
                             global_challenge,
                             vrf_signature,
-                            operator_public_key: operator_signing_key,
+                            operator_id,
                             _phandom: Default::default(),
                         };
-                        return Ok(Some(proof_of_election));
+                        return Ok(Some((proof_of_election, operator_signing_key)));
                     }
                 }
             }

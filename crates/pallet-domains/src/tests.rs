@@ -202,7 +202,7 @@ fn create_dummy_bundle(
         consensus_block_number,
         consensus_block_hash,
         extrinsics_root: Default::default(),
-        proof_of_election: ProofOfElection::dummy(domain_id, pair.public()),
+        proof_of_election: ProofOfElection::dummy(domain_id, 0u64),
     };
 
     let signature = pair.sign(header.hash().as_ref());

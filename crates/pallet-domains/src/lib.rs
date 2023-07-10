@@ -39,6 +39,7 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::RuntimeAppPublic;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -83,10 +84,7 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{
-        DomainId, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
-        RuntimeType,
-    };
+    use sp_domains::{DomainId, GenesisDomain, OpaqueBundle, OperatorId, RuntimeId, RuntimeType};
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
         Zero,
@@ -272,8 +270,8 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
-        /// The signer of bundle is unexpected.
-        UnexpectedSigner,
+        /// Can not find the operator for given operator id.
+        InvalidOperatorId,
         /// Invalid bundle signature.
         BadSignature,
         /// Invalid vrf proof.
@@ -356,7 +354,7 @@ mod pallet {
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
-            bundle_author: OperatorPublicKey,
+            bundle_author: OperatorId,
         },
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
@@ -455,7 +453,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash,
-                bundle_author: opaque_bundle.into_operator_public_key(),
+                bundle_author: opaque_bundle.operator_id(),
             });
 
             Ok(())
@@ -804,7 +802,12 @@ impl<T: Config> Pallet<T> {
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
-        if !sealed_header.verify_signature() {
+        let signing_key =
+            OperatorPools::<T>::get(sealed_header.header.proof_of_election.operator_id)
+                .map(|operator| operator.signing_key)
+                .ok_or(BundleError::InvalidOperatorId)?;
+
+        if !signing_key.verify(&sealed_header.pre_hash(), &sealed_header.signature) {
             return Err(BundleError::BadSignature);
         }
 

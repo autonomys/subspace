@@ -190,15 +190,16 @@ where
             return Ok(None);
         }
 
-        if let Some(proof_of_election) = self.bundle_producer_election_solver.solve_challenge(
-            slot,
-            consensus_block_info.hash,
-            self.domain_id,
-            global_challenge,
-        )? {
+        if let Some((proof_of_election, operator_signing_key)) =
+            self.bundle_producer_election_solver.solve_challenge(
+                slot,
+                consensus_block_info.hash,
+                self.domain_id,
+                global_challenge,
+            )?
+        {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
-            let bundle_author = proof_of_election.operator_public_key.clone();
             let tx_range = self
                 .consensus_client
                 .runtime_api()
@@ -229,7 +230,7 @@ where
                 .keystore
                 .sr25519_sign(
                     OperatorPublicKey::ID,
-                    bundle_author.as_ref(),
+                    operator_signing_key.as_ref(),
                     to_sign.as_ref(),
                 )
                 .map_err(|error| {

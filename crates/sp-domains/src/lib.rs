@@ -34,7 +34,7 @@ use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
-use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent, RuntimeAppPublic};
+use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
@@ -200,14 +200,6 @@ impl<Number: Encode, Hash: Encode, DomainHash: Encode>
     pub fn slot_number(&self) -> u64 {
         self.header.proof_of_election.slot_number
     }
-
-    /// Returns whether the signature is valid.
-    pub fn verify_signature(&self) -> bool {
-        self.header
-            .proof_of_election
-            .operator_public_key
-            .verify(&self.pre_hash(), &self.signature)
-    }
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -220,18 +212,20 @@ pub struct ProofOfElection<DomainHash> {
     pub global_challenge: Blake2b256Hash,
     /// VRF signature.
     pub vrf_signature: VrfSignature,
-    // TODO: operator_id
-    /// VRF public key.
-    pub operator_public_key: OperatorPublicKey,
+    /// Operator index in the OperatorRegistry.
+    pub operator_id: OperatorId,
     // TODO: added temporarily in order to not change a lot of code to make it compile, remove later.
     pub _phandom: DomainHash,
 }
 
 impl<DomainHash> ProofOfElection<DomainHash> {
-    pub fn verify_vrf_proof(&self) -> Result<(), VrfProofError> {
+    pub fn verify_vrf_proof(
+        &self,
+        operator_signing_key: &OperatorPublicKey,
+    ) -> Result<(), VrfProofError> {
         bundle_producer_election::verify_vrf_proof(
             self.domain_id,
-            &self.operator_public_key,
+            operator_signing_key,
             &self.vrf_signature,
             &self.global_challenge,
         )
@@ -247,7 +241,7 @@ impl<DomainHash> ProofOfElection<DomainHash> {
 
 impl<DomainHash: Default> ProofOfElection<DomainHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy(domain_id: DomainId, operator_public_key: OperatorPublicKey) -> Self {
+    pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
         let proof_bytes = vec![0u8; VrfProof::max_encoded_len()];
         let vrf_signature = VrfSignature {
@@ -259,7 +253,7 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             slot_number: 0u64,
             global_challenge: Blake2b256Hash::default(),
             vrf_signature,
-            operator_public_key,
+            operator_id,
             _phandom: Default::default(),
         }
     }
@@ -290,12 +284,8 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainNumber: Encode, Doma
         self.sealed_header.header.proof_of_election.domain_id
     }
 
-    /// Consumes [`Bundle`] to extract the inner operator public key.
-    pub fn into_operator_public_key(self) -> OperatorPublicKey {
-        self.sealed_header
-            .header
-            .proof_of_election
-            .operator_public_key
+    pub fn operator_id(self) -> OperatorId {
+        self.sealed_header.header.proof_of_election.operator_id
     }
 }
 
@@ -414,10 +404,7 @@ where
             consensus_block_number,
             consensus_block_hash,
             extrinsics_root: Default::default(),
-            proof_of_election: ProofOfElection::dummy(
-                domain_id,
-                OperatorPublicKey::unchecked_from([0u8; 32]),
-            ),
+            proof_of_election: ProofOfElection::dummy(domain_id, 0u64),
         },
         signature: OperatorSignature::unchecked_from([0u8; 64]),
     };
