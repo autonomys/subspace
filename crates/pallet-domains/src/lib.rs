@@ -74,7 +74,7 @@ mod pallet {
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
-    use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
+    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -136,7 +136,9 @@ mod pallet {
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
-        type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>
+            + MutateFreeze<Self::AccountId>
+            + InspectFreeze<Self::AccountId>;
 
         /// Type representing the shares in the staking protocol.
         type Share: Parameter
@@ -275,7 +277,18 @@ mod pallet {
     /// Stored here temporarily until domain epoch is complete.
     #[pallet::storage]
     pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageValue<_, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+
+    #[pallet::storage]
+    pub(super) type PendingOperatorUnlocks<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        DomainId,
+        Identity,
+        T::DomainNumber,
+        Vec<OperatorId>,
+        OptionQuery,
+    >;
 
     /// Stores the next domain id.
     #[pallet::storage]

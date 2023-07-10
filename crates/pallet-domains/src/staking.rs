@@ -272,7 +272,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
             },
         )?;
 
-        PendingOperatorDeregistrations::<T>::append(operator_id);
+        PendingOperatorDeregistrations::<T>::append(operator.current_domain_id, operator_id);
 
         Ok(())
     })
@@ -667,7 +667,7 @@ mod tests {
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert!(operator.is_frozen);
 
-            assert!(PendingOperatorDeregistrations::<Test>::get()
+            assert!(PendingOperatorDeregistrations::<Test>::get(domain_id)
                 .unwrap()
                 .contains(&operator_id));
 
