@@ -3,11 +3,11 @@
 #![allow(dead_code)]
 
 use crate::pallet::{
-    DomainStakingSummary, Nominators, Operators, PendingNominatorUnlocks,
+    DomainStakingSummary, Nominators, Operators, PendingDeposits, PendingNominatorUnlocks,
     PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
     PendingUnlocks, PendingWithdrawals,
 };
-use crate::staking::Withdraw;
+use crate::staking::{Nominator, Withdraw};
 use crate::{BalanceOf, Config, FreezeIdentifier, FungibleFreezeId, NominatorId};
 use codec::{Decode, Encode};
 use frame_support::dispatch::TypeInfo;
@@ -28,6 +28,7 @@ pub enum TransitionError {
     BalanceOverflow,
     BalanceUnderflow,
     ShareUnderflow,
+    ShareOverflow,
     RemoveLock,
     UpdateLock,
     MintBalance,
@@ -228,7 +229,7 @@ fn finalize_operator_pool<T: Config>(
             current_consensus_block,
         )?;
 
-        // TODO: finalize deposits
+        finalize_pending_deposits::<T>(operator_id, &mut total_stake, &mut total_shares)?;
 
         // update operator state
         operator.total_shares = total_shares;
@@ -351,17 +352,66 @@ fn finalize_nominator_withdrawal<T: Config>(
     Ok(())
 }
 
+fn finalize_pending_deposits<T: Config>(
+    operator_id: OperatorId,
+    total_stake: &mut BalanceOf<T>,
+    total_shares: &mut T::Share,
+) -> Result<(), TransitionError> {
+    PendingDeposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, deposit)| {
+        finalize_nominator_deposit::<T>(
+            operator_id,
+            nominator_id,
+            deposit,
+            total_stake,
+            total_shares,
+        )
+    })
+}
+
+fn finalize_nominator_deposit<T: Config>(
+    operator_id: OperatorId,
+    nominator_id: NominatorId<T>,
+    deposit: BalanceOf<T>,
+    total_stake: &mut BalanceOf<T>,
+    total_shares: &mut T::Share,
+) -> Result<(), TransitionError> {
+    // calculate the shares to be added to nominator
+    let share_per_ssc = Perbill::from_rational(*total_shares, T::Share::from(*total_stake));
+    let shares_to_deposit = T::Share::from(share_per_ssc.mul_floor(deposit));
+    let mut nominator =
+        Nominators::<T>::get(operator_id, nominator_id.clone()).unwrap_or(Nominator {
+            shares: Zero::zero(),
+        });
+
+    nominator.shares = nominator
+        .shares
+        .checked_add(&shares_to_deposit)
+        .ok_or(TransitionError::ShareOverflow)?;
+
+    Nominators::<T>::insert(operator_id, nominator_id, nominator);
+
+    // update pool's remaining shares and stake
+    *total_shares = total_shares
+        .checked_add(&shares_to_deposit)
+        .ok_or(TransitionError::ShareOverflow)?;
+    *total_stake = total_stake
+        .checked_add(&deposit)
+        .ok_or(TransitionError::BalanceOverflow)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, Nominators, OperatorIdOwner, Operators,
+        DomainStakingSummary, Nominators, OperatorIdOwner, Operators, PendingDeposits,
         PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
         PendingUnlocks,
     };
     use crate::staking::{Nominator, Operator, StakingSummary};
     use crate::staking_epoch::{
-        do_finalize_operator_deregistrations, do_finalize_switch_operator_domain,
-        unlock_operator as do_unlock_operators,
+        do_finalize_domain_epoch, do_finalize_operator_deregistrations,
+        do_finalize_switch_operator_domain, unlock_operator as do_unlock_operators,
     };
     use crate::tests::{new_test_ext, Test};
     use crate::{BalanceOf, Config, FreezeIdentifier as FreezeIdentifierT, NominatorId};
@@ -381,6 +431,7 @@ mod tests {
         domain_id: DomainId,
         total_domain_stake: BalanceOf<Test>,
         current_operators: Vec<OperatorId>,
+        next_operators: Vec<OperatorId>,
         operator_id: OperatorId,
         operator_account: <Test as frame_system::Config>::AccountId,
         operator: Operator<BalanceOf<Test>, ShareOf<Test>>,
@@ -391,6 +442,7 @@ mod tests {
             domain_id,
             total_domain_stake,
             current_operators,
+            next_operators,
             operator_id,
             operator_account,
             operator,
@@ -402,7 +454,7 @@ mod tests {
                 current_epoch_index: 0,
                 current_total_stake: total_domain_stake,
                 current_operators,
-                next_operators: vec![],
+                next_operators,
             },
         );
 
@@ -424,6 +476,7 @@ mod tests {
                 domain_id: new_domain_id,
                 total_domain_stake: 0,
                 current_operators: vec![],
+                next_operators: vec![],
                 operator_id,
                 operator_account,
                 operator: Operator {
@@ -485,6 +538,7 @@ mod tests {
                 domain_id,
                 total_domain_stake: total_stake,
                 current_operators: vec![],
+                next_operators: vec![],
                 operator_id,
                 operator_account,
                 operator: Operator {
@@ -545,6 +599,7 @@ mod tests {
                 domain_id,
                 total_domain_stake: 0,
                 current_operators: vec![],
+                next_operators: vec![],
                 operator_id,
                 operator_account,
                 operator: Operator {
@@ -575,5 +630,105 @@ mod tests {
                 Some(vec![operator_id])
             )
         });
+    }
+
+    struct FinalizeDomainParams {
+        total_stake: BalanceOf<Test>,
+        rewards: BalanceOf<Test>,
+        nominators: Vec<(NominatorId<Test>, <Test as Config>::Share)>,
+        deposits: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
+    }
+
+    fn finalize_domain_epoch(params: FinalizeDomainParams) {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_id = 1;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let FinalizeDomainParams {
+            total_stake,
+            rewards,
+            nominators,
+            deposits,
+        } = params;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let mut total_shares = Zero::zero();
+            for nominator in nominators {
+                total_shares += nominator.1;
+                Nominators::<Test>::insert(
+                    operator_id,
+                    nominator.0,
+                    Nominator {
+                        shares: nominator.1,
+                    },
+                );
+            }
+            create_required_state(RequiredStateParams {
+                domain_id,
+                total_domain_stake: total_stake,
+                current_operators: vec![operator_id],
+                next_operators: vec![operator_id],
+                operator_id,
+                operator_account,
+                operator: Operator {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    next_domain_id: domain_id,
+                    minimum_nominator_stake: 10 * SSC,
+                    nomination_tax: Default::default(),
+                    current_total_stake: total_stake,
+                    current_epoch_rewards: rewards,
+                    total_shares,
+                    is_frozen: false,
+                },
+            });
+
+            let mut total_deposit = BalanceOf::<Test>::zero();
+            for deposit in &deposits {
+                PendingDeposits::<Test>::insert(operator_id, deposit.0, deposit.1);
+                total_deposit += deposit.1;
+            }
+
+            let current_block = 100;
+            do_finalize_domain_epoch::<Test>(domain_id, current_block).unwrap();
+            for deposit in deposits {
+                assert_eq!(PendingDeposits::<Test>::get(operator_id, deposit.0), None);
+                Nominators::<Test>::contains_key(operator_id, deposit.0);
+            }
+
+            let total_updated_stake = total_stake + total_deposit + rewards;
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, total_updated_stake);
+            assert_eq!(operator.current_epoch_rewards, Zero::zero());
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(
+                domain_stake_summary.current_total_stake,
+                total_updated_stake
+            );
+            assert_eq!(domain_stake_summary.current_epoch_index, 1)
+        });
+    }
+
+    #[test]
+    fn finalize_domain_epoch_no_rewards() {
+        finalize_domain_epoch(FinalizeDomainParams {
+            total_stake: 210 * SSC,
+            rewards: 0,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
+        })
+    }
+
+    #[test]
+    fn finalize_domain_epoch_with_rewards() {
+        finalize_domain_epoch(FinalizeDomainParams {
+            total_stake: 210 * SSC,
+            rewards: 20 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
+        })
     }
 }
