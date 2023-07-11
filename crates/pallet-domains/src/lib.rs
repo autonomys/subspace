@@ -96,7 +96,7 @@ mod pallet {
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
     use frame_support::weights::Weight;
-    use frame_support::{BoundedBTreeSet, Identity, PalletError};
+    use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
@@ -109,6 +109,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
         One, SimpleBitOps, Zero,
     };
+    use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
@@ -180,10 +181,6 @@ mod pallet {
         /// construct the node of the block tree.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<Self::DomainNumber>;
-
-        /// The maximum fork at the same height allowed in the block tree.
-        #[pallet::constant]
-        type MaxBlockTreeFork: Get<u32>;
 
         /// The maximum block size limit for all domain.
         #[pallet::constant]
@@ -301,7 +298,7 @@ mod pallet {
         DomainId,
         Identity,
         T::DomainNumber,
-        BoundedBTreeSet<H256, T::MaxBlockTreeFork>,
+        BTreeSet<H256>,
         ValueQuery,
     >;
 

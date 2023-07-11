@@ -521,7 +521,6 @@ parameter_types! {
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
     pub const BlockTreePruningDepth: u32 = 256;
-    pub const MaxBlockTreeFork: u32 = 32;
 }
 
 impl pallet_domains::Config for Runtime {
@@ -544,7 +543,6 @@ impl pallet_domains::Config for Runtime {
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
     type BlockTreePruningDepth = BlockTreePruningDepth;
-    type MaxBlockTreeFork = MaxBlockTreeFork;
 }
 
 parameter_types! {

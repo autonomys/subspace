@@ -82,7 +82,6 @@ parameter_types! {
     pub const DomainInstantiationDeposit: Balance = 100;
     pub const MaxDomainNameLength: u32 = 16;
     pub const BlockTreePruningDepth: u32 = 256;
-    pub const MaxBlockTreeFork: u32 = 32;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -167,7 +166,6 @@ impl pallet_domains::Config for Test {
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
     type BlockTreePruningDepth = BlockTreePruningDepth;
-    type MaxBlockTreeFork = MaxBlockTreeFork;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

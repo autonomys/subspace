@@ -21,8 +21,7 @@ pub enum Error {
     BuiltOnUnknownConsensusBlock,
     InFutureReceipt,
     PrunedReceipt,
-    ChallengeGenesisReceipt,
-    ExceedMaxBlockTreeFork,
+    BadGenesisReceipt,
     UnexpectedReceiptType,
     MaxHeadDomainNumber,
 }
@@ -104,7 +103,14 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         ..
     } = execution_receipt;
 
-    if !domain_block_number.is_zero() {
+    if domain_block_number.is_zero() {
+        // The genesis receipt is generated and added to the block tree by the runtime upon domain
+        // instantiation, thus it is unchallengeable and must always be the same.
+        ensure!(
+            BlockTree::<T>::get(domain_id, domain_block_number).contains(&execution_receipt.hash()),
+            Error::BadGenesisReceipt
+        );
+    } else {
         let execution_inbox = ExecutionInbox::<T>::get(domain_id, domain_block_number);
         ensure!(
             !block_extrinsics_roots.is_empty() && *block_extrinsics_roots == execution_inbox,
@@ -140,11 +146,6 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             );
             Err(Error::PrunedReceipt)
         }
-        // The genesis receipt is generated and added to the block tree by the runtime upon domain
-        // instantiation, thus it is unchallengeable and must always be the same.
-        ReceiptType::NewBranch if domain_block_number.is_zero() => {
-            Err(Error::ChallengeGenesisReceipt)
-        }
         ReceiptType::NewHead
         | ReceiptType::NewBranch
         | ReceiptType::CurrentHead
@@ -173,11 +174,8 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 operator_ids: sp_std::vec![submitter],
             };
             BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-                er_hashes
-                    .try_insert(er_hash)
-                    .map_err(|_| Error::ExceedMaxBlockTreeFork)?;
-                Ok(())
-            })?;
+                er_hashes.insert(er_hash);
+            });
             DomainBlocks::<T>::insert(er_hash, domain_block);
 
             if er_type == ReceiptType::NewHead {
@@ -225,10 +223,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     };
     // NOTE: no need to upate the head receipt number as we are using `ValueQuery`
     BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-        er_hashes.try_insert(er_hash)
-            .expect(
-                "Must not exceed MaxBlockTreeFork as the genesis receipt is the first and only receipt at block #0; qed"
-            );
+        er_hashes.insert(er_hash);
     });
     DomainBlocks::<T>::insert(er_hash, domain_block);
 }
@@ -393,7 +388,7 @@ mod tests {
             ));
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_genesis_receipt),
-                Error::ChallengeGenesisReceipt
+                Error::BadGenesisReceipt
             );
         });
     }
