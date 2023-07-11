@@ -44,10 +44,30 @@ pub enum Error {
     FinalizeDomainOperators(TransitionError),
 }
 
-/// Add all the switched operators to new domain.
-pub(crate) fn do_finalize_switch_operator_domain<T: Config>(
+/// Finalizes the domain's current epoch and begins the next epoch.
+/// Returns true of the epoch indeed was finished.
+pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
-) -> Result<(), Error> {
+    domain_block_number: T::DomainNumber,
+    current_consensus_block_number: T::BlockNumber,
+) -> Result<bool, Error> {
+    if domain_block_number % T::StakeEpochDuration::get() != Zero::zero() {
+        return Ok(false);
+    }
+
+    // finalize any operator switches
+    do_finalize_switch_operator_domain::<T>(domain_id)?;
+
+    // finalize operator deregistrations
+    do_finalize_operator_deregistrations::<T>(domain_id, current_consensus_block_number)?;
+
+    // finalize any withdrawals and then deposits
+    do_finalize_domain_pending_transfers::<T>(domain_id, current_consensus_block_number)?;
+    Ok(true)
+}
+
+/// Add all the switched operators to new domain.
+fn do_finalize_switch_operator_domain<T: Config>(domain_id: DomainId) -> Result<(), Error> {
     if let Some(operators) = PendingOperatorSwitches::<T>::take(domain_id) {
         operators.into_iter().try_for_each(|operator_id| {
             switch_operator::<T>(operator_id).map_err(Error::SwitchOperatorDomain)
@@ -80,7 +100,7 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
     })
 }
 
-pub(crate) fn do_finalize_operator_deregistrations<T: Config>(
+fn do_finalize_operator_deregistrations<T: Config>(
     domain_id: DomainId,
     consensus_block_number: T::BlockNumber,
 ) -> Result<(), Error> {
@@ -172,7 +192,7 @@ pub struct PendingNominatorUnlock<NominatorId, Balance> {
     pub balance: Balance,
 }
 
-pub(crate) fn do_finalize_domain_epoch<T: Config>(
+fn do_finalize_domain_pending_transfers<T: Config>(
     domain_id: DomainId,
     current_consensus_block: T::BlockNumber,
 ) -> Result<(), Error> {
@@ -188,8 +208,10 @@ pub(crate) fn do_finalize_domain_epoch<T: Config>(
 
         let mut total_domain_stake = BalanceOf::<T>::zero();
         for next_operator_id in &stake_summary.next_operators {
-            let total_operator_stake =
-                finalize_operator_pool::<T>(*next_operator_id, current_consensus_block)?;
+            let total_operator_stake = finalize_operator_pending_transfers::<T>(
+                *next_operator_id,
+                current_consensus_block,
+            )?;
             total_domain_stake = total_domain_stake
                 .checked_add(&total_operator_stake)
                 .ok_or(TransitionError::BalanceOverflow)?;
@@ -203,7 +225,7 @@ pub(crate) fn do_finalize_domain_epoch<T: Config>(
     .map_err(Error::FinalizeDomainOperators)
 }
 
-fn finalize_operator_pool<T: Config>(
+fn finalize_operator_pending_transfers<T: Config>(
     operator_id: OperatorId,
     current_consensus_block: T::BlockNumber,
 ) -> Result<BalanceOf<T>, TransitionError> {
@@ -410,7 +432,7 @@ mod tests {
     };
     use crate::staking::{Nominator, Operator, StakingSummary};
     use crate::staking_epoch::{
-        do_finalize_domain_epoch, do_finalize_operator_deregistrations,
+        do_finalize_domain_pending_transfers, do_finalize_operator_deregistrations,
         do_finalize_switch_operator_domain, unlock_operator as do_unlock_operators,
     };
     use crate::tests::{new_test_ext, Test};
@@ -692,7 +714,7 @@ mod tests {
             }
 
             let current_block = 100;
-            do_finalize_domain_epoch::<Test>(domain_id, current_block).unwrap();
+            do_finalize_domain_pending_transfers::<Test>(domain_id, current_block).unwrap();
             for deposit in deposits {
                 assert_eq!(PendingDeposits::<Test>::get(operator_id, deposit.0), None);
                 Nominators::<Test>::contains_key(operator_id, deposit.0);

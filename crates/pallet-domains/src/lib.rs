@@ -194,6 +194,9 @@ mod pallet {
 
         /// Minimum number of blocks after which any finalized withdrawls are released to nominators.
         type StakeWithdrawalLockingPeriod: Get<Self::BlockNumber>;
+
+        /// Domain epoch transition interval
+        type StakeEpochDuration: Get<Self::DomainNumber>;
     }
 
     #[pallet::pallet]

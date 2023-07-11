@@ -142,6 +142,7 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     pub const MinOperatorStake: Balance = 100 * SSC;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 5;
+    pub const StakeEpochDuration: BlockNumber = 5;
 }
 
 impl pallet_domains::Config for Test {
@@ -164,6 +165,7 @@ impl pallet_domains::Config for Test {
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type StakeEpochDuration = StakeEpochDuration;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

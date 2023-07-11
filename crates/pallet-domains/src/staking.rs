@@ -376,7 +376,7 @@ mod tests {
     use crate::staking::{
         Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
     };
-    use crate::staking_epoch::do_finalize_domain_epoch;
+    use crate::staking_epoch::do_finalize_domain_current_epoch;
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
     use crate::{BalanceOf, Error, NominatorId};
     use frame_support::traits::fungible::Mutate;
@@ -790,9 +790,15 @@ mod tests {
             if expected_withdraw.is_some() {
                 // finalize pending withdrawals
                 let current_consensus_block = 100;
+                let domain_block = 100;
                 let expected_unlock_at =
                     current_consensus_block + crate::tests::StakeWithdrawalLockingPeriod::get();
-                do_finalize_domain_epoch::<Test>(domain_id, current_consensus_block).unwrap();
+                do_finalize_domain_current_epoch::<Test>(
+                    domain_id,
+                    domain_block,
+                    current_consensus_block,
+                )
+                .unwrap();
                 assert_eq!(
                     PendingWithdrawals::<Test>::get(operator_id, nominator_id),
                     None
