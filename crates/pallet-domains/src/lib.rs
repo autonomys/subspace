@@ -70,7 +70,7 @@ mod pallet {
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
-    use crate::staking_epoch::PendingNominatorUnlock;
+    use crate::staking_epoch::{do_unlock_pending_withdrawals, PendingNominatorUnlock};
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
     use codec::FullCodec;
@@ -759,6 +759,9 @@ mod pallet {
             SuccessfulBundles::<T>::kill();
 
             do_upgrade_runtimes::<T>(block_number);
+
+            do_unlock_pending_withdrawals::<T>(block_number)
+                .expect("Pending unlocks should not fail due to checks at epoch");
 
             Weight::zero()
         }

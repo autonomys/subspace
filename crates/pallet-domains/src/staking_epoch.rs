@@ -1,6 +1,4 @@
 //! Staking epoch transition for domain
-// TODO: remove once pieces are connected.
-#![allow(dead_code)]
 
 use crate::pallet::{
     DomainStakingSummary, Nominators, Operators, PendingDeposits, PendingNominatorUnlocks,
@@ -38,14 +36,17 @@ pub enum TransitionError {
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
-    SwitchOperatorDomain(TransitionError),
+    FinalizeSwitchOperatorDomain(TransitionError),
     FinalizeOperatorDeregistration(TransitionError),
     UnlockOperator(TransitionError),
-    FinalizeDomainOperators(TransitionError),
+    FinalizeDomainPendingTransfers(TransitionError),
+    UnlockNominator(TransitionError),
 }
 
 /// Finalizes the domain's current epoch and begins the next epoch.
 /// Returns true of the epoch indeed was finished.
+// TODO: remove once connected with block tree
+#[allow(dead_code)]
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
@@ -66,11 +67,32 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     Ok(true)
 }
 
+pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
+    consensus_block_number: T::BlockNumber,
+) -> Result<(), Error> {
+    if let Some(operator_ids) = PendingUnlocks::<T>::take(consensus_block_number) {
+        PendingOperatorUnlocks::<T>::mutate(|unlocking_operator_ids| {
+            for operator_id in operator_ids {
+                if unlocking_operator_ids.contains(&operator_id) {
+                    unlock_operator::<T>(operator_id)?;
+                    unlocking_operator_ids
+                        .retain(|existing_operator_ids| *existing_operator_ids != operator_id);
+                } else {
+                    unlock_nominator_withdrawals::<T>(operator_id, consensus_block_number)?;
+                }
+            }
+
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
 /// Add all the switched operators to new domain.
 fn do_finalize_switch_operator_domain<T: Config>(domain_id: DomainId) -> Result<(), Error> {
     if let Some(operators) = PendingOperatorSwitches::<T>::take(domain_id) {
         operators.into_iter().try_for_each(|operator_id| {
-            switch_operator::<T>(operator_id).map_err(Error::SwitchOperatorDomain)
+            switch_operator::<T>(operator_id).map_err(Error::FinalizeSwitchOperatorDomain)
         })?;
     }
 
@@ -127,15 +149,7 @@ fn do_finalize_operator_deregistrations<T: Config>(
     Ok(())
 }
 
-fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionError> {
-    let mut pending_operator_ids = PendingOperatorUnlocks::<T>::get();
-    if !pending_operator_ids.contains(&operator_id) {
-        return Ok(());
-    }
-
-    pending_operator_ids.retain(|current_operator_id| *current_operator_id != operator_id);
-    PendingOperatorUnlocks::<T>::set(pending_operator_ids);
-
+fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
             .as_mut()
@@ -184,6 +198,35 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
 
         Ok(())
     })
+    .map_err(Error::UnlockOperator)
+}
+
+fn unlock_nominator_withdrawals<T: Config>(
+    operator_id: OperatorId,
+    current_consensus_block: T::BlockNumber,
+) -> Result<(), Error> {
+    let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
+    match PendingNominatorUnlocks::<T>::take(operator_id, current_consensus_block) {
+        None => Ok(()),
+        Some(withdrawals) => withdrawals.into_iter().try_for_each(|withdrawal| {
+            let frozen_balance =
+                T::Currency::balance_frozen(&freeze_identifier, &withdrawal.nominator_id);
+
+            let remaining_staked_balance = frozen_balance
+                .checked_sub(&withdrawal.balance)
+                .ok_or(TransitionError::BalanceUnderflow)?;
+
+            T::Currency::set_freeze(
+                &freeze_identifier,
+                &withdrawal.nominator_id,
+                remaining_staked_balance,
+            )
+            .map_err(|_| TransitionError::UpdateLock)?;
+
+            Ok(())
+        }),
+    }
+    .map_err(Error::UnlockNominator)
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -222,7 +265,7 @@ fn do_finalize_domain_pending_transfers<T: Config>(
 
         Ok(())
     })
-    .map_err(Error::FinalizeDomainOperators)
+    .map_err(Error::FinalizeDomainPendingTransfers)
 }
 
 fn finalize_operator_pending_transfers<T: Config>(
@@ -412,7 +455,7 @@ fn finalize_nominator_deposit<T: Config>(
 
     Nominators::<T>::insert(operator_id, nominator_id, nominator);
 
-    // update pool's remaining shares and stake
+    // update operator's remaining shares and stake
     *total_shares = total_shares
         .checked_add(&shares_to_deposit)
         .ok_or(TransitionError::ShareOverflow)?;
@@ -433,7 +476,7 @@ mod tests {
     use crate::staking::{Nominator, Operator, StakingSummary};
     use crate::staking_epoch::{
         do_finalize_domain_pending_transfers, do_finalize_operator_deregistrations,
-        do_finalize_switch_operator_domain, unlock_operator as do_unlock_operators,
+        do_finalize_switch_operator_domain, do_unlock_pending_withdrawals,
     };
     use crate::tests::{new_test_ext, Test};
     use crate::{BalanceOf, Config, FreezeIdentifier as FreezeIdentifierT, NominatorId};
@@ -446,7 +489,6 @@ mod tests {
     use subspace_runtime_primitives::SSC;
 
     type Balances = pallet_balances::Pallet<Test>;
-    type Domains = crate::Pallet<Test>;
     type ShareOf<T> = <T as Config>::Share;
 
     struct RequiredStateParams {
@@ -576,8 +618,10 @@ mod tests {
                 },
             });
 
+            let consensus_block_number = 100;
+            PendingUnlocks::<Test>::append(consensus_block_number, operator_id);
             PendingOperatorUnlocks::<Test>::append(operator_id);
-            assert!(do_unlock_operators::<Test>(operator_id).is_ok());
+            assert!(do_unlock_pending_withdrawals::<Test>(consensus_block_number).is_ok());
 
             for nominator in &nominators {
                 let mut required_minimum_free_balance = minimum_free_balance + nominator.1;
