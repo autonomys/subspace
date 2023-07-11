@@ -1,8 +1,8 @@
 //! Staking for domains
 
 use crate::pallet::{
-    DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, OperatorPools,
-    PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches, PendingWithdrawals,
+    DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators, PendingDeposits,
+    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingWithdrawals,
 };
 use crate::{BalanceOf, Config, FreezeIdentifier, NominatorId};
 use codec::{Decode, Encode};
@@ -16,24 +16,24 @@ use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::vec::Vec;
 
-/// Type that represents an operator pool details.
+/// Type that represents an operator details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct OperatorPool<Balance, Share> {
+pub struct Operator<Balance, Share> {
     pub signing_key: OperatorPublicKey,
     pub current_domain_id: DomainId,
     pub next_domain_id: DomainId,
     pub minimum_nominator_stake: Balance,
     pub nomination_tax: Percent,
-    /// Total active stake for the current pool.
+    /// Total active stake of combined nominators under this operator.
     pub current_total_stake: Balance,
     /// Total rewards this operator received this current epoch.
     pub current_epoch_rewards: Balance,
-    /// Total shares of the nominators and the operator in this pool.
+    /// Total shares of all the nominators unde this operator.
     pub total_shares: Share,
     pub is_frozen: bool,
 }
 
-/// Type that represents a nominator's details under a specific operator pool
+/// Type that represents a nominator's details under a specific operator.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct Nominator<Share> {
     pub shares: Share,
@@ -68,6 +68,7 @@ pub struct OperatorConfig<Balance> {
 pub enum Error {
     MaximumOperatorId,
     DomainNotInitialized,
+    PendingOperatorSwitch,
     InsufficientBalance,
     BalanceFreeze,
     MinimumOperatorStake,
@@ -76,7 +77,7 @@ pub enum Error {
     BalanceOverflow,
     BalanceUnderflow,
     NotOperatorOwner,
-    OperatorPoolFrozen,
+    OperatorFrozen,
     UnknownNominator,
     ExistingFullWithdraw,
 }
@@ -112,7 +113,7 @@ pub(crate) fn do_register_operator<T: Config>(
             nomination_tax,
         } = config;
 
-        let operator = OperatorPool {
+        let operator = Operator {
             signing_key,
             current_domain_id: domain_id,
             next_domain_id: domain_id,
@@ -123,7 +124,7 @@ pub(crate) fn do_register_operator<T: Config>(
             total_shares: Zero::zero(),
             is_frozen: false,
         };
-        OperatorPools::<T>::insert(operator_id, operator);
+        Operators::<T>::insert(operator_id, operator);
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.push(operator_id);
         // update pending transfers
@@ -138,9 +139,9 @@ pub(crate) fn do_nominate_operator<T: Config>(
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
-    let operator_pool = OperatorPools::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+    let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
-    ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
+    ensure!(!operator.is_frozen, Error::OperatorFrozen);
 
     let updated_total_deposit = match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
         None => amount,
@@ -149,10 +150,13 @@ pub(crate) fn do_nominate_operator<T: Config>(
             .ok_or(Error::BalanceOverflow)?,
     };
 
-    ensure!(
-        updated_total_deposit >= operator_pool.minimum_nominator_stake,
-        Error::MinimumNominatorStake
-    );
+    // if not a nominator, then ensure amount >= operator's minimum nominator stake amount
+    if !Nominators::<T>::contains_key(operator_id, nominator_id.clone()) {
+        ensure!(
+            updated_total_deposit >= operator.minimum_nominator_stake,
+            Error::MinimumNominatorStake
+        );
+    }
 
     freeze_account_balance_to_operator::<T>(&nominator_id, operator_id, amount)?;
     PendingDeposits::<T>::insert(operator_id, nominator_id, updated_total_deposit);
@@ -199,17 +203,29 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
         Error::DomainNotInitialized
     );
 
-    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
-        let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-        ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
-        operator_pool.next_domain_id = new_domain_id;
+        ensure!(!operator.is_frozen, Error::OperatorFrozen);
+
+        // noop when switch is for same domain
+        if operator.current_domain_id == new_domain_id {
+            return Ok(operator.current_domain_id);
+        }
+
+        // check if there is any ongoing pending switch, if so reject
+        ensure!(
+            operator.current_domain_id == operator.next_domain_id,
+            Error::PendingOperatorSwitch
+        );
+
+        operator.next_domain_id = new_domain_id;
 
         // remove operator from next_operators from current domains.
         // operator is added to the next_operators of the new domain once the
         // current domain epoch is finished.
         DomainStakingSummary::<T>::try_mutate(
-            operator_pool.current_domain_id,
+            operator.current_domain_id,
             |maybe_domain_stake_summary| {
                 let stake_summary = maybe_domain_stake_summary
                     .as_mut()
@@ -221,9 +237,9 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
             },
         )?;
 
-        PendingOperatorSwitches::<T>::append(operator_pool.current_domain_id, operator_id);
+        PendingOperatorSwitches::<T>::append(operator.current_domain_id, operator_id);
 
-        Ok(operator_pool.current_domain_id)
+        Ok(operator.current_domain_id)
     })
 }
 
@@ -236,14 +252,14 @@ pub(crate) fn do_deregister_operator<T: Config>(
         Error::NotOperatorOwner
     );
 
-    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
-        let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-        ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
-        operator_pool.is_frozen = true;
+        ensure!(!operator.is_frozen, Error::OperatorFrozen);
+        operator.is_frozen = true;
 
         DomainStakingSummary::<T>::try_mutate(
-            operator_pool.current_domain_id,
+            operator.current_domain_id,
             |maybe_domain_stake_summary| {
                 let stake_summary = maybe_domain_stake_summary
                     .as_mut()
@@ -267,9 +283,9 @@ pub(crate) fn do_withdraw_stake<T: Config>(
     nominator_id: NominatorId<T>,
     withdraw: Withdraw<BalanceOf<T>>,
 ) -> Result<(), Error> {
-    OperatorPools::<T>::try_mutate(operator_id, |maybe_operator_pool| {
-        let operator_pool = maybe_operator_pool.as_mut().ok_or(Error::UnknownOperator)?;
-        ensure!(!operator_pool.is_frozen, Error::OperatorPoolFrozen);
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+        ensure!(!operator.is_frozen, Error::OperatorFrozen);
 
         let nominator = Nominators::<T>::get(operator_id, nominator_id.clone())
             .ok_or(Error::UnknownNominator)?;
@@ -302,7 +318,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
         match withdraw {
             Withdraw::All => {
-                // if nominator is the operator pool owner and trying to withdraw all, then error out
+                // if nominator is the operator owner and trying to withdraw all, then error out
                 if operator_owner == nominator_id {
                     return Err(Error::MinimumOperatorStake);
                 }
@@ -310,22 +326,26 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
             }
             Withdraw::Some(withdraw_amount) => {
-                let total_pool_stake = operator_pool
+                if withdraw_amount.is_zero() {
+                    return Ok(());
+                }
+
+                let total_stake = operator
                     .current_total_stake
-                    .checked_add(&operator_pool.current_epoch_rewards)
+                    .checked_add(&operator.current_epoch_rewards)
                     .ok_or(Error::BalanceOverflow)?;
 
                 let nominator_share =
-                    Perbill::from_rational(nominator.shares, operator_pool.total_shares);
+                    Perbill::from_rational(nominator.shares, operator.total_shares);
 
-                let nominator_staked_amount = nominator_share * total_pool_stake;
+                let nominator_staked_amount = nominator_share.mul_floor(total_stake);
 
                 let nominator_remaining_amount = nominator_staked_amount
                     .checked_sub(&withdraw_amount)
                     .ok_or(Error::BalanceUnderflow)?;
 
                 if operator_owner == nominator_id {
-                    // for operator pool owner, the remaining amount should not be less than MinimumOperatorStake,
+                    // for operator owner, the remaining amount should not be less than MinimumOperatorStake,
                     if nominator_remaining_amount < T::MinOperatorStake::get() {
                         return Err(Error::MinimumOperatorStake);
                     }
@@ -334,7 +354,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
                     // for just a nominator, if remaining amount falls below MinimumNominator stake, then withdraw all
                     // else withdraw the asked amount only
-                } else if nominator_remaining_amount < operator_pool.minimum_nominator_stake {
+                } else if nominator_remaining_amount < operator.minimum_nominator_stake {
                     PendingWithdrawals::<T>::insert(operator_id, nominator_id, Withdraw::All);
                 } else {
                     PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
@@ -349,12 +369,12 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, OperatorPools,
+        DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators,
         PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches,
         PendingWithdrawals,
     };
     use crate::staking::{
-        Error as StakingError, Nominator, OperatorConfig, OperatorPool, StakingSummary, Withdraw,
+        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
     use crate::{BalanceOf, Error, NominatorId};
@@ -410,8 +430,8 @@ mod tests {
             // operator_id should be 0 and be registered
             assert_eq!(OperatorIdOwner::<Test>::get(0).unwrap(), operator_account);
             assert_eq!(
-                OperatorPools::<Test>::get(0).unwrap(),
-                OperatorPool {
+                Operators::<Test>::get(0).unwrap(),
+                Operator {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
                     next_domain_id: domain_id,
@@ -548,9 +568,9 @@ mod tests {
             );
 
             OperatorIdOwner::<Test>::insert(operator_id, operator_account);
-            OperatorPools::<Test>::insert(
+            Operators::<Test>::insert(
                 operator_id,
-                OperatorPool {
+                Operator {
                     signing_key: pair.public(),
                     current_domain_id: old_domain_id,
                     next_domain_id: old_domain_id,
@@ -563,7 +583,7 @@ mod tests {
                 },
             );
 
-            let res = Domains::switch_operator_domain(
+            let res = Domains::switch_domain(
                 RuntimeOrigin::signed(operator_account),
                 operator_id,
                 new_domain_id,
@@ -582,12 +602,22 @@ mod tests {
                 .next_operators
                 .contains(&operator_id));
 
-            let operator_pool = OperatorPools::<Test>::get(operator_id).unwrap();
-            assert_eq!(operator_pool.current_domain_id, old_domain_id);
-            assert_eq!(operator_pool.next_domain_id, new_domain_id);
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_domain_id, old_domain_id);
+            assert_eq!(operator.next_domain_id, new_domain_id);
             assert_eq!(
                 PendingOperatorSwitches::<Test>::get(old_domain_id).unwrap(),
                 vec![operator_id]
+            );
+
+            let res = Domains::switch_domain(
+                RuntimeOrigin::signed(operator_account),
+                operator_id,
+                new_domain_id,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::PendingOperatorSwitch)
             )
         });
     }
@@ -612,9 +642,9 @@ mod tests {
             );
 
             OperatorIdOwner::<Test>::insert(operator_id, operator_account);
-            OperatorPools::<Test>::insert(
+            Operators::<Test>::insert(
                 operator_id,
-                OperatorPool {
+                Operator {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
                     next_domain_id: domain_id,
@@ -634,14 +664,14 @@ mod tests {
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
 
-            let operator_pool = OperatorPools::<Test>::get(operator_id).unwrap();
-            assert!(operator_pool.is_frozen);
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert!(operator.is_frozen);
 
             assert!(PendingOperatorDeregistrations::<Test>::get()
                 .unwrap()
                 .contains(&operator_id));
 
-            // domain switch will not work since the operator pool is frozen
+            // domain switch will not work since the operator is frozen
             let new_domain_id = DomainId::new(1);
             DomainStakingSummary::<Test>::insert(
                 new_domain_id,
@@ -652,17 +682,17 @@ mod tests {
                     next_operators: vec![],
                 },
             );
-            let res = Domains::switch_operator_domain(
+            let res = Domains::switch_domain(
                 RuntimeOrigin::signed(operator_account),
                 operator_id,
                 new_domain_id,
             );
             assert_err!(
                 res,
-                Error::<Test>::Staking(crate::staking::Error::OperatorPoolFrozen)
+                Error::<Test>::Staking(crate::staking::Error::OperatorFrozen)
             );
 
-            // nominations will not work since the pool is frozen
+            // nominations will not work since the is frozen
             let nominator_account = 100;
             let nominator_stake = 100 * SSC;
             let res = Domains::nominate_operator(
@@ -672,7 +702,7 @@ mod tests {
             );
             assert_err!(
                 res,
-                Error::<Test>::Staking(crate::staking::Error::OperatorPoolFrozen)
+                Error::<Test>::Staking(crate::staking::Error::OperatorFrozen)
             );
         });
     }
@@ -724,9 +754,9 @@ mod tests {
                 total_shares += shares
             }
 
-            OperatorPools::<Test>::insert(
+            Operators::<Test>::insert(
                 operator_id,
-                OperatorPool {
+                Operator {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
                     next_domain_id: domain_id,
@@ -961,6 +991,19 @@ mod tests {
             nominator_id: 1,
             withdraws: vec![(Withdraw::Some(39 * SSC), Ok(()))],
             expected_withdraw: Some(Withdraw::Some(39 * SSC)),
+        })
+    }
+
+    #[test]
+    fn withdraw_stake_nominator_zero_amount() {
+        withdraw_stake(WithdrawParams {
+            minimum_nominator_stake: 10 * SSC,
+            total_stake: 210 * SSC,
+            nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
+            operator_reward: Zero::zero(),
+            nominator_id: 1,
+            withdraws: vec![(Withdraw::Some(0), Ok(()))],
+            expected_withdraw: None,
         })
     }
 }

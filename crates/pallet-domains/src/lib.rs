@@ -66,8 +66,8 @@ mod pallet {
     };
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator,
-        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator,
-        OperatorConfig, OperatorPool, StakingSummary, Withdraw,
+        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
+        OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -228,8 +228,8 @@ mod pallet {
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
-    pub(super) type OperatorPools<T: Config> =
-        StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>, T::Share>, OptionQuery>;
+    pub(super) type Operators<T: Config> =
+        StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
 
     /// Temporary hold of all the operators who decided to switch to another domain.
     /// Once epoch is complete, these operators are added to new domains under next_operators.
@@ -400,7 +400,7 @@ mod pallet {
         DomainInstantiated {
             domain_id: DomainId,
         },
-        DomainOperatorSwitched {
+        OperatorSwitchedDomain {
             old_domain_id: DomainId,
             new_domain_id: DomainId,
         },
@@ -625,7 +625,7 @@ mod pallet {
         #[pallet::call_index(7)]
         #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
         // TODO: proper benchmark
-        pub fn switch_operator_domain(
+        pub fn switch_domain(
             origin: OriginFor<T>,
             operator_id: OperatorId,
             new_domain_id: DomainId,
@@ -635,7 +635,7 @@ mod pallet {
             let old_domain_id = do_switch_operator_domain::<T>(who, operator_id, new_domain_id)
                 .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::DomainOperatorSwitched {
+            Self::deposit_event(Event::OperatorSwitchedDomain {
                 old_domain_id,
                 new_domain_id,
             });
