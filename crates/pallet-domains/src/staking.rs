@@ -370,12 +370,13 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 mod tests {
     use crate::pallet::{
         DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators,
-        PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches,
-        PendingWithdrawals,
+        PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
+        PendingOperatorSwitches, PendingUnlocks, PendingWithdrawals,
     };
     use crate::staking::{
         Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
     };
+    use crate::staking_epoch::do_finalize_domain_epoch;
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
     use crate::{BalanceOf, Error, NominatorId};
     use frame_support::traits::fungible::Mutate;
@@ -784,7 +785,29 @@ mod tests {
             assert_eq!(
                 PendingWithdrawals::<Test>::get(operator_id, nominator_id),
                 expected_withdraw
-            )
+            );
+
+            if expected_withdraw.is_some() {
+                // finalize pending withdrawals
+                let current_consensus_block = 100;
+                let expected_unlock_at =
+                    current_consensus_block + crate::tests::StakeWithdrawalLockingPeriod::get();
+                do_finalize_domain_epoch::<Test>(domain_id, current_consensus_block).unwrap();
+                assert_eq!(
+                    PendingWithdrawals::<Test>::get(operator_id, nominator_id),
+                    None
+                );
+
+                let pending_unlocks_at =
+                    PendingNominatorUnlocks::<Test>::get(operator_id, expected_unlock_at).unwrap();
+                assert_eq!(pending_unlocks_at.len(), 1);
+                assert_eq!(pending_unlocks_at[0].nominator_id, nominator_id);
+
+                assert_eq!(
+                    PendingUnlocks::<Test>::get(expected_unlock_at),
+                    Some(vec![operator_id])
+                );
+            }
         });
     }
 

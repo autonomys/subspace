@@ -3,30 +3,36 @@
 #![allow(dead_code)]
 
 use crate::pallet::{
-    DomainStakingSummary, Nominators, Operators, PendingOperatorDeregistrations,
-    PendingOperatorSwitches, PendingOperatorUnlocks,
+    DomainStakingSummary, Nominators, Operators, PendingNominatorUnlocks,
+    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
+    PendingUnlocks, PendingWithdrawals,
 };
-use crate::{Config, FreezeIdentifier};
+use crate::staking::Withdraw;
+use crate::{BalanceOf, Config, FreezeIdentifier, FungibleFreezeId, NominatorId};
 use codec::{Decode, Encode};
 use frame_support::dispatch::TypeInfo;
 use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
 use frame_support::PalletError;
 use sp_core::Get;
 use sp_domains::{DomainId, OperatorId};
-use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
+use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Perbill;
+use sp_std::vec;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum TransitionError {
     MissingOperator,
+    MissingNomination,
     OperatorFrozen,
     MissingDomainStakeSummary,
     BalanceOverflow,
     BalanceUnderflow,
     ShareUnderflow,
     RemoveLock,
+    UpdateLock,
     MintBalance,
     BlockNumberOverflow,
+    EpochOverflow,
 }
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -34,6 +40,7 @@ pub enum Error {
     SwitchOperatorDomain(TransitionError),
     FinalizeOperatorDeregistration(TransitionError),
     UnlockOperator(TransitionError),
+    FinalizeDomainOperators(TransitionError),
 }
 
 /// Add all the switched operators to new domain.
@@ -83,27 +90,31 @@ pub(crate) fn do_finalize_operator_deregistrations<T: Config>(
             TransitionError::BlockNumberOverflow,
         ))?;
 
-    if let Some(operators) = PendingOperatorDeregistrations::<T>::take(domain_id) {
-        PendingOperatorUnlocks::<T>::insert(domain_id, unlock_block_number, operators)
-    }
-
-    Ok(())
-}
-
-pub(crate) fn do_unlock_operators<T: Config>(
-    domain_id: DomainId,
-    domain_block_number: T::BlockNumber,
-) -> Result<(), Error> {
-    if let Some(operators) = PendingOperatorUnlocks::<T>::take(domain_id, domain_block_number) {
-        operators.into_iter().try_for_each(|operator_id| {
-            unlock_operator::<T>(operator_id).map_err(Error::UnlockOperator)
-        })?;
+    if let Some(operator_ids) = PendingOperatorDeregistrations::<T>::take(domain_id) {
+        PendingUnlocks::<T>::mutate(unlock_block_number, |maybe_stored_operator_ids| {
+            let mut stored_operator_ids = maybe_stored_operator_ids.take().unwrap_or_default();
+            operator_ids.into_iter().for_each(|operator_id| {
+                PendingOperatorUnlocks::<T>::append(operator_id);
+                stored_operator_ids
+                    .retain(|existing_operator_id| *existing_operator_id != operator_id);
+                stored_operator_ids.push(operator_id);
+            });
+            *maybe_stored_operator_ids = Some(stored_operator_ids)
+        })
     }
 
     Ok(())
 }
 
 fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionError> {
+    let mut pending_operator_ids = PendingOperatorUnlocks::<T>::get();
+    if !pending_operator_ids.contains(&operator_id) {
+        return Ok(());
+    }
+
+    pending_operator_ids.retain(|current_operator_id| *current_operator_id != operator_id);
+    PendingOperatorUnlocks::<T>::set(pending_operator_ids);
+
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
             .as_mut()
@@ -119,7 +130,7 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
 
         Nominators::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, nominator)| {
             let nominator_share = Perbill::from_rational(nominator.shares, total_shares);
-            let nominator_staked_amount = nominator_share * total_stake;
+            let nominator_staked_amount = nominator_share.mul_floor(total_stake);
 
             let locked_amount = T::Currency::balance_frozen(&freeze_identifier, &nominator_id);
             let amount_to_mint = nominator_staked_amount
@@ -145,7 +156,7 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
 
         // TODO: transfer any remaining amount to treasury
 
-        // reset operator pool
+        // reset operator
         operator.total_shares = Zero::zero();
         operator.current_total_stake = Zero::zero();
         operator.current_epoch_rewards = Zero::zero();
@@ -154,16 +165,203 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
     })
 }
 
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct PendingNominatorUnlock<NominatorId, Balance> {
+    pub nominator_id: NominatorId,
+    pub balance: Balance,
+}
+
+pub(crate) fn do_finalize_domain_epoch<T: Config>(
+    domain_id: DomainId,
+    current_consensus_block: T::BlockNumber,
+) -> Result<(), Error> {
+    DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
+        let stake_summary = maybe_stake_summary
+            .as_mut()
+            .ok_or(TransitionError::MissingDomainStakeSummary)?;
+
+        stake_summary.current_epoch_index = stake_summary
+            .current_epoch_index
+            .checked_add(One::one())
+            .ok_or(TransitionError::EpochOverflow)?;
+
+        let mut total_domain_stake = BalanceOf::<T>::zero();
+        for next_operator_id in &stake_summary.next_operators {
+            let total_operator_stake =
+                finalize_operator_pool::<T>(*next_operator_id, current_consensus_block)?;
+            total_domain_stake = total_domain_stake
+                .checked_add(&total_operator_stake)
+                .ok_or(TransitionError::BalanceOverflow)?;
+        }
+
+        stake_summary.current_total_stake = total_domain_stake;
+        stake_summary.current_operators = stake_summary.next_operators.clone();
+
+        Ok(())
+    })
+    .map_err(Error::FinalizeDomainOperators)
+}
+
+fn finalize_operator_pool<T: Config>(
+    operator_id: OperatorId,
+    current_consensus_block: T::BlockNumber,
+) -> Result<BalanceOf<T>, TransitionError> {
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator
+            .as_mut()
+            .ok_or(TransitionError::MissingOperator)?;
+
+        if operator.is_frozen {
+            return Err(TransitionError::OperatorFrozen);
+        }
+
+        let mut total_stake = operator
+            .current_total_stake
+            .checked_add(&operator.current_epoch_rewards)
+            .ok_or(TransitionError::BalanceOverflow)?;
+
+        let mut total_shares = operator.total_shares;
+        finalize_pending_withdrawals::<T>(
+            operator_id,
+            &mut total_stake,
+            &mut total_shares,
+            current_consensus_block,
+        )?;
+
+        // TODO: finalize deposits
+
+        // update operator state
+        operator.total_shares = total_shares;
+        operator.current_total_stake = total_stake;
+        operator.current_epoch_rewards = Zero::zero();
+
+        Ok(total_stake)
+    })
+}
+
+fn finalize_pending_withdrawals<T: Config>(
+    operator_id: OperatorId,
+    total_stake: &mut BalanceOf<T>,
+    total_shares: &mut T::Share,
+    current_consensus_block_number: T::BlockNumber,
+) -> Result<(), TransitionError> {
+    let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
+    let unlock_block_number = current_consensus_block_number
+        .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+        .ok_or(TransitionError::BlockNumberOverflow)?;
+    PendingWithdrawals::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, withdraw)| {
+        finalize_nominator_withdrawal::<T>(
+            operator_id,
+            &freeze_identifier,
+            nominator_id,
+            withdraw,
+            total_stake,
+            total_shares,
+            unlock_block_number,
+        )
+    })
+}
+
+fn finalize_nominator_withdrawal<T: Config>(
+    operator_id: OperatorId,
+    freeze_identifier: &FungibleFreezeId<T>,
+    nominator_id: NominatorId<T>,
+    withdraw: Withdraw<BalanceOf<T>>,
+    total_stake: &mut BalanceOf<T>,
+    total_shares: &mut T::Share,
+    unlock_at: T::BlockNumber,
+) -> Result<(), TransitionError> {
+    let (withdrew_stake, withdrew_shares) = match withdraw {
+        Withdraw::All => {
+            let nominator = Nominators::<T>::take(operator_id, nominator_id.clone())
+                .ok_or(TransitionError::MissingNomination)?;
+
+            let nominator_share = Perbill::from_rational(nominator.shares, *total_shares);
+            let nominator_staked_amount = nominator_share.mul_floor(*total_stake);
+
+            let locked_amount = T::Currency::balance_frozen(freeze_identifier, &nominator_id);
+            let amount_to_mint = nominator_staked_amount
+                .checked_sub(&locked_amount)
+                .unwrap_or(Zero::zero());
+
+            // mint any gains and then update the lock
+            T::Currency::mint_into(&nominator_id, amount_to_mint)
+                .map_err(|_| TransitionError::MintBalance)?;
+            T::Currency::set_freeze(freeze_identifier, &nominator_id, nominator_staked_amount)
+                .map_err(|_| TransitionError::UpdateLock)?;
+            (nominator_staked_amount, nominator.shares)
+        }
+        Withdraw::Some(withdraw_amount) => {
+            Nominators::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_nominator| {
+                let nominator = maybe_nominator
+                    .as_mut()
+                    .ok_or(TransitionError::MissingNomination)?;
+
+                // calculate nominator total staked value
+                let nominator_share = Perbill::from_rational(nominator.shares, *total_shares);
+                let nominator_staked_amount = nominator_share.mul_floor(*total_stake);
+
+                // calculate the shares to be deducted from the withdraw amount and adjust
+                let share_per_ssc =
+                    Perbill::from_rational(*total_shares, T::Share::from(*total_stake));
+                let shares_to_withdraw = T::Share::from(share_per_ssc.mul_ceil(withdraw_amount));
+                nominator.shares = nominator
+                    .shares
+                    .checked_sub(&shares_to_withdraw)
+                    .ok_or(TransitionError::ShareUnderflow)?;
+
+                // adjust the locked stake amount with any gains minted
+                let old_locked_amount =
+                    T::Currency::balance_frozen(freeze_identifier, &nominator_id);
+                let amount_to_mint = nominator_staked_amount
+                    .checked_sub(&old_locked_amount)
+                    .unwrap_or(Zero::zero());
+                T::Currency::mint_into(&nominator_id, amount_to_mint)
+                    .map_err(|_| TransitionError::MintBalance)?;
+                T::Currency::set_freeze(freeze_identifier, &nominator_id, nominator_staked_amount)
+                    .map_err(|_| TransitionError::UpdateLock)?;
+
+                Ok((withdraw_amount, shares_to_withdraw))
+            })?
+        }
+    };
+
+    PendingNominatorUnlocks::<T>::append(
+        operator_id,
+        unlock_at,
+        PendingNominatorUnlock {
+            nominator_id,
+            balance: withdrew_stake,
+        },
+    );
+
+    let mut operator_ids = PendingUnlocks::<T>::get(unlock_at).unwrap_or(vec![]);
+    operator_ids.retain(|existing_operator_id| *existing_operator_id != operator_id);
+    operator_ids.push(operator_id);
+    PendingUnlocks::<T>::insert(unlock_at, operator_ids);
+
+    // update pool's remaining shares and stake
+    *total_shares = total_shares
+        .checked_sub(&withdrew_shares)
+        .ok_or(TransitionError::ShareUnderflow)?;
+    *total_stake = total_stake
+        .checked_sub(&withdrew_stake)
+        .ok_or(TransitionError::BalanceUnderflow)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
         DomainStakingSummary, Nominators, OperatorIdOwner, Operators,
         PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
+        PendingUnlocks,
     };
     use crate::staking::{Nominator, Operator, StakingSummary};
     use crate::staking_epoch::{
         do_finalize_operator_deregistrations, do_finalize_switch_operator_domain,
-        do_unlock_operators,
+        unlock_operator as do_unlock_operators,
     };
     use crate::tests::{new_test_ext, Test};
     use crate::{BalanceOf, Config, FreezeIdentifier as FreezeIdentifierT, NominatorId};
@@ -302,9 +500,8 @@ mod tests {
                 },
             });
 
-            let consensus_block_number = 100;
-            PendingOperatorUnlocks::<Test>::append(domain_id, consensus_block_number, operator_id);
-            assert!(do_unlock_operators::<Test>(domain_id, consensus_block_number).is_ok());
+            PendingOperatorUnlocks::<Test>::append(operator_id);
+            assert!(do_unlock_operators::<Test>(operator_id).is_ok());
 
             for nominator in &nominators {
                 let mut required_minimum_free_balance = minimum_free_balance + nominator.1;
@@ -321,10 +518,7 @@ mod tests {
             assert_eq!(operator.total_shares, Zero::zero());
             assert_eq!(operator.current_epoch_rewards, Zero::zero());
             assert_eq!(operator.current_total_stake, Zero::zero());
-            assert_eq!(
-                PendingOperatorUnlocks::<Test>::get(domain_id, consensus_block_number),
-                None
-            )
+            assert!(PendingOperatorUnlocks::<Test>::get().is_empty())
         });
     }
 
@@ -375,8 +569,9 @@ mod tests {
             .is_ok());
 
             let expected_unlock = 100 + crate::tests::StakeWithdrawalLockingPeriod::get();
+            assert_eq!(PendingOperatorUnlocks::<Test>::get(), vec![operator_id]);
             assert_eq!(
-                PendingOperatorUnlocks::<Test>::get(domain_id, expected_unlock),
+                PendingUnlocks::<Test>::get(expected_unlock),
                 Some(vec![operator_id])
             )
         });

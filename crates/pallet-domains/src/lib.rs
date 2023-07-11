@@ -70,6 +70,7 @@ mod pallet {
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
+    use crate::staking_epoch::PendingNominatorUnlock;
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
     use codec::FullCodec;
@@ -282,16 +283,28 @@ mod pallet {
     pub(super) type PendingOperatorDeregistrations<T: Config> =
         StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
 
+    /// Stores the operators that will be unlocked at the specific block number.
+    /// This storage is also used to access any operators when there is slashing.
     #[pallet::storage]
-    pub(super) type PendingOperatorUnlocks<T: Config> = StorageDoubleMap<
+    pub(super) type PendingOperatorUnlocks<T: Config> =
+        StorageValue<_, Vec<OperatorId>, ValueQuery>;
+
+    /// All the pending unlocks for the nominators.
+    /// We use this storage to fetch all the pending unlocks under a operator pool at the time of slashing.
+    #[pallet::storage]
+    pub(super) type PendingNominatorUnlocks<T: Config> = StorageDoubleMap<
         _,
         Identity,
-        DomainId,
+        OperatorId,
         Identity,
         T::BlockNumber,
-        Vec<OperatorId>,
+        Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
+
+    #[pallet::storage]
+    pub(super) type PendingUnlocks<T: Config> =
+        StorageMap<_, Identity, T::BlockNumber, Vec<OperatorId>, OptionQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
