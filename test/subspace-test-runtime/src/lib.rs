@@ -49,9 +49,13 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata, H256};
+use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId};
+use sp_domains::{
+    DomainId, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey,
+};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
 };
@@ -1202,6 +1206,16 @@ impl_runtime_apis! {
 
         fn domain_tx_range(_: DomainId) -> U256 {
             U256::MAX
+        }
+    }
+
+    impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
+        fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>> {
+            Domains::bundle_producer_election_params(domain_id)
+        }
+
+        fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
+            Domains::operator(operator_id)
         }
     }
 

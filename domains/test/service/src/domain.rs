@@ -405,7 +405,7 @@ impl DomainNodeBuilder {
         mock_consensus_node: &mut MockConsensusNode,
     ) -> EvmDomainNode {
         DomainNode::build(
-            DomainId::new(3u32),
+            DomainId::new(0u32),
             self.tokio_handle,
             self.key,
             self.base_path,

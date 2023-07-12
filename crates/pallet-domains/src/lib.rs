@@ -34,10 +34,12 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
+use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, OpaqueBundle, OperatorId};
+use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::RuntimeAppPublic;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -56,6 +58,9 @@ pub trait FreezeIdentifier<T: Config> {
 
 #[frame_support::pallet]
 mod pallet {
+    // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
+    #![allow(clippy::large_enum_variant)]
+
     use crate::domain_registry::{
         do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
     };
@@ -80,15 +85,14 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{
-        DomainId, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
-        RuntimeType,
-    };
+    use sp_domains::{DomainId, GenesisDomain, OpaqueBundle, OperatorId, RuntimeId, RuntimeType};
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
         Zero,
     };
+    use sp_runtime::SaturatedConversion;
     use sp_std::fmt::Debug;
+    use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
 
@@ -292,8 +296,8 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
-        /// The signer of bundle is unexpected.
-        UnexpectedSigner,
+        /// Can not find the operator for given operator id.
+        InvalidOperatorId,
         /// Invalid bundle signature.
         BadSignature,
         /// Invalid vrf proof.
@@ -376,7 +380,7 @@ mod pallet {
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
-            bundle_author: OperatorPublicKey,
+            bundle_author: OperatorId,
         },
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
@@ -486,7 +490,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash,
-                bundle_author: opaque_bundle.into_operator_public_key(),
+                bundle_author: opaque_bundle.operator_id(),
             });
 
             Ok(())
@@ -709,12 +713,44 @@ mod pallet {
 
                 // Instantiate the genesis domain
                 let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                do_instantiate_domain::<T>(
-                    domain_config,
-                    genesis_domain.owner_account_id.clone(),
-                    Zero::zero(),
+                let domain_owner = genesis_domain.owner_account_id.clone();
+                let domain_id =
+                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), Zero::zero())
+                        .expect("Genesis domain instantiation must always succeed");
+
+                // Register domain_owner as the genesis operator.
+                let operator_config = OperatorConfig {
+                    signing_key: genesis_domain.signing_key.clone(),
+                    minimum_nominator_stake: genesis_domain
+                        .minimum_nominator_stake
+                        .saturated_into(),
+                    nomination_tax: genesis_domain.nomination_tax,
+                };
+                let operator_stake = T::MinOperatorStake::get();
+                let operator_id = do_register_operator::<T>(
+                    domain_owner,
+                    domain_id,
+                    operator_stake,
+                    operator_config,
                 )
-                .expect("Genesis domain instantiation must always succeed");
+                .expect("Genesis operator registration must succeed");
+
+                // TODO: Enact the epoch transition logic properly.
+                Operators::<T>::mutate(operator_id, |maybe_operator| {
+                    let operator = maybe_operator
+                        .as_mut()
+                        .expect("Genesis operator must exist");
+                    operator.current_total_stake = operator_stake;
+                });
+                DomainStakingSummary::<T>::insert(
+                    domain_id,
+                    StakingSummary {
+                        current_epoch_index: 0,
+                        current_total_stake: operator_stake,
+                        current_operators: vec![operator_id],
+                        next_operators: vec![],
+                    },
+                );
             }
         }
     }
@@ -816,6 +852,27 @@ impl<T: Config> Pallet<T> {
             .unwrap_or_else(Self::initial_tx_range)
     }
 
+    pub fn bundle_producer_election_params(
+        domain_id: DomainId,
+    ) -> Option<BundleProducerElectionParams<BalanceOf<T>>> {
+        match (
+            DomainRegistry::<T>::get(domain_id),
+            DomainStakingSummary::<T>::get(domain_id),
+        ) {
+            (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
+                current_operators: stake_summary.current_operators,
+                total_domain_stake: stake_summary.current_total_stake,
+                bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
+        Operators::<T>::get(operator_id)
+            .map(|operator| (operator.signing_key, operator.current_total_stake))
+    }
+
     fn pre_dispatch_submit_bundle(
         _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), TransactionValidityError> {
@@ -830,7 +887,11 @@ impl<T: Config> Pallet<T> {
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
-        if !sealed_header.verify_signature() {
+        let signing_key = Operators::<T>::get(sealed_header.header.proof_of_election.operator_id)
+            .map(|operator| operator.signing_key)
+            .ok_or(BundleError::InvalidOperatorId)?;
+
+        if !signing_key.verify(&sealed_header.pre_hash(), &sealed_header.signature) {
             return Err(BundleError::BadSignature);
         }
 
@@ -867,6 +928,8 @@ impl<T: Config> Pallet<T> {
         }
 
         // TODO: Implement bundle validation.
+
+        // TODO: Verify ProofOfElection
 
         Ok(())
     }
@@ -917,7 +980,7 @@ where
     pub fn submit_bundle_unsigned(
         opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) {
-        let slot = opaque_bundle.sealed_header.header.slot_number;
+        let slot = opaque_bundle.sealed_header.slot_number();
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };

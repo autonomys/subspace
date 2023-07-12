@@ -11,7 +11,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_domains::{
-    Bundle, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature, SealedBundleHeader,
+    Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
+    SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
@@ -19,6 +20,7 @@ use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::U256;
+use subspace_runtime_primitives::Balance;
 
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
@@ -45,7 +47,7 @@ pub(super) struct DomainBundleProducer<
     parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
-    bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock>,
+    bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock, CClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
@@ -99,7 +101,8 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+        + BundleProducerElectionApi<CBlock, Balance>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -118,8 +121,10 @@ where
         bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
     ) -> Self {
-        let bundle_producer_election_solver =
-            BundleProducerElectionSolver::<Block, CBlock>::new(keystore.clone());
+        let bundle_producer_election_solver = BundleProducerElectionSolver::<Block, CBlock, _>::new(
+            keystore.clone(),
+            consensus_client.clone(),
+        );
         Self {
             domain_id,
             consensus_client,
@@ -185,14 +190,16 @@ where
             return Ok(None);
         }
 
-        if let Some(bundle_solution) = self
-            .bundle_producer_election_solver
-            .solve_challenge(self.domain_id, global_challenge)?
+        if let Some((proof_of_election, operator_signing_key)) =
+            self.bundle_producer_election_solver.solve_challenge(
+                slot,
+                consensus_block_info.hash,
+                self.domain_id,
+                global_challenge,
+            )?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
 
-            let proof_of_election = bundle_solution.proof_of_election();
-            let bundle_author = proof_of_election.operator_public_key.clone();
             let tx_range = self
                 .consensus_client
                 .runtime_api()
@@ -210,8 +217,7 @@ where
             let (bundle_header, receipt, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
-                    bundle_solution,
-                    slot,
+                    proof_of_election,
                     consensus_block_info,
                     self.parent_chain.clone(),
                     tx_selector,
@@ -224,7 +230,7 @@ where
                 .keystore
                 .sr25519_sign(
                     OperatorPublicKey::ID,
-                    bundle_author.as_ref(),
+                    operator_signing_key.as_ref(),
                     to_sign.as_ref(),
                 )
                 .map_err(|error| {
