@@ -736,7 +736,7 @@ mod pallet {
                 .expect("Genesis operator registration must succeed");
 
                 // TODO: Enact the epoch transition logic properly.
-                OperatorPools::<T>::mutate(operator_id, |maybe_operator| {
+                Operators::<T>::mutate(operator_id, |maybe_operator| {
                     let operator = maybe_operator
                         .as_mut()
                         .expect("Genesis operator must exist");
@@ -747,7 +747,6 @@ mod pallet {
                     StakingSummary {
                         current_epoch_index: 0,
                         current_total_stake: operator_stake,
-                        next_total_stake: Zero::zero(),
                         current_operators: vec![operator_id],
                         next_operators: vec![],
                     },
@@ -870,7 +869,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
-        OperatorPools::<T>::get(operator_id)
+        Operators::<T>::get(operator_id)
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
@@ -888,10 +887,9 @@ impl<T: Config> Pallet<T> {
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
-        let signing_key =
-            OperatorPools::<T>::get(sealed_header.header.proof_of_election.operator_id)
-                .map(|operator| operator.signing_key)
-                .ok_or(BundleError::InvalidOperatorId)?;
+        let signing_key = Operators::<T>::get(sealed_header.header.proof_of_election.operator_id)
+            .map(|operator| operator.signing_key)
+            .ok_or(BundleError::InvalidOperatorId)?;
 
         if !signing_key.verify(&sealed_header.pre_hash(), &sealed_header.signature) {
             return Err(BundleError::BadSignature);
