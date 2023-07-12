@@ -216,7 +216,7 @@ pub struct ProofOfElection<DomainHash> {
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
     // TODO: added temporarily in order to not change a lot of code to make it compile, remove later.
-    pub _phandom: DomainHash,
+    pub _phantom: DomainHash,
 }
 
 impl<DomainHash> ProofOfElection<DomainHash> {
@@ -255,7 +255,7 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             global_challenge: Blake2b256Hash::default(),
             vrf_signature,
             operator_id,
-            _phandom: Default::default(),
+            _phantom: Default::default(),
         }
     }
 }
@@ -567,6 +567,6 @@ sp_api::decl_runtime_apis! {
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
         fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>>;
 
-        fn operator_info(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)>;
+        fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)>;
     }
 }

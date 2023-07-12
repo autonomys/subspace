@@ -46,7 +46,7 @@ pub fn is_below_threshold(vrf_output: &VrfOutput, threshold: u128) -> bool {
             .split_at(core::mem::size_of::<u128>())
             .0
             .try_into()
-            .expect("VrfOutput is 32 bytes which must fit into u128; qed"),
+            .expect("Slice splitted from VrfOutput must fit into u128; qed"),
     );
 
     vrf_output < threshold

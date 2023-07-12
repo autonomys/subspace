@@ -634,20 +634,12 @@ mod pallet {
                 };
                 let operator_stake = T::MinOperatorStake::get();
                 let operator_id = do_register_operator::<T>(
-                    domain_owner.clone(),
+                    domain_owner,
                     domain_id,
                     operator_stake,
                     operator_config,
                 )
                 .expect("Genesis operator registration must succeed");
-
-                // Self-Nominate the genesis operator.
-                do_nominate_operator::<T>(
-                    operator_id,
-                    domain_owner,
-                    genesis_domain.minimum_nominator_stake.saturated_into(),
-                )
-                .expect("Genesis nominator registration must succeed");
 
                 // TODO: Enact the epoch transition logic properly.
                 OperatorPools::<T>::mutate(operator_id, |maybe_operator| {
@@ -783,7 +775,7 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    pub fn operator_info(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
+    pub fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
         OperatorPools::<T>::get(operator_id)
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }

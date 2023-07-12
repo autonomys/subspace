@@ -861,8 +861,8 @@ impl_runtime_apis! {
             Domains::bundle_producer_election_params(domain_id)
         }
 
-        fn operator_info(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
-            Domains::operator_info(operator_id)
+        fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
+            Domains::operator(operator_id)
         }
     }
 

@@ -65,11 +65,14 @@ where
 
         let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
 
+        // TODO: The runtime API may take 10~20 microseonds each time, looping the operator set
+        // could take too long for the bundle production, track a mapping of signing_key to
+        // operator_id in the runtime and then we can update it to loop the keys in the keystore.
         for operator_id in current_operators {
             if let Some((operator_signing_key, operator_stake)) = self
                 .consensus_client
                 .runtime_api()
-                .operator_info(consensus_block_hash, operator_id)?
+                .operator(consensus_block_hash, operator_id)?
             {
                 if let Ok(Some(vrf_signature)) = Keystore::sr25519_vrf_sign(
                     &*self.keystore,
@@ -90,7 +93,7 @@ where
                             global_challenge,
                             vrf_signature,
                             operator_id,
-                            _phandom: Default::default(),
+                            _phantom: Default::default(),
                         };
                         return Ok(Some((proof_of_election, operator_signing_key)));
                     }
