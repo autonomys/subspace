@@ -179,7 +179,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
     });
 
     node_2
-        .wait_for_connected_peers(Duration::from_secs(5))
+        .wait_for_connected_peers(Duration::from_secs(25))
         .await
         .unwrap();
 

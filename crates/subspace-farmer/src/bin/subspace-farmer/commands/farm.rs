@@ -47,6 +47,7 @@ use zeroize::Zeroizing;
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 const GET_PIECE_MAX_RETRIES_COUNT: u16 = 3;
 const GET_PIECE_DELAY_IN_SECS: u64 = 3;
+const POPULATE_PIECE_DELAY: Duration = Duration::from_secs(10);
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -481,6 +482,9 @@ async fn populate_pieces_cache<PG, PC>(
     PG: PieceGetter + Send + Sync,
     PC: PieceCache + Send + 'static,
 {
+    // Give some time to obtain DSN connection.
+    sleep(POPULATE_PIECE_DELAY).await;
+
     debug!(%segment_index, "Started syncing piece cache...");
     let final_piece_index =
         u64::from(segment_index.first_piece_index()) + ArchivedHistorySegment::NUM_PIECES as u64;
