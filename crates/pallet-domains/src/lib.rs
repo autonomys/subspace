@@ -70,8 +70,9 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_nominate_operator, do_register_operator, Error as StakingError, Nominator,
-        OperatorConfig, OperatorPool, PendingTransfer, StakingSummary,
+        do_deregister_operator, do_nominate_operator, do_register_operator,
+        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
+        OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
@@ -231,8 +232,14 @@ mod pallet {
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
     #[pallet::storage]
-    pub(super) type OperatorPools<T: Config> =
-        StorageMap<_, Identity, OperatorId, OperatorPool<BalanceOf<T>, T::Share>, OptionQuery>;
+    pub(super) type Operators<T: Config> =
+        StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
+
+    /// Temporary hold of all the operators who decided to switch to another domain.
+    /// Once epoch is complete, these operators are added to new domains under next_operators.
+    #[pallet::storage]
+    pub(super) type PendingOperatorSwitches<T: Config> =
+        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type Nominators<T: Config> = StorageDoubleMap<
@@ -246,13 +253,32 @@ mod pallet {
     >;
 
     #[pallet::storage]
-    pub(super) type PendingTransfers<T: Config> = StorageMap<
+    pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
         _,
         Identity,
         OperatorId,
-        Vec<PendingTransfer<NominatorId<T>, BalanceOf<T>>>,
+        Identity,
+        NominatorId<T>,
+        BalanceOf<T>,
         OptionQuery,
     >;
+
+    #[pallet::storage]
+    pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        NominatorId<T>,
+        Withdraw<BalanceOf<T>>,
+        OptionQuery,
+    >;
+
+    /// Operators who chose to deregister from a domain.
+    /// Stored here temporarily until domain epoch is complete.
+    #[pallet::storage]
+    pub(super) type PendingOperatorDeregistrations<T: Config> =
+        StorageValue<_, Vec<OperatorId>, OptionQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
@@ -377,6 +403,17 @@ mod pallet {
         },
         DomainInstantiated {
             domain_id: DomainId,
+        },
+        OperatorSwitchedDomain {
+            old_domain_id: DomainId,
+            new_domain_id: DomainId,
+        },
+        OperatorDeregistered {
+            operator_id: OperatorId,
+        },
+        WithdrewStake {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
         },
     }
 
@@ -585,6 +622,63 @@ mod pallet {
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(7)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn switch_domain(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+            new_domain_id: DomainId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            let old_domain_id = do_switch_operator_domain::<T>(who, operator_id, new_domain_id)
+                .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::OperatorSwitchedDomain {
+                old_domain_id,
+                new_domain_id,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(8)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn deregister_operator(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            do_deregister_operator::<T>(who, operator_id).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::OperatorDeregistered { operator_id });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(9)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn withdraw_stake(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+            withdraw: Withdraw<BalanceOf<T>>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            do_withdraw_stake::<T>(operator_id, who.clone(), withdraw).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::WithdrewStake {
+                operator_id,
+                nominator_id: who,
+            });
 
             Ok(())
         }
