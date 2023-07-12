@@ -52,7 +52,7 @@ pub enum PeerInfo {
     /// DSN farmer.
     Farmer {
         /// Peer info data.
-        cuckoo_filter: CuckooFilterDTO,
+        cuckoo_filter: Arc<CuckooFilterDTO>,
     },
     /// DSN node.
     Node,
@@ -144,7 +144,7 @@ impl PeerInfoProvider {
             PeerInfoProvider::BootstrapNode => PeerInfo::BootstrapNode,
             PeerInfoProvider::Client => PeerInfo::Client,
             PeerInfoProvider::Farmer(provider) => PeerInfo::Farmer {
-                cuckoo_filter: provider.cuckoo_filter(),
+                cuckoo_filter: Arc::new(provider.cuckoo_filter()),
             },
         }
     }

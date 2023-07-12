@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::SegmentIndex;
+use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
 use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
@@ -49,6 +50,7 @@ pub(super) fn configure_dsn(
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     archival_storage_pieces: ArchivalStoragePieces,
+    archival_storage_info: ArchivalStorageInfo,
 ) -> Result<
     (
         Node,
@@ -314,6 +316,28 @@ pub(super) fn configure_dsn(
                         "DSN listening on {}",
                         address.clone().with(Protocol::P2p(node.id().into()))
                     );
+                }
+            }))
+            .detach();
+
+            node.on_peer_info(Arc::new({
+                let archival_storage_info = archival_storage_info.clone();
+
+                move |new_peer_info| {
+                    let peer_id = new_peer_info.peer_id;
+                    let peer_info = new_peer_info.peer_info.clone();
+
+                    if let PeerInfo::Farmer { cuckoo_filter } = &peer_info {
+                        let mut archival_storage_info = archival_storage_info.clone();
+
+                        archival_storage_info.update_cuckoo_filter(
+                            peer_id,
+                            cuckoo_filter.clone(),
+                            &new_peer_info.connected_peers,
+                        );
+
+                        debug!(%peer_id, ?peer_info, "Peer info cached",);
+                    }
                 }
             }))
             .detach();

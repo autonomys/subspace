@@ -1,7 +1,7 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
-use crate::request_responses;
 use crate::shared::{Command, CreatedSubscription, HandlerFn, Shared};
 use crate::utils::ResizableSemaphorePermit;
+use crate::{request_responses, NewPeerInfo};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
@@ -249,6 +249,26 @@ pub enum SendRequestError {
 }
 
 impl From<oneshot::Canceled> for SendRequestError {
+    #[inline]
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ConnectedPeersError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to get connected peers.
+    #[error("Failed to get connected peers.")]
+    ConnectedPeers,
+}
+
+impl From<oneshot::Canceled> for ConnectedPeersError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -559,5 +579,27 @@ impl Node {
             .handlers
             .num_established_peer_connections_change
             .add(callback)
+    }
+
+    /// Returns a collection of currently connected peers.
+    pub async fn connected_peers(&self) -> Result<Vec<PeerId>, ConnectedPeersError> {
+        let (result_sender, result_receiver) = oneshot::channel();
+
+        trace!("Starting 'connected_peers' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::ConnectedPeers { result_sender })
+            .await?;
+
+        result_receiver
+            .await
+            .map_err(|_| ConnectedPeersError::ConnectedPeers)
+    }
+
+    /// Callback is called when we receive new [`PeerInfo`]
+    pub fn on_peer_info(&self, callback: HandlerFn<NewPeerInfo>) -> HandlerId {
+        self.shared.handlers.new_peer_info.add(callback)
     }
 }

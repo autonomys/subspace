@@ -173,4 +173,39 @@ where
         })
         .await
     }
+
+    /// Get piece from a particular peer.
+    pub async fn get_piece_from_peer(
+        &self,
+        peer_id: PeerId,
+        piece_index: PieceIndex,
+    ) -> Option<Piece> {
+        let piece_index_hash = piece_index.hash();
+        let key = piece_index_hash.to_multihash();
+
+        let request_result = self
+            .node
+            .send_generic_request(peer_id, PieceByHashRequest { piece_index_hash })
+            .await;
+
+        match request_result {
+            Ok(PieceByHashResponse { piece: Some(piece) }) => {
+                trace!(%peer_id, %piece_index, ?key, "Piece request succeeded.");
+
+                if let Some(validator) = &self.piece_validator {
+                    return validator.validate_piece(peer_id, piece_index, piece).await;
+                } else {
+                    return Some(piece);
+                }
+            }
+            Ok(PieceByHashResponse { piece: None }) => {
+                debug!(%peer_id, %piece_index, ?key, "Piece request returned empty piece.");
+            }
+            Err(error) => {
+                debug!(%peer_id, %piece_index, ?key, ?error, "Piece request failed.");
+            }
+        }
+
+        None
+    }
 }
