@@ -1,4 +1,6 @@
-use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
+use crate::behavior::persistent_parameters::{
+    NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
+};
 use crate::behavior::{provider_storage, Behavior, Event};
 use crate::connected_peers::Event as ConnectedPeersEvent;
 use crate::create::temporary_bans::TemporaryBans;
@@ -818,7 +820,7 @@ where
                 self.swarm
                     .behaviour_mut()
                     .connected_peers
-                    .add_peers_to_dial(peers);
+                    .add_peers_to_dial(&peers);
             }
         }
     }
@@ -1123,7 +1125,8 @@ where
     }
 
     async fn get_peers_to_dial(&mut self) -> Vec<PeerAddress> {
-        let mut result_peers = Vec::new();
+        let mut result_peers =
+            Vec::with_capacity(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE + PEERS_ADDRESSES_BATCH_SIZE);
 
         // Get addresses from Kademlia buckets
         let mut kademlia_addresses = Vec::new();

@@ -9,6 +9,7 @@ use sc_client_api::AuxStore;
 use sc_consensus_subspace_rpc::SegmentHeaderProvider;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::ProviderRecord;
@@ -237,6 +238,8 @@ where
         max_pending_outgoing_connections: dsn_config.max_pending_out_connections,
         target_connections: dsn_config.target_connections,
         reserved_peers: dsn_config.reserved_peers,
+        // maintain permanent connections with any peer
+        connection_decision_handler: Arc::new(|_| true),
 
         ..default_networking_config
     };

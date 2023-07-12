@@ -327,8 +327,7 @@ where
             metrics: None,
             protocol_version,
             peer_info_provider,
-            // maintain permanent connections with any peer
-            connection_decision_handler: Arc::new(|_| true),
+            connection_decision_handler: Arc::new(|_| false),
         }
     }
 }
