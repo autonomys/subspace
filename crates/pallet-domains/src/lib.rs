@@ -298,24 +298,14 @@ mod pallet {
     pub enum BundleError {
         /// Can not find the operator for given operator id.
         InvalidOperatorId,
-        /// Invalid bundle signature.
-        BadSignature,
-        /// Invalid vrf proof.
-        BadVrfProof,
-        /// State of a system domain block is missing.
-        StateRootNotFound,
-        /// Invalid state root in the proof of election.
-        BadStateRoot,
-        /// The type of state root is not H256.
-        StateRootNotH256,
-        /// Invalid system bundle election solution.
-        BadElectionSolution,
-        /// An invalid execution receipt found in the bundle.
-        Receipt(ExecutionReceiptError),
+        /// Invalid signature on the bundle header.
+        BadBundleSignature,
+        /// Invalid vrf signature in the proof of election.
+        BadVrfSignature,
         /// The Bundle is created too long ago.
         StaleBundle,
-        /// Bundle was created on an unknown primary block (probably a fork block).
-        UnknownBlock,
+        /// An invalid execution receipt found in the bundle.
+        Receipt(ExecutionReceiptError),
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -895,7 +885,7 @@ impl<T: Config> Pallet<T> {
             .ok_or(BundleError::InvalidOperatorId)?;
 
         if !signing_key.verify(&sealed_header.pre_hash(), &sealed_header.signature) {
-            return Err(BundleError::BadSignature);
+            return Err(BundleError::BadBundleSignature);
         }
 
         let header = &sealed_header.header;
@@ -933,6 +923,14 @@ impl<T: Config> Pallet<T> {
         // TODO: Implement bundle validation.
 
         // TODO: Verify ProofOfElection
+        let proof_of_election = &sealed_header.header.proof_of_election;
+        // 1. verify operator_id is valid
+
+        proof_of_election
+            .verify_vrf_signature(&signing_key)
+            .map_err(|_| BundleError::BadVrfSignature)?;
+
+        // 3. verify threshold
 
         Ok(())
     }

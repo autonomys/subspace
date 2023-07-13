@@ -66,7 +66,7 @@ pub enum VrfProofError {
 }
 
 /// Verify the vrf proof generated in the bundle election.
-pub(crate) fn verify_vrf_proof(
+pub(crate) fn verify_vrf_signature(
     domain_id: DomainId,
     public_key: &OperatorPublicKey,
     vrf_signature: &VrfSignature,
