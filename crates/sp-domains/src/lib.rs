@@ -559,6 +559,9 @@ sp_api::decl_runtime_apis! {
         /// Returns the WASM bundle for given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
 
+        /// Returns the runtime id for given `domain_id`.
+        fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
+
         /// Returns the current timestamp at given height.
         fn timestamp() -> Moment;
 
