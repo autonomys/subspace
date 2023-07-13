@@ -208,9 +208,8 @@ pub struct ProofOfElection<DomainHash> {
     pub domain_id: DomainId,
     /// The slot number.
     pub slot_number: u64,
-    // TODO: Use global_randomness instead.
-    /// Global challenge.
-    pub global_challenge: Blake2b256Hash,
+    /// Global randomness.
+    pub global_randomness: Randomness,
     /// VRF signature.
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
@@ -224,11 +223,14 @@ impl<DomainHash> ProofOfElection<DomainHash> {
         &self,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), VrfProofError> {
+        let global_challenge = self
+            .global_randomness
+            .derive_global_challenge(self.slot_number);
         bundle_producer_election::verify_vrf_proof(
             self.domain_id,
             operator_signing_key,
             &self.vrf_signature,
-            &self.global_challenge,
+            &global_challenge,
         )
     }
 
@@ -252,7 +254,7 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
         Self {
             domain_id,
             slot_number: 0u64,
-            global_challenge: Blake2b256Hash::default(),
+            global_randomness: Randomness::default(),
             vrf_signature,
             operator_id,
             _phantom: Default::default(),

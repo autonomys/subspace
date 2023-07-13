@@ -9,7 +9,7 @@ use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Balance;
 
 pub(super) struct BundleProducerElectionSolver<Block, CBlock, CClient> {
@@ -48,7 +48,7 @@ where
         slot: Slot,
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
-        global_challenge: Blake2b256Hash,
+        global_randomness: Randomness,
     ) -> sp_blockchain::Result<Option<(ProofOfElection<Block::Hash>, OperatorPublicKey)>> {
         let BundleProducerElectionParams {
             current_operators,
@@ -63,6 +63,7 @@ where
             None => return Ok(None),
         };
 
+        let global_challenge = global_randomness.derive_global_challenge(slot.into());
         let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
 
         // TODO: The runtime API may take 10~20 microseonds each time, looping the operator set
@@ -90,7 +91,7 @@ where
                         let proof_of_election = ProofOfElection {
                             domain_id,
                             slot_number: slot.into(),
-                            global_challenge,
+                            global_randomness,
                             vrf_signature,
                             operator_id,
                             _phantom: Default::default(),

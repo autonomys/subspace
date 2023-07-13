@@ -4,15 +4,15 @@ use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::convert::TryInto;
 use std::sync::Arc;
-use subspace_core_primitives::{Blake2b256Hash, BlockNumber};
+use subspace_core_primitives::{BlockNumber, Randomness};
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
 pub(super) struct OperatorSlotInfo {
     /// Slot
     pub(super) slot: Slot,
-    /// Global challenge
-    pub(super) global_challenge: Blake2b256Hash,
+    /// Global randomness
+    pub(super) global_randomness: Randomness,
 }
 
 #[derive(Debug, Clone)]

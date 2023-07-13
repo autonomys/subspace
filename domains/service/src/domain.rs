@@ -37,7 +37,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
@@ -296,7 +296,7 @@ where
     SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Randomness, Option<mpsc::Sender<()>>)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync

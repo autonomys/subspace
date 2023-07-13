@@ -177,10 +177,13 @@ async fn start_farming<PosTable, Client>(
     }) = new_slot_notification_stream.next().await
     {
         if u64::from(new_slot_info.slot) % 2 == 0 {
+            let global_challenge = new_slot_info
+                .global_randomness
+                .derive_global_challenge(new_slot_info.slot.into());
             let solution_candidates = audit_sector(
                 &public_key,
                 sector_index,
-                &new_slot_info.global_challenge,
+                &global_challenge,
                 new_slot_info.solution_range,
                 &sector,
                 &plotted_sector.sector_metadata,
