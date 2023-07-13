@@ -96,7 +96,7 @@ use sp_runtime::traits::{
 };
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Randomness;
 
 type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
     NumberFor<CBlock>,
@@ -138,6 +138,8 @@ pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS> {
     pub _phantom: PhantomData<CBlock>,
 }
 
+type NewSlotNotification = (Slot, Randomness, Option<mpsc::Sender<()>>);
+
 pub struct OperatorParams<
     Block,
     CBlock,
@@ -155,7 +157,7 @@ pub struct OperatorParams<
     CBlock: BlockT,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
+    NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
 {
     pub domain_id: DomainId,
     pub consensus_client: Arc<CClient>,

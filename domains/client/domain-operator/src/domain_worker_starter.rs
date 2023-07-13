@@ -19,7 +19,7 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::DomainParentChain;
 use crate::utils::{BlockInfo, OperatorSlotInfo};
-use crate::{OperatorStreams, TransactionFor};
+use crate::{NewSlotNotification, OperatorStreams, TransactionFor};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
@@ -31,13 +31,11 @@ use sc_consensus::BlockImport;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
 use subspace_runtime_primitives::Balance;
 use tracing::Instrument;
 
@@ -100,7 +98,7 @@ pub(super) async fn start_worker<
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
+    NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     E: CodeExecutor,
     TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     for<'b> &'b BI: BlockImport<
@@ -165,11 +163,11 @@ pub(super) async fn start_worker<
                 .boxed()
         },
         Box::pin(new_slot_notification_stream.map(
-            |(slot, global_challenge, acknowledgement_sender)| {
+            |(slot, global_randomness, acknowledgement_sender)| {
                 (
                     OperatorSlotInfo {
                         slot,
-                        global_challenge,
+                        global_randomness,
                     },
                     acknowledgement_sender,
                 )

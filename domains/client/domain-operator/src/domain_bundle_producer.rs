@@ -145,7 +145,7 @@ where
     ) -> sp_blockchain::Result<Option<OpaqueBundle<Block, CBlock>>> {
         let OperatorSlotInfo {
             slot,
-            global_challenge,
+            global_randomness,
         } = slot_info;
 
         let best_receipt_is_written = crate::aux_schema::consensus_block_hash_for::<
@@ -195,7 +195,7 @@ where
                 slot,
                 consensus_block_info.hash,
                 self.domain_id,
-                global_challenge,
+                global_randomness,
             )?
         {
             tracing::info!("📦 Claimed bundle at slot {slot}");
