@@ -846,6 +846,10 @@ impl_runtime_apis! {
             Domains::domain_runtime_code(domain_id)
         }
 
+        fn runtime_id(domain_id: DomainId) -> Option<sp_domains::RuntimeId> {
+            Domains::runtime_id(domain_id)
+        }
+
         fn timestamp() -> Moment{
             Timestamp::now()
         }

@@ -36,7 +36,7 @@ pub use pallet::*;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey};
+use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::RuntimeAppPublic;
@@ -838,10 +838,13 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
-        let runtime_id = DomainRegistry::<T>::get(domain_id)?
-            .domain_config
-            .runtime_id;
-        RuntimeRegistry::<T>::get(runtime_id).map(|runtime_object| runtime_object.code)
+        RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
+            .map(|runtime_object| runtime_object.code)
+    }
+
+    pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
+        DomainRegistry::<T>::get(domain_id)
+            .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
     /// Returns the tx range for the domain.
