@@ -34,12 +34,12 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
-use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::RuntimeAppPublic;
+use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -298,24 +298,20 @@ mod pallet {
     pub enum BundleError {
         /// Can not find the operator for given operator id.
         InvalidOperatorId,
-        /// Invalid bundle signature.
-        BadSignature,
-        /// Invalid vrf proof.
-        BadVrfProof,
-        /// State of a system domain block is missing.
-        StateRootNotFound,
-        /// Invalid state root in the proof of election.
-        BadStateRoot,
-        /// The type of state root is not H256.
-        StateRootNotH256,
-        /// Invalid system bundle election solution.
-        BadElectionSolution,
-        /// An invalid execution receipt found in the bundle.
-        Receipt(ExecutionReceiptError),
+        /// Invalid signature on the bundle header.
+        BadBundleSignature,
+        /// Invalid vrf signature in the proof of election.
+        BadVrfSignature,
+        /// Can not find the domain for given domain id.
+        InvalidDomainId,
+        /// Operator is not allowed to produce bundles in current epoch.
+        BadOperator,
+        /// Failed to pass the threshold check.
+        ThresholdUnsatisfied,
         /// The Bundle is created too long ago.
         StaleBundle,
-        /// Bundle was created on an unknown primary block (probably a fork block).
-        UnknownBlock,
+        /// An invalid execution receipt found in the bundle.
+        Receipt(ExecutionReceiptError),
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -890,12 +886,15 @@ impl<T: Config> Pallet<T> {
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
-        let signing_key = Operators::<T>::get(sealed_header.header.proof_of_election.operator_id)
-            .map(|operator| operator.signing_key)
-            .ok_or(BundleError::InvalidOperatorId)?;
+        let operator_id = sealed_header.header.proof_of_election.operator_id;
 
-        if !signing_key.verify(&sealed_header.pre_hash(), &sealed_header.signature) {
-            return Err(BundleError::BadSignature);
+        let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+
+        if !operator
+            .signing_key
+            .verify(&sealed_header.pre_hash(), &sealed_header.signature)
+        {
+            return Err(BundleError::BadBundleSignature);
         }
 
         let header = &sealed_header.header;
@@ -932,7 +931,43 @@ impl<T: Config> Pallet<T> {
 
         // TODO: Implement bundle validation.
 
-        // TODO: Verify ProofOfElection
+        // TODO: The current staking distribution may be unusable when there is an epoch
+        // transition, track the last stake distribution in that case.
+        let proof_of_election = &sealed_header.header.proof_of_election;
+
+        proof_of_election
+            .verify_vrf_signature(&operator.signing_key)
+            .map_err(|_| BundleError::BadVrfSignature)?;
+
+        let domain_id = proof_of_election.domain_id;
+
+        let domain_stake_summary =
+            DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
+
+        if !domain_stake_summary
+            .current_operators
+            .contains(&operator_id)
+        {
+            return Err(BundleError::BadOperator);
+        }
+
+        let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config
+            .bundle_slot_probability;
+
+        let operator_stake = operator.current_total_stake;
+        let total_domain_stake = domain_stake_summary.current_total_stake;
+
+        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
+            operator_stake.saturated_into(),
+            total_domain_stake.saturated_into(),
+            bundle_slot_probability,
+        );
+
+        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+            return Err(BundleError::ThresholdUnsatisfied);
+        }
 
         Ok(())
     }

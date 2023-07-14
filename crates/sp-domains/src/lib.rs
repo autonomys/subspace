@@ -219,14 +219,14 @@ pub struct ProofOfElection<DomainHash> {
 }
 
 impl<DomainHash> ProofOfElection<DomainHash> {
-    pub fn verify_vrf_proof(
+    pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
     ) -> Result<(), VrfProofError> {
         let global_challenge = self
             .global_randomness
             .derive_global_challenge(self.slot_number);
-        bundle_producer_election::verify_vrf_proof(
+        bundle_producer_election::verify_vrf_signature(
             self.domain_id,
             operator_signing_key,
             &self.vrf_signature,
