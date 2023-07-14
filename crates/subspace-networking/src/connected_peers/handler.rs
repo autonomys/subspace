@@ -1,4 +1,4 @@
-use libp2p::core::upgrade::ReadyUpgrade;
+use libp2p::core::upgrade::DeniedUpgrade;
 use libp2p::swarm::handler::ConnectionEvent;
 use libp2p::swarm::{ConnectionHandler, ConnectionHandlerEvent, KeepAlive, SubstreamProtocol};
 use std::error::Error;
@@ -18,19 +18,14 @@ use tracing::trace;
 /// peer with positive keep-alive decision (we are interested in this connection), it maintains the
 /// connection alive (`KeepAlive::Yes`). If not, it allows the connection to close (`KeepAlive::No`).
 pub struct Handler {
-    /// Protocol name.
-    protocol_name: &'static [u8],
     /// Specifies whether we should keep the connection alive.
     keep_alive: KeepAlive,
 }
 
 impl Handler {
     /// Builds a new [`Handler`].
-    pub fn new(protocol_name: &'static [u8], keep_alive: KeepAlive) -> Self {
-        Handler {
-            protocol_name,
-            keep_alive,
-        }
+    pub fn new(keep_alive: KeepAlive) -> Self {
+        Handler { keep_alive }
     }
 }
 
@@ -49,13 +44,13 @@ impl ConnectionHandler for Handler {
     type InEvent = KeepAlive;
     type OutEvent = ();
     type Error = ConnectedPeersError;
-    type InboundProtocol = ReadyUpgrade<&'static [u8]>;
-    type OutboundProtocol = ReadyUpgrade<&'static [u8]>;
+    type InboundProtocol = DeniedUpgrade;
+    type OutboundProtocol = DeniedUpgrade;
     type OutboundOpenInfo = ();
     type InboundOpenInfo = ();
 
-    fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<&'static [u8]>, ()> {
-        SubstreamProtocol::new(ReadyUpgrade::new(self.protocol_name), ())
+    fn listen_protocol(&self) -> SubstreamProtocol<DeniedUpgrade, ()> {
+        SubstreamProtocol::new(DeniedUpgrade, ())
     }
 
     fn on_behaviour_event(&mut self, keep_alive: KeepAlive) {
@@ -71,7 +66,7 @@ impl ConnectionHandler for Handler {
     fn poll(
         &mut self,
         _: &mut Context<'_>,
-    ) -> Poll<ConnectionHandlerEvent<ReadyUpgrade<&'static [u8]>, (), (), Self::Error>> {
+    ) -> Poll<ConnectionHandlerEvent<DeniedUpgrade, (), (), Self::Error>> {
         Poll::Pending
     }
 

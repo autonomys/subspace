@@ -817,12 +817,12 @@ where
                 .general_connected_peers
                 .update_keep_alive_status(event.peer_id, keep_alive);
 
-            let farmer_keep_alive = (self.special_connection_decision_handler)(&peer_info);
+            let special_keep_alive = (self.special_connection_decision_handler)(&peer_info);
 
             self.swarm
                 .behaviour_mut()
                 .special_connected_peers
-                .update_keep_alive_status(event.peer_id, farmer_keep_alive);
+                .update_keep_alive_status(event.peer_id, special_keep_alive);
         }
     }
 

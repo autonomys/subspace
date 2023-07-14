@@ -20,8 +20,7 @@
 //!
 //! The protocol strives to maintain a certain target number of peers, handles delay between dialing
 //! attempts, and manages a cache for candidates for permanent connections.
-//! Multiple protocol instances could be instantiated. Note that each protocol instance should have
-//! a unique protocol name.
+//! Multiple protocol instances could be instantiated.
 
 mod handler;
 
@@ -83,8 +82,8 @@ enum ConnectionState {
 /// Connected peers protocol configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Protocol name.
-    pub protocol_name: &'static [u8],
+    /// Defines a target for logging.
+    pub log_target: &'static str,
     /// Interval between new dialing attempts.
     pub dialing_interval: Duration,
     /// Number of connected peers that protocol will maintain.
@@ -96,11 +95,11 @@ pub struct Config {
     pub decision_timeout: Duration,
 }
 
-const DEFAULT_CONNECTED_PEERS_PROTOCOL_NAME: &[u8] = b"/connected-peers/1.0.0";
+const DEFAULT_CONNECTED_PEERS_LOG_TARGET: &str = "connected-peers";
 impl Default for Config {
     fn default() -> Self {
         Self {
-            protocol_name: DEFAULT_CONNECTED_PEERS_PROTOCOL_NAME,
+            log_target: DEFAULT_CONNECTED_PEERS_LOG_TARGET,
             dialing_interval: Duration::from_secs(3),
             target_connected_peers: 30,
             dialing_peer_batch_size: 5,
@@ -188,7 +187,7 @@ impl<Instance> Behaviour<Instance> {
         };
 
         self.wake();
-        Handler::new(self.config.protocol_name, keep_alive)
+        Handler::new(keep_alive)
     }
 
     /// Specifies the whether we should keep connections to the peer alive. The decision could
@@ -371,7 +370,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
             trace!(
                 %peer_id,
                 ?decision,
-                protocol=%std::str::from_utf8(self.config.protocol_name).expect("Manual protocol setting."),
+                target=%self.config.log_target,
                 "Peer decisions for connected peers protocol."
             );
             match state.connection_state.clone() {

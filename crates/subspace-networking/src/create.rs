@@ -55,8 +55,8 @@ const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
 const PEER_INFO_PROTOCOL_NAME: &[u8] = b"/subspace/peer-info/1.0.0";
-const GENERAL_CONNECTED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/general-connected-peers/1.0.0";
-const SPECIAL_CONNECTED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/special-connected-peers/1.0.0";
+const GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "general-connected-peers";
+const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-peers";
 
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
@@ -445,12 +445,12 @@ where
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
         general_connected_peers_config: ConnectedPeersConfig {
-            protocol_name: GENERAL_CONNECTED_PEERS_PROTOCOL_NAME,
+            log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
             target_connected_peers: general_target_connections,
             ..ConnectedPeersConfig::default()
         },
         special_connected_peers_config: ConnectedPeersConfig {
-            protocol_name: SPECIAL_CONNECTED_PEERS_PROTOCOL_NAME,
+            log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
             target_connected_peers: special_target_connections,
             ..ConnectedPeersConfig::default()
         },
