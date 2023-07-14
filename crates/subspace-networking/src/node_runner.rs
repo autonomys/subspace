@@ -1,7 +1,9 @@
-use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
+use crate::behavior::persistent_parameters::{
+    NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
+};
 use crate::behavior::{
     provider_storage, Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
-PEERS_ADDRESSES_BATCH_SIZE};
+};
 use crate::connected_peers::Event as ConnectedPeersEvent;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
@@ -842,7 +844,7 @@ where
                 self.swarm
                     .behaviour_mut()
                     .general_connected_peers
-                    .add_peers_to_dial(peers);
+                    .add_peers_to_dial(&peers);
             }
             Right(ConnectedPeersEvent::NewDialingCandidatesRequested(..)) => {
                 self.swarm

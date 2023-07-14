@@ -308,6 +308,10 @@ pub(super) fn configure_dsn(
         special_connection_decision_handler: Arc::new(|peer_info| {
             matches!(peer_info, PeerInfo::Farmer { .. })
         }),
+        // other (non-farmer) connections
+        general_connection_decision_handler: Arc::new(|peer_info| {
+            !matches!(peer_info, PeerInfo::Farmer { .. })
+        }),
         ..default_config
     };
 

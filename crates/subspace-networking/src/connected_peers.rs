@@ -369,7 +369,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
         for (peer_id, state) in self.known_peers.iter_mut() {
             trace!(
                 %peer_id,
-                ?decision,
+                ?state,
                 target=%self.config.log_target,
                 "Peer decisions for connected peers protocol."
             );
