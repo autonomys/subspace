@@ -90,6 +90,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
         Zero,
     };
+    use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
@@ -237,6 +238,7 @@ mod pallet {
     pub(super) type DomainStakingSummary<T: Config> =
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
+    /// List of all registered operators and their configuration.
     #[pallet::storage]
     pub(super) type Operators<T: Config> =
         StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
@@ -247,6 +249,7 @@ mod pallet {
     pub(super) type PendingOperatorSwitches<T: Config> =
         StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
 
+    /// List of all current epoch's nominators and their shares under a given operator,
     #[pallet::storage]
     pub(super) type Nominators<T: Config> = StorageDoubleMap<
         _,
@@ -258,6 +261,9 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Deposits initiated a nominator under this operator.
+    /// Will be stored temporarily until the current epoch is complete.
+    /// Once, epoch is complete, these deposits are staked beginning next epoch.
     #[pallet::storage]
     pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
         _,
@@ -269,6 +275,9 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Withdrawals initiated a nominator under this operator.
+    /// Will be stored temporarily until the current epoch is complete.
+    /// Once, epoch is complete, these will be moved to PendingNominatorUnlocks.
     #[pallet::storage]
     pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
         _,
@@ -286,11 +295,12 @@ mod pallet {
     pub(super) type PendingOperatorDeregistrations<T: Config> =
         StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
 
-    /// Stores the operators that will be unlocked at the specific block number.
-    /// This storage is also used to access any operators when there is slashing.
+    /// Stores a list of operators who are unlocking in the coming blocks.
+    /// The operator will be removed when the wait period is over
+    /// or when the operator is slashed.
     #[pallet::storage]
     pub(super) type PendingOperatorUnlocks<T: Config> =
-        StorageValue<_, Vec<OperatorId>, ValueQuery>;
+        StorageValue<_, BTreeSet<OperatorId>, ValueQuery>;
 
     /// All the pending unlocks for the nominators.
     /// We use this storage to fetch all the pending unlocks under a operator pool at the time of slashing.
@@ -305,9 +315,11 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// A list of operators that are either unregistering or one more of the nominators
+    /// are withdrawing some staked funds.
     #[pallet::storage]
     pub(super) type PendingUnlocks<T: Config> =
-        StorageMap<_, Identity, T::BlockNumber, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, T::BlockNumber, BTreeSet<OperatorId>, OptionQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
