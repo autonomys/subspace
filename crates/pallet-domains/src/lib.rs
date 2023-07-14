@@ -186,9 +186,6 @@ mod pallet {
         /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
         type DomainTxRangeAdjustmentInterval: Get<u64>;
 
-        /// Expected bundles to be produced per adjustment interval.
-        type ExpectedBundlesPerInterval: Get<u64>;
-
         /// Minimum operator stake required to become operator of a domain.
         type MinOperatorStake: Get<BalanceOf<Self>>;
     }
@@ -993,14 +990,21 @@ impl<T: Config> Pallet<T> {
     /// domains with bundles in the block.
     fn update_domain_tx_range() {
         for domain_id in DomainTxRangeState::<T>::iter_keys() {
-            DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| {
-                if let Some(state) = maybe_state {
-                    state.on_finalize(
-                        T::DomainTxRangeAdjustmentInterval::get(),
-                        T::ExpectedBundlesPerInterval::get(),
-                    );
-                }
-            })
+            if let Some(domain_config) =
+                DomainRegistry::<T>::get(domain_id).map(|obj| obj.domain_config)
+            {
+                DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| {
+                    let expected_bundles_per_interval =
+                        u64::from(domain_config.target_bundles_per_block)
+                            * T::DomainTxRangeAdjustmentInterval::get();
+                    if let Some(state) = maybe_state {
+                        state.on_finalize(
+                            T::DomainTxRangeAdjustmentInterval::get(),
+                            expected_bundles_per_interval,
+                        );
+                    }
+                })
+            }
         }
     }
 

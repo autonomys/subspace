@@ -153,14 +153,6 @@ const INITIAL_DOMAIN_TX_RANGE: u64 = 10;
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
-/// Expected bundles per slot.
-/// TODO: this should come from DomainConfig when domain registry is implemented.
-const EXPECTED_BUNDLES_PER_SLOT: u64 = 1;
-
-/// Expected bundles to be produced per adjustment interval.
-const EXPECTED_BUNDLES_PER_INTERVAL: u64 =
-    TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS * SLOT_PROBABILITY.1 * EXPECTED_BUNDLES_PER_SLOT;
-
 // We assume initial plot size starts with the a single sector, where we effectively audit each
 // chunk of every piece.
 const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
@@ -461,7 +453,6 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
-    pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
     // Minimum Operator stake is 2 * MaximumBlockWeight * WeightToFee
@@ -486,7 +477,6 @@ impl pallet_domains::Config for Runtime {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
-    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
     type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;

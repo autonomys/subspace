@@ -515,7 +515,6 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
     pub const InitialDomainTxRange: u64 = 10;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
     pub const MinOperatorStake: Balance = 100 * SSC;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
@@ -538,7 +537,6 @@ impl pallet_domains::Config for Runtime {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
-    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
     type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
