@@ -28,8 +28,7 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, OpaqueBundles};
-use sp_runtime::generic::DigestItem;
+use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, OpaqueBundles};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
@@ -66,14 +65,21 @@ where
         sp_blockchain::Error::Backend(format!("BlockHeader of {block_hash:?} unavailable"))
     })?;
 
-    // TODO: Upgrade the domain runtime properly.
-    // This works under the assumption that the consensus chain runtime upgrade triggers a domain
-    // runtime upgrade, which is no longer valid.
+    let runtime_id = consensus_client
+        .runtime_api()
+        .runtime_id(block_hash, domain_id)?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Application(Box::from(format!(
+                "Runtime id not found for {domain_id:?}"
+            )))
+        })?;
+
     let maybe_new_runtime = if header
         .digest()
         .logs
         .iter()
-        .any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
+        .filter_map(|log| log.as_domain_runtime_upgrade())
+        .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id)
     {
         let new_domain_runtime = consensus_client
             .runtime_api()

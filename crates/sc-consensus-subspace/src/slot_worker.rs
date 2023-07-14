@@ -180,7 +180,6 @@ where
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
-        let global_challenge = global_randomness.derive_global_challenge(slot.into());
 
         let maybe_root_plot_public_key = self
             .client
@@ -190,7 +189,7 @@ where
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge,
+            global_randomness,
             solution_range,
             voting_solution_range,
         };

@@ -4,7 +4,9 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::DomainParentChain;
-use crate::{active_leaves, DomainImportNotifications, OperatorParams, TransactionFor};
+use crate::{
+    active_leaves, DomainImportNotifications, NewSlotNotification, OperatorParams, TransactionFor,
+};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -16,13 +18,12 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
-use sp_consensus_slots::Slot;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_domains::DomainsApi;
+use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_runtime_primitives::Balance;
 
 /// Domain operator.
 pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
@@ -85,7 +86,8 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+        + BundleProducerElectionApi<CBlock, Balance>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
@@ -119,7 +121,7 @@ where
         SC: SelectChain<CBlock>,
         IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-        NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
+        NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     {
         let active_leaves = active_leaves(params.consensus_client.as_ref(), select_chain).await?;
 

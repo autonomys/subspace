@@ -554,7 +554,7 @@ fn main() -> Result<(), Error> {
                             .then(|slot_notification| async move {
                                 (
                                     slot_notification.new_slot_info.slot,
-                                    slot_notification.new_slot_info.global_challenge,
+                                    slot_notification.new_slot_info.global_randomness,
                                     None,
                                 )
                             })

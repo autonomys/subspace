@@ -16,13 +16,16 @@
 
 //! Subspace chain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
+use crate::chain_spec_utils::{
+    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
+};
 use sc_service::{ChainType, NoExtension};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_domains::RuntimeType;
+use sp_domains::{OperatorPublicKey, RuntimeType};
+use sp_runtime::Percent;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
     MaxDomainBlockWeight, RuntimeConfigsConfig, SubspaceConfig, SudoConfig, SystemConfig,
@@ -414,6 +417,11 @@ fn subspace_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
+
+                // TODO: Configurable genesis operator signing key.
+                signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                nomination_tax: Percent::from_percent(5),
+                minimum_nominator_stake: 100 * SSC,
             }),
         },
     }

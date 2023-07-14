@@ -2,8 +2,9 @@
 
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
-use sp_domains::{GenesisDomain, RuntimeType};
+use sp_domains::{GenesisDomain, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::Percent;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
@@ -108,6 +109,10 @@ fn create_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
+
+                signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
+                minimum_nominator_stake: 100 * SSC,
+                nomination_tax: Percent::from_percent(5),
             }),
         },
     }

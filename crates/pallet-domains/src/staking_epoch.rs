@@ -623,7 +623,7 @@ mod tests {
         ext.execute_with(|| {
             for total_deposit in &total_deposits {
                 Balances::make_free_balance_be(
-                    &total_deposit.0,
+                    total_deposit.0,
                     total_deposit.1 + minimum_free_balance,
                 );
             }
@@ -634,9 +634,9 @@ mod tests {
                 total_stake += nominator.1;
                 total_shares += nominator.1;
 
-                assert_ok!(Balances::set_freeze(&freeze_id, &nominator.0, *nominator.1));
+                assert_ok!(Balances::set_freeze(&freeze_id, nominator.0, *nominator.1));
                 assert_eq!(
-                    Balances::balance_frozen(&freeze_id, &nominator.0),
+                    Balances::balance_frozen(&freeze_id, nominator.0),
                     *nominator.1
                 );
                 Nominators::<Test>::insert(

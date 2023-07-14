@@ -55,7 +55,6 @@ pub struct StakingSummary<OperatorId, Balance> {
     /// Current operators for this epoch
     pub current_operators: BTreeMap<OperatorId, Balance>,
     /// Operators for the next epoch.
-    /// Boolean represents if there are any pending transfers for this operator.
     pub next_operators: BTreeSet<OperatorId>,
 }
 

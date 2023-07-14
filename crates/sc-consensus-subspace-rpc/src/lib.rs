@@ -352,10 +352,16 @@ where
                         .boxed(),
                     );
 
+                    let slot_number = new_slot_info.slot.into();
+
+                    let global_challenge = new_slot_info
+                        .global_randomness
+                        .derive_global_challenge(slot_number);
+
                     // This will be sent to the farmer
                     SlotInfo {
-                        slot_number: new_slot_info.slot.into(),
-                        global_challenge: new_slot_info.global_challenge,
+                        slot_number,
+                        global_challenge,
                         solution_range: new_slot_info.solution_range,
                         voting_solution_range: new_slot_info.voting_solution_range,
                     }

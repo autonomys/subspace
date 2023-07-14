@@ -35,10 +35,12 @@ use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use sp_core::H256;
+use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, OpaqueBundle, OperatorId};
+use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -57,6 +59,9 @@ pub trait FreezeIdentifier<T: Config> {
 
 #[frame_support::pallet]
 mod pallet {
+    // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
+    #![allow(clippy::large_enum_variant)]
+
     use crate::domain_registry::{
         do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
     };
@@ -70,7 +75,9 @@ mod pallet {
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
-    use crate::staking_epoch::{do_unlock_pending_withdrawals, PendingNominatorUnlock};
+    use crate::staking_epoch::{
+        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals, PendingNominatorUnlock,
+    };
     use crate::weights::WeightInfo;
     use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
     use codec::FullCodec;
@@ -82,16 +89,15 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{
-        DomainId, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
-        RuntimeType,
-    };
+    use sp_domains::{DomainId, GenesisDomain, OpaqueBundle, OperatorId, RuntimeId, RuntimeType};
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
         Zero,
     };
+    use sp_runtime::SaturatedConversion;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
+    use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
 
@@ -337,26 +343,22 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
-        /// The signer of bundle is unexpected.
-        UnexpectedSigner,
-        /// Invalid bundle signature.
-        BadSignature,
-        /// Invalid vrf proof.
-        BadVrfProof,
-        /// State of a system domain block is missing.
-        StateRootNotFound,
-        /// Invalid state root in the proof of election.
-        BadStateRoot,
-        /// The type of state root is not H256.
-        StateRootNotH256,
-        /// Invalid system bundle election solution.
-        BadElectionSolution,
-        /// An invalid execution receipt found in the bundle.
-        Receipt(ExecutionReceiptError),
+        /// Can not find the operator for given operator id.
+        InvalidOperatorId,
+        /// Invalid signature on the bundle header.
+        BadBundleSignature,
+        /// Invalid vrf signature in the proof of election.
+        BadVrfSignature,
+        /// Can not find the domain for given domain id.
+        InvalidDomainId,
+        /// Operator is not allowed to produce bundles in current epoch.
+        BadOperator,
+        /// Failed to pass the threshold check.
+        ThresholdUnsatisfied,
         /// The Bundle is created too long ago.
         StaleBundle,
-        /// Bundle was created on an unknown primary block (probably a fork block).
-        UnknownBlock,
+        /// An invalid execution receipt found in the bundle.
+        Receipt(ExecutionReceiptError),
     }
 
     impl<T> From<BundleError> for Error<T> {
@@ -421,7 +423,7 @@ mod pallet {
         BundleStored {
             domain_id: DomainId,
             bundle_hash: H256,
-            bundle_author: OperatorPublicKey,
+            bundle_author: OperatorId,
         },
         DomainRuntimeCreated {
             runtime_id: RuntimeId,
@@ -531,7 +533,7 @@ mod pallet {
             Self::deposit_event(Event::BundleStored {
                 domain_id,
                 bundle_hash,
-                bundle_author: opaque_bundle.into_operator_public_key(),
+                bundle_author: opaque_bundle.operator_id(),
             });
 
             Ok(())
@@ -754,12 +756,25 @@ mod pallet {
 
                 // Instantiate the genesis domain
                 let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                do_instantiate_domain::<T>(
-                    domain_config,
-                    genesis_domain.owner_account_id.clone(),
-                    Zero::zero(),
-                )
-                .expect("Genesis domain instantiation must always succeed");
+                let domain_owner = genesis_domain.owner_account_id.clone();
+                let domain_id =
+                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), Zero::zero())
+                        .expect("Genesis domain instantiation must always succeed");
+
+                // Register domain_owner as the genesis operator.
+                let operator_config = OperatorConfig {
+                    signing_key: genesis_domain.signing_key.clone(),
+                    minimum_nominator_stake: genesis_domain
+                        .minimum_nominator_stake
+                        .saturated_into(),
+                    nomination_tax: genesis_domain.nomination_tax,
+                };
+                let operator_stake = T::MinOperatorStake::get();
+                do_register_operator::<T>(domain_owner, domain_id, operator_stake, operator_config)
+                    .expect("Genesis operator registration must succeed");
+
+                do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero(), Zero::zero())
+                    .expect("Genesis epoch must succeed");
             }
         }
     }
@@ -850,10 +865,13 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
-        let runtime_id = DomainRegistry::<T>::get(domain_id)?
-            .domain_config
-            .runtime_id;
-        RuntimeRegistry::<T>::get(runtime_id).map(|runtime_object| runtime_object.code)
+        RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
+            .map(|runtime_object| runtime_object.code)
+    }
+
+    pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
+        DomainRegistry::<T>::get(domain_id)
+            .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
     /// Returns the tx range for the domain.
@@ -862,6 +880,31 @@ impl<T: Config> Pallet<T> {
             .map(|state| state.tx_range)
             .ok()
             .unwrap_or_else(Self::initial_tx_range)
+    }
+
+    pub fn bundle_producer_election_params(
+        domain_id: DomainId,
+    ) -> Option<BundleProducerElectionParams<BalanceOf<T>>> {
+        match (
+            DomainRegistry::<T>::get(domain_id),
+            DomainStakingSummary::<T>::get(domain_id),
+        ) {
+            (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
+                current_operators: stake_summary
+                    .current_operators
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<OperatorId>>(),
+                total_domain_stake: stake_summary.current_total_stake,
+                bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
+            }),
+            _ => None,
+        }
+    }
+
+    pub fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
+        Operators::<T>::get(operator_id)
+            .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
     fn pre_dispatch_submit_bundle(
@@ -878,8 +921,15 @@ impl<T: Config> Pallet<T> {
             extrinsics: _,
         }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) -> Result<(), BundleError> {
-        if !sealed_header.verify_signature() {
-            return Err(BundleError::BadSignature);
+        let operator_id = sealed_header.header.proof_of_election.operator_id;
+
+        let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+
+        if !operator
+            .signing_key
+            .verify(&sealed_header.pre_hash(), &sealed_header.signature)
+        {
+            return Err(BundleError::BadBundleSignature);
         }
 
         let header = &sealed_header.header;
@@ -915,6 +965,44 @@ impl<T: Config> Pallet<T> {
         }
 
         // TODO: Implement bundle validation.
+
+        // TODO: The current staking distribution may be unusable when there is an epoch
+        // transition, track the last stake distribution in that case.
+        let proof_of_election = &sealed_header.header.proof_of_election;
+
+        proof_of_election
+            .verify_vrf_signature(&operator.signing_key)
+            .map_err(|_| BundleError::BadVrfSignature)?;
+
+        let domain_id = proof_of_election.domain_id;
+
+        let domain_stake_summary =
+            DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
+
+        if !domain_stake_summary
+            .current_operators
+            .contains_key(&operator_id)
+        {
+            return Err(BundleError::BadOperator);
+        }
+
+        let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config
+            .bundle_slot_probability;
+
+        let operator_stake = operator.current_total_stake;
+        let total_domain_stake = domain_stake_summary.current_total_stake;
+
+        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
+            operator_stake.saturated_into(),
+            total_domain_stake.saturated_into(),
+            bundle_slot_probability,
+        );
+
+        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+            return Err(BundleError::ThresholdUnsatisfied);
+        }
 
         Ok(())
     }
@@ -965,7 +1053,7 @@ where
     pub fn submit_bundle_unsigned(
         opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
     ) {
-        let slot = opaque_bundle.sealed_header.header.slot_number;
+        let slot = opaque_bundle.sealed_header.slot_number();
         let extrincis_count = opaque_bundle.extrinsics.len();
 
         let call = Call::submit_bundle { opaque_bundle };
