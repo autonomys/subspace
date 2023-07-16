@@ -1,12 +1,13 @@
 //! PoT state management.
 
-use crate::{PotConfig, LOG_TARGET};
+use crate::utils::LOG_TARGET;
+use crate::PotConfig;
 use parking_lot::Mutex;
 use sc_network::PeerId;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use subspace_core_primitives::{NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use subspace_core_primitives::{PotKey, PotProof, PotSeed, SlotNumber};
 use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
 use tracing::warn;
 
@@ -46,10 +47,20 @@ pub enum PotStateError {
     InvalidContextFromPeer(PeerId),
 }
 
+/// Action on extending the tip with a new proof.
+#[derive(Debug, Eq, PartialEq)]
+enum ExtendAction {
+    /// Try to merge pending proofs for future slots.
+    MergeFutureProofs,
+
+    /// Don't merge with future proofs.
+    NoMerge,
+}
+
 /// The shared PoT state.
 struct PotStateInternal {
     /// Last N entries of the PotChain, sorted by slot number.
-    chain: NonEmptyVec<PotProof>,
+    chain: Vec<PotProof>,
 
     /// Proofs for future slot numbers, indexed by slot number.
     /// Each entry holds the proofs indexed by sender.
@@ -70,17 +81,12 @@ pub struct PotState {
 
 impl PotState {
     /// Creates the state.
-    pub fn new(
-        config: PotConfig,
-        proof_of_time: Arc<ProofOfTime>,
-        initial_proof: PotProof,
-    ) -> Self {
+    pub fn new(config: PotConfig, proof_of_time: Arc<ProofOfTime>) -> Self {
         Self {
             config,
             proof_of_time,
             state: Mutex::new(PotStateInternal {
-                chain: NonEmptyVec::new(vec![initial_proof])
-                    .expect("Failed to initialize PoT state"),
+                chain: Vec::new(),
                 future_proofs: BTreeMap::new(),
             }),
         }
@@ -90,10 +96,16 @@ impl PotState {
     /// (e.g) called when clock maker locally produces a proof.
     pub fn extend_chain(&self, proof: &PotProof) -> Result<(), PotStateError> {
         let mut state = self.state.lock();
-        let tip = state.chain.last();
+        let tip = match state.chain.last() {
+            Some(tip) => tip,
+            None => {
+                self.add_to_tip(&mut state, proof, ExtendAction::MergeFutureProofs);
+                return Ok(());
+            }
+        };
+
         if (tip.slot_number + 1) == proof.slot_number {
-            self.add_to_tip(&mut state, proof);
-            self.merge_future_proofs(&mut state);
+            self.add_to_tip(&mut state, proof, ExtendAction::MergeFutureProofs);
             Ok(())
         } else {
             // The tip moved by the time the proof was computed.
@@ -112,7 +124,16 @@ impl PotState {
         proof: &PotProof,
     ) -> Result<(), PotStateError> {
         let mut state = self.state.lock();
-        let tip = state.chain.last();
+        let tip = match state.chain.last() {
+            Some(tip) => tip.clone(),
+            None => {
+                self.proof_of_time
+                    .verify(proof)
+                    .map_err(PotStateError::InvalidProof)?;
+                self.add_to_tip(&mut state, proof, ExtendAction::MergeFutureProofs);
+                return Ok(());
+            }
+        };
 
         // Case 1: the proof is for an older slot
         if proof.slot_number <= tip.slot_number {
@@ -145,8 +166,7 @@ impl PotState {
                 .map_err(PotStateError::InvalidProof)?;
 
             // All checks passed, advance the tip with the new proof
-            self.add_to_tip(&mut state, proof);
-            self.merge_future_proofs(&mut state);
+            self.add_to_tip(&mut state, proof, ExtendAction::MergeFutureProofs);
             return Ok(());
         }
 
@@ -206,7 +226,11 @@ impl PotState {
     /// the pending future proofs.
     fn merge_future_proofs(&self, state: &mut PotStateInternal) {
         loop {
-            let tip = state.chain.last();
+            let tip = if let Some(tip) = state.chain.last() {
+                tip.clone()
+            } else {
+                return;
+            };
 
             // Get the pending proofs for (tip.slot_number + 1).
             let next_slot = tip.slot_number + 1;
@@ -237,21 +261,24 @@ impl PotState {
             }
 
             // Extend the tip with the future proof.
-            self.add_to_tip(state, &proof);
+            self.add_to_tip(state, &proof, ExtendAction::NoMerge);
         }
     }
 
     /// Adds the proof to the current tip
-    fn add_to_tip(&self, state: &mut PotStateInternal, proof: &PotProof) {
+    fn add_to_tip(&self, state: &mut PotStateInternal, proof: &PotProof, action: ExtendAction) {
         state.chain.push(proof.clone());
         state.future_proofs.remove(&proof.slot_number);
+        if action == ExtendAction::MergeFutureProofs {
+            self.merge_future_proofs(state)
+        }
     }
 }
 
 /// The state interface to the clock masters.
 pub trait ClockMasterState: Send + Sync {
     /// Returns the current tip
-    fn tip(&self) -> PotProof;
+    fn tip(&self) -> Option<PotProof>;
 
     /// Called when the local clock master produces the next proof.
     fn on_proof(&self, proof: &PotProof) -> Result<(), PotStateError>;
@@ -261,8 +288,8 @@ pub trait ClockMasterState: Send + Sync {
 }
 
 impl ClockMasterState for PotState {
-    fn tip(&self) -> PotProof {
-        self.state.lock().chain.last()
+    fn tip(&self) -> Option<PotProof> {
+        self.state.lock().chain.last().cloned()
     }
 
     fn on_proof(&self, proof: &PotProof) -> Result<(), PotStateError> {
@@ -277,7 +304,32 @@ impl ClockMasterState for PotState {
 pub fn clock_master_state(
     config: PotConfig,
     proof_of_time: Arc<ProofOfTime>,
-    initial_proof: PotProof,
 ) -> Arc<dyn ClockMasterState> {
-    Arc::new(PotState::new(config, proof_of_time, initial_proof))
+    Arc::new(PotState::new(config, proof_of_time))
+}
+
+/// The state interface to the PoT node clients.
+pub trait PotClientState: Send + Sync {
+    /// Returns the current tip
+    fn tip(&self) -> Option<PotProof>;
+
+    /// Called when a proof is gossiped by a peer clock master.
+    fn on_proof_from_peer(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotStateError>;
+}
+
+impl PotClientState for PotState {
+    fn tip(&self) -> Option<PotProof> {
+        self.state.lock().chain.last().cloned()
+    }
+
+    fn on_proof_from_peer(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotStateError> {
+        self.verify_and_extend_chain(sender, proof)
+    }
+}
+
+pub fn pot_client_state(
+    config: PotConfig,
+    proof_of_time: Arc<ProofOfTime>,
+) -> Arc<dyn PotClientState> {
+    Arc::new(PotState::new(config, proof_of_time))
 }

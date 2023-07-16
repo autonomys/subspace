@@ -1,20 +1,16 @@
 //! Clock master implementation.
 
-use crate::{clock_master_state, ClockMasterState, InitialPotProofInputs, PotConfig, LOG_TARGET};
+use crate::pot_state::{clock_master_state, ClockMasterState};
+use crate::utils::{topic, PotGossipVaidator, GOSSIP_PROTOCOL, LOG_TARGET};
+use crate::{InitialPotProofInputs, PotConfig};
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
-use parking_lot::{Mutex, RwLock};
-use sc_network::config::NonDefaultSetConfig;
+use parking_lot::Mutex;
 use sc_network::PeerId;
-use sc_network_gossip::{
-    GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
-    ValidatorContext,
-};
+use sc_network_gossip::{GossipEngine, Syncing as GossipSyncing};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_consensus::SyncOracle;
-use sp_core::twox_256;
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
-use std::collections::HashSet;
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::thread;
 use std::time::{self, Instant};
@@ -22,16 +18,12 @@ use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tracing::{debug, error, info, warn};
 
-const PROTOCOL_NAME: &str = "/subspace/pot-clock-master";
-
-type MessageHash = [u8; 32];
-
 /// The clock master manages the protocol: periodic proof generation/verification, gossip.
 pub struct ClockMaster<Block: BlockT, SO: SyncOracle + Send + Sync + Clone + 'static> {
     config: PotConfig,
     proof_of_time: Arc<ProofOfTime>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    gossip_validator: Arc<ClockMasterGossipValidator>,
+    gossip_validator: Arc<PotGossipVaidator>,
     sync_oracle: Arc<SO>,
 }
 
@@ -51,13 +43,11 @@ where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
     {
-        let gossip_validator = Arc::new(ClockMasterGossipValidator {
-            pending: RwLock::new(HashSet::new()),
-        });
+        let gossip_validator = Arc::new(PotGossipVaidator::new());
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
-            PROTOCOL_NAME,
+            GOSSIP_PROTOCOL,
             gossip_validator.clone(),
             None,
         )));
@@ -78,11 +68,10 @@ where
     /// Starts the workers.
     pub async fn run(mut self, init_fn: Box<dyn Fn() -> Option<InitialPotProofInputs> + Send>) {
         let (proof_sender, mut proof_receiver) = tracing_unbounded("pot-local-proofs-channel", 100);
-        let state = clock_master_state(
-            self.config.clone(),
-            self.proof_of_time.clone(),
-            self.create_initial_proof(init_fn).await,
-        );
+        let state = clock_master_state(self.config.clone(), self.proof_of_time.clone());
+        state
+            .on_proof(&self.create_initial_proof(init_fn).await)
+            .expect("Adding initial proof cannot fail");
 
         let mut incoming_messages = Box::pin(
             self.gossip_engine
@@ -152,7 +141,7 @@ where
             }
 
             // Build the next proof on top of the latest tip.
-            let last_proof = state.tip();
+            let last_proof = state.tip().expect("Clock master chain cannot be empty");
 
             // TODO: injected block hash from consensus
             let start_ts = Instant::now();
@@ -166,7 +155,7 @@ where
                     next_slot_number,
                     last_proof.injected_block_hash,
                 )
-                .expect("Proof creation  cannot fail");
+                .expect("Proof creation cannot fail");
             let elapsed = start_ts.elapsed();
             info!(target: LOG_TARGET, "clock_master::produce proofs: {next_proof}, time=[{elapsed:?}]");
 
@@ -195,9 +184,9 @@ where
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
-            warn!(target: LOG_TARGET, "clock_master::on gossip: {err:?}");
+            warn!(target: LOG_TARGET, "clock_master::on gossip: {err:?}, {sender}");
         } else {
-            info!(target: LOG_TARGET, "clock_master::on gossip: {proof}, time=[{elapsed:?}]");
+            info!(target: LOG_TARGET, "clock_master::on gossip: {proof}, time=[{elapsed:?}], {sender}");
             let encoded_msg = proof.encode();
             self.gossip_validator.on_broadcast(&encoded_msg);
             self.gossip_engine
@@ -236,68 +225,4 @@ where
         info!(target: LOG_TARGET, "clock_master::initial proof: {proof}");
         proof
     }
-}
-
-/// Validator for gossiped messages
-#[derive(Debug)]
-struct ClockMasterGossipValidator {
-    pending: RwLock<HashSet<MessageHash>>,
-}
-
-impl ClockMasterGossipValidator {
-    /// Called when the message is broadcast.
-    fn on_broadcast(&self, msg: &[u8]) {
-        let hash = twox_256(msg);
-        let mut pending = self.pending.write();
-        pending.insert(hash);
-    }
-}
-
-impl<Block: BlockT> Validator<Block> for ClockMasterGossipValidator {
-    fn validate(
-        &self,
-        _context: &mut dyn ValidatorContext<Block>,
-        _sender: &PeerId,
-        mut data: &[u8],
-    ) -> ValidationResult<Block::Hash> {
-        match PotProof::decode(&mut data) {
-            Ok(_) => ValidationResult::ProcessAndKeep(topic::<Block>()),
-            Err(_) => ValidationResult::Discard,
-        }
-    }
-
-    fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |_topic, data| {
-            let hash = twox_256(data);
-            let pending = self.pending.read();
-            !pending.contains(&hash)
-        })
-    }
-
-    fn message_allowed<'a>(
-        &'a self,
-    ) -> Box<dyn FnMut(&PeerId, MessageIntent, &Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |_who, _intent, _topic, data| {
-            let hash = twox_256(data);
-            let mut pending = self.pending.write();
-            if pending.contains(&hash) {
-                pending.remove(&hash);
-                true
-            } else {
-                false
-            }
-        })
-    }
-}
-
-/// PoT message topic.
-fn topic<Block: BlockT>() -> Block::Hash {
-    <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"subspace-pot-gossip-messages")
-}
-
-/// Returns the network configuration for PoT gossip.
-pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
-    let mut cfg = NonDefaultSetConfig::new(PROTOCOL_NAME.into(), 5 * 1024 * 1024);
-    cfg.allow_non_reserved(25, 25);
-    cfg
 }

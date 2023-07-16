@@ -54,7 +54,9 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_proof_of_time::{pot_gossip_peers_set_config, ClockMaster, InitialPotProofInputs};
+use sc_proof_of_time::{
+    pot_gossip_peers_set_config, ClockMaster, InitialPotProofInputs, PotClient, PotConfig,
+};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -786,9 +788,7 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    if config.enable_pot_clock_master {
-        net_config.add_notification_protocol(pot_gossip_peers_set_config());
-    }
+    net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -958,6 +958,22 @@ where
             subspace,
         );
 
+        // Enable PoT client to receive proofs for global randomness from clock masters.
+        let pot_config = PotConfig::default();
+        let pot_client = PotClient::<Block>::new(
+            pot_config.clone(),
+            network_service.clone(),
+            sync_service.clone(),
+        );
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "subspace-proof-of-time-client",
+            Some("subspace-proof-of-time-client"),
+            async move {
+                pot_client.run().await;
+            },
+        );
+
+        // Enable clock master functionality if enabled.
         if config.enable_pot_clock_master {
             let client = client.clone();
             let init_fn = Box::new(move || {
@@ -974,7 +990,7 @@ where
                     })
             });
             let clock_master = ClockMaster::<Block, _>::new(
-                Default::default(),
+                pot_config,
                 network_service.clone(),
                 sync_service.clone(),
                 sync_service.clone(),

@@ -1,14 +1,16 @@
 //! Subspace proof of time implementation.
 
 mod clock_master;
+mod pot_client;
 mod pot_state;
+mod utils;
 
+use crate::utils::GOSSIP_PROTOCOL;
+use sc_network::config::NonDefaultSetConfig;
 use subspace_core_primitives::{BlockHash, BlockNumber, PotKey, SlotNumber};
 
-pub use clock_master::{pot_gossip_peers_set_config, ClockMaster};
-pub use pot_state::{clock_master_state, ClockMasterState};
-
-pub(crate) const LOG_TARGET: &str = "subspace-proof-of-time";
+pub use clock_master::ClockMaster;
+pub use pot_client::PotClient;
 
 #[derive(Debug, Clone)]
 pub struct PotConfig {
@@ -74,4 +76,11 @@ impl InitialPotProofInputs {
             key: PotKey::initial_key(),
         }
     }
+}
+
+/// Returns the network configuration for PoT gossip.
+pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
+    let mut cfg = NonDefaultSetConfig::new(GOSSIP_PROTOCOL.into(), 5 * 1024 * 1024);
+    cfg.allow_non_reserved(25, 25);
+    cfg
 }
