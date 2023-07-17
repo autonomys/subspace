@@ -1,12 +1,16 @@
 //! Common utils.
 
 use parity_scale_codec::Decode;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sc_network::PeerId;
-use sc_network_gossip::{MessageIntent, ValidationResult, Validator, ValidatorContext};
+use sc_network_gossip::{
+    GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
+    ValidatorContext,
+};
 use sp_core::twox_256;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
+use std::sync::Arc;
 use subspace_core_primitives::PotProof;
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
@@ -75,5 +79,30 @@ impl<Block: BlockT> Validator<Block> for PotGossipVaidator {
                 false
             }
         })
+    }
+}
+
+/// PoT gossip components.
+#[derive(Clone)]
+pub struct PotGossip<Block: BlockT> {
+    pub(crate) engine: Arc<Mutex<GossipEngine<Block>>>,
+    pub(crate) validator: Arc<PotGossipVaidator>,
+}
+
+impl<Block: BlockT> PotGossip<Block> {
+    pub fn new<Network, GossipSync>(network: Network, sync: Arc<GossipSync>) -> Self
+    where
+        Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
+        GossipSync: GossipSyncing<Block> + 'static,
+    {
+        let validator = Arc::new(PotGossipVaidator::new());
+        let engine = Arc::new(Mutex::new(GossipEngine::new(
+            network,
+            sync,
+            GOSSIP_PROTOCOL,
+            validator.clone(),
+            None,
+        )));
+        Self { engine, validator }
     }
 }

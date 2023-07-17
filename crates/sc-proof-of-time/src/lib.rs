@@ -7,10 +7,15 @@ mod utils;
 
 use crate::utils::GOSSIP_PROTOCOL;
 use sc_network::config::NonDefaultSetConfig;
+use sc_service::TaskManager;
+use sc_utils::mpsc::tracing_unbounded;
+use sp_consensus::SyncOracle;
+use sp_runtime::traits::Block as BlockT;
 use subspace_core_primitives::{BlockHash, BlockNumber, PotKey, SlotNumber};
 
 pub use clock_master::ClockMaster;
 pub use pot_client::PotClient;
+pub use utils::PotGossip;
 
 #[derive(Debug, Clone)]
 pub struct PotConfig {
@@ -83,4 +88,50 @@ pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
     let mut cfg = NonDefaultSetConfig::new(GOSSIP_PROTOCOL.into(), 5 * 1024 * 1024);
     cfg.allow_non_reserved(25, 25);
     cfg
+}
+
+/// Starts the PoT components.
+#[allow(clippy::type_complexity)]
+pub fn start_pot<Block, SO>(
+    clock_master_components: Option<(
+        ClockMaster<Block, SO>,
+        Box<dyn Fn() -> Option<InitialPotProofInputs> + Send>,
+    )>,
+    pot_client: PotClient<Block>,
+    task_manager: &TaskManager,
+) where
+    Block: BlockT,
+    SO: SyncOracle + Send + Sync + Clone + 'static,
+{
+    let receiver = clock_master_components.map(|(clock_master, init_fn)| {
+        // Producer thread -> clock master.
+        let (sender_clock_master, receiver_clock_master) =
+            tracing_unbounded("clock-master-local-proofs-channel", 100);
+        // Producer thread -> PoT client.
+        let (sender_pot_client, receiver_pot_client) =
+            tracing_unbounded("pot-client-local-proofs-channel", 100);
+        task_manager.spawn_essential_handle().spawn_blocking(
+            "subspace-proof-of-time-clock-master",
+            Some("subspace-proof-of-time-clock-master"),
+            async move {
+                clock_master
+                    .run(
+                        init_fn,
+                        sender_clock_master,
+                        receiver_clock_master,
+                        sender_pot_client,
+                    )
+                    .await;
+            },
+        );
+        receiver_pot_client
+    });
+
+    task_manager.spawn_essential_handle().spawn_blocking(
+        "subspace-proof-of-time-client",
+        Some("subspace-proof-of-time-client"),
+        async move {
+            pot_client.run(receiver).await;
+        },
+    );
 }

@@ -55,7 +55,8 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_proof_of_time::{
-    pot_gossip_peers_set_config, ClockMaster, InitialPotProofInputs, PotClient, PotConfig,
+    pot_gossip_peers_set_config, start_pot, ClockMaster, InitialPotProofInputs, PotClient,
+    PotConfig, PotGossip,
 };
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
@@ -958,52 +959,38 @@ where
             subspace,
         );
 
-        // Enable PoT client to receive proofs for global randomness from clock masters.
+        // PoT client to receive proofs for global randomness from clock masters.
         let pot_config = PotConfig::default();
-        let pot_client = PotClient::<Block>::new(
-            pot_config.clone(),
-            network_service.clone(),
-            sync_service.clone(),
-        );
-        task_manager.spawn_essential_handle().spawn_blocking(
-            "subspace-proof-of-time-client",
-            Some("subspace-proof-of-time-client"),
-            async move {
-                pot_client.run().await;
-            },
-        );
+        let pot_gossip = PotGossip::<Block>::new(network_service.clone(), sync_service.clone());
+        let pot_client = PotClient::<Block>::new(pot_config.clone(), pot_gossip.clone());
 
         // Enable clock master functionality if enabled.
-        if config.enable_pot_clock_master {
+        let clock_master_components = if config.enable_pot_clock_master {
             let client = client.clone();
-            let init_fn = Box::new(move || {
-                let info = client.chain_info();
-                // genesis_slot() of genesis_hash, finalized_hash return Ok(None),
-                // use best_hash for now.
-                client
-                    .runtime_api()
-                    .genesis_slot(info.best_hash)
-                    .ok()
-                    .flatten()
-                    .map(|genesis_slot| {
-                        InitialPotProofInputs::new(info.genesis_hash.to_fixed_bytes(), genesis_slot)
-                    })
-            });
-            let clock_master = ClockMaster::<Block, _>::new(
-                pot_config,
-                network_service.clone(),
-                sync_service.clone(),
-                sync_service.clone(),
-            );
-
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "subspace-proof-of-time-clock-master",
-                Some("subspace-proof-of-time-clock-master"),
-                async move {
-                    clock_master.run(init_fn).await;
-                },
-            );
-        }
+            let init_fn: Box<dyn Fn() -> Option<InitialPotProofInputs> + Send> =
+                Box::new(move || {
+                    let info = client.chain_info();
+                    // genesis_slot() of genesis_hash, finalized_hash return Ok(None),
+                    // use best_hash for now.
+                    client
+                        .runtime_api()
+                        .genesis_slot(info.best_hash)
+                        .ok()
+                        .flatten()
+                        .map(|genesis_slot| {
+                            InitialPotProofInputs::new(
+                                info.genesis_hash.to_fixed_bytes(),
+                                genesis_slot,
+                            )
+                        })
+                });
+            let clock_master =
+                ClockMaster::<Block, _>::new(pot_config, pot_gossip, sync_service.clone());
+            Some((clock_master, init_fn))
+        } else {
+            None
+        };
+        start_pot(clock_master_components, pot_client, &task_manager);
     }
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {

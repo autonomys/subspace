@@ -8668,6 +8668,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "sc-network",
  "sc-network-gossip",
+ "sc-service",
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-blockchain",

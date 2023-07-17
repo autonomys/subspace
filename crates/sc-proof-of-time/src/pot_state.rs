@@ -12,7 +12,7 @@ use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
 use tracing::warn;
 
 #[derive(Debug, thiserror::Error)]
-pub enum PotStateError {
+pub(crate) enum PotStateError {
     #[error("Failed to extend chain: {expected}/{actual}")]
     TipMismatch {
         expected: SlotNumber,
@@ -68,7 +68,7 @@ struct PotStateInternal {
 }
 
 /// Wrapper around the PoT state.
-pub struct PotState {
+struct PotState {
     /// Pot config
     config: PotConfig,
 
@@ -275,8 +275,8 @@ impl PotState {
     }
 }
 
-/// The state interface to the clock masters.
-pub trait ClockMasterState: Send + Sync {
+/// The state interface to the clock master/PoT clients.
+pub(crate) trait PotStateInterface: Send + Sync {
     /// Returns the current tip
     fn tip(&self) -> Option<PotProof>;
 
@@ -287,7 +287,7 @@ pub trait ClockMasterState: Send + Sync {
     fn on_proof_from_peer(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotStateError>;
 }
 
-impl ClockMasterState for PotState {
+impl PotStateInterface for PotState {
     fn tip(&self) -> Option<PotProof> {
         self.state.lock().chain.last().cloned()
     }
@@ -301,35 +301,9 @@ impl ClockMasterState for PotState {
     }
 }
 
-pub fn clock_master_state(
+pub(crate) fn pot_state(
     config: PotConfig,
     proof_of_time: Arc<ProofOfTime>,
-) -> Arc<dyn ClockMasterState> {
-    Arc::new(PotState::new(config, proof_of_time))
-}
-
-/// The state interface to the PoT node clients.
-pub trait PotClientState: Send + Sync {
-    /// Returns the current tip
-    fn tip(&self) -> Option<PotProof>;
-
-    /// Called when a proof is gossiped by a peer clock master.
-    fn on_proof_from_peer(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotStateError>;
-}
-
-impl PotClientState for PotState {
-    fn tip(&self) -> Option<PotProof> {
-        self.state.lock().chain.last().cloned()
-    }
-
-    fn on_proof_from_peer(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotStateError> {
-        self.verify_and_extend_chain(sender, proof)
-    }
-}
-
-pub fn pot_client_state(
-    config: PotConfig,
-    proof_of_time: Arc<ProofOfTime>,
-) -> Arc<dyn PotClientState> {
+) -> Arc<dyn PotStateInterface> {
     Arc::new(PotState::new(config, proof_of_time))
 }
