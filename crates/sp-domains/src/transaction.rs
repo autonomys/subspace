@@ -31,6 +31,8 @@ impl From<InvalidTransactionCode> for TransactionValidity {
 
 /// Object for performing the pre-validation in the transaction pool
 /// before calling into the regular `validate_transaction` runtime api.
+// TODO: Revisit
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum PreValidationObject<Block, DomainNumber, DomainHash>
 where

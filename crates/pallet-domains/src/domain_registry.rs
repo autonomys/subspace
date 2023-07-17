@@ -159,7 +159,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         StakingSummary {
             current_epoch_index: 0,
             current_total_stake: Zero::zero(),
-            next_total_stake: Zero::zero(),
             current_operators: vec![],
             next_operators: vec![],
         },

@@ -28,7 +28,7 @@ use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi};
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
@@ -37,7 +37,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
@@ -291,11 +291,12 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>
+        + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
     SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Randomness, Option<mpsc::Sender<()>>)> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync

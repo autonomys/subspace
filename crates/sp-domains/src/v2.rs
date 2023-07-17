@@ -3,15 +3,14 @@
 // retired all of the v1 usage.
 
 use crate::{
-    BundleSolution, DomainId, ExtrinsicsRoot, OperatorId, OperatorPublicKey, OperatorSignature,
-    ReceiptHash,
+    DomainId, ExtrinsicsRoot, OperatorId, OperatorSignature, ProofOfElection, ReceiptHash,
 };
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_api::HashT;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Zero};
-use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic};
+use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 
@@ -22,8 +21,8 @@ pub struct BundleHeader<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The consensus chain's best block number when the bundle is created. Used for detect stale
     /// bundle and prevent attacker from reusing them to occupy the block space without cost.
     pub consensus_block_number: Number,
-    /// Solution of the bundle election.
-    pub bundle_solution: BundleSolution<DomainHash>,
+    /// Proof of bundle producer election.
+    pub proof_of_election: ProofOfElection<DomainHash>,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
@@ -74,15 +73,6 @@ impl<Number: Encode, Hash: Encode, DomainNumber: Encode, DomainHash: Encode, Bal
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
     }
-
-    /// Returns whether the signature is valid.
-    pub fn verify_signature(&self) -> bool {
-        self.header
-            .bundle_solution
-            .proof_of_election()
-            .operator_public_key
-            .verify(&self.pre_hash(), &self.signature)
-    }
 }
 
 /// Domain bundle.
@@ -112,11 +102,7 @@ impl<
 
     /// Returns the domain_id of this bundle.
     pub fn domain_id(&self) -> DomainId {
-        self.sealed_header
-            .header
-            .bundle_solution
-            .proof_of_election()
-            .domain_id
+        self.sealed_header.header.proof_of_election.domain_id
     }
 
     // Return the `bundle_extrinsics_root`
@@ -129,21 +115,9 @@ impl<
         self.sealed_header.header.operator_id
     }
 
-    /// Consumes [`Bundle`] to extract the inner executor public key and execution receipt.
-    pub fn deconstruct(
-        self,
-    ) -> (
-        OperatorPublicKey,
-        ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
-    ) {
-        (
-            self.sealed_header
-                .header
-                .bundle_solution
-                .proof_of_election
-                .operator_public_key,
-            self.sealed_header.header.receipt,
-        )
+    /// Consumes [`Bundle`] to extract the execution receipt.
+    pub fn into_receipt(self) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
+        self.sealed_header.header.receipt
     }
 }
 

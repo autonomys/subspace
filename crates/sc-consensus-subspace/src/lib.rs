@@ -79,8 +79,8 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, SectorId, SegmentCommitment, SegmentHeader,
-    SegmentIndex, Solution, SolutionRange,
+    HistorySize, PublicKey, Randomness, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
+    Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -94,8 +94,8 @@ use subspace_verification::{
 pub struct NewSlotInfo {
     /// Slot
     pub slot: Slot,
-    /// Global slot challenge
-    pub global_challenge: Blake2b256Hash,
+    /// Global randomness
+    pub global_randomness: Randomness,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting

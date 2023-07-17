@@ -68,7 +68,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
-use subspace_core_primitives::{Blake2b256Hash, Solution};
+use subspace_core_primitives::{Randomness, Solution};
 use subspace_fraud_proof::domain_extrinsics_builder::DomainExtrinsicsBuilder;
 use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
@@ -229,7 +229,7 @@ pub struct MockConsensusNode {
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
     new_slot_notification_subscribers:
-        Vec<TracingUnboundedSender<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)>>,
+        Vec<TracingUnboundedSender<(Slot, Randomness, Option<mpsc::Sender<()>>)>>,
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
     block_import: MockBlockImport<
@@ -474,7 +474,7 @@ impl MockConsensusNode {
         {
             let value = (
                 slot,
-                Hash::random().into(),
+                Randomness::from(Hash::random().to_fixed_bytes()),
                 Some(slot_acknowledgement_sender),
             );
             self.new_slot_notification_subscribers
@@ -514,7 +514,7 @@ impl MockConsensusNode {
     /// Subscribe the new slot notification
     pub fn new_slot_notification_stream(
         &mut self,
-    ) -> TracingUnboundedReceiver<(Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> {
+    ) -> TracingUnboundedReceiver<(Slot, Randomness, Option<mpsc::Sender<()>>)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.new_slot_notification_subscribers.push(tx);
         rx
@@ -538,7 +538,7 @@ impl MockConsensusNode {
             if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
             {
-                if opaque_bundle.sealed_header.header.slot_number == slot {
+                if opaque_bundle.sealed_header.slot_number() == slot {
                     return Some(opaque_bundle);
                 }
             }
