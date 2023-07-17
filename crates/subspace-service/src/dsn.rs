@@ -240,7 +240,7 @@ where
         special_target_connections: 0,
         reserved_peers: dsn_config.reserved_peers,
         // maintain permanent connections with any peer
-        general_connection_decision_handler: Arc::new(|_| true),
+        general_connected_peers_handler: Arc::new(|_| true),
 
         ..default_networking_config
     };

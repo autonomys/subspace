@@ -7,7 +7,7 @@ use crate::behavior::{
 use crate::connected_peers::Event as ConnectedPeersEvent;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
-    ConnectionDecisionHandler, ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
+    ConnectedPeersHandler, ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
 use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
@@ -15,7 +15,6 @@ use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
 use bytes::Bytes;
-use either::{Either, Left, Right};
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
@@ -117,9 +116,9 @@ where
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
     /// Defines whether we maintain a persistent connection for common peers.
-    general_connection_decision_handler: ConnectionDecisionHandler,
+    general_connection_decision_handler: ConnectedPeersHandler,
     /// Defines whether we maintain a persistent connection for special peers.
-    special_connection_decision_handler: ConnectionDecisionHandler,
+    special_connection_decision_handler: ConnectedPeersHandler,
     /// Randomness generator used for choosing Kademlia addresses.
     rng: StdRng,
 }
@@ -139,8 +138,8 @@ where
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
     pub(crate) protocol_version: String,
-    pub(crate) general_connection_decision_handler: ConnectionDecisionHandler,
-    pub(crate) special_connection_decision_handler: ConnectionDecisionHandler,
+    pub(crate) general_connection_decision_handler: ConnectedPeersHandler,
+    pub(crate) special_connection_decision_handler: ConnectedPeersHandler,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -281,10 +280,10 @@ where
                 self.handle_peer_info_event(event).await;
             }
             SwarmEvent::Behaviour(Event::GeneralConnectedPeers(event)) => {
-                self.handle_connected_peers_event(Left(event)).await;
+                self.handle_general_connected_peers_event(event).await;
             }
             SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
-                self.handle_connected_peers_event(Right(event)).await;
+                self.handle_special_connected_peers_event(event).await;
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -828,31 +827,32 @@ where
         }
     }
 
-    async fn handle_connected_peers_event(
+    async fn handle_general_connected_peers_event(
         &mut self,
-        event: Either<
-            ConnectedPeersEvent<GeneralConnectedPeersInstance>,
-            ConnectedPeersEvent<SpecialConnectedPeersInstance>,
-        >,
+        event: ConnectedPeersEvent<GeneralConnectedPeersInstance>,
     ) {
-        trace!(?event, "Connected peers event.");
+        trace!(?event, "General connected peers event.");
 
         let peers = self.get_peers_to_dial().await;
 
-        match event {
-            Left(ConnectedPeersEvent::NewDialingCandidatesRequested(..)) => {
-                self.swarm
-                    .behaviour_mut()
-                    .general_connected_peers
-                    .add_peers_to_dial(&peers);
-            }
-            Right(ConnectedPeersEvent::NewDialingCandidatesRequested(..)) => {
-                self.swarm
-                    .behaviour_mut()
-                    .special_connected_peers
-                    .add_peers_to_dial(&peers);
-            }
-        }
+        self.swarm
+            .behaviour_mut()
+            .general_connected_peers
+            .add_peers_to_dial(&peers);
+    }
+
+    async fn handle_special_connected_peers_event(
+        &mut self,
+        event: ConnectedPeersEvent<SpecialConnectedPeersInstance>,
+    ) {
+        trace!(?event, "Special connected peers event.");
+
+        let peers = self.get_peers_to_dial().await;
+
+        self.swarm
+            .behaviour_mut()
+            .special_connected_peers
+            .add_peers_to_dial(&peers);
     }
 
     async fn handle_command(&mut self, command: Command) {

@@ -48,7 +48,7 @@ use thiserror::Error;
 use tracing::{debug, error, info};
 
 /// Defines whether connection should be maintained permanently.
-pub type ConnectionDecisionHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
+pub type ConnectedPeersHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
@@ -218,9 +218,9 @@ pub struct Config<ProviderStorage> {
     /// Specifies a source for peer information.
     pub peer_info_provider: PeerInfoProvider,
     /// Defines whether we maintain a persistent connection for common peers.
-    pub general_connection_decision_handler: ConnectionDecisionHandler,
+    pub general_connected_peers_handler: ConnectedPeersHandler,
     /// Defines whether we maintain a persistent connection for special peers.
-    pub special_connection_decision_handler: ConnectionDecisionHandler,
+    pub special_connected_peers_handler: ConnectedPeersHandler,
     /// Defines target total (in and out) connection number that should be maintained for general peers.
     pub general_target_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained for special peers.
@@ -332,9 +332,9 @@ where
             protocol_version,
             peer_info_provider,
             // maintain permanent connections with any peer
-            general_connection_decision_handler: Arc::new(|_| true),
+            general_connected_peers_handler: Arc::new(|_| true),
             // we don't need to keep additional connections by default
-            special_connection_decision_handler: Arc::new(|_| false),
+            special_connected_peers_handler: Arc::new(|_| false),
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
         }
@@ -395,8 +395,8 @@ where
         metrics,
         protocol_version,
         peer_info_provider,
-        general_connection_decision_handler,
-        special_connection_decision_handler,
+        general_connected_peers_handler: general_connection_decision_handler,
+        special_connected_peers_handler: special_connection_decision_handler,
         general_target_connections,
         special_target_connections,
     } = config;
