@@ -1,6 +1,9 @@
+use crate::bootstrapper::Bootstrapper;
 use codec::{Decode, Encode};
+use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_primitives::TimestampApi;
+use domain_test_service::chain_spec::{domain_instance_genesis_config, load_chain_spec_with};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
@@ -16,11 +19,12 @@ use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{Bundle, DomainId, DomainsApi};
+use sp_domains::{Bundle, DomainId, DomainsApi, GenerateGenesisStateRoot, RuntimeType};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
+use subspace_node::domain::DomainGenesisBlockBuilder;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
@@ -32,6 +36,73 @@ fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
         .number(block_hash)
         .unwrap_or_else(|err| panic!("Failed to fetch number for {block_hash}: {err}"))
         .unwrap_or_else(|| panic!("header {block_hash} not in the chain"))
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_domain_instance_bootstrapper() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    let domain_id = DomainId::new(0u32);
+    let bootstrapper = Bootstrapper::<Block, _, _>::new(ferdie.client.clone());
+
+    let domain_instance_data = bootstrapper
+        .run(domain_id)
+        .await
+        .unwrap()
+        .domain_instance_data;
+    assert_eq!(domain_instance_data.runtime_type, RuntimeType::Evm);
+
+    // TODO: get the genesis state root from runtime after https://github.com/subspace/subspace/pull/1650
+    // is landed
+    let expected_genesis_state_root = {
+        let builder =
+            DomainGenesisBlockBuilder::new(ferdie.backend.clone(), ferdie.executor.clone());
+        builder
+            .generate_genesis_state_root(domain_id, domain_instance_data.clone())
+            .unwrap()
+    };
+
+    let chain_spec = {
+        let genesis_config =
+            domain_instance_genesis_config(domain_id, domain_instance_data.runtime_code);
+        load_chain_spec_with(genesis_config)
+    };
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .set_chain_spec(chain_spec)
+    .build_evm_node(Role::Authority, &mut ferdie)
+    .await;
+
+    let genesis_state_root = *alice
+        .client
+        .header(alice.client.info().genesis_hash)
+        .unwrap()
+        .unwrap()
+        .state_root();
+
+    assert_eq!(expected_genesis_state_root, genesis_state_root);
+
+    produce_blocks!(ferdie, alice, 3)
+        .await
+        .expect("3 consensus blocks produced successfully");
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]

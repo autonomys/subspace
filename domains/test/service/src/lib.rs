@@ -36,7 +36,8 @@ use sc_service::config::{
     OffchainWorkerConfig, PruningMode, WasmExecutionMethod, WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration as ServiceConfiguration, Error as ServiceError, Role,
+    BasePath, BlocksPruning, ChainSpec, Configuration as ServiceConfiguration,
+    Error as ServiceError, Role,
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
@@ -54,6 +55,7 @@ pub use evm_domain_test_runtime;
 /// By default an in-memory socket will be used, therefore you need to provide nodes if you want the
 /// node to be connected to other nodes. If `nodes_exclusive` is `true`, the node will only connect
 /// to the given `nodes` and not to any other node.
+#[allow(clippy::too_many_arguments)]
 pub fn node_config(
     domain_id: DomainId,
     tokio_handle: tokio::runtime::Handle,
@@ -62,6 +64,7 @@ pub fn node_config(
     nodes_exclusive: bool,
     role: Role,
     base_path: BasePath,
+    maybe_chain_spec: Option<Box<dyn ChainSpec>>,
 ) -> Result<ServiceConfiguration, ServiceError> {
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
@@ -95,6 +98,11 @@ pub fn node_config(
 
     network_config.transport = TransportConfig::MemoryOnly;
 
+    let chain_spec = match maybe_chain_spec {
+        Some(cs) => cs,
+        None => chain_spec::get_chain_spec(),
+    };
+
     Ok(ServiceConfiguration {
         impl_name: "domain-test-node".to_string(),
         impl_version: "0.1".to_string(),
@@ -109,7 +117,7 @@ pub fn node_config(
         trie_cache_maximum_size: Some(16 * 1024 * 1024),
         state_pruning: Some(PruningMode::ArchiveAll),
         blocks_pruning: BlocksPruning::KeepAll,
-        chain_spec: chain_spec::get_chain_spec(),
+        chain_spec,
         wasm_method: WasmExecutionMethod::Compiled {
             instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
         },

@@ -89,7 +89,9 @@ where
                     }
                 }
             } else {
-                return Err(format!("Imported block notification stream end unexpectedly").into());
+                return Err("Imported block notification stream end unexpectedly"
+                    .to_string()
+                    .into());
             }
         };
 

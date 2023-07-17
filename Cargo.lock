@@ -2245,6 +2245,7 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-fraud-proof",
+ "subspace-node",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -2431,8 +2432,10 @@ dependencies = [
  "frame-system",
  "frame-system-rpc-runtime-api",
  "futures",
+ "lazy_static",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc",
+ "parking_lot 0.12.1",
  "rand 0.8.5",
  "sc-client-api",
  "sc-consensus",
@@ -2446,6 +2449,7 @@ dependencies = [
  "sc-transaction-pool",
  "sc-utils",
  "serde",
+ "serde_json",
  "sp-api",
  "sp-application-crypto",
  "sp-arithmetic",
@@ -2802,6 +2806,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-domain-id",
  "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
@@ -2853,6 +2858,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-domain-id",
  "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
@@ -6305,6 +6311,17 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-domain-id"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-domains",
 ]
 
 [[package]]
@@ -10694,15 +10711,20 @@ dependencies = [
  "frame-support",
  "futures",
  "hex-literal",
+ "lazy_static",
  "log",
  "once_cell",
  "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-executor",
+ "sc-network",
+ "sc-network-sync",
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
