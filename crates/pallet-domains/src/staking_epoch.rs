@@ -547,6 +547,7 @@ mod tests {
                 current_total_stake: total_domain_stake,
                 current_operators: BTreeMap::from_iter(current_operators),
                 next_operators: BTreeSet::from_iter(next_operators),
+                current_epoch_rewards: BTreeMap::new(),
             },
         );
 
