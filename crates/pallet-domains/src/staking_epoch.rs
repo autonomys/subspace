@@ -5,7 +5,7 @@ use crate::pallet::{
     PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
     PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
 };
-use crate::staking::{Error as StakingError, Nominator, Withdraw};
+use crate::staking::{Error as TransitionError, Nominator, Withdraw};
 use crate::{BalanceOf, Config, FreezeIdentifier, FungibleFreezeId, NominatorId};
 use codec::{Decode, Encode};
 use frame_support::dispatch::TypeInfo;
@@ -18,30 +18,13 @@ use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
-pub enum TransitionError {
-    MissingOperator,
-    MissingNomination,
-    OperatorFrozen,
-    MissingDomainStakeSummary,
-    BalanceOverflow,
-    BalanceUnderflow,
-    ShareUnderflow,
-    ShareOverflow,
-    RemoveLock,
-    UpdateLock,
-    MintBalance,
-    BlockNumberOverflow,
-    EpochOverflow,
-}
-
-#[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
     FinalizeSwitchOperatorDomain(TransitionError),
     FinalizeOperatorDeregistration(TransitionError),
     UnlockOperator(TransitionError),
     FinalizeDomainPendingTransfers(TransitionError),
     UnlockNominator(TransitionError),
-    OperatorRewardStaking(StakingError),
+    OperatorRewardStaking(TransitionError),
 }
 
 /// Finalizes the domain's current epoch and begins the next epoch.
@@ -99,7 +82,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
         let stake_summary = maybe_domain_stake_summary
             .as_mut()
-            .ok_or(StakingError::DomainNotInitialized)?;
+            .ok_or(TransitionError::DomainNotInitialized)?;
 
         while let Some((operator_id, reward)) = stake_summary.current_epoch_rewards.pop_first() {
             Operators::<T>::try_mutate(operator_id, |maybe_operator| {
@@ -114,9 +97,9 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                 let operator_tax = operator.nomination_tax.mul_floor(reward);
                 if !operator_tax.is_zero() {
                     let nominator_id = OperatorIdOwner::<T>::get(operator_id)
-                        .ok_or(StakingError::MissingOperatorOwner)?;
+                        .ok_or(TransitionError::MissingOperatorOwner)?;
                     T::Currency::mint_into(&nominator_id, operator_tax)
-                        .map_err(|_| StakingError::MintBalance)?;
+                        .map_err(|_| TransitionError::MintBalance)?;
 
                     // add an pending deposit for the operator tax
                     let updated_total_deposit =
@@ -124,7 +107,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                             None => operator_tax,
                             Some(existing_deposit) => existing_deposit
                                 .checked_add(&operator_tax)
-                                .ok_or(StakingError::BalanceOverflow)?,
+                                .ok_or(TransitionError::BalanceOverflow)?,
                         };
 
                     crate::staking::freeze_account_balance_to_operator::<T>(
@@ -138,12 +121,12 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                 // add remaining rewards to nominators to be distributed during the epoch transition
                 let rewards = reward
                     .checked_sub(&operator_tax)
-                    .ok_or(StakingError::BalanceUnderflow)?;
+                    .ok_or(TransitionError::BalanceUnderflow)?;
 
                 operator.current_epoch_rewards = operator
                     .current_epoch_rewards
                     .checked_add(&rewards)
-                    .ok_or(StakingError::BalanceOverflow)?;
+                    .ok_or(TransitionError::BalanceOverflow)?;
 
                 Ok(())
             })?;
@@ -170,7 +153,7 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
             .as_mut()
-            .ok_or(TransitionError::MissingOperator)?;
+            .ok_or(TransitionError::UnknownOperator)?;
 
         // operator is frozen, just no-op
         if operator.is_frozen {
@@ -181,7 +164,7 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
         DomainStakingSummary::<T>::try_mutate(operator.current_domain_id, |maybe_stake_summary| {
             let stake_summary = maybe_stake_summary
                 .as_mut()
-                .ok_or(TransitionError::MissingDomainStakeSummary)?;
+                .ok_or(TransitionError::DomainNotInitialized)?;
 
             stake_summary.next_operators.insert(operator_id);
 
@@ -220,7 +203,7 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
         // take the operator so this operator info is removed once we unlock the operator.
         let operator = maybe_operator
             .take()
-            .ok_or(TransitionError::MissingOperator)?;
+            .ok_or(TransitionError::UnknownOperator)?;
 
         let mut total_shares = operator.total_shares;
         let mut total_stake = operator
@@ -320,7 +303,7 @@ fn do_finalize_domain_pending_transfers<T: Config>(
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
-            .ok_or(TransitionError::MissingDomainStakeSummary)?;
+            .ok_or(TransitionError::DomainNotInitialized)?;
 
         let next_epoch = stake_summary
             .current_epoch_index
@@ -357,7 +340,7 @@ fn finalize_operator_pending_transfers<T: Config>(
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
             .as_mut()
-            .ok_or(TransitionError::MissingOperator)?;
+            .ok_or(TransitionError::UnknownOperator)?;
 
         if operator.is_frozen {
             return Err(TransitionError::OperatorFrozen);
@@ -434,7 +417,7 @@ fn finalize_nominator_withdrawal<T: Config>(
     let (withdrew_stake, withdrew_shares) = match withdraw {
         Withdraw::All => {
             let nominator = Nominators::<T>::take(operator_id, nominator_id.clone())
-                .ok_or(TransitionError::MissingNomination)?;
+                .ok_or(TransitionError::UnknownNominator)?;
 
             let nominator_share = Perbill::from_rational(nominator.shares, *total_shares);
             let nominator_staked_amount = nominator_share.mul_floor(*total_stake);
@@ -454,7 +437,7 @@ fn finalize_nominator_withdrawal<T: Config>(
             Nominators::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_nominator| {
                 let nominator = maybe_nominator
                     .as_mut()
-                    .ok_or(TransitionError::MissingNomination)?;
+                    .ok_or(TransitionError::UnknownNominator)?;
 
                 // calculate nominator total staked value
                 let nominator_share = Perbill::from_rational(nominator.shares, *total_shares);

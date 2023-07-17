@@ -86,6 +86,12 @@ pub enum Error {
     ExistingFullWithdraw,
     MissingOperatorOwner,
     MintBalance,
+    BlockNumberOverflow,
+    RemoveLock,
+    UpdateLock,
+    EpochOverflow,
+    ShareUnderflow,
+    ShareOverflow,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
