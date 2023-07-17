@@ -16,28 +16,21 @@
 
 //! Subspace node implementation.
 
-use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_client_operator::OperatorStreams;
-use domain_eth_service::provider::EthProvider;
-use domain_eth_service::DefaultEthConfig;
+use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_service::{FullBackend, FullClient};
-use evm_domain_runtime::AccountId as AccountId20;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
-use futures::StreamExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
-use sc_client_api::BlockchainEvents;
 use sc_consensus_slots::SlotProportion;
-use sc_service::{BasePath, PartialComponents};
+use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::GenerateGenesisStateRoot;
 use std::sync::Arc;
 use subspace_node::domain::{
-    AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainSubcommand,
-    EVMDomainExecutorDispatch,
+    AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter,
+    DomainSubcommand, EVMDomainExecutorDispatch,
 };
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
@@ -390,10 +383,7 @@ fn main() -> Result<(), Error> {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
 
-                // TODO: proper value
-                let consensus_block_import_throttling_buffer_size = 10;
-
-                let mut consensus_chain_node = {
+                let consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "Consensus"
@@ -524,123 +514,47 @@ fn main() -> Result<(), Error> {
                             .map(|base_path| base_path.path().to_path_buf()),
                         cli.domain_args.into_iter(),
                     );
+                    let domain_id = domain_cli.domain_id;
 
-                    let domain_config = domain_cli
-                        .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
-                            tokio_handle.clone(),
-                        )
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to create domain configuration: {error:?}"
-                            ))
-                        })?;
+                    let bootstrapper =
+                        Bootstrapper::<DomainBlock, _, _>::new(consensus_chain_node.client.clone());
 
-                    let block_importing_notification_stream = || {
-                        consensus_chain_node
-                            .block_importing_notification_stream
-                            .subscribe()
-                            .then(|block_importing_notification| async move {
-                                (
-                                    block_importing_notification.block_number,
-                                    block_importing_notification.acknowledgement_sender,
-                                )
-                            })
-                    };
-
-                    let new_slot_notification_stream = || {
-                        consensus_chain_node
-                            .new_slot_notification_stream
-                            .subscribe()
-                            .then(|slot_notification| async move {
-                                (
-                                    slot_notification.new_slot_info.slot,
-                                    slot_notification.new_slot_info.global_randomness,
-                                    None,
-                                )
-                            })
-                    };
-
-                    let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
-
-                    let operator_streams = OperatorStreams {
-                        consensus_block_import_throttling_buffer_size,
-                        block_importing_notification_stream: block_importing_notification_stream(),
-                        imported_block_notification_stream: consensus_chain_node
-                            .client
-                            .every_import_notification_stream(),
-                        new_slot_notification_stream: new_slot_notification_stream(),
-                        _phantom: Default::default(),
-                    };
-
-                    let evm_base_path = BasePath::new(
-                        domain_config
-                            .service_config
-                            .base_path
-                            .config_dir(domain_config.service_config.chain_spec.id()),
-                    );
-
-                    let eth_provider = EthProvider::<
-                        evm_domain_runtime::TransactionConverter,
-                        DefaultEthConfig<
-                            FullClient<
-                                DomainBlock,
-                                evm_domain_runtime::RuntimeApi,
-                                EVMDomainExecutorDispatch,
-                            >,
-                            FullBackend<DomainBlock>,
-                        >,
-                    >::new(
-                        Some(evm_base_path), domain_cli.additional_args()
-                    );
-
-                    let domain_params = domain_service::DomainParams {
-                        domain_id: domain_cli.domain_id,
-                        domain_config,
+                    let domain_starter = DomainInstanceStarter {
+                        domain_cli,
+                        tokio_handle,
                         consensus_client: consensus_chain_node.client.clone(),
-                        consensus_network_sync_oracle: consensus_chain_node.sync_service.clone(),
+                        block_importing_notification_stream: consensus_chain_node
+                            .block_importing_notification_stream
+                            .clone(),
+                        new_slot_notification_stream: consensus_chain_node
+                            .new_slot_notification_stream
+                            .clone(),
+                        consensus_network_service: consensus_chain_node.network_service.clone(),
+                        consensus_sync_service: consensus_chain_node.sync_service.clone(),
                         select_chain: consensus_chain_node.select_chain.clone(),
-                        operator_streams,
-                        gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
-                        provider: eth_provider,
                     };
-
-                    let domain_node = domain_service::new_full::<
-                        _,
-                        _,
-                        _,
-                        _,
-                        _,
-                        _,
-                        evm_domain_runtime::RuntimeApi,
-                        EVMDomainExecutorDispatch,
-                        AccountId20,
-                        _,
-                    >(domain_params)
-                    .await?;
-
-                    xdm_gossip_worker_builder
-                        .push_domain_tx_pool_sink(domain_cli.domain_id, domain_node.tx_pool_sink);
-
-                    consensus_chain_node
-                        .task_manager
-                        .add_child(domain_node.task_manager);
-
-                    let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
-                        .build::<Block, _, _>(
-                            consensus_chain_node.network_service.clone(),
-                            consensus_chain_node.sync_service.clone(),
-                        );
 
                     consensus_chain_node
                         .task_manager
                         .spawn_essential_handle()
                         .spawn_essential_blocking(
-                            "cross-domain-gossip-message-worker",
+                            "domain",
                             None,
-                            Box::pin(cross_domain_message_gossip_worker.run()),
+                            Box::pin(async move {
+                                let bootstrap_result = match bootstrapper.run(domain_id).await {
+                                    Err(err) => {
+                                        log::error!(
+                                            "Domain bootsrapper exited with an error {err:?}"
+                                        );
+                                        return;
+                                    }
+                                    Ok(res) => res,
+                                };
+                                if let Err(error) = domain_starter.start(bootstrap_result).await {
+                                    log::error!("Domain starter exited with an error {error:?}");
+                                }
+                            }),
                         );
-
-                    domain_node.network_starter.start_network();
                 }
 
                 consensus_chain_node.network_starter.start_network();

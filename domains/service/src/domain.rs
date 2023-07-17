@@ -436,7 +436,7 @@ where
     let domain_confirmation_depth = 256u32;
 
     let operator = Operator::new(
-        Box::new(task_manager.spawn_essential_handle()),
+        Box::new(spawn_essential.clone()),
         &select_chain,
         OperatorParams {
             domain_id,
