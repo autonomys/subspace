@@ -62,6 +62,7 @@
 #![feature(drain_filter)]
 
 mod aux_schema;
+mod bootstrapper;
 mod bundle_processor;
 mod bundle_producer_election_solver;
 mod domain_block_processor;
@@ -77,6 +78,7 @@ mod sortition;
 mod tests;
 mod utils;
 
+pub use self::bootstrapper::{BootstrapResult, Bootstrapper};
 pub use self::operator::Operator;
 pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
