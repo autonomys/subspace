@@ -102,8 +102,8 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
-        RuntimeType,
+        DomainId, ExtrinsicsRoot, GenesisDomain, OpaqueBundle, OperatorId, OperatorPublicKey,
+        ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
@@ -179,6 +179,11 @@ mod pallet {
         /// The block tree pruning depth, its value should <= `BlockHashCount` because we
         /// need the consensus block hash to verify execution receipt, which is used to
         /// construct the node of the block tree.
+        ///
+        /// TODO: `BlockTreePruningDepth` <= `BlockHashCount` is not enough to guarantee the consensus block
+        /// hash must exists while verifying receipt because the domain block is not mapping to the consensus
+        /// block one by one, we need to either store the consensus block hash in runtime manually or store
+        /// the consensus block hash in the client side and use host function to get them in runtime.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<Self::DomainNumber>;
 
@@ -307,7 +312,7 @@ mod pallet {
     pub(super) type DomainBlocks<T: Config> = StorageMap<
         _,
         Identity,
-        H256,
+        ReceiptHash,
         DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>,
         OptionQuery,
     >;
@@ -321,8 +326,16 @@ mod pallet {
     /// block, these extrinsics will be used to construct the domain block and `ExecutionInbox` is used
     /// to ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles.
     #[pallet::storage]
-    pub(super) type ExecutionInbox<T: Config> =
-        StorageDoubleMap<_, Identity, DomainId, Identity, T::DomainNumber, Vec<H256>, ValueQuery>;
+    pub type ExecutionInbox<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Identity, DomainId>,
+            NMapKey<Identity, T::DomainNumber>,
+            NMapKey<Identity, T::BlockNumber>,
+        ),
+        Vec<ExtrinsicsRoot>,
+        ValueQuery,
+    >;
 
     /// The block number of the best domain block, increase by one when the first bundle of the domain is
     /// successfully submitted to current consensus block, which mean a new domain block with this block
@@ -388,8 +401,6 @@ mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
-        /// Can not find the block hash of given primary block number.
-        UnavailablePrimaryBlockHash,
         /// Invalid fraud proof.
         FraudProof,
         /// Runtime registry specific errors
@@ -532,17 +543,27 @@ mod pallet {
             let operator_id = opaque_bundle.operator_id();
             let (bundle_author, receipt) = opaque_bundle.deconstruct();
 
-            let receipt_type = execution_receipt_type::<T>(domain_id, &receipt);
-            if receipt_type == ReceiptType::Stale {
+            match execution_receipt_type::<T>(domain_id, &receipt) {
                 // The stale receipt should not be further processed, but we still track them for purposes
                 // of measuring the bundle production rate.
-                Self::note_domain_bundle(domain_id);
-                return Ok(());
+                ReceiptType::Stale => {
+                    Self::note_domain_bundle(domain_id);
+                    return Ok(());
+                }
+                ReceiptType::Rejected(rejected_receipt_type) => {
+                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into())
+                }
+                // Add the exeuctione receipt to the block tree
+                ReceiptType::Accepted(accepted_receipt_type) => {
+                    process_execution_receipt::<T>(
+                        domain_id,
+                        operator_id,
+                        receipt,
+                        accepted_receipt_type,
+                    )
+                    .map_err(Error::<T>::from)?;
+                }
             }
-
-            // Add the exeuctione receipt to the block tree
-            process_execution_receipt::<T>(domain_id, operator_id, receipt, receipt_type)
-                .map_err(Error::<T>::from)?;
 
             // `SuccessfulBundles` is empty means this is the first accepted bundle for this domain in this
             // consensus block, which also mean a domain block will be produced thus update `HeadDomainNumber`
@@ -556,7 +577,11 @@ mod pallet {
 
             // Put the `extrinsics_root` to the inbox of the current under building domain block
             let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
-            ExecutionInbox::<T>::append(domain_id, head_domain_number, extrinsics_root);
+            let consensus_block_number = frame_system::Pallet::<T>::current_block_number();
+            ExecutionInbox::<T>::append(
+                (domain_id, head_domain_number, consensus_block_number),
+                extrinsics_root,
+            );
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 

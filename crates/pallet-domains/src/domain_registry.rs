@@ -12,9 +12,9 @@ use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
-use sp_core::{Get, H256};
+use sp_core::Get;
 use sp_domains::domain::generate_genesis_state_root;
-use sp_domains::{DomainId, GenesisDomain, RuntimeId, RuntimeType};
+use sp_domains::{DomainId, GenesisDomain, ReceiptHash, RuntimeId, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_std::vec;
 use sp_std::vec::Vec;
@@ -74,7 +74,7 @@ pub struct DomainObject<Number, AccountId> {
     /// The consensus chain block number when the domain first instantiated.
     pub created_at: Number,
     /// The hash of the genesis execution receipt for this domain.
-    pub genesis_receipt_hash: H256,
+    pub genesis_receipt_hash: ReceiptHash,
     /// The domain config.
     pub domain_config: DomainConfig,
 }

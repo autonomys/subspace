@@ -38,21 +38,40 @@ pub struct DomainBlock<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub operator_ids: Vec<OperatorId>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum AcceptedReceiptType {
+    // New head receipt that extend the longest branch
+    NewHead,
+    // Receipt that creates a new branch of the block tree
+    NewBranch,
+    // Receipt that comfirms the current head receipt
+    CurrentHead,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RejectedReceiptType {
+    // Receipt that is newer than the head receipt but does not extend the head receipt
+    InFuture,
+    // Receipt that already been pruned
+    Pruned,
+}
+
+impl From<RejectedReceiptType> for Error {
+    fn from(rejected_receipt: RejectedReceiptType) -> Error {
+        match rejected_receipt {
+            RejectedReceiptType::InFuture => Error::InFutureReceipt,
+            RejectedReceiptType::Pruned => Error::PrunedReceipt,
+        }
+    }
+}
+
 /// The type of receipt regarding to its freshness
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ReceiptType {
-    // New head receipt that extend the longest branch
-    NewHead,
-    // Receipt that comfirms the current head receipt
-    CurrentHead,
-    // Receipt that creates a new branch of the block tree
-    NewBranch,
-    // Receipt that is newer than the head receipt but does not extend the head receipt
-    InFuture,
+    Accepted(AcceptedReceiptType),
+    Rejected(RejectedReceiptType),
     // Receipt that comfirm a non-head receipt
     Stale,
-    // Receipt that already been pruned
-    Pruned,
 }
 
 /// Get the receipt type of the given receipt based on the current block tree state
@@ -64,8 +83,8 @@ pub(crate) fn execution_receipt_type<T: Config>(
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
 
     match receipt_number.cmp(&head_receipt_number.saturating_add(One::one())) {
-        Ordering::Greater => ReceiptType::InFuture,
-        Ordering::Equal => ReceiptType::NewHead,
+        Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
+        Ordering::Equal => ReceiptType::Accepted(AcceptedReceiptType::NewHead),
         Ordering::Less => {
             let oldest_receipt_number =
                 head_receipt_number.saturating_sub(T::BlockTreePruningDepth::get());
@@ -74,13 +93,13 @@ pub(crate) fn execution_receipt_type<T: Config>(
 
             if receipt_number < oldest_receipt_number {
                 // Receipt already pruned
-                ReceiptType::Pruned
+                ReceiptType::Rejected(RejectedReceiptType::Pruned)
             } else if !already_exist {
                 // Create new branch
-                ReceiptType::NewBranch
+                ReceiptType::Accepted(AcceptedReceiptType::NewBranch)
             } else if receipt_number == head_receipt_number {
                 // Add comfirm to the current head receipt
-                ReceiptType::CurrentHead
+                ReceiptType::Accepted(AcceptedReceiptType::CurrentHead)
             } else {
                 // Add comfirm to a non-head receipt
                 ReceiptType::Stale
@@ -111,7 +130,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             Error::BadGenesisReceipt
         );
     } else {
-        let execution_inbox = ExecutionInbox::<T>::get(domain_id, domain_block_number);
+        let execution_inbox =
+            ExecutionInbox::<T>::get((domain_id, domain_block_number, consensus_block_number));
         ensure!(
             !block_extrinsics_roots.is_empty() && *block_extrinsics_roots == execution_inbox,
             Error::InvalidExtrinsicsRoots
@@ -132,41 +152,34 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     }
 
     match execution_receipt_type::<T>(domain_id, execution_receipt) {
-        ReceiptType::InFuture => {
+        ReceiptType::Rejected(RejectedReceiptType::InFuture) => {
             log::error!(
                 "Unexpected in future receipt {execution_receipt:?}, which should result in \
                 `UnknownParentBlockReceipt` error as it parent receipt is missing"
             );
             Err(Error::InFutureReceipt)
         }
-        ReceiptType::Pruned => {
+        ReceiptType::Rejected(RejectedReceiptType::Pruned) => {
             log::error!(
                 "Unexpected pruned receipt {execution_receipt:?}, which should result in \
                 `InvalidExtrinsicsRoots` error as its `ExecutionInbox` is pruned at the same time"
             );
             Err(Error::PrunedReceipt)
         }
-        ReceiptType::NewHead
-        | ReceiptType::NewBranch
-        | ReceiptType::CurrentHead
-        | ReceiptType::Stale => Ok(()),
+        ReceiptType::Accepted(_) | ReceiptType::Stale => Ok(()),
     }
 }
 
 /// Process the execution receipt to add it to the block tree
-///
-/// NOTE: only `NewHead`, `NewBranch` and `CurrentHead` type of receipt is expected
-/// for this function, passing other type of receipt will result in an `UnexpectedReceiptType`
-/// error.
 pub(crate) fn process_execution_receipt<T: Config>(
     domain_id: DomainId,
     submitter: OperatorId,
     execution_receipt: ExecutionReceiptOf<T>,
-    receipt_type: ReceiptType,
+    receipt_type: AcceptedReceiptType,
 ) -> Result<(), Error> {
     let er_hash = execution_receipt.hash();
     match receipt_type {
-        er_type @ ReceiptType::NewHead | er_type @ ReceiptType::NewBranch => {
+        er_type @ AcceptedReceiptType::NewHead | er_type @ AcceptedReceiptType::NewBranch => {
             // Construct and add a new domain block to the block tree
             let domain_block_number = execution_receipt.domain_block_number;
             let domain_block = DomainBlock {
@@ -178,7 +191,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
             });
             DomainBlocks::<T>::insert(er_hash, domain_block);
 
-            if er_type == ReceiptType::NewHead {
+            if er_type == AcceptedReceiptType::NewHead {
                 // Update the head receipt number
                 HeadReceiptNumber::<T>::insert(domain_id, domain_block_number);
 
@@ -191,11 +204,12 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     }
                     // Remove the block's `ExecutionInbox` as the block is pruned and does not need
                     // to verify its receipt's `extrinsics_root` anymore
-                    ExecutionInbox::<T>::remove(domain_id, to_prune);
+                    let _ =
+                        ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
                 }
             }
         }
-        ReceiptType::CurrentHead => {
+        AcceptedReceiptType::CurrentHead => {
             // Add confirmation to the current head receipt
             DomainBlocks::<T>::mutate(er_hash, |maybe_domain_block| {
                 let domain_block = maybe_domain_block.as_mut().expect(
@@ -204,8 +218,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 domain_block.operator_ids.push(submitter);
             });
         }
-        // Other types of receipt is unexpected for this function
-        _ => return Err(Error::UnexpectedReceiptType),
     }
     Ok(())
 }
@@ -429,7 +441,7 @@ mod tests {
                 ));
                 // `bundle_extrinsics_root` should be tracked in `ExecutionInbox`
                 assert_eq!(
-                    ExecutionInbox::<Test>::get(domain_id, block_number),
+                    ExecutionInbox::<Test>::get((domain_id, block_number, block_number)),
                     vec![bundle_extrinsics_root]
                 );
 
@@ -458,7 +470,7 @@ mod tests {
                 );
                 assert_eq!(
                     execution_receipt_type::<Test>(domain_id, &receipt),
-                    ReceiptType::NewHead
+                    ReceiptType::Accepted(AcceptedReceiptType::NewHead)
                 );
                 assert_ok!(verify_execution_receipt::<Test>(domain_id, &receipt));
 
@@ -472,10 +484,10 @@ mod tests {
             // `InvalidExtrinsicsRoots` error as `ExecutionInbox` of block 1 is pruned
             let pruned_receipt = receipt_of_block_1.unwrap();
             assert!(BlockTree::<Test>::get(domain_id, 1).is_empty());
-            assert!(ExecutionInbox::<Test>::get(domain_id, 1).is_empty());
+            assert!(ExecutionInbox::<Test>::get((domain_id, 1, 1)).is_empty());
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &pruned_receipt),
-                ReceiptType::Pruned
+                ReceiptType::Rejected(RejectedReceiptType::Pruned)
             );
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
@@ -505,7 +517,7 @@ mod tests {
             // Receipt should be valid
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &current_head_receipt),
-                ReceiptType::CurrentHead
+                ReceiptType::Accepted(AcceptedReceiptType::CurrentHead)
             );
             assert_ok!(verify_execution_receipt::<Test>(
                 domain_id,
@@ -606,7 +618,7 @@ mod tests {
             // New branch receipt can pass the verification
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &new_branch_receipt),
-                ReceiptType::NewBranch
+                ReceiptType::Accepted(AcceptedReceiptType::NewBranch)
             );
             assert_ok!(verify_execution_receipt::<Test>(
                 domain_id,
@@ -658,14 +670,18 @@ mod tests {
             // receipt is missing from the block tree
             let mut future_receipt = current_head_receipt.clone();
             future_receipt.domain_block_number = head_receipt_number + 2;
+            future_receipt.consensus_block_number = head_receipt_number + 2;
             ExecutionInbox::<Test>::insert(
-                domain_id,
-                head_receipt_number + 2,
+                (
+                    domain_id,
+                    future_receipt.domain_block_number,
+                    future_receipt.consensus_block_number,
+                ),
                 future_receipt.block_extrinsics_roots.clone(),
             );
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &future_receipt),
-                ReceiptType::InFuture
+                ReceiptType::Rejected(RejectedReceiptType::InFuture)
             );
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &future_receipt),

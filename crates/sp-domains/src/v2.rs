@@ -2,7 +2,10 @@
 // TODO: the v1 primitives can be removed and replaced by them after the domain client side
 // retired all of the v1 usage.
 
-use crate::{BundleSolution, DomainId, OperatorId, OperatorPublicKey, OperatorSignature};
+use crate::{
+    BundleSolution, DomainId, ExtrinsicsRoot, OperatorId, OperatorPublicKey, OperatorSignature,
+    ReceiptHash,
+};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_api::HashT;
@@ -30,7 +33,7 @@ pub struct BundleHeader<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// the bundle with compute.
     pub estimated_bundle_weight: Weight,
     /// The Merkle root of all new extrinsics included in this bundle.
-    pub bundle_extrinsics_root: H256,
+    pub bundle_extrinsics_root: ExtrinsicsRoot,
 }
 
 impl<Number: Encode, Hash: Encode, DomainNumber: Encode, DomainHash: Encode, Balance: Encode>
@@ -117,7 +120,7 @@ impl<
     }
 
     // Return the `bundle_extrinsics_root`
-    pub fn extrinsics_root(&self) -> H256 {
+    pub fn extrinsics_root(&self) -> ExtrinsicsRoot {
         self.sealed_header.header.bundle_extrinsics_root
     }
 
@@ -154,7 +157,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     // The index of the current domain block that forms the basis of this ER.
     pub domain_block_number: DomainNumber,
     // A pointer to the hash of the ER for the last domain block.
-    pub parent_domain_block_receipt_hash: H256,
+    pub parent_domain_block_receipt_hash: ReceiptHash,
     // A pointer to the consensus block index which contains all of the bundles that were used to derive and
     // order all extrinsics executed by the current domain block for this ER.
     pub consensus_block_number: Number,
@@ -162,7 +165,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub consensus_block_hash: Hash,
     // All `extrinsics_roots` for all bundles being executed by this block. Used to ensure these are contained
     // within the state of the `execution_inbox`.
-    pub block_extrinsics_roots: Vec<H256>,
+    pub block_extrinsics_roots: Vec<ExtrinsicsRoot>,
     // The final state root for the current domain block reflected by this ER. Used for verifying storage proofs
     // for domains.
     pub final_state_root: DomainHash,
@@ -181,7 +184,7 @@ impl<
     > ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     /// Returns the hash of this execution receipt.
-    pub fn hash(&self) -> H256 {
+    pub fn hash(&self) -> ReceiptHash {
         BlakeTwo256::hash_of(self)
     }
 

@@ -79,6 +79,12 @@ impl sp_runtime::BoundToRuntimeAppPublic for OperatorKey {
 /// Derived from the Balance and can't be smaller than u128.
 pub type StakeWeight = u128;
 
+/// The hash of a execution receipt.
+pub type ReceiptHash = H256;
+
+/// The Merkle root of all extrinsics included in a bundle.
+pub type ExtrinsicsRoot = H256;
+
 /// Unique identifier of a domain.
 #[derive(
     Clone,
