@@ -15,9 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 pub(crate) mod cli;
+pub(crate) mod domain_instance_starter;
 pub(crate) mod evm_chain_spec;
 
 pub use self::cli::{DomainCli, Subcommand as DomainSubcommand};
+pub use self::domain_instance_starter::DomainInstanceStarter;
 use evm_domain_runtime::AccountId as AccountId20;
 use sc_client_api::Backend;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersionOf};

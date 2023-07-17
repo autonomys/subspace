@@ -98,6 +98,26 @@ impl DomainCli {
             .chain(self.additional_args.clone())
     }
 
+    pub fn maybe_relayer_id<AccountId, CA>(&self) -> sc_cli::Result<Option<AccountId>>
+    where
+        CA: Convert<AccountId32, AccountId>,
+        AccountId: FromStr,
+    {
+        // if is dev, use the known key ring to start relayer
+        let res = if self.shared_params().is_dev() && self.relayer_id.is_none() {
+            self.run
+                .get_keyring()
+                .map(|kr| CA::convert(kr.to_account_id()))
+        } else if let Some(relayer_id) = self.relayer_id.clone() {
+            Some(AccountId::from_str(&relayer_id).map_err(|_err| {
+                sc_cli::Error::Input(format!("Invalid Relayer Id: {relayer_id}"))
+            })?)
+        } else {
+            None
+        };
+        Ok(res)
+    }
+
     /// Creates domain configuration from domain cli.
     pub fn create_domain_configuration<AccountId, CA>(
         &self,
