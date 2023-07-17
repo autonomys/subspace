@@ -274,17 +274,21 @@ impl NetworkBehaviour for Behaviour {
     fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
         match event {
             FromSwarm::ConnectionEstablished(ConnectionEstablished { peer_id, .. }) => {
-                // Connection was established without dialing from this protocol
-                if let Entry::Vacant(entry) = self.known_peers.entry(peer_id) {
-                    entry.insert(PeerState::new(ConnectionState::Deciding));
+                match self.known_peers.entry(peer_id) {
+                    // Connection was established without dialing from this protocol
+                    Entry::Vacant(entry) => {
+                        entry.insert(PeerState {
+                            connection_state: ConnectionState::Deciding,
+                            connection_counter: 1,
+                        });
 
-                    trace!(%peer_id, "Pending peer decision...");
-                    self.wake();
+                        trace!(%peer_id, "Pending peer decision...");
+                        self.wake();
+                    }
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().connection_counter += 1;
+                    }
                 }
-
-                self.known_peers
-                    .entry(peer_id)
-                    .and_modify(|state| state.connection_counter += 1);
             }
             FromSwarm::ConnectionClosed(ConnectionClosed {
                 peer_id,
