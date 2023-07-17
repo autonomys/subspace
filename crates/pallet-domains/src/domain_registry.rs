@@ -10,8 +10,9 @@ use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, GenesisDomain, RuntimeId};
+use sp_domains::{DomainId, DomainsDigestItem, GenesisDomain, RuntimeId};
 use sp_runtime::traits::{CheckedAdd, Zero};
+use sp_runtime::DigestItem;
 use sp_std::vec;
 use sp_std::vec::Vec;
 
@@ -153,6 +154,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
             next_operators: vec![],
         },
     );
+
+    frame_system::Pallet::<T>::deposit_log(DigestItem::domain_instantiation(domain_id));
 
     // TODO: initialize the genesis block in the domain block tree once we can drive the
     // genesis ER from genesis config through host function

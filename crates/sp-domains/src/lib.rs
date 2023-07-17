@@ -476,12 +476,16 @@ pub enum DomainsFreezeIdentifier {
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub enum DomainDigestItem {
     DomainRuntimeUpgraded(RuntimeId),
+    DomainInstantiated(DomainId),
 }
 
 /// Domains specific digest items.
 pub trait DomainsDigestItem {
     fn domain_runtime_upgrade(runtime_id: RuntimeId) -> Self;
     fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId>;
+
+    fn domain_instantiation(domain_id: DomainId) -> Self;
+    fn as_domain_instantiation(&self) -> Option<DomainId>;
 }
 
 impl DomainsDigestItem for DigestItem {
@@ -491,10 +495,19 @@ impl DomainsDigestItem for DigestItem {
 
     fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId> {
         match self.try_to::<DomainDigestItem>(OpaqueDigestItemId::Other) {
-            None => None,
-            Some(domain_digest_item) => match domain_digest_item {
-                DomainDigestItem::DomainRuntimeUpgraded(runtime_id) => Some(runtime_id),
-            },
+            Some(DomainDigestItem::DomainRuntimeUpgraded(runtime_id)) => Some(runtime_id),
+            _ => None,
+        }
+    }
+
+    fn domain_instantiation(domain_id: DomainId) -> Self {
+        Self::Other(DomainDigestItem::DomainInstantiated(domain_id).encode())
+    }
+
+    fn as_domain_instantiation(&self) -> Option<DomainId> {
+        match self.try_to::<DomainDigestItem>(OpaqueDigestItemId::Other) {
+            Some(DomainDigestItem::DomainInstantiated(domain_id)) => Some(domain_id),
+            _ => None,
         }
     }
 }
