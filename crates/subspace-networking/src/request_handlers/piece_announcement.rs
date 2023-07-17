@@ -100,8 +100,6 @@ pub enum PieceAnnouncementResponse {
     Success,
 }
 
-//TODO: remove attribute on the first usage
-#[allow(dead_code)]
 /// Create a new piece announcement request handler.
 pub type PieceAnnouncementRequestHandler = GenericRequestHandler<PieceAnnouncementRequest>;
 

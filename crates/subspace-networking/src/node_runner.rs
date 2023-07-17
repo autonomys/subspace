@@ -1,13 +1,17 @@
-use crate::behavior::persistent_parameters::NetworkingParametersRegistry;
+use crate::behavior::persistent_parameters::{
+    NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
+};
 use crate::behavior::{provider_storage, Behavior, Event};
+use crate::connected_peers::Event as ConnectedPeersEvent;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
-    ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
+    ConnectionDecisionHandler, ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
+use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, Shared};
-use crate::utils::{is_global_address_or_dns, ResizableSemaphorePermit};
+use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -22,13 +26,14 @@ use libp2p::kad::{
     PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
-use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
@@ -37,6 +42,9 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
+
+// Defines a batch size for peer addresses from Kademlia buckets.
+const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -91,14 +99,12 @@ where
     /// present for the same physical subscription).
     topic_subscription_senders: HashMap<TopicHash, IntMap<usize, mpsc::UnboundedSender<Bytes>>>,
     random_query_timeout: Pin<Box<Fuse<Sleep>>>,
-    /// Defines a timeout between swarm attempts to dial known addresses
-    peer_dialing_timeout: Pin<Box<Fuse<Sleep>>>,
+    /// Defines an interval between periodical tasks.
+    periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
     networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
-    /// Defines target total (in and out) connection number that should be maintained.
-    target_connections: u32,
     /// Temporarily banned peers.
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     /// Prometheus metrics.
@@ -107,6 +113,10 @@ where
     established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
+    /// Defines whether we maintain a persistent connection.
+    connection_decision_handler: ConnectionDecisionHandler,
+    /// Randomness generator used for choosing Kademlia addresses.
+    rng: StdRng,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -121,10 +131,10 @@ where
     pub(crate) next_random_query_interval: Duration,
     pub(crate) networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
-    pub(crate) target_connections: u32,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
     pub(crate) protocol_version: String,
+    pub(crate) connection_decision_handler: ConnectionDecisionHandler,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -140,10 +150,10 @@ where
             next_random_query_interval,
             networking_parameters_registry,
             reserved_peers,
-            target_connections,
             temporary_bans,
             metrics,
             protocol_version,
+            connection_decision_handler,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -158,14 +168,15 @@ where
             // We'll make the first query right away and continue at the interval.
             random_query_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             // We'll make the first dial right away and continue at the interval.
-            peer_dialing_timeout: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
+            periodical_tasks_interval: Box::pin(tokio::time::sleep(Duration::from_secs(0)).fuse()),
             networking_parameters_registry,
             reserved_peers,
-            target_connections,
             temporary_bans,
             metrics,
             established_connections: HashMap::new(),
             protocol_version,
+            connection_decision_handler,
+            rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
         }
     }
 
@@ -199,85 +210,23 @@ where
                 _ = self.networking_parameters_registry.run().fuse() => {
                     trace!("Network parameters registry runner exited.")
                 },
-                //TODO: consider changing this worker to the reactive approach (using the connection
-                // closing events to maintain established connections set).
-                _ = &mut self.peer_dialing_timeout => {
-                    self.handle_peer_dialing().await;
+                _ = &mut self.periodical_tasks_interval => {
+                    self.handle_periodical_tasks().await;
 
-                    self.peer_dialing_timeout =
+                    self.periodical_tasks_interval =
                         Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
                 },
             }
         }
     }
 
-    async fn handle_peer_dialing(&mut self) {
-        let local_peer_id = *self.swarm.local_peer_id();
-        let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
+    /// Handles periodical tasks.
+    async fn handle_periodical_tasks(&mut self) {
+        // Log current connections.
+        let network_info = self.swarm.network_info();
+        let connections = network_info.connection_counters();
 
-        // Maintain target connection number.
-        let (total_current_connections, established_connections) = {
-            let network_info = self.swarm.network_info();
-            let connections = network_info.connection_counters();
-
-            debug!(
-                ?connections,
-                target_connections = self.target_connections,
-                "Current connections and limits."
-            );
-
-            (
-                connections.num_pending_outgoing()
-                    + connections.num_established_outgoing()
-                    + connections.num_pending_incoming()
-                    + connections.num_established_incoming(),
-                connections.num_established_outgoing() + connections.num_established_incoming(),
-            )
-        };
-
-        if total_current_connections < self.target_connections {
-            debug!(
-                %local_peer_id,
-                total_current_connections,
-                target_connections=self.target_connections,
-                connected_peers=connected_peers.len(),
-                "Initiate connection to known peers",
-            );
-
-            let allow_non_global_addresses_in_dht = self.allow_non_global_addresses_in_dht;
-
-            let addresses = self
-                .networking_parameters_registry
-                .next_known_addresses_batch()
-                .await
-                .into_iter()
-                .filter(|(peer_id, address)| {
-                    if !allow_non_global_addresses_in_dht && !is_global_address_or_dns(address) {
-                        trace!(
-                            %local_peer_id,
-                            %peer_id,
-                            %address,
-                            "Ignoring non-global address read from parameters registry.",
-                        );
-                        false
-                    } else {
-                        true
-                    }
-                });
-
-            trace!(%local_peer_id, "Processing addresses batch: {:?}", addresses);
-
-            for (peer_id, addr) in addresses {
-                if connected_peers.contains(&peer_id) {
-                    continue;
-                }
-
-                self.dial_peer(peer_id, addr)
-            }
-        } else if established_connections < self.target_connections {
-            self.networking_parameters_registry
-                .start_over_address_batching()
-        }
+        debug!(?connections, "Current connections and limits.");
 
         // Renew known external addresses.
         let mut external_addresses = self
@@ -292,25 +241,6 @@ where
             let mut addresses = shared.external_addresses.lock();
             addresses.clear();
             addresses.append(&mut external_addresses);
-        }
-    }
-
-    fn dial_peer(&mut self, peer_id: PeerId, addr: Multiaddr) {
-        let local_peer_id = *self.swarm.local_peer_id();
-        trace!(%local_peer_id, remote_peer_id=%peer_id, %addr, "Dialing address ...");
-
-        let dial_opts = DialOpts::peer_id(peer_id)
-            .addresses(vec![addr.clone()])
-            .build();
-
-        if let Err(err) = self.swarm.dial(dial_opts) {
-            debug!(
-                %err,
-                %local_peer_id,
-                remote_peer_id = %peer_id,
-                %addr,
-                "Dialing error: failed to dial an address."
-            );
         }
     }
 
@@ -338,6 +268,12 @@ where
             }
             SwarmEvent::Behaviour(Event::RequestResponse(event)) => {
                 self.handle_request_response_event(event).await;
+            }
+            SwarmEvent::Behaviour(Event::PeerInfo(event)) => {
+                self.handle_peer_info_event(event).await;
+            }
+            SwarmEvent::Behaviour(Event::ConnectedPeers(event)) => {
+                self.handle_connected_peers_event(event).await;
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -861,6 +797,34 @@ where
         trace!("Request response event: {:?}", event);
     }
 
+    async fn handle_peer_info_event(&mut self, event: PeerInfoEvent) {
+        trace!(?event, "Peer info event.");
+
+        if let Ok(PeerInfoSuccess::Received(peer_info)) = event.result {
+            let keep_alive = (self.connection_decision_handler)(&peer_info);
+
+            self.swarm
+                .behaviour_mut()
+                .connected_peers
+                .update_keep_alive_status(event.peer_id, keep_alive);
+        }
+    }
+
+    async fn handle_connected_peers_event(&mut self, event: ConnectedPeersEvent) {
+        trace!(?event, "Connected peers event.");
+
+        match event {
+            ConnectedPeersEvent::NewDialingCandidatesRequested => {
+                let peers = self.get_peers_to_dial().await;
+
+                self.swarm
+                    .behaviour_mut()
+                    .connected_peers
+                    .add_peers_to_dial(&peers);
+            }
+        }
+    }
+
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::GetValue {
@@ -1158,5 +1122,72 @@ where
                 }
             }
         }
+    }
+
+    async fn get_peers_to_dial(&mut self) -> Vec<PeerAddress> {
+        let mut result_peers =
+            Vec::with_capacity(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE + PEERS_ADDRESSES_BATCH_SIZE);
+
+        // Get addresses from Kademlia buckets
+        let mut kademlia_addresses = Vec::new();
+        let mut kademlia_peers = HashSet::new();
+        for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
+            for entry in kbucket.iter() {
+                let peer_id = *entry.node.key.preimage();
+                let addresses = entry.node.value.clone().into_vec();
+
+                for address in addresses {
+                    kademlia_addresses.push((peer_id, address));
+                }
+            }
+        }
+
+        // Take random batch from kademlia addresses.
+        for _ in 0..KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE {
+            if kademlia_addresses.is_empty() {
+                break;
+            }
+            let random_index = self.rng.gen_range(0..kademlia_addresses.len());
+
+            let (peer_id, peer_address) = kademlia_addresses.swap_remove(random_index);
+            result_peers.push((peer_id, peer_address));
+            kademlia_peers.insert(peer_id);
+        }
+
+        // Get peer batch from the known peers registry
+        let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
+        let local_peer_id = *self.swarm.local_peer_id();
+        let allow_non_global_addresses_in_dht = self.allow_non_global_addresses_in_dht;
+
+        let addresses = self
+            .networking_parameters_registry
+            .next_known_addresses_batch()
+            .await
+            .into_iter()
+            .filter(|(peer_id, address)| {
+                if !allow_non_global_addresses_in_dht && !is_global_address_or_dns(address) {
+                    trace!(
+                        %local_peer_id,
+                        %peer_id,
+                        %address,
+                        "Ignoring non-global address read from parameters registry.",
+                    );
+                    false
+                } else {
+                    true
+                }
+            });
+
+        trace!(%local_peer_id, "Processing addresses batch: {:?}", addresses);
+
+        for (peer_id, addr) in addresses {
+            if connected_peers.contains(&peer_id) || kademlia_peers.contains(&peer_id) {
+                continue;
+            }
+
+            result_peers.push((peer_id, addr))
+        }
+
+        result_peers
     }
 }

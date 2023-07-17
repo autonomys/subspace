@@ -6,6 +6,7 @@ use crate::behavior::persistent_parameters::{
 };
 use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
+use crate::connected_peers::Config as ConnectedPeersConfig;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
 use crate::node::Node;
@@ -15,7 +16,7 @@ use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
-use crate::PeerInfoConfig;
+use crate::{PeerInfo, PeerInfoConfig};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::connection_limits::ConnectionLimits;
@@ -46,11 +47,15 @@ use subspace_core_primitives::{crypto, Piece};
 use thiserror::Error;
 use tracing::{debug, error, info};
 
+/// Defines whether connection should be maintained permanently.
+pub type ConnectionDecisionHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
+
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
 const PEER_INFO_PROTOCOL_NAME: &[u8] = b"/subspace/peer-info/1.0.0";
+const CONNECTED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/connected-peers/1.0.0";
 
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
@@ -162,27 +167,6 @@ where
     }
 }
 
-/// Defines relay configuration for the Node
-#[derive(Clone, Debug)]
-pub enum RelayMode {
-    /// No relay configured.
-    NoRelay,
-    /// The node enables the relay behaviour.
-    Server,
-    /// Client relay configuration (enables relay client behavior).
-    /// It uses a circuit relay server address as a parameter.
-    ///
-    /// Example: /memory/\<port>/p2p/\<server_peer_id>/p2p-circuit
-    Client(Multiaddr),
-}
-
-impl RelayMode {
-    /// Defines whether the node has its relay behavior enabled.
-    pub fn is_relay_server(&self) -> bool {
-        matches!(self, RelayMode::Server)
-    }
-}
-
 /// [`Node`] configuration.
 pub struct Config<ProviderStorage> {
     /// Identity keypair of a node used for authenticated connections.
@@ -234,6 +218,8 @@ pub struct Config<ProviderStorage> {
     pub protocol_version: String,
     /// Specifies a source for peer information.
     pub peer_info_provider: PeerInfoProvider,
+    /// Defines whether we maintain a persistent connection.
+    pub connection_decision_handler: ConnectionDecisionHandler,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -341,6 +327,7 @@ where
             metrics: None,
             protocol_version,
             peer_info_provider,
+            connection_decision_handler: Arc::new(|_| false),
         }
     }
 }
@@ -400,6 +387,7 @@ where
         metrics,
         protocol_version,
         peer_info_provider,
+        connection_decision_handler,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -445,6 +433,11 @@ where
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
+        connected_peers_config: ConnectedPeersConfig {
+            protocol_name: CONNECTED_PEERS_PROTOCOL_NAME,
+            target_connected_peers: target_connections,
+            ..ConnectedPeersConfig::default()
+        },
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
@@ -491,10 +484,10 @@ where
         next_random_query_interval: initial_random_query_interval,
         networking_parameters_registry,
         reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-        target_connections,
         temporary_bans,
         metrics,
         protocol_version,
+        connection_decision_handler,
     });
 
     Ok((node, node_runner))
