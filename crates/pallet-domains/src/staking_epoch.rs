@@ -5,7 +5,7 @@ use crate::pallet::{
     PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
     PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
 };
-use crate::staking::{Nominator, Withdraw};
+use crate::staking::{Error as StakingError, Nominator, Withdraw};
 use crate::{BalanceOf, Config, FreezeIdentifier, FungibleFreezeId, NominatorId};
 use codec::{Decode, Encode};
 use frame_support::dispatch::TypeInfo;
@@ -41,6 +41,7 @@ pub enum Error {
     UnlockOperator(TransitionError),
     FinalizeDomainPendingTransfers(TransitionError),
     UnlockNominator(TransitionError),
+    OperatorRewardStaking(StakingError),
 }
 
 /// Finalizes the domain's current epoch and begins the next epoch.
@@ -55,6 +56,9 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     if domain_block_number % T::StakeEpochDuration::get() != Zero::zero() {
         return Ok(false);
     }
+
+    // re stake operator's tax from the rewards
+    operator_take_reward_tax_and_stake::<T>(domain_id)?;
 
     // finalize any operator switches
     do_finalize_switch_operator_domain::<T>(domain_id)?;
@@ -86,6 +90,68 @@ pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
         })?;
     }
     Ok(())
+}
+
+/// Operator takes `NominationTax` of the current epoch rewards and stake them.
+pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
+    domain_id: DomainId,
+) -> Result<(), Error> {
+    DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
+        let stake_summary = maybe_domain_stake_summary
+            .as_mut()
+            .ok_or(StakingError::DomainNotInitialized)?;
+
+        while let Some((operator_id, reward)) = stake_summary.current_epoch_rewards.pop_first() {
+            Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+                let operator = match maybe_operator.as_mut() {
+                    // it is possible that operator may have de registered by the time they got rewards
+                    // if not available, skip the operator
+                    None => return Ok(()),
+                    Some(operator) => operator,
+                };
+
+                // calculate operator tax, mint the balance, and stake them
+                let operator_tax = operator.nomination_tax.mul_floor(reward);
+                if !operator_tax.is_zero() {
+                    let nominator_id = OperatorIdOwner::<T>::get(operator_id)
+                        .ok_or(StakingError::MissingOperatorOwner)?;
+                    T::Currency::mint_into(&nominator_id, operator_tax)
+                        .map_err(|_| StakingError::MintBalance)?;
+
+                    // add an pending deposit for the operator tax
+                    let updated_total_deposit =
+                        match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
+                            None => operator_tax,
+                            Some(existing_deposit) => existing_deposit
+                                .checked_add(&operator_tax)
+                                .ok_or(StakingError::BalanceOverflow)?,
+                        };
+
+                    crate::staking::freeze_account_balance_to_operator::<T>(
+                        &nominator_id,
+                        operator_id,
+                        operator_tax,
+                    )?;
+                    PendingDeposits::<T>::insert(operator_id, nominator_id, updated_total_deposit);
+                }
+
+                // add remaining rewards to nominators to be distributed during the epoch transition
+                let rewards = reward
+                    .checked_sub(&operator_tax)
+                    .ok_or(StakingError::BalanceUnderflow)?;
+
+                operator.current_epoch_rewards = operator
+                    .current_epoch_rewards
+                    .checked_add(&rewards)
+                    .ok_or(StakingError::BalanceOverflow)?;
+
+                Ok(())
+            })?;
+        }
+
+        Ok(())
+    })
+    .map_err(Error::OperatorRewardStaking)
 }
 
 /// Add all the switched operators to new domain as next operators.
@@ -504,6 +570,7 @@ mod tests {
     use crate::staking_epoch::{
         do_finalize_domain_pending_transfers, do_finalize_operator_deregistrations,
         do_finalize_switch_operator_domain, do_unlock_pending_withdrawals,
+        operator_take_reward_tax_and_stake,
     };
     use crate::tests::{new_test_ext, Test};
     use crate::{BalanceOf, Config, FreezeIdentifier as FreezeIdentifierT, NominatorId};
@@ -513,6 +580,7 @@ mod tests {
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, OperatorId, OperatorPair};
     use sp_runtime::traits::Zero;
+    use sp_runtime::Percent;
     use std::collections::{BTreeMap, BTreeSet};
     use subspace_runtime_primitives::SSC;
 
@@ -527,6 +595,7 @@ mod tests {
         operator_id: OperatorId,
         operator_account: <Test as frame_system::Config>::AccountId,
         operator: Operator<BalanceOf<Test>, ShareOf<Test>>,
+        operator_rewards: Vec<(OperatorId, BalanceOf<Test>)>,
     }
 
     fn create_operator_state(params: RequiredStateParams) {
@@ -538,6 +607,7 @@ mod tests {
             operator_id,
             operator_account,
             operator,
+            operator_rewards,
         } = params;
 
         DomainStakingSummary::<Test>::insert(
@@ -547,7 +617,7 @@ mod tests {
                 current_total_stake: total_domain_stake,
                 current_operators: BTreeMap::from_iter(current_operators),
                 next_operators: BTreeSet::from_iter(next_operators),
-                current_epoch_rewards: BTreeMap::new(),
+                current_epoch_rewards: BTreeMap::from_iter(operator_rewards),
             },
         );
 
@@ -583,6 +653,7 @@ mod tests {
                     total_shares: Zero::zero(),
                     is_frozen: false,
                 },
+                operator_rewards: vec![],
             });
 
             PendingOperatorSwitches::<Test>::append(old_domain_id, operator_id);
@@ -662,10 +733,11 @@ mod tests {
                     minimum_nominator_stake: 10 * SSC,
                     nomination_tax: Default::default(),
                     current_total_stake: total_stake,
-                    current_epoch_rewards: rewards,
+                    current_epoch_rewards: Zero::zero(),
                     total_shares,
                     is_frozen: false,
                 },
+                operator_rewards: vec![(operator_account, rewards)],
             });
 
             // add pending deposits
@@ -759,6 +831,7 @@ mod tests {
                     total_shares: Zero::zero(),
                     is_frozen: true,
                 },
+                operator_rewards: vec![],
             });
 
             PendingOperatorDeregistrations::<Test>::append(domain_id, operator_id);
@@ -834,6 +907,7 @@ mod tests {
                     total_shares,
                     is_frozen: false,
                 },
+                operator_rewards: vec![],
             });
 
             let mut total_deposit = BalanceOf::<Test>::zero();
@@ -881,5 +955,79 @@ mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             deposits: vec![(1, 50 * SSC), (3, 10 * SSC)],
         })
+    }
+
+    #[test]
+    fn operator_tax_and_staking() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_id = 1;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        let operator_rewards = 10 * SSC;
+        let nominators = vec![(operator_account, 100 * SSC)];
+        let total_stake = 100 * SSC;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let mut total_shares = Zero::zero();
+            let nominators = BTreeMap::from_iter(nominators);
+            let operator_stake = nominators.get(&operator_id).cloned().unwrap();
+            for nominator in nominators {
+                total_shares += nominator.1;
+                Balances::make_free_balance_be(
+                    &nominator.0,
+                    nominator.1 + crate::tests::ExistentialDeposit::get(),
+                );
+
+                let freeze_id = crate::tests::FreezeIdentifier::staking_freeze_id(operator_id);
+                assert_ok!(Balances::set_freeze(&freeze_id, &nominator.0, nominator.1));
+
+                Nominators::<Test>::insert(
+                    operator_id,
+                    nominator.0,
+                    Nominator {
+                        shares: nominator.1,
+                    },
+                );
+            }
+
+            // 10% tax
+            let nomination_tax = Percent::from_parts(10);
+            let expected_operator_tax = nomination_tax.mul_ceil(operator_rewards);
+
+            create_operator_state(RequiredStateParams {
+                domain_id,
+                total_domain_stake: total_stake,
+                current_operators: vec![(operator_id, operator_stake)],
+                next_operators: vec![operator_id],
+                operator_id,
+                operator_account,
+                operator: Operator {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    next_domain_id: domain_id,
+                    minimum_nominator_stake: 10 * SSC,
+                    nomination_tax,
+                    current_total_stake: total_stake,
+                    current_epoch_rewards: Zero::zero(),
+                    total_shares,
+                    is_frozen: false,
+                },
+                operator_rewards: vec![(operator_account, operator_rewards)],
+            });
+
+            operator_take_reward_tax_and_stake::<Test>(domain_id).unwrap();
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                operator.current_epoch_rewards,
+                (10 * SSC - expected_operator_tax)
+            );
+
+            let deposit = PendingDeposits::<Test>::get(operator_id, operator_account).unwrap();
+            assert_eq!(deposit, expected_operator_tax);
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(domain_stake_summary.current_epoch_rewards.is_empty())
+        });
     }
 }

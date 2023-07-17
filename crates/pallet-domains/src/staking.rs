@@ -30,7 +30,7 @@ pub struct Operator<Balance, Share> {
     pub current_total_stake: Balance,
     /// Total rewards this operator received this current epoch.
     pub current_epoch_rewards: Balance,
-    /// Total shares of all the nominators unde this operator.
+    /// Total shares of all the nominators under this operator.
     pub total_shares: Share,
     pub is_frozen: bool,
 }
@@ -84,6 +84,8 @@ pub enum Error {
     OperatorFrozen,
     UnknownNominator,
     ExistingFullWithdraw,
+    MissingOperatorOwner,
+    MintBalance,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -168,14 +170,14 @@ pub(crate) fn do_nominate_operator<T: Config>(
     Ok(())
 }
 
-fn freeze_account_balance_to_operator<T: Config>(
+pub(crate) fn freeze_account_balance_to_operator<T: Config>(
     who: &T::AccountId,
     operator_id: OperatorId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
     // ensure there is enough free balance to lock
     ensure!(
-        T::Currency::reducible_balance(who, Preservation::Protect, Fortitude::Polite) >= amount,
+        T::Currency::reducible_balance(who, Preservation::Preserve, Fortitude::Polite) >= amount,
         Error::InsufficientBalance
     );
 
