@@ -53,8 +53,8 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
-    DomainId, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey,
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle,
+    OperatorId, OperatorPublicKey,
 };
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
@@ -1202,6 +1202,10 @@ impl_runtime_apis! {
 
         fn runtime_id(domain_id: DomainId) -> Option<sp_domains::RuntimeId> {
             Domains::runtime_id(domain_id)
+        }
+
+        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
+            Domains::domain_instance_data(domain_id)
         }
 
         fn timestamp() -> Moment{
