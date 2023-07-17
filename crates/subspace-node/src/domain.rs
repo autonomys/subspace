@@ -24,7 +24,7 @@ use sc_executor::{NativeExecutionDispatch, RuntimeVersionOf};
 use sc_service::{BuildGenesisBlock, GenesisBlockBuilder};
 use sp_core::crypto::AccountId32;
 use sp_core::{ByteArray, H160, H256};
-use sp_domains::RuntimeType;
+use sp_domains::{DomainId, DomainInstanceData, RuntimeType};
 use sp_runtime::traits::{Block as BlockT, Convert, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -82,17 +82,20 @@ where
     /// Constructs the genesis domain block from a serialized runtime genesis config.
     pub fn generate_genesis_block(
         &self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        domain_id: DomainId,
+        domain_instance_data: DomainInstanceData,
     ) -> sp_blockchain::Result<Block> {
+        let DomainInstanceData {
+            runtime_type,
+            runtime_code,
+        } = domain_instance_data;
         let domain_genesis_block_builder = match runtime_type {
             RuntimeType::Evm => {
-                let runtime_genesis_config: evm_domain_runtime::RuntimeGenesisConfig =
-                    serde_json::from_slice(&raw_runtime_genesis_config)
-                        .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?;
-
+                let mut runtime_cfg = evm_domain_runtime::RuntimeGenesisConfig::default();
+                runtime_cfg.system.code = runtime_code;
+                runtime_cfg.self_domain_id.domain_id = Some(domain_id);
                 GenesisBlockBuilder::new(
-                    &runtime_genesis_config,
+                    &runtime_cfg,
                     false,
                     self.backend.clone(),
                     self.executor.clone(),
@@ -114,10 +117,10 @@ where
 {
     fn generate_genesis_state_root(
         &self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        domain_id: DomainId,
+        domain_instance_data: DomainInstanceData,
     ) -> Option<H256> {
-        self.generate_genesis_block(runtime_type, raw_runtime_genesis_config)
+        self.generate_genesis_block(domain_id, domain_instance_data)
             .map(|genesis_block| *genesis_block.header().state_root())
             .ok()
             .map(Into::into)

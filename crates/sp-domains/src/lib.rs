@@ -96,6 +96,10 @@ pub type StakeWeight = u128;
 )]
 pub struct DomainId(u32);
 
+impl PassBy for DomainId {
+    type PassBy = pass_by::Codec<Self>;
+}
+
 impl From<u32> for DomainId {
     #[inline]
     fn from(x: u32) -> Self {
@@ -512,13 +516,25 @@ impl DomainsDigestItem for DigestItem {
     }
 }
 
+/// `DomainInstanceData` is used to construct `RuntimeGenesisConfig` which will be further used
+/// to construct the genesis block
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+pub struct DomainInstanceData {
+    pub runtime_type: RuntimeType,
+    pub runtime_code: Vec<u8>,
+}
+
+impl PassBy for DomainInstanceData {
+    type PassBy = pass_by::Codec<Self>;
+}
+
 #[cfg(feature = "std")]
 pub trait GenerateGenesisStateRoot: Send + Sync {
     /// Returns the state root of genesis block built from the runtime genesis config on success.
     fn generate_genesis_state_root(
         &self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        domain_id: DomainId,
+        domain_instance_data: DomainInstanceData,
     ) -> Option<H256>;
 }
 
@@ -541,14 +557,14 @@ impl GenesisReceiptExtension {
 pub trait Domain {
     fn generate_genesis_state_root(
         &mut self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        domain_id: DomainId,
+        domain_instance_data: DomainInstanceData,
     ) -> Option<H256> {
         use sp_externalities::ExternalitiesExt;
 
         self.extension::<GenesisReceiptExtension>()
             .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(runtime_type, raw_runtime_genesis_config)
+            .generate_genesis_state_root(domain_id, domain_instance_data)
     }
 }
 
