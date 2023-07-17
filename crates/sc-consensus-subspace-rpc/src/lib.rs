@@ -246,10 +246,9 @@ where
             let protocol_info = FarmerProtocolInfo {
                 history_size: runtime_api.history_size(best_hash)?,
                 max_pieces_in_sector: runtime_api.max_pieces_in_sector(best_hash)?,
-                // TODO: Fetch this from the runtime
-                sector_expiration: SegmentIndex::from(100),
                 recent_segments: chain_constants.recent_segments(),
                 recent_history_fraction: chain_constants.recent_history_fraction(),
+                min_sector_lifetime: chain_constants.min_sector_lifetime(),
             };
 
             FarmerAppInfo {
@@ -353,10 +352,16 @@ where
                         .boxed(),
                     );
 
+                    let slot_number = new_slot_info.slot.into();
+
+                    let global_challenge = new_slot_info
+                        .global_randomness
+                        .derive_global_challenge(slot_number);
+
                     // This will be sent to the farmer
                     SlotInfo {
-                        slot_number: new_slot_info.slot.into(),
-                        global_challenge: new_slot_info.global_challenge,
+                        slot_number,
+                        global_challenge,
                         solution_range: new_slot_info.solution_range,
                         voting_solution_range: new_slot_info.voting_solution_range,
                     }
@@ -581,6 +586,7 @@ where
         Ok(())
     }
 
+    // TODO: Remove as unnecessary, `segment_headers` can be used instead
     async fn segment_commitments(
         &self,
         segment_indexes: Vec<SegmentIndex>,

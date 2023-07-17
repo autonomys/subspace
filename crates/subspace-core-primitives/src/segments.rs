@@ -72,6 +72,30 @@ impl From<SegmentIndex> for u64 {
     }
 }
 
+impl SegmentIndex {
+    /// Segment index 0.
+    pub const ZERO: SegmentIndex = SegmentIndex(0);
+    /// Segment index 1.
+    pub const ONE: SegmentIndex = SegmentIndex(1);
+
+    /// Get the first piece index in this segment.
+    pub fn first_piece_index(&self) -> PieceIndex {
+        PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
+    }
+
+    /// Iterator over piece indexes that belong to this segment.
+    pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
+        (self.first_piece_index()..).take(ArchivedHistorySegment::NUM_PIECES)
+    }
+
+    /// Iterator over piece indexes that belong to this segment with source pieces first.
+    pub fn segment_piece_indexes_source_first(&self) -> impl Iterator<Item = PieceIndex> {
+        self.segment_piece_indexes()
+            .step_by(2)
+            .chain(self.segment_piece_indexes().skip(1).step_by(2))
+    }
+}
+
 /// Size of blockchain history in segments.
 #[derive(
     Debug,
@@ -120,29 +144,12 @@ impl HistorySize {
     pub fn segment_index(&self) -> SegmentIndex {
         SegmentIndex::from(self.0.get() - 1)
     }
-}
 
-impl SegmentIndex {
-    /// Segment index 0.
-    pub const ZERO: SegmentIndex = SegmentIndex(0);
-    /// Segment index 1.
-    pub const ONE: SegmentIndex = SegmentIndex(1);
-
-    /// Get the first piece index in this segment.
-    pub fn first_piece_index(&self) -> PieceIndex {
-        PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
-    }
-
-    /// Iterator over piece indexes that belong to this segment.
-    pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
-        (self.first_piece_index()..).take(ArchivedHistorySegment::NUM_PIECES)
-    }
-
-    /// Iterator over piece indexes that belong to this segment with source pieces first.
-    pub fn segment_piece_indexes_source_first(&self) -> impl Iterator<Item = PieceIndex> {
-        self.segment_piece_indexes()
-            .step_by(2)
-            .chain(self.segment_piece_indexes().skip(1).step_by(2))
+    /// History size at which expiration check for sector happens.
+    ///
+    /// Returns `None` on overflow.
+    pub fn sector_expiration_check(&self, min_sector_lifetime: Self) -> Option<Self> {
+        self.0.checked_add(min_sector_lifetime.0.get()).map(Self)
     }
 }
 

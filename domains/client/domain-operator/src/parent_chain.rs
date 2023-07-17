@@ -3,7 +3,7 @@ use sc_client_api::BlockBackend;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, ExecutorApi};
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -40,7 +40,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         &self,
         at: ParentChainBlock::Hash,
         extrinsics: Vec<ParentChainBlock::Extrinsic>,
-    ) -> Result<Vec<ExecutionReceiptFor<ParentChainBlock, Block::Hash>>, sp_api::ApiError>;
+    ) -> Result<Vec<ExecutionReceiptFor<Block, ParentChainBlock>>, sp_api::ApiError>;
 
     fn extract_fraud_proofs(
         &self,
@@ -55,69 +55,69 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
 }
 
 /// The parent chain of the domain.
-pub struct DomainParentChain<Block, PBlock, PClient> {
+pub struct DomainParentChain<Block, CBlock, CClient> {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
-    _phantom: PhantomData<(Block, PBlock)>,
+    consensus_client: Arc<CClient>,
+    _phantom: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, PBlock, PClient> Clone for DomainParentChain<Block, PBlock, PClient> {
+impl<Block, CBlock, CClient> Clone for DomainParentChain<Block, CBlock, CClient> {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
-impl<Block, PBlock, PClient> DomainParentChain<Block, PBlock, PClient> {
-    pub fn new(domain_id: DomainId, primary_chain_client: Arc<PClient>) -> Self {
+impl<Block, CBlock, CClient> DomainParentChain<Block, CBlock, CClient> {
+    pub fn new(domain_id: DomainId, consensus_client: Arc<CClient>) -> Self {
         Self {
             domain_id,
-            primary_chain_client,
+            consensus_client,
             _phantom: PhantomData,
         }
     }
 }
 
-impl<Block, PBlock, PClient> ParentChainInterface<Block, PBlock>
-    for DomainParentChain<Block, PBlock, PClient>
+impl<Block, CBlock, CClient> ParentChainInterface<Block, CBlock>
+    for DomainParentChain<Block, CBlock, CClient>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    NumberFor<PBlock>: Into<NumberFor<Block>>,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock>,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    CBlock: BlockT,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
+    CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
 {
-    fn best_hash(&self) -> PBlock::Hash {
-        self.primary_chain_client.info().best_hash
+    fn best_hash(&self) -> CBlock::Hash {
+        self.consensus_client.info().best_hash
     }
 
-    fn block_body(&self, at: PBlock::Hash) -> sp_blockchain::Result<Vec<PBlock::Extrinsic>> {
-        self.primary_chain_client.block_body(at)?.ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("Primary block body for {at} not found"))
+    fn block_body(&self, at: CBlock::Hash) -> sp_blockchain::Result<Vec<CBlock::Extrinsic>> {
+        self.consensus_client.block_body(at)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Consensus block body for {at} not found"))
         })
     }
 
     fn oldest_receipt_number(
         &self,
-        _at: PBlock::Hash,
+        _at: CBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
         // TODO: Implement when block tree is ready.
         Ok(0u32.into())
         // let oldest_receipt_number = self
-        // .primary_chain_client
+        // .consensus_client
         // .runtime_api()
         // .oldest_receipt_number(at, self.domain_id)?;
         // Ok(oldest_receipt_number.into())
     }
 
-    fn head_receipt_number(&self, _at: PBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
+    fn head_receipt_number(&self, _at: CBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
         // TODO: Implement when block tree is ready.
         unimplemented!("Retrieve from consensus chain runtime")
         // let head_receipt_number = self
-        // .primary_chain_client
+        // .consensus_client
         // .runtime_api()
         // .head_receipt_number(at, self.domain_id)?;
         // Ok(head_receipt_number.into())
@@ -125,12 +125,12 @@ where
 
     fn maximum_receipt_drift(
         &self,
-        _at: PBlock::Hash,
+        _at: CBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
         // TODO: Implement when block tree is ready.
         Ok(256u32.into())
         // let max_drift = self
-        // .primary_chain_client
+        // .consensus_client
         // .runtime_api()
         // .maximum_receipt_drift(at)?;
         // Ok(max_drift.into())
@@ -138,35 +138,35 @@ where
 
     fn extract_receipts(
         &self,
-        _at: PBlock::Hash,
-        _extrinsics: Vec<PBlock::Extrinsic>,
-    ) -> Result<Vec<ExecutionReceiptFor<PBlock, Block::Hash>>, sp_api::ApiError> {
+        _at: CBlock::Hash,
+        _extrinsics: Vec<CBlock::Extrinsic>,
+    ) -> Result<Vec<ExecutionReceiptFor<Block, CBlock>>, sp_api::ApiError> {
         // TODO: Implement when proceeding to fraud proof v2.
         Ok(Vec::new())
-        // self.primary_chain_client
+        // self.consensus_client
         // .runtime_api()
         // .extract_receipts(at, extrinsics, self.domain_id)
     }
 
     fn extract_fraud_proofs(
         &self,
-        _at: PBlock::Hash,
-        _extrinsics: Vec<PBlock::Extrinsic>,
-    ) -> Result<Vec<FraudProofFor<PBlock>>, sp_api::ApiError> {
+        _at: CBlock::Hash,
+        _extrinsics: Vec<CBlock::Extrinsic>,
+    ) -> Result<Vec<FraudProofFor<CBlock>>, sp_api::ApiError> {
         // TODO: Implement when proceeding to fraud proof v2.
         Ok(Vec::new())
-        // self.primary_chain_client
+        // self.consensus_client
         // .runtime_api()
         // .extract_fraud_proofs(at, extrinsics, self.domain_id)
     }
 
     fn submit_fraud_proof_unsigned(
         &self,
-        _fraud_proof: FraudProof<NumberFor<PBlock>, PBlock::Hash>,
+        _fraud_proof: FraudProof<NumberFor<CBlock>, CBlock::Hash>,
     ) -> Result<(), sp_api::ApiError> {
         // TODO: Implement when proceeding to fraud proof v2.
-        // let at = self.primary_chain_client.info().best_hash;
-        // self.primary_chain_client
+        // let at = self.consensus_client.info().best_hash;
+        // self.consensus_client
         // .runtime_api()
         // .submit_fraud_proof_unsigned(at, fraud_proof)?;
         Ok(())

@@ -60,6 +60,7 @@ fn default_test_constants() -> ChainConstants<Header> {
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     }
 }
 
@@ -96,12 +97,12 @@ impl FarmerParameters {
         let farmer_protocol_info = FarmerProtocolInfo {
             history_size: HistorySize::from(SegmentIndex::ZERO),
             max_pieces_in_sector: 1,
-            sector_expiration: SegmentIndex::ONE,
             recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
             recent_history_fraction: (
                 HistorySize::from(NonZeroU64::new(1).unwrap()),
                 HistorySize::from(NonZeroU64::new(10).unwrap()),
             ),
+            min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
         };
 
         Self {
@@ -153,13 +154,12 @@ fn valid_header(
     let pieces_in_sector = farmer_parameters.farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);
 
-    for (sector_offset, sector_index) in iter::from_fn(|| Some(rand::random())).enumerate() {
+    for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = vec![0; sector_size];
         let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
-            sector_offset,
             sector_index,
             &farmer_parameters.archived_segment.pieces,
             PieceGetterRetryPolicy::default(),
@@ -169,7 +169,6 @@ fn valid_header(
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
-            Default::default(),
         ))
         .unwrap();
 
@@ -1455,3 +1454,5 @@ fn test_disallow_root_plot_public_key_override() {
         );
     });
 }
+
+// TODO: Test for expired sector

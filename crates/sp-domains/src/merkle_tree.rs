@@ -1,4 +1,4 @@
-use crate::ExecutorPublicKey;
+use crate::OperatorPublicKey;
 use blake2::digest::typenum::U32;
 use blake2::digest::FixedOutput;
 use blake2::{Blake2b, Digest};
@@ -48,7 +48,7 @@ impl Hasher for Blake2b256Algorithm {
 
 /// Constructs a merkle tree from given authorities.
 pub fn authorities_merkle_tree<StakeWeight: Encode>(
-    authorities: &[(ExecutorPublicKey, StakeWeight)],
+    authorities: &[(OperatorPublicKey, StakeWeight)],
 ) -> MerkleTree {
     let leaves = authorities
         .iter()

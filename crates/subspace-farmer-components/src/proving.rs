@@ -203,7 +203,7 @@ where
             let pos_table = PosTable::generate_parallel(
                 &self
                     .sector_id
-                    .evaluation_seed(piece_offset, self.sector_metadata.history_size),
+                    .derive_evaluation_seed(piece_offset, self.sector_metadata.history_size),
             );
 
             let maybe_chunk_cache: Result<_, ProvingError> = try {

@@ -180,7 +180,6 @@ where
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
-        let global_challenge = global_randomness.derive_global_challenge(slot.into());
 
         let maybe_root_plot_public_key = self
             .client
@@ -190,7 +189,7 @@ where
 
         let new_slot_info = NewSlotInfo {
             slot,
-            global_challenge,
+            global_randomness,
             solution_range,
             voting_solution_range,
         };
@@ -236,8 +235,7 @@ where
                 solution.sector_index,
             );
 
-            // TODO: This will be necessary for verifying sector expiration in the future
-            let _history_size = runtime_api.history_size(parent_hash).ok()?;
+            let history_size = runtime_api.history_size(parent_hash).ok()?;
             let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;
             let chain_constants = get_chain_constants(self.client.as_ref()).ok()?;
 
@@ -274,6 +272,18 @@ where
                     continue;
                 }
             };
+            let sector_expiration_check_segment_index = match solution
+                .history_size
+                .sector_expiration_check(chain_constants.min_sector_lifetime())
+            {
+                Some(sector_expiration_check) => sector_expiration_check.segment_index(),
+                None => {
+                    continue;
+                }
+            };
+            let sector_expiration_check_segment_commitment = runtime_api
+                .segment_commitment(parent_hash, sector_expiration_check_segment_index)
+                .ok()?;
 
             let solution_verification_result = verify_solution::<PosTable, _, _>(
                 &solution,
@@ -286,6 +296,9 @@ where
                         segment_commitment,
                         recent_segments: chain_constants.recent_segments(),
                         recent_history_fraction: chain_constants.recent_history_fraction(),
+                        min_sector_lifetime: chain_constants.min_sector_lifetime(),
+                        current_history_size: history_size,
+                        sector_expiration_check_segment_commitment,
                     }),
                 },
                 &self.subspace_link.kzg,

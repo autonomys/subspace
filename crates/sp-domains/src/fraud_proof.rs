@@ -1,5 +1,3 @@
-#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-use crate::BundleHeader;
 use crate::{DomainId, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -69,16 +67,16 @@ impl ExecutionPhase {
     }
 }
 
-/// Error type of fraud proof verification on primary node.
+/// Error type of fraud proof verification on consensus node.
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
     /// `pre_state_root` in the invalid state transition proof is invalid.
     #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
     InvalidPreStateRoot,
-    /// Hash of the primary block being challenged not found.
-    #[cfg_attr(feature = "thiserror", error("primary hash not found"))]
-    PrimaryHashNotFound,
+    /// Hash of the consensus block being challenged not found.
+    #[cfg_attr(feature = "thiserror", error("consensus block hash not found"))]
+    ConsensusBlockHashNotFound,
     /// `post_state_root` not found in the state.
     #[cfg_attr(feature = "thiserror", error("`post_state_root` not found"))]
     PostStateRootNotFound,
@@ -184,6 +182,8 @@ pub enum VerificationError {
 }
 
 /// Fraud proof.
+// TODO: Revisit when fraud proof v2 is implemented.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProof<Number, Hash> {
     InvalidStateTransition(InvalidStateTransitionProof),
@@ -222,11 +222,11 @@ pub struct InvalidStateTransitionProof {
     pub bad_receipt_hash: H256,
     /// Parent number.
     pub parent_number: BlockNumber,
-    /// Hash of the primary block corresponding to `parent_number`.
+    /// Hash of the consensus block corresponding to `parent_number`.
     ///
     /// Runtime code for the execution of the domain block that is being challenged
-    /// is retrieved on top of the primary parent block from the primary chain.
-    pub primary_parent_hash: H256,
+    /// is retrieved on top of the consensus parent block from the consensus chain.
+    pub consensus_parent_hash: H256,
     /// State root before the fraudulent transaction.
     pub pre_state_root: H256,
     /// State root after the fraudulent transaction.
@@ -245,7 +245,7 @@ pub fn dummy_invalid_state_transition_proof(
         domain_id,
         bad_receipt_hash: H256::default(),
         parent_number,
-        primary_parent_hash: H256::default(),
+        consensus_parent_hash: H256::default(),
         pre_state_root: H256::default(),
         post_state_root: H256::default(),
         proof: StorageProof::empty(),
@@ -278,36 +278,6 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
     /// Returns the hash of this bundle equivocation proof.
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash_of(self)
-    }
-
-    // TODO: remove this later.
-    /// Constructs a dummy bundle equivocation proof.
-    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy_at(domain_id: DomainId, slot_number: u64) -> Self {
-        use sp_application_crypto::UncheckedFrom;
-
-        let dummy_header = SealedBundleHeader {
-            header: BundleHeader {
-                primary_number: Number::from(0u32),
-                primary_hash: Hash::default(),
-                slot_number,
-                extrinsics_root: H256::default(),
-                bundle_solution: crate::BundleSolution::dummy(
-                    domain_id,
-                    crate::ExecutorPublicKey::unchecked_from([0u8; 32]),
-                ),
-            },
-            signature: crate::ExecutorSignature::unchecked_from([0u8; 64]),
-        };
-
-        Self {
-            domain_id,
-            offender: AccountId::decode(&mut sp_runtime::traits::TrailingZeroInput::zeroes())
-                .expect("Failed to create zero account"),
-            slot: slot_number.into(),
-            first_header: dummy_header.clone(),
-            second_header: dummy_header,
-        }
     }
 }
 

@@ -42,13 +42,21 @@ use subspace_proof_of_space::Table;
 #[derive(Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum Error {
-    /// Piece verification failed
+    /// Invalid piece offset
     #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
     InvalidPieceOffset {
         /// Index of the piece that failed verification
         piece_offset: u16,
         /// How many pieces one sector is supposed to contain (max)
         max_pieces_in_sector: u16,
+    },
+    /// Sector expired
+    #[cfg_attr(feature = "thiserror", error("Sector expired"))]
+    SectorExpired {
+        /// Expiration history size
+        expiration_history_size: HistorySize,
+        /// Current history size
+        current_history_size: HistorySize,
     },
     /// Piece verification failed
     #[cfg_attr(feature = "thiserror", error("Piece verification failed"))]
@@ -76,6 +84,9 @@ pub enum Error {
     /// Invalid chunk witness
     #[cfg_attr(feature = "thiserror", error("Invalid chunk witness"))]
     InvalidChunkWitness,
+    /// Invalid history size
+    #[cfg_attr(feature = "thiserror", error("Invalid history size"))]
+    InvalidHistorySize,
 }
 
 /// Check the reward signature validity.
@@ -136,10 +147,16 @@ pub struct PieceCheckParams {
     pub max_pieces_in_sector: u16,
     /// Segment commitment of segment to which piece belongs
     pub segment_commitment: SegmentCommitment,
-    /// Number of latest archived segments that are considered "recent history".
+    /// Number of latest archived segments that are considered "recent history"
     pub recent_segments: HistorySize,
-    /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+    /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector
     pub recent_history_fraction: (HistorySize, HistorySize),
+    /// Minimum lifetime of a plotted sector, measured in archived segment
+    pub min_sector_lifetime: HistorySize,
+    /// Current size of the history
+    pub current_history_size: HistorySize,
+    /// Segment commitment at `min_sector_lifetime` from sector creation (if exists)
+    pub sector_expiration_check_segment_commitment: Option<SegmentCommitment>,
 }
 
 /// Parameters for solution verification
@@ -188,18 +205,19 @@ where
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
 
     // Check that proof of space is valid
-    let quality = match PosTable::is_proof_valid(
-        &sector_id.evaluation_seed(solution.piece_offset, solution.history_size),
+    if PosTable::is_proof_valid(
+        &sector_id.derive_evaluation_seed(solution.piece_offset, solution.history_size),
         s_bucket_audit_index.into(),
         &solution.proof_of_space,
-    ) {
-        Some(quality) => quality,
-        None => {
-            return Err(Error::InvalidProofOfSpace);
-        }
+    )
+    .is_none()
+    {
+        return Err(Error::InvalidProofOfSpace);
     };
 
-    let masked_chunk = (Simd::from(solution.chunk.to_bytes()) ^ Simd::from(*quality)).to_array();
+    let masked_chunk = (Simd::from(solution.chunk.to_bytes())
+        ^ Simd::from(solution.proof_of_space.hash()))
+    .to_array();
     // Extract audit chunk from masked chunk
     let audit_chunk = match masked_chunk
         .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
@@ -240,6 +258,9 @@ where
         segment_commitment,
         recent_segments,
         recent_history_fraction,
+        min_sector_lifetime,
+        current_history_size,
+        sector_expiration_check_segment_commitment,
     }) = piece_check_params
     {
         if u16::from(solution.piece_offset) >= *max_pieces_in_sector {
@@ -247,6 +268,27 @@ where
                 piece_offset: u16::from(solution.piece_offset),
                 max_pieces_in_sector: *max_pieces_in_sector,
             });
+        }
+        if let Some(sector_expiration_check_segment_commitment) =
+            sector_expiration_check_segment_commitment
+        {
+            let expiration_history_size = match sector_id.derive_expiration_history_size(
+                solution.history_size,
+                sector_expiration_check_segment_commitment,
+                *min_sector_lifetime,
+            ) {
+                Some(expiration_history_size) => expiration_history_size,
+                None => {
+                    return Err(Error::InvalidHistorySize);
+                }
+            };
+
+            if expiration_history_size >= *current_history_size {
+                return Err(Error::SectorExpired {
+                    expiration_history_size,
+                    current_history_size: *current_history_size,
+                });
+            }
         }
 
         let position = sector_id

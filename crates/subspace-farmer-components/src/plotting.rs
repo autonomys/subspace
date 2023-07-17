@@ -1,4 +1,3 @@
-use crate::piece_caching::PieceMemoryCache;
 use crate::sector::{
     sector_record_chunks_size, sector_size, RawSector, RecordMetadata, SectorContentsMap,
     SectorMetadata,
@@ -161,8 +160,7 @@ pub enum PlottingError {
 #[allow(clippy::too_many_arguments)]
 pub async fn plot_sector<PG, PosTable>(
     public_key: &PublicKey,
-    sector_offset: usize,
-    sector_index: u64,
+    sector_index: SectorIndex,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     farmer_protocol_info: &FarmerProtocolInfo,
@@ -171,7 +169,6 @@ pub async fn plot_sector<PG, PosTable>(
     pieces_in_sector: u16,
     sector_output: &mut [u8],
     sector_metadata_output: &mut [u8],
-    piece_memory_cache: PieceMemoryCache,
 ) -> Result<PlottedSector, PlottingError>
 where
     PG: PieceGetter,
@@ -196,8 +193,6 @@ where
     }
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
-    let current_segment_index = farmer_protocol_info.history_size.segment_index();
-    let expires_at = current_segment_index + farmer_protocol_info.sector_expiration;
 
     let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
         .take(pieces_in_sector.into())
@@ -224,18 +219,14 @@ where
 
         if let Err(error) = download_sector(
             &mut raw_sector,
-            sector_offset,
-            sector_index,
             piece_getter,
             piece_getter_retry_policy,
             kzg,
             &piece_indexes,
-            piece_memory_cache.clone(),
         )
         .await
         {
             warn!(
-                %sector_offset,
                 %sector_index,
                 %error,
                 "Sector plotting attempt failed, will retry later"
@@ -243,6 +234,8 @@ where
 
             return Err(BackoffError::transient(error));
         }
+
+        debug!(%sector_index, "Sector downloaded successfully");
 
         Ok(())
     })
@@ -260,7 +253,7 @@ where
         .for_each(|((piece_offset, record), mut encoded_chunks_used)| {
             // Derive PoSpace table
             let pos_table = PosTable::generate(
-                &sector_id.evaluation_seed(piece_offset, farmer_protocol_info.history_size),
+                &sector_id.derive_evaluation_seed(piece_offset, farmer_protocol_info.history_size),
             );
 
             let source_record_chunks = record
@@ -292,8 +285,10 @@ where
 
                     *encoded_chunk_used = true;
 
-                    // NOTE: Quality is already hashed in the `subspace-chiapos` library
-                    Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(*quality.to_bytes()))
+                    Some(
+                        Simd::from(record_chunk.to_bytes())
+                            ^ Simd::from(quality.create_proof().hash()),
+                    )
                 })
                 // Make sure above filter function (and corresponding `encoded_chunk_used` update)
                 // happen at most as many times as there is number of chunks in the record,
@@ -387,7 +382,6 @@ where
         pieces_in_sector,
         s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
         history_size: farmer_protocol_info.history_size,
-        expires_at,
     };
 
     sector_metadata_output.copy_from_slice(&sector_metadata.encode());
@@ -400,16 +394,12 @@ where
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn download_sector<PG: PieceGetter>(
     raw_sector: &mut RawSector,
-    sector_offset: usize,
-    sector_index: u64,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     kzg: &Kzg,
     piece_indexes: &[PieceIndex],
-    piece_memory_cache: PieceMemoryCache,
 ) -> Result<(), PlottingError> {
     // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
     //  concurrency from there
@@ -419,10 +409,6 @@ async fn download_sector<PG: PieceGetter>(
         .iter()
         .map(|piece_index| async {
             let piece_index = *piece_index;
-
-            if let Some(piece) = piece_memory_cache.get_piece(&piece_index.hash()) {
-                return (piece_index, Ok(Some(piece)));
-            }
 
             let piece_result = piece_getter
                 .get_piece(piece_index, piece_getter_retry_policy)
@@ -469,11 +455,7 @@ async fn download_sector<PG: PieceGetter>(
             commitment: *commitment,
             witness: *witness,
         });
-
-        piece_memory_cache.add_piece(piece_index.hash(), piece);
     }
-
-    debug!(%sector_offset, %sector_index, "Sector downloaded successfully");
 
     Ok(())
 }

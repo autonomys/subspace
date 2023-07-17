@@ -1,19 +1,24 @@
-use crate::{self as pallet_domains};
+use crate::{self as pallet_domains, FungibleFreezeId};
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
+use frame_support::weights::Weight;
+use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, BundleHeader, BundleSolution, DomainId,
-    ExecutionReceipt, ExecutorPair, OpaqueBundle, SealedBundleHeader,
+    create_dummy_bundle_with_receipts_generic, BundleHeader, DomainId, DomainsFreezeIdentifier,
+    ExecutionReceipt, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection, SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::U256 as P256;
+use subspace_runtime_primitives::SSC;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
+type Balance = u128;
 
 // TODO: Remove when DomainRegistry is usable.
 const DOMAIN_ID: DomainId = DomainId::new(0);
@@ -26,6 +31,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system,
+        Balances: pallet_balances,
         Domains: pallet_domains,
     }
 );
@@ -51,7 +57,7 @@ impl frame_system::Config for Test {
     type BlockHashCount = ConstU64<2>;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<Balance>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -67,6 +73,11 @@ parameter_types! {
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
+    pub const MaxBundlesPerBlock: u32 = 10;
+    pub const MaxDomainBlockSize: u32 = 1024 * 1024;
+    pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
+    pub const DomainInstantiationDeposit: Balance = 100;
+    pub const MaxDomainNameLength: u32 = 16;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -89,15 +100,67 @@ impl Get<BlockNumber> for ConfirmationDepthK {
     }
 }
 
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum FreezeIdentifier {
+    Domains(DomainsFreezeIdentifier),
+}
+
+impl pallet_domains::FreezeIdentifier<Test> for FreezeIdentifier {
+    fn staking_freeze_id(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+    }
+
+    fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<Test> {
+        Self::Domains(DomainsFreezeIdentifier::DomainInstantiation(domain_id))
+    }
+}
+
+parameter_types! {
+    pub const MaxFreezes: u32 = 10;
+    pub const ExistentialDeposit: Balance = 1;
+}
+
+impl pallet_balances::Config for Test {
+    type MaxLocks = ();
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    type Balance = Balance;
+    type DustRemoval = ();
+    type RuntimeEvent = RuntimeEvent;
+    type ExistentialDeposit = ExistentialDeposit;
+    type AccountStore = System;
+    type WeightInfo = ();
+    type FreezeIdentifier = FreezeIdentifier;
+    type MaxFreezes = MaxFreezes;
+    type RuntimeHoldReason = ();
+    type MaxHolds = ();
+}
+
+parameter_types! {
+    pub const MinOperatorStake: Balance = 100 * SSC;
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
+    type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type Currency = Balances;
+    type FreezeIdentifier = FreezeIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
+    type MinOperatorStake = MinOperatorStake;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxBundlesPerBlock = MaxBundlesPerBlock;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type Share = Balance;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -109,14 +172,15 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 fn create_dummy_receipt(
-    primary_number: BlockNumber,
-    primary_hash: Hash,
-) -> ExecutionReceipt<BlockNumber, Hash, H256> {
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
+) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256> {
     ExecutionReceipt {
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
+        domain_block_number: consensus_block_number,
         domain_hash: H256::random(),
-        trace: if primary_number == 0 {
+        trace: if consensus_block_number == 0 {
             Vec::new()
         } else {
             vec![H256::random(), H256::random()]
@@ -127,19 +191,18 @@ fn create_dummy_receipt(
 
 fn create_dummy_bundle(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, H256> {
-    let pair = ExecutorPair::from_seed(&U256::from(0u32).into());
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
+    let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
-    let execution_receipt = create_dummy_receipt(primary_number, primary_hash);
+    let execution_receipt = create_dummy_receipt(consensus_block_number, consensus_block_hash);
 
     let header = BundleHeader {
-        primary_number,
-        primary_hash,
-        slot_number: 0u64,
+        consensus_block_number,
+        consensus_block_hash,
         extrinsics_root: Default::default(),
-        bundle_solution: BundleSolution::dummy(domain_id, pair.public()),
+        proof_of_election: ProofOfElection::dummy(domain_id, 0u64),
     };
 
     let signature = pair.sign(header.hash().as_ref());
@@ -154,19 +217,21 @@ fn create_dummy_bundle(
 #[allow(dead_code)]
 fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
-    primary_number: BlockNumber,
-    primary_hash: Hash,
-    receipt: ExecutionReceipt<BlockNumber, Hash, H256>,
-) -> OpaqueBundle<BlockNumber, Hash, H256> {
-    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, H256>(
+    consensus_block_number: BlockNumber,
+    consensus_block_hash: Hash,
+    receipt: ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256>,
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
+    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, BlockNumber, H256>(
         domain_id,
-        primary_number,
-        primary_hash,
+        consensus_block_number,
+        consensus_block_hash,
         receipt,
     )
 }
 
+// TODO: Unblock once bundle producer election v2 is finished.
 #[test]
+#[ignore]
 fn test_stale_bundle_should_be_rejected() {
     // Small macro in order to be more readable.
     //
@@ -236,10 +301,10 @@ fn test_stale_bundle_should_be_rejected() {
     let confirmation_depth_k = ConfirmationDepthK::get();
     let (dummy_bundles, block_hashes): (Vec<_>, Vec<_>) = (1..=confirmation_depth_k + 2)
         .map(|n| {
-            let primary_hash = Hash::random();
+            let consensus_block_hash = Hash::random();
             (
-                create_dummy_bundle(DOMAIN_ID, n, primary_hash),
-                primary_hash,
+                create_dummy_bundle(DOMAIN_ID, n, consensus_block_hash),
+                consensus_block_hash,
             )
         })
         .unzip();

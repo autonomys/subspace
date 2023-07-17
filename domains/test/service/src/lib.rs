@@ -66,7 +66,7 @@ pub fn node_config(
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
 
-    let domain_name = format!("Domain{domain_id:?}");
+    let domain_name = format!("{domain_id:?}");
 
     let mut network_config = NetworkConfiguration::new(
         format!("{key_seed} ({domain_name})"),

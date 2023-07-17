@@ -8,7 +8,6 @@ pub(crate) fn print_disk_farm_info(directory: PathBuf, disk_farm_index: usize) {
             println!("  ID: {}", info.id());
             println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
             println!("  Public key: 0x{}", hex::encode(info.public_key()));
-            println!("  First sector index: {}", info.first_sector_index());
             println!(
                 "  Allocated space: {} ({})",
                 bytesize::to_string(info.allocated_space(), true),

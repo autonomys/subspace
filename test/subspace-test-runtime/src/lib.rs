@@ -23,8 +23,9 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use codec::{Compact, CompactLen, Encode};
+use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
+use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -38,6 +39,7 @@ use pallet_balances::NegativeImbalance;
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 pub use pallet_subspace::AllowAuthoringBy;
+use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
@@ -47,9 +49,13 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{Hasher, OpaqueMetadata, H256};
+use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, ExecutionReceipt, OpaqueBundle};
+use sp_domains::{
+    DomainId, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey,
+};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
 };
@@ -159,6 +165,10 @@ const INITIAL_SOLUTION_RANGE: SolutionRange = SolutionRange::MAX;
 /// A ratio of `Normal` dispatch class within block, for `BlockWeight` and `BlockLength`.
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 
+/// The block weight for 2 seconds of compute
+const BLOCK_WEIGHT_FOR_2_SEC: Weight =
+    Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX);
+
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
@@ -168,7 +178,7 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
     /// We allow for 2 seconds of compute with a 6 second average block time.
-    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(Weight::from_parts(WEIGHT_REF_TIME_PER_SECOND.saturating_mul(2), u64::MAX), NORMAL_DISPATCH_RATIO);
+    pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
 }
@@ -240,6 +250,7 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(1).unwrap()),
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
+    pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -252,6 +263,7 @@ impl pallet_subspace::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
+    type MinSectorLifetime = MinSectorLifetime;
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
@@ -274,6 +286,27 @@ impl pallet_timestamp::Config for Runtime {
     type WeightInfo = ();
 }
 
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum FreezeIdentifier {
+    Domains(DomainsFreezeIdentifier),
+}
+
+impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
+    fn staking_freeze_id(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+    }
+
+    fn domain_instantiation_id(domain_id: DomainId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::DomainInstantiation(domain_id))
+    }
+}
+
+parameter_types! {
+    pub const MaxFreezes: u32 = 10;
+}
+
 impl pallet_balances::Config for Runtime {
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
@@ -287,8 +320,8 @@ impl pallet_balances::Config for Runtime {
     type ExistentialDeposit = ConstU128<{ 500 * SHANNON }>;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
-    type FreezeIdentifier = ();
-    type MaxFreezes = ();
+    type FreezeIdentifier = FreezeIdentifier;
+    type MaxFreezes = MaxFreezes;
     type RuntimeHoldReason = ();
     type MaxHolds = ();
 }
@@ -484,17 +517,35 @@ parameter_types! {
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
+    pub const MinOperatorStake: Balance = 100 * SSC;
+    /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
+    pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
+    /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
+    pub MaxDomainBlockWeight: Weight = NORMAL_DISPATCH_RATIO * BLOCK_WEIGHT_FOR_2_SEC;
+    pub const MaxBundlesPerBlock: u32 = 10;
+    pub const DomainInstantiationDeposit: Balance = 100 * SSC;
+    pub const MaxDomainNameLength: u32 = 32;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainHash = domain_runtime_primitives::Hash;
+    type DomainNumber = DomainNumber;
+    type DomainHash = DomainHash;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
+    type Currency = Balances;
+    type FreezeIdentifier = FreezeIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
+    type MinOperatorStake = MinOperatorStake;
+    type MaxDomainBlockSize = MaxDomainBlockSize;
+    type MaxDomainBlockWeight = MaxDomainBlockWeight;
+    type MaxBundlesPerBlock = MaxBundlesPerBlock;
+    type DomainInstantiationDeposit = DomainInstantiationDeposit;
+    type MaxDomainNameLength = MaxDomainNameLength;
+    type Share = Balance;
 }
 
 parameter_types! {
@@ -845,7 +896,7 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 
 fn extract_successful_bundles(
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
     let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
@@ -865,7 +916,7 @@ fn extract_successful_bundles(
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, domain_runtime_primitives::Hash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
     let successful_bundles = Domains::successful_bundles();
     extrinsics
         .into_iter()
@@ -903,7 +954,7 @@ fn extract_fraud_proofs(
 
 fn extract_pre_validation_object(
     extrinsic: UncheckedExtrinsic,
-) -> PreValidationObject<Block, domain_runtime_primitives::Hash> {
+) -> PreValidationObject<Block, DomainNumber, DomainHash> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(fraud_proof)
@@ -1116,24 +1167,24 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash> for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        )-> sp_domains::transaction::PreValidationObject<Block, domain_runtime_primitives::Hash> {
+        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
             extract_pre_validation_object(extrinsic)
         }
     }
 
-    impl sp_domains::ExecutorApi<Block, domain_runtime_primitives::Hash> for Runtime {
+    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, domain_runtime_primitives::Hash>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
 
         fn extract_successful_bundles(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, domain_runtime_primitives::Hash> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
             extract_successful_bundles(extrinsics)
         }
 
@@ -1149,12 +1200,26 @@ impl_runtime_apis! {
             Domains::domain_runtime_code(domain_id)
         }
 
+        fn runtime_id(domain_id: DomainId) -> Option<sp_domains::RuntimeId> {
+            Domains::runtime_id(domain_id)
+        }
+
         fn timestamp() -> Moment{
             Timestamp::now()
         }
 
         fn domain_tx_range(_: DomainId) -> U256 {
             U256::MAX
+        }
+    }
+
+    impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
+        fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>> {
+            Domains::bundle_producer_election_params(domain_id)
+        }
+
+        fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
+            Domains::operator(operator_id)
         }
     }
 

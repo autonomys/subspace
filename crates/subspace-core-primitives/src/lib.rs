@@ -47,6 +47,7 @@ use ::serde::{Deserialize, Serialize};
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
+use core::num::NonZeroU64;
 use core::simd::Simd;
 use derive_more::{Add, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
@@ -220,6 +221,11 @@ impl Default for PosProof {
 impl PosProof {
     /// Size of proof of space proof in bytes.
     pub const SIZE: usize = 17 * 8;
+
+    /// Proof hash.
+    pub fn hash(&self) -> Blake2b256Hash {
+        blake2b_256_hash(&self.0)
+    }
 }
 
 /// Proof of time key(input to the encryption).
@@ -458,7 +464,7 @@ impl SegmentHeader {
         }
     }
 
-    /// Merkle root of the records in a segment.
+    /// Segment commitment of the records in a segment.
     pub fn segment_commitment(&self) -> SegmentCommitment {
         match self {
             Self::V0 {
@@ -489,7 +495,7 @@ impl SegmentHeader {
 }
 
 /// Sector index in consensus
-pub type SectorIndex = u64;
+pub type SectorIndex = u16;
 
 // TODO: Versioned solution enum
 /// Farmer solution for slot challenge.
@@ -922,7 +928,11 @@ impl SectorId {
     }
 
     /// Derive evaluation seed
-    pub fn evaluation_seed(&self, piece_offset: PieceOffset, history_size: HistorySize) -> PosSeed {
+    pub fn derive_evaluation_seed(
+        &self,
+        piece_offset: PieceOffset,
+        history_size: HistorySize,
+    ) -> PosSeed {
         let evaluation_seed = blake2b_256_hash_list(&[
             &self.0,
             &piece_offset.to_bytes(),
@@ -930,5 +940,39 @@ impl SectorId {
         ]);
 
         PosSeed::from(evaluation_seed)
+    }
+
+    /// Derive history size when sector created at `history_size` expires.
+    ///
+    /// Returns `None` on overflow.
+    pub fn derive_expiration_history_size(
+        &self,
+        history_size: HistorySize,
+        sector_expiration_check_segment_commitment: &SegmentCommitment,
+        min_sector_lifetime: HistorySize,
+    ) -> Option<HistorySize> {
+        let sector_expiration_check_history_size =
+            history_size.sector_expiration_check(min_sector_lifetime)?;
+
+        let input_hash = U256::from_le_bytes(blake2b_256_hash_list(&[
+            &self.0,
+            &sector_expiration_check_segment_commitment.to_bytes(),
+        ]));
+
+        let last_possible_expiration =
+            min_sector_lifetime.checked_add(history_size.get().checked_mul(4u64)?)?;
+        let expires_in = input_hash
+            % U256::from(
+                last_possible_expiration
+                    .get()
+                    .checked_sub(sector_expiration_check_history_size.get())?,
+            );
+        let expires_in = u64::try_from(expires_in).expect("Number modulo u64 fits into u64; qed");
+
+        let expiration_history_size = sector_expiration_check_history_size.get() + expires_in;
+        let expiration_history_size = NonZeroU64::try_from(expiration_history_size).expect(
+            "History size is not zero, so result is not zero even if expires immediately; qed",
+        );
+        Some(HistorySize::from(expiration_history_size))
     }
 }

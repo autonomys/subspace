@@ -13,7 +13,6 @@ use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
-use subspace_farmer_components::piece_caching::PieceMemoryCache;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -49,7 +48,6 @@ pub(super) fn configure_dsn(
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
-    piece_memory_cache: PieceMemoryCache,
     archival_storage_pieces: ArchivalStoragePieces,
 ) -> Result<
     (
@@ -186,13 +184,8 @@ pub(super) fn configure_dsn(
 
                     let weak_readers_and_pieces = weak_readers_and_pieces.clone();
                     let piece_store = piece_store.clone();
-                    let piece_memory_cache = piece_memory_cache.clone();
 
                     async move {
-                        if let Some(piece) = piece_memory_cache.get_piece(&piece_index_hash) {
-                            return Some(PieceByHashResponse { piece: Some(piece) });
-                        }
-
                         let piece_from_store = piece_store.get(&multihash.into());
 
                         if let Some(piece) = piece_from_store {

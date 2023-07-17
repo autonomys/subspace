@@ -6,9 +6,7 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    HistorySize, PublicKey, Record, RecordedHistorySegment, SegmentIndex,
-};
+use subspace_core_primitives::{HistorySize, PublicKey, Record, RecordedHistorySegment};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
@@ -26,7 +24,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         .unwrap_or_else(|_error| MAX_PIECES_IN_SECTOR);
 
     let public_key = PublicKey::default();
-    let sector_offset = 0;
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
@@ -49,12 +46,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
         max_pieces_in_sector: pieces_in_sector,
-        sector_expiration: SegmentIndex::ONE,
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
 
     let sector_size = sector_size(pieces_in_sector);
@@ -67,7 +64,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             block_on(plot_sector::<_, PosTable>(
                 black_box(&public_key),
-                black_box(sector_offset),
                 black_box(sector_index),
                 black_box(&archived_history_segment),
                 black_box(PieceGetterRetryPolicy::default()),
@@ -77,7 +73,6 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(pieces_in_sector),
                 black_box(&mut sector_bytes),
                 black_box(&mut sector_metadata_bytes),
-                Default::default(),
             ))
             .unwrap();
         })

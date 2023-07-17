@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-//! # Domain Executor
+//! # Domain Operator
 //!
 //! ## Domains
 //!
@@ -22,18 +22,18 @@
 //! framework allowing for the simple, secure and low-cost deployment of application
 //! specific blockchain called domain.
 //!
-//! ## Executors
+//! ## Operators
 //!
 //! In Subspace, the farmers offering the storage resources are responsible for maintaining
-//! the consensus layer, executors are a separate class of contributors in the system focusing
+//! the consensus layer, operators are a separate class of contributors in the system focusing
 //! on the execution layer, they provide the necessary computational resources to maintain the
-//! blockchain state by running domains. Some deposits as the stake are required to be an executor.
+//! blockchain state by running domains. Some deposits as the stake are required to be an operator.
 //!
-//! Specifically, executors have the responsibity of producing a [`Bundle`] which contains a
-//! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The executors
+//! Specifically, operators have the responsibity of producing a [`Bundle`] which contains a
+//! number of [`ExecutionReceipt`]s on each slot notified from the consensus chain. The operators
 //! are primarily driven by two events from the consensus chain.
 //!
-//! - On each new slot, executors will attempt to solve a domain-specific bundle election
+//! - On each new slot, operators will attempt to solve a domain-specific bundle election
 //! challenge derived from a global randomness provided by the consensus chain. Upon finding
 //! a solution to the challenge, they will start producing a bundle: they will collect a set
 //! of extrinsics from the transaction pool which are verified to be able to cover the transaction
@@ -41,7 +41,7 @@
 //! [`Bundle`] can be constructed and then be submitted to the consensus chain. The transactions
 //! included in each bundle are uninterpretable blob from the consensus chain's persepective.
 //!
-//! - On each imported primary block, executors will extract all the needed bundles from it
+//! - On each imported consensus block, operators will extract all the needed bundles from it
 //! and convert the bundles to a list of extrinsics, construct a custom [`BlockBuilder`] to
 //! build a domain block. The execution trace of all the extrinsics and hooks like
 //! `initialize_block`/`finalize_block` will be recorded during the domain block execution.
@@ -49,7 +49,7 @@
 //! will be generated and stored locally.
 //!
 //! The receipt of each domain block contains all the intermediate state roots during the block
-//! execution, which will be gossiped in the executor network. All executors whether running as an
+//! execution, which will be gossiped in the domain subnet (in future). All operators whether running as an
 //! authority or a full node will compute each block and generate an execution receipt independently,
 //! once the execution receipt received from the network does not match the one produced locally,
 //! a [`FraudProof`] will be generated and reported to the consensus chain accordingly.
@@ -62,22 +62,22 @@
 #![feature(drain_filter)]
 
 mod aux_schema;
-mod bundle_election_solver;
 mod bundle_processor;
+mod bundle_producer_election_solver;
 mod domain_block_processor;
 mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
 mod domain_worker_starter;
-mod executor;
 mod fraud_proof;
+mod operator;
 mod parent_chain;
 mod sortition;
 #[cfg(test)]
 mod tests;
 mod utils;
 
-pub use self::executor::Executor;
+pub use self::operator::Operator;
 pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
@@ -96,48 +96,55 @@ use sp_runtime::traits::{
 };
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Randomness;
 
-type ExecutionReceiptFor<PBlock, Hash> =
-    ExecutionReceipt<NumberFor<PBlock>, <PBlock as BlockT>::Hash, Hash>;
+type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
 
 type TransactionFor<Backend, Block> =
     <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
         HashFor<Block>,
     >>::Transaction;
 
-type BundleSender<Block, PBlock> = TracingUnboundedSender<
+type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<
         <Block as BlockT>::Extrinsic,
-        NumberFor<PBlock>,
-        <PBlock as BlockT>::Hash,
+        NumberFor<CBlock>,
+        <CBlock as BlockT>::Hash,
+        NumberFor<Block>,
         <Block as BlockT>::Hash,
     >,
 >;
 
-/// Notification streams from the primary chain driving the executor.
-pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
-    /// Pause the primary block import when the primary chain client
+/// Notification streams from the consensus chain driving the executor.
+pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS> {
+    /// Pause the consensus block import when the consensus chain client
     /// runs much faster than the domain client.
-    pub primary_block_import_throttling_buffer_size: u32,
+    pub consensus_block_import_throttling_buffer_size: u32,
     /// Notification about to be imported.
     ///
     /// Fired before the completion of entire block import pipeline.
     pub block_importing_notification_stream: IBNS,
-    /// Primary block import notification from the client.
+    /// Consensus block import notification from the client.
     ///
     /// Fired after the completion of entire block import pipeline.
     pub imported_block_notification_stream: CIBNS,
     /// New slot arrives.
     pub new_slot_notification_stream: NSNS,
-    pub _phantom: PhantomData<PBlock>,
+    pub _phantom: PhantomData<CBlock>,
 }
 
-pub struct EssentialExecutorParams<
+type NewSlotNotification = (Slot, Randomness, Option<mpsc::Sender<()>>);
+
+pub struct OperatorParams<
     Block,
-    PBlock,
+    CBlock,
     Client,
-    PClient,
+    CClient,
     TransactionPool,
     Backend,
     E,
@@ -147,38 +154,38 @@ pub struct EssentialExecutorParams<
     BI,
 > where
     Block: BlockT,
-    PBlock: BlockT,
-    IBNS: Stream<Item = (NumberFor<PBlock>, mpsc::Sender<()>)> + Send + 'static,
-    CIBNS: Stream<Item = BlockImportNotification<PBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Blake2b256Hash, Option<mpsc::Sender<()>>)> + Send + 'static,
+    CBlock: BlockT,
+    IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
+    CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
+    NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
 {
     pub domain_id: DomainId,
-    pub primary_chain_client: Arc<PClient>,
-    pub primary_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
+    pub consensus_client: Arc<CClient>,
+    pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,
     pub transaction_pool: Arc<TransactionPool>,
     pub backend: Arc<Backend>,
     pub code_executor: Arc<E>,
     pub is_authority: bool,
     pub keystore: KeystorePtr,
-    pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
-    pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
+    pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
+    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: Arc<BI>,
 }
 
-/// Returns the active leaves the overseer should start with.
+/// Returns the active leaves the operator should start with.
 ///
-/// The longest chain is used as the fork choice for the leaves as the primary block's fork choice
-/// is only available in the imported primary block notifications.
-async fn active_leaves<PBlock, PClient, SC>(
-    client: &PClient,
+/// The longest chain is used as the fork choice for the leaves as the consensus block's fork choice
+/// is only available in the imported consensus block notifications.
+async fn active_leaves<CBlock, CClient, SC>(
+    client: &CClient,
     select_chain: &SC,
-) -> Result<Vec<BlockInfo<PBlock>>, sp_consensus::Error>
+) -> Result<Vec<BlockInfo<CBlock>>, sp_consensus::Error>
 where
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + ProvideRuntimeApi<PBlock> + 'static,
-    SC: SelectChain<PBlock>,
+    CBlock: BlockT,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
+    SC: SelectChain<CBlock>,
 {
     let best_block = select_chain.best_chain().await?;
 
@@ -207,6 +214,7 @@ where
                 hash,
                 parent_hash,
                 number,
+                is_new_best: false,
             })
         })
         .collect::<Vec<_>>();
@@ -218,9 +226,10 @@ where
         hash: best_block.hash(),
         parent_hash: *best_block.parent_hash(),
         number: *best_block.number(),
+        is_new_best: true,
     });
 
-    /// The maximum number of active leaves we forward to the [`Overseer`] on startup.
+    /// The maximum number of active leaves we forward to the [`Operator`] on startup.
     const MAX_ACTIVE_LEAVES: usize = 4;
 
     Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())

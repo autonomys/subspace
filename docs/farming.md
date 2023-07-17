@@ -234,7 +234,7 @@ services:
       timeout: 5s
 # If node setup takes longer than expected, you want to increase `interval` and `retries` number.
       interval: 30s
-      retries: 5
+      retries: 60
 
   farmer:
     depends_on:

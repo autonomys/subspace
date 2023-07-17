@@ -20,7 +20,7 @@ use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
 use sp_api::{ProvideRuntimeApi, TransactionFor};
 use sp_consensus::Error as ConsensusError;
-use sp_domains::ExecutorApi;
+use sp_domains::DomainsApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -33,15 +33,15 @@ use subspace_fraud_proof::VerifyFraudProof;
 ///
 /// This block import object should be used with the subspace consensus block import together until
 /// the fraud proof verification can be done in the runtime properly.
-pub struct FraudProofBlockImport<Block, Client, I, Verifier, DomainHash> {
+pub struct FraudProofBlockImport<Block, Client, I, Verifier, DomainNumber, DomainHash> {
     inner: I,
     client: Arc<Client>,
     fraud_proof_verifier: Verifier,
-    _phantom: PhantomData<(Block, DomainHash)>,
+    _phantom: PhantomData<(Block, DomainNumber, DomainHash)>,
 }
 
-impl<Block, Client, I, Verifier, DomainHash> Clone
-    for FraudProofBlockImport<Block, Client, I, Verifier, DomainHash>
+impl<Block, Client, I, Verifier, DomainNumber, DomainHash> Clone
+    for FraudProofBlockImport<Block, Client, I, Verifier, DomainNumber, DomainHash>
 where
     I: Clone,
     Verifier: Clone,
@@ -57,15 +57,16 @@ where
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Inner, Verifier, DomainHash> BlockImport<Block>
-    for FraudProofBlockImport<Block, Client, Inner, Verifier, DomainHash>
+impl<Block, Client, Inner, Verifier, DomainNumber, DomainHash> BlockImport<Block>
+    for FraudProofBlockImport<Block, Client, Inner, Verifier, DomainNumber, DomainHash>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: ExecutorApi<Block, DomainHash>,
+    Client::Api: DomainsApi<Block, DomainNumber, DomainHash>,
     Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
         + Send,
     Verifier: VerifyFraudProof<Block> + Send,
+    DomainNumber: Encode + Decode + Send,
     DomainHash: Encode + Decode + Send,
 {
     type Error = ConsensusError;
@@ -111,15 +112,15 @@ where
     }
 }
 
-pub fn block_import<Block, Client, I, Verifier, DomainHash>(
+pub fn block_import<Block, Client, I, Verifier, DomainNumber, DomainHash>(
     client: Arc<Client>,
     wrapped_block_import: I,
     fraud_proof_verifier: Verifier,
-) -> FraudProofBlockImport<Block, Client, I, Verifier, DomainHash> {
+) -> FraudProofBlockImport<Block, Client, I, Verifier, DomainNumber, DomainHash> {
     FraudProofBlockImport {
         inner: wrapped_block_import,
         client,
         fraud_proof_verifier,
-        _phantom: PhantomData::<(Block, DomainHash)>,
+        _phantom: PhantomData::<(Block, DomainNumber, DomainHash)>,
     }
 }

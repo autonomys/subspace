@@ -1,14 +1,10 @@
 //! This crate provides a preprocessor for the domain block, which is used to construct
-//! domain extrinsics from the primary block.
+//! domain extrinsics from the consensus block.
 //!
 //! The workflow is as follows:
-//! 1. Extract domain-specific bundles from the primary block.
+//! 1. Extract domain-specific bundles from the consensus block.
 //! 2. Compile the domain bundles into a list of extrinsics.
-//!     - System domain: Each core domain bundle in the primary block will be wrapped
-//!     in an extrinsic and then joined with the extrinsics extracted from the system
-//!     domain bundle.
-//!     - Core domain: Extrinsics extracted from the core domain bundle.
-//! 3. Shuffle the extrisnics using the seed from the primary chain.
+//! 3. Shuffle the extrisnics using the seed from the consensus chain.
 //! 4. Filter out the invalid xdm extrinsics.
 //! 5. Push back the potential new domain runtime extrisnic.
 
@@ -22,7 +18,7 @@ pub mod xdm_verifier;
 
 use crate::inherents::construct_inherent_extrinsics;
 use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor};
-use crate::xdm_verifier::verify_xdm_with_primary_chain_client;
+use crate::xdm_verifier::verify_xdm_with_consensus_client;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use rand::seq::SliceRandom;
@@ -32,8 +28,7 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, ExecutorApi, OpaqueBundles};
-use sp_runtime::generic::DigestItem;
+use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, OpaqueBundles};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
@@ -44,44 +39,49 @@ use subspace_core_primitives::Randomness;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
 
-type DomainBlockElements<PBlock> = (
-    Vec<<PBlock as BlockT>::Extrinsic>,
+type DomainBlockElements<CBlock> = (
+    Vec<<CBlock as BlockT>::Extrinsic>,
     Randomness,
     MaybeNewRuntime,
 );
 
 /// Extracts the raw materials for building a new domain block from the primary block.
-fn prepare_domain_block_elements<Block, PBlock, PClient>(
+fn prepare_domain_block_elements<Block, CBlock, CClient>(
     domain_id: DomainId,
-    primary_chain_client: &PClient,
-    block_hash: PBlock::Hash,
-) -> sp_blockchain::Result<DomainBlockElements<PBlock>>
+    consensus_client: &CClient,
+    block_hash: CBlock::Hash,
+) -> sp_blockchain::Result<DomainBlockElements<CBlock>>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    PClient: HeaderBackend<PBlock> + BlockBackend<PBlock> + ProvideRuntimeApi<PBlock> + Send + Sync,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    CBlock: BlockT,
+    CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
 {
-    let extrinsics = primary_chain_client
-        .block_body(block_hash)?
-        .ok_or_else(|| {
-            sp_blockchain::Error::Backend(format!("BlockBody of {block_hash:?} unavailable"))
-        })?;
+    let extrinsics = consensus_client.block_body(block_hash)?.ok_or_else(|| {
+        sp_blockchain::Error::Backend(format!("BlockBody of {block_hash:?} unavailable"))
+    })?;
 
-    let header = primary_chain_client.header(block_hash)?.ok_or_else(|| {
+    let header = consensus_client.header(block_hash)?.ok_or_else(|| {
         sp_blockchain::Error::Backend(format!("BlockHeader of {block_hash:?} unavailable"))
     })?;
 
-    // TODO: Upgrade the domain runtime properly.
-    // This works under the assumption that the consensus chain runtime upgrade triggers a domain
-    // runtime upgrade, which is no longer valid.
+    let runtime_id = consensus_client
+        .runtime_api()
+        .runtime_id(block_hash, domain_id)?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Application(Box::from(format!(
+                "Runtime id not found for {domain_id:?}"
+            )))
+        })?;
+
     let maybe_new_runtime = if header
         .digest()
         .logs
         .iter()
-        .any(|item| *item == DigestItem::RuntimeEnvironmentUpdated)
+        .filter_map(|log| log.as_domain_runtime_upgrade())
+        .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id)
     {
-        let new_domain_runtime = primary_chain_client
+        let new_domain_runtime = consensus_client
             .runtime_api()
             .domain_runtime_code(block_hash, domain_id)?
             .ok_or_else(|| {
@@ -95,19 +95,19 @@ where
         None
     };
 
-    let shuffling_seed = primary_chain_client
+    let shuffling_seed = consensus_client
         .runtime_api()
         .extrinsics_shuffling_seed(block_hash, header)?;
 
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
 }
 
-fn compile_own_domain_bundles<Block, PBlock>(
-    bundles: OpaqueBundles<PBlock, Block::Hash>,
+fn compile_own_domain_bundles<Block, CBlock>(
+    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash>,
 ) -> Vec<Block::Extrinsic>
 where
     Block: BlockT,
-    PBlock: BlockT,
+    CBlock: BlockT,
 {
     bundles
         .into_iter()
@@ -216,88 +216,91 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     shuffled_extrinsics
 }
 
-pub struct DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi> {
+pub struct DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi> {
     domain_id: DomainId,
-    primary_chain_client: Arc<PClient>,
+    consensus_client: Arc<CClient>,
     runtime_api: RuntimeApi,
-    _phantom_data: PhantomData<(Block, PBlock)>,
+    _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, PBlock, PClient, RuntimeApi: Clone> Clone
-    for DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
+impl<Block, CBlock, CClient, RuntimeApi: Clone> Clone
+    for DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi>
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
-            primary_chain_client: self.primary_chain_client.clone(),
+            consensus_client: self.consensus_client.clone(),
             runtime_api: self.runtime_api.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, PBlock, PClient, RuntimeApi> DomainBlockPreprocessor<Block, PBlock, PClient, RuntimeApi>
+impl<Block, CBlock, CClient, RuntimeApi> DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi>
 where
     Block: BlockT,
-    PBlock: BlockT,
-    PBlock::Hash: From<Block::Hash>,
-    NumberFor<PBlock>: From<NumberFor<Block>>,
+    CBlock: BlockT,
+    CBlock::Hash: From<Block::Hash>,
+    NumberFor<CBlock>: From<NumberFor<Block>>,
     RuntimeApi: SignerExtractor<Block>
         + StateRootExtractor<Block>
         + SetCodeConstructor<Block>
         + InherentExtrinsicConstructor<Block>,
-    PClient: HeaderBackend<PBlock>
-        + BlockBackend<PBlock>
-        + ProvideRuntimeApi<PBlock>
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
         + Send
         + Sync
         + 'static,
-    PClient::Api: ExecutorApi<PBlock, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
 {
     pub fn new(
         domain_id: DomainId,
-        primary_chain_client: Arc<PClient>,
+        consensus_client: Arc<CClient>,
         runtime_api: RuntimeApi,
     ) -> Self {
         Self {
             domain_id,
-            primary_chain_client,
+            consensus_client,
             runtime_api,
             _phantom_data: Default::default(),
         }
     }
 
-    pub fn preprocess_primary_block_for_verifier(
+    pub fn preprocess_consensus_block_for_verifier(
         &self,
-        primary_hash: PBlock::Hash,
+        consensus_block_hash: CBlock::Hash,
     ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
         // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
         let domain_hash = Default::default();
-        Ok(self
-            .preprocess_primary_block(primary_hash, domain_hash)?
-            .into_iter()
-            .map(|ext| ext.encode())
-            .collect())
+        match self.preprocess_consensus_block(consensus_block_hash, domain_hash)? {
+            Some(extrinsics) => Ok(extrinsics.into_iter().map(|ext| ext.encode()).collect()),
+            None => Ok(Vec::new()),
+        }
     }
 
-    pub fn preprocess_primary_block(
+    pub fn preprocess_consensus_block(
         &self,
-        primary_hash: PBlock::Hash,
+        consensus_block_hash: CBlock::Hash,
         domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<Vec<Block::Extrinsic>> {
+    ) -> sp_blockchain::Result<Option<Vec<Block::Extrinsic>>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
-            prepare_domain_block_elements::<Block, PBlock, _>(
+            prepare_domain_block_elements::<Block, CBlock, _>(
                 self.domain_id,
-                &*self.primary_chain_client,
-                primary_hash,
+                &*self.consensus_client,
+                consensus_block_hash,
             )?;
 
         let bundles = self
-            .primary_chain_client
+            .consensus_client
             .runtime_api()
-            .extract_successful_bundles(primary_hash, primary_extrinsics)?;
+            .extract_successful_bundles(consensus_block_hash, primary_extrinsics)?;
 
-        let extrinsics = compile_own_domain_bundles::<Block, PBlock>(bundles);
+        if bundles.is_empty() && maybe_new_runtime.is_none() {
+            return Ok(None);
+        }
+
+        let extrinsics = compile_own_domain_bundles::<Block, CBlock>(bundles);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -309,9 +312,9 @@ where
 
         // Fetch inherent extrinsics
         let mut extrinsics = construct_inherent_extrinsics(
-            &self.primary_chain_client,
+            &self.consensus_client,
             &self.runtime_api,
-            primary_hash,
+            consensus_block_hash,
             domain_hash,
         )?;
 
@@ -330,7 +333,7 @@ where
             extrinsics.push(set_code_extrinsic);
         }
 
-        Ok(extrinsics)
+        Ok(Some(extrinsics))
     }
 
     fn filter_invalid_xdm_extrinsics(
@@ -340,20 +343,16 @@ where
     ) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
-                match verify_xdm_with_primary_chain_client::<PClient, PBlock, Block, _>(
+                match verify_xdm_with_consensus_client::<CClient, CBlock, Block, _>(
                     self.domain_id,
-                    &self.primary_chain_client,
+                    &self.consensus_client,
                     at,
                     &self.runtime_api,
                     ext,
                 ) {
                     Ok(valid) => valid,
                     Err(err) => {
-                        tracing::error!(
-                            target = "system_domain_xdm_filter",
-                            "failed to verify extrinsic: {}",
-                            err
-                        );
+                        tracing::error!("failed to verify extrinsic: {err}",);
                         false
                     }
                 }

@@ -48,7 +48,7 @@ pub type BlockNumber = u32;
 /// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
 
-/// Slot duration that is same as primary runtime.
+/// Slot duration that is same as consensus chain runtime.
 pub const SLOT_DURATION: u64 = 1000;
 
 /// Extracts the signer from an unchecked extrinsic.

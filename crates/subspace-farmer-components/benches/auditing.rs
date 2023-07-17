@@ -11,7 +11,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SegmentIndex,
+    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SectorIndex,
     SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
@@ -42,7 +42,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .unwrap_or(10);
 
     let public_key = PublicKey::default();
-    let sector_offset = 0;
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
@@ -65,12 +64,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let farmer_protocol_info = FarmerProtocolInfo {
         history_size: HistorySize::from(NonZeroU64::new(1).unwrap()),
         max_pieces_in_sector: pieces_in_sector,
-        sector_expiration: SegmentIndex::ONE,
         recent_segments: HistorySize::from(NonZeroU64::new(5).unwrap()),
         recent_history_fraction: (
             HistorySize::from(NonZeroU64::new(1).unwrap()),
             HistorySize::from(NonZeroU64::new(10).unwrap()),
         ),
+        min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
     let global_challenge = Blake2b256Hash::default();
     let solution_range = SolutionRange::MAX;
@@ -96,7 +95,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
             s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
             history_size: farmer_protocol_info.history_size,
-            expires_at: Default::default(),
         };
 
         (
@@ -116,7 +114,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,
-            sector_offset,
             sector_index,
             &archived_history_segment,
             PieceGetterRetryPolicy::default(),
@@ -126,7 +123,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
-            Default::default(),
         ))
         .unwrap();
 
@@ -196,7 +192,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     for (sector_index, sector) in plot_mmap
                         .chunks_exact(sector_size)
                         .enumerate()
-                        .map(|(sector_index, sector)| (sector_index as u64, sector))
+                        .map(|(sector_index, sector)| (sector_index as SectorIndex, sector))
                     {
                         audit_sector(
                             black_box(&public_key),

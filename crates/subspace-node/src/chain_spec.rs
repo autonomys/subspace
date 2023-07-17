@@ -16,16 +16,20 @@
 
 //! Subspace chain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
+use crate::chain_spec_utils::{
+    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
+};
 use sc_service::{ChainType, NoExtension};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_domains::RuntimeType;
+use sp_domains::{OperatorPublicKey, RuntimeType};
+use sp_runtime::Percent;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, RuntimeConfigsConfig,
-    SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
+    MaxDomainBlockWeight, RuntimeConfigsConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -78,7 +82,7 @@ struct GenesisParams {
     enable_rewards: bool,
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
-    enable_executor: bool,
+    enable_domains: bool,
     enable_transfer: bool,
     confirmation_depth_k: u32,
 }
@@ -145,7 +149,7 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
                             "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
                         )),
                     ),
-                    enable_executor: true,
+                    enable_domains: true,
                     enable_transfer: false,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
@@ -234,7 +238,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, Str
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
-                    enable_executor: true,
+                    enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
@@ -283,7 +287,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
-                    enable_executor: true,
+                    enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 5,
                 },
@@ -337,7 +341,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
-                    enable_executor: true,
+                    enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 1,
                 },
@@ -370,7 +374,7 @@ fn subspace_genesis_config(
         enable_rewards,
         enable_storage_access,
         allow_authoring_by,
-        enable_executor,
+        enable_domains,
         enable_transfer,
         confirmation_depth_k,
     } = genesis_params;
@@ -384,7 +388,7 @@ fn subspace_genesis_config(
         transaction_payment: Default::default(),
         sudo: SudoConfig {
             // Assign network admin rights.
-            key: Some(sudo_account),
+            key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
             enable_rewards,
@@ -393,18 +397,31 @@ fn subspace_genesis_config(
         },
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {
-            enable_executor,
+            enable_domains,
             enable_transfer,
             confirmation_depth_k,
         },
         domains: DomainsConfig {
-            genesis_domain_runtime: Some(sp_domains::GenesisDomainRuntime {
-                name: b"evm".to_vec(),
+            genesis_domain: Some(sp_domains::GenesisDomain {
+                runtime_name: b"evm".to_vec(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
                 code: evm_domain_runtime::WASM_BINARY
                     .unwrap_or_else(|| panic!("EVM domain runtime not available"))
                     .to_owned(),
+
+                // Domain config, mainly for placeholder the concrete value TBD
+                owner_account_id: sudo_account,
+                domain_name: b"evm-domain".to_vec(),
+                max_block_size: MaxDomainBlockSize::get(),
+                max_block_weight: MaxDomainBlockWeight::get(),
+                bundle_slot_probability: (1, 1),
+                target_bundles_per_block: 10,
+
+                // TODO: Configurable genesis operator signing key.
+                signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                nomination_tax: Percent::from_percent(5),
+                minimum_nominator_stake: 100 * SSC,
             }),
         },
     }
