@@ -519,6 +519,8 @@ impl pallet_base_fee::Config for Runtime {
     type DefaultElasticity = DefaultElasticity;
 }
 
+impl pallet_domain_id::Config for Runtime {}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 //
 // NOTE: Currently domain runtime does not naturally support the pallets with inherent extrinsics.
@@ -547,6 +549,9 @@ construct_runtime!(
         EVM: pallet_evm = 81,
         EVMChainId: pallet_evm_chain_id = 82,
         BaseFee: pallet_base_fee = 83,
+
+        // domain instance stuff
+        SelfDomainId: pallet_domain_id = 90,
 
         // Sudo account
         Sudo: pallet_sudo = 100,

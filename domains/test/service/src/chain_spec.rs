@@ -111,5 +111,6 @@ fn testnet_evm_genesis() -> evm_domain_test_runtime::GenesisConfig {
         },
         ethereum: Default::default(),
         base_fee: Default::default(),
+        self_domain_id: Default::default(),
     }
 }

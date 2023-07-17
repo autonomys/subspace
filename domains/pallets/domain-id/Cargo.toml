@@ -1,0 +1,28 @@
+[package]
+name = "pallet-domain-id"
+version = "0.1.0"
+authors = ["Subspace Labs <https://subspace.network>"]
+edition = "2021"
+license = "Apache-2.0"
+homepage = "https://subspace.network"
+repository = "https://github.com/subspace/subspace"
+description = "Subspace node pallet to store domain id."
+include = [
+  "/src",
+  "/Cargo.toml",
+]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.1", default-features = false, features = ["derive"] }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
+
+[features]
+default = ["std"]
+std = [
+  "frame-support/std",
+  "frame-system/std",
+  "sp-domains/std",
+]

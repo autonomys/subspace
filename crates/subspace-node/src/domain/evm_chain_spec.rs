@@ -255,5 +255,6 @@ fn testnet_genesis(
         },
         ethereum: Default::default(),
         base_fee: Default::default(),
+        self_domain_id: Default::default(),
     }
 }
