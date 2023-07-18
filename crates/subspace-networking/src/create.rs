@@ -48,28 +48,29 @@ use thiserror::Error;
 use tracing::{debug, error, info};
 
 /// Defines whether connection should be maintained permanently.
-pub type ConnectionDecisionHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
+pub type ConnectedPeersHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
 const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
 const PEER_INFO_PROTOCOL_NAME: &[u8] = b"/subspace/peer-info/1.0.0";
-const CONNECTED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/connected-peers/1.0.0";
+const GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "general-connected-peers";
+const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-peers";
 
 // Defines max_negotiating_inbound_streams constant for the swarm.
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 /// The default maximum established incoming connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 50;
+const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 80;
 /// The default maximum established incoming connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 50;
+const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 80;
 /// The default maximum pending incoming connection number for the swarm.
-const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 50;
+const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 /// The default maximum pending incoming connection number for the swarm.
-const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 50;
+const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 // The default maximum connection number to be maintained for the swarm.
-const SWARM_TARGET_CONNECTION_NUMBER: u32 = 50;
+const SWARM_TARGET_CONNECTION_NUMBER: u32 = 30;
 // Defines an expiration interval for item providers in Kademlia network.
 const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 // Defines a republication interval for item providers in Kademlia network.
@@ -206,8 +207,6 @@ pub struct Config<ProviderStorage> {
     pub max_pending_incoming_connections: u32,
     /// Pending outgoing swarm connection limit.
     pub max_pending_outgoing_connections: u32,
-    /// Defines target total (in and out) connection number that should be maintained.
-    pub target_connections: u32,
     /// How many temporarily banned unreachable peers to keep in memory.
     pub temporary_bans_cache_size: NonZeroUsize,
     /// Backoff policy for temporary banning of unreachable peers.
@@ -218,8 +217,14 @@ pub struct Config<ProviderStorage> {
     pub protocol_version: String,
     /// Specifies a source for peer information.
     pub peer_info_provider: PeerInfoProvider,
-    /// Defines whether we maintain a persistent connection.
-    pub connection_decision_handler: ConnectionDecisionHandler,
+    /// Defines whether we maintain a persistent connection for common peers.
+    pub general_connected_peers_handler: ConnectedPeersHandler,
+    /// Defines whether we maintain a persistent connection for special peers.
+    pub special_connected_peers_handler: ConnectedPeersHandler,
+    /// Defines target total (in and out) connection number that should be maintained for general peers.
+    pub general_target_connections: u32,
+    /// Defines target total (in and out) connection number that should be maintained for special peers.
+    pub special_target_connections: u32,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -321,13 +326,17 @@ where
             max_established_outgoing_connections: SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS,
             max_pending_incoming_connections: SWARM_MAX_PENDING_INCOMING_CONNECTIONS,
             max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
-            target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
             metrics: None,
             protocol_version,
             peer_info_provider,
-            connection_decision_handler: Arc::new(|_| false),
+            // maintain permanent connections with any peer
+            general_connected_peers_handler: Arc::new(|_| true),
+            // we don't need to keep additional connections by default
+            special_connected_peers_handler: Arc::new(|_| false),
+            general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
+            special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
         }
     }
 }
@@ -381,13 +390,15 @@ where
         max_established_outgoing_connections,
         max_pending_incoming_connections,
         max_pending_outgoing_connections,
-        target_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
         metrics,
         protocol_version,
         peer_info_provider,
-        connection_decision_handler,
+        general_connected_peers_handler: general_connection_decision_handler,
+        special_connected_peers_handler: special_connection_decision_handler,
+        general_target_connections,
+        special_target_connections,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -433,9 +444,14 @@ where
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
-        connected_peers_config: ConnectedPeersConfig {
-            protocol_name: CONNECTED_PEERS_PROTOCOL_NAME,
-            target_connected_peers: target_connections,
+        general_connected_peers_config: ConnectedPeersConfig {
+            log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+            target_connected_peers: general_target_connections,
+            ..ConnectedPeersConfig::default()
+        },
+        special_connected_peers_config: ConnectedPeersConfig {
+            log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+            target_connected_peers: special_target_connections,
             ..ConnectedPeersConfig::default()
         },
     });
@@ -487,7 +503,8 @@ where
         temporary_bans,
         metrics,
         protocol_version,
-        connection_decision_handler,
+        general_connection_decision_handler,
+        special_connection_decision_handler,
     });
 
     Ok((node, node_runner))

@@ -20,6 +20,7 @@
 //!
 //! The protocol strives to maintain a certain target number of peers, handles delay between dialing
 //! attempts, and manages a cache for candidates for permanent connections.
+//! Multiple protocol instances could be instantiated.
 
 mod handler;
 
@@ -37,6 +38,7 @@ use libp2p::swarm::{
 use libp2p::PeerId;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::ops::Add;
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
@@ -80,8 +82,8 @@ enum ConnectionState {
 /// Connected peers protocol configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Protocol name.
-    pub protocol_name: &'static [u8],
+    /// Defines a target for logging.
+    pub log_target: &'static str,
     /// Interval between new dialing attempts.
     pub dialing_interval: Duration,
     /// Number of connected peers that protocol will maintain.
@@ -93,11 +95,11 @@ pub struct Config {
     pub decision_timeout: Duration,
 }
 
-const DEFAULT_CONNECTED_PEERS_PROTOCOL_NAME: &[u8] = b"/connected-peers/1.0.0";
+const DEFAULT_CONNECTED_PEERS_LOG_TARGET: &str = "connected-peers";
 impl Default for Config {
     fn default() -> Self {
         Self {
-            protocol_name: DEFAULT_CONNECTED_PEERS_PROTOCOL_NAME,
+            log_target: DEFAULT_CONNECTED_PEERS_LOG_TARGET,
             dialing_interval: Duration::from_secs(3),
             target_connected_peers: 30,
             dialing_peer_batch_size: 5,
@@ -108,9 +110,9 @@ impl Default for Config {
 
 /// Connected-peers protocol event.
 #[derive(Debug, Clone)]
-pub enum Event {
+pub enum Event<Instance> {
     /// We need a new batch of peer addresses from the swarm.
-    NewDialingCandidatesRequested,
+    NewDialingCandidatesRequested(PhantomData<Instance>),
 }
 
 /// Defines a possible change for the connection status.
@@ -122,7 +124,7 @@ struct PeerConnectionDecisionUpdate {
 
 /// `Behaviour` for `connected peers` protocol.
 #[derive(Debug)]
-pub struct Behaviour {
+pub struct Behaviour<Instance> {
     /// Protocol configuration.
     config: Config,
 
@@ -140,9 +142,12 @@ pub struct Behaviour {
 
     /// Future waker.
     waker: Option<Waker>,
+
+    /// Instance type marker.
+    phantom_data: PhantomData<Instance>,
 }
 
-impl Behaviour {
+impl<Instance> Behaviour<Instance> {
     /// Creates a new `Behaviour`.
     pub fn new(config: Config) -> Self {
         let dialing_delay = Delay::new(config.dialing_interval);
@@ -153,6 +158,7 @@ impl Behaviour {
             dialing_delay,
             peer_cache: Vec::new(),
             waker: None,
+            phantom_data: PhantomData,
         }
     }
 
@@ -181,7 +187,7 @@ impl Behaviour {
         };
 
         self.wake();
-        Handler::new(self.config.protocol_name, keep_alive)
+        Handler::new(keep_alive)
     }
 
     /// Specifies the whether we should keep connections to the peer alive. The decision could
@@ -247,9 +253,9 @@ impl Behaviour {
     }
 }
 
-impl NetworkBehaviour for Behaviour {
+impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
     type ConnectionHandler = Handler;
-    type OutEvent = Event;
+    type OutEvent = Event<Instance>;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -365,8 +371,12 @@ impl NetworkBehaviour for Behaviour {
 
         // Check decision statuses.
         for (peer_id, state) in self.known_peers.iter_mut() {
-            trace!(%peer_id, ?state, "Peer decisions for connected peers protocol.");
-
+            trace!(
+                %peer_id,
+                ?state,
+                target=%self.config.log_target,
+                "Peer decisions for connected peers protocol."
+            );
             match state.connection_state.clone() {
                 ConnectionState::Connecting {
                     peer_address: address,
@@ -402,7 +412,7 @@ impl NetworkBehaviour for Behaviour {
                     trace!("Requesting new peers for connected-peers protocol....");
 
                     return Poll::Ready(ToSwarm::GenerateEvent(
-                        Event::NewDialingCandidatesRequested,
+                        Event::NewDialingCandidatesRequested(PhantomData),
                     ));
                 }
 

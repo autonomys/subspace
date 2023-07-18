@@ -180,8 +180,9 @@ async fn main() -> anyhow::Result<()> {
                 max_established_outgoing_connections: out_peers,
                 max_pending_incoming_connections: pending_in_peers,
                 max_pending_outgoing_connections: pending_out_peers,
-                // maintain permanent connections with any peer
-                connection_decision_handler: Arc::new(|_| true),
+                // we don't maintain permanent connections with any peer
+                general_connected_peers_handler: Arc::new(|_| false),
+                special_connected_peers_handler: Arc::new(|_| false),
                 ..Config::new(
                     protocol_version.to_string(),
                     keypair,
