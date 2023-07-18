@@ -913,11 +913,9 @@ mod pallet {
 
             do_upgrade_runtimes::<T>(block_number);
 
-            let results = SuccessfulBundles::<T>::clear(u32::MAX, None);
-            let db_weight = T::DbWeight::get();
-            db_weight
-                .reads(results.loops as u64)
-                .saturating_add(db_weight.writes(1))
+            let _ = SuccessfulBundles::<T>::clear(u32::MAX, None);
+
+            Weight::zero()
         }
 
         fn on_finalize(_: T::BlockNumber) {

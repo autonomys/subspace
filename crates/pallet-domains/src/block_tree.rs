@@ -154,6 +154,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     match execution_receipt_type::<T>(domain_id, execution_receipt) {
         ReceiptType::Rejected(RejectedReceiptType::InFuture) => {
             log::error!(
+                target: "runtime::domains",
                 "Unexpected in future receipt {execution_receipt:?}, which should result in \
                 `UnknownParentBlockReceipt` error as it parent receipt is missing"
             );
@@ -161,6 +162,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         }
         ReceiptType::Rejected(RejectedReceiptType::Pruned) => {
             log::error!(
+                target: "runtime::domains",
                 "Unexpected pruned receipt {execution_receipt:?}, which should result in \
                 `InvalidExtrinsicsRoots` error as its `ExecutionInbox` is pruned at the same time"
             );
@@ -177,40 +179,33 @@ pub(crate) fn process_execution_receipt<T: Config>(
     execution_receipt: ExecutionReceiptOf<T>,
     receipt_type: AcceptedReceiptType,
 ) -> Result<(), Error> {
-    let er_hash = execution_receipt.hash();
     match receipt_type {
-        er_type @ AcceptedReceiptType::NewHead | er_type @ AcceptedReceiptType::NewBranch => {
-            // Construct and add a new domain block to the block tree
+        AcceptedReceiptType::NewBranch => {
+            add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
+        }
+        AcceptedReceiptType::NewHead => {
             let domain_block_number = execution_receipt.domain_block_number;
-            let domain_block = DomainBlock {
-                execution_receipt,
-                operator_ids: sp_std::vec![submitter],
-            };
-            BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-                er_hashes.insert(er_hash);
-            });
-            DomainBlocks::<T>::insert(er_hash, domain_block);
 
-            if er_type == AcceptedReceiptType::NewHead {
-                // Update the head receipt number
-                HeadReceiptNumber::<T>::insert(domain_id, domain_block_number);
+            add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
 
-                // Prune expired domain block
-                if let Some(to_prune) =
-                    domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
-                {
-                    for block in BlockTree::<T>::take(domain_id, to_prune) {
-                        DomainBlocks::<T>::remove(block);
-                    }
-                    // Remove the block's `ExecutionInbox` as the block is pruned and does not need
-                    // to verify its receipt's `extrinsics_root` anymore
-                    let _ =
-                        ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
+            // Update the head receipt number
+            HeadReceiptNumber::<T>::insert(domain_id, domain_block_number);
+
+            // Prune expired domain block
+            if let Some(to_prune) =
+                domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
+            {
+                for block in BlockTree::<T>::take(domain_id, to_prune) {
+                    DomainBlocks::<T>::remove(block);
                 }
+                // Remove the block's `ExecutionInbox` as the block is pruned and does not need
+                // to verify its receipt's `extrinsics_root` anymore
+                let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
             }
         }
         AcceptedReceiptType::CurrentHead => {
             // Add confirmation to the current head receipt
+            let er_hash = execution_receipt.hash();
             DomainBlocks::<T>::mutate(er_hash, |maybe_domain_block| {
                 let domain_block = maybe_domain_block.as_mut().expect(
                     "The domain block of `CurrentHead` receipt is checked to be exist in `execution_receipt_type`; qed"
@@ -220,6 +215,24 @@ pub(crate) fn process_execution_receipt<T: Config>(
         }
     }
     Ok(())
+}
+
+fn add_new_receipt_to_block_tree<T: Config>(
+    domain_id: DomainId,
+    submitter: OperatorId,
+    execution_receipt: ExecutionReceiptOf<T>,
+) {
+    // Construct and add a new domain block to the block tree
+    let er_hash = execution_receipt.hash();
+    let domain_block_number = execution_receipt.domain_block_number;
+    let domain_block = DomainBlock {
+        execution_receipt,
+        operator_ids: sp_std::vec![submitter],
+    };
+    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
+        er_hashes.insert(er_hash);
+    });
+    DomainBlocks::<T>::insert(er_hash, domain_block);
 }
 
 /// Import the genesis receipt to the block tree
