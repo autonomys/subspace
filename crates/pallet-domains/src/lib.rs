@@ -79,7 +79,7 @@ mod pallet {
         do_finalize_domain_current_epoch, do_unlock_pending_withdrawals, PendingNominatorUnlock,
     };
     use crate::weights::WeightInfo;
-    use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
+    use crate::{BalanceOf, FreezeIdentifier, NominatorId};
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
@@ -192,9 +192,6 @@ mod pallet {
 
         /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
         type DomainTxRangeAdjustmentInterval: Get<u64>;
-
-        /// Expected bundles to be produced per adjustment interval.
-        type ExpectedBundlesPerInterval: Get<u64>;
 
         /// Minimum operator stake required to become operator of a domain.
         type MinOperatorStake: Get<BalanceOf<Self>>;
@@ -477,28 +474,6 @@ mod pallet {
         /// Called when a bundle is added to the current block.
         pub fn on_bundle(&mut self) {
             self.interval_bundles += 1;
-        }
-
-        /// Called when the current block is finalized.
-        pub fn on_finalize(
-            &mut self,
-            tx_range_adjustment_interval: u64,
-            expected_bundle_count: u64,
-        ) {
-            self.interval_blocks += 1;
-            if self.interval_blocks < tx_range_adjustment_interval {
-                return;
-            }
-
-            // End of interval. Recalculate the tx range and reset the state.
-            let prev_tx_range = self.tx_range;
-            self.tx_range =
-                calculate_tx_range(self.tx_range, self.interval_bundles, expected_bundle_count);
-            log::trace!(target: "runtime::domains",
-                "tx range update: blocks = {}, bundles = {}, prev = {prev_tx_range}, new = {}",
-                self.interval_blocks, self.interval_bundles, self.tx_range);
-            self.interval_blocks = 0;
-            self.interval_bundles = 0;
         }
     }
 
@@ -1028,14 +1003,49 @@ impl<T: Config> Pallet<T> {
     /// domains with bundles in the block.
     fn update_domain_tx_range() {
         for domain_id in DomainTxRangeState::<T>::iter_keys() {
-            DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| {
-                if let Some(state) = maybe_state {
-                    state.on_finalize(
-                        T::DomainTxRangeAdjustmentInterval::get(),
-                        T::ExpectedBundlesPerInterval::get(),
-                    );
-                }
-            })
+            if let Some(domain_config) =
+                DomainRegistry::<T>::get(domain_id).map(|obj| obj.domain_config)
+            {
+                DomainTxRangeState::<T>::mutate(domain_id, |maybe_tx_range_state| {
+                    if let Some(tx_range_state) = maybe_tx_range_state {
+                        let tx_range_adjustment_interval =
+                            T::DomainTxRangeAdjustmentInterval::get();
+
+                        tx_range_state.interval_blocks += 1;
+
+                        if tx_range_state.interval_blocks < tx_range_adjustment_interval {
+                            return;
+                        }
+
+                        // End of interval, calculate the new tx range.
+                        let TxRangeState {
+                            tx_range,
+                            interval_blocks,
+                            interval_bundles,
+                        } = tx_range_state;
+
+                        let actual_bundle_count = *interval_bundles;
+                        let expected_bundle_count = tx_range_adjustment_interval
+                            * u64::from(domain_config.target_bundles_per_block);
+
+                        let new_tx_range = calculate_tx_range(
+                            *tx_range,
+                            actual_bundle_count,
+                            expected_bundle_count,
+                        );
+
+                        log::trace!(
+                            target: "runtime::domains",
+                            "tx range update: blocks = {interval_blocks}, bundles = {actual_bundle_count}, prev = {tx_range}, new = {new_tx_range}"
+                        );
+
+                        // Reset the tx range and start over.
+                        tx_range_state.tx_range = new_tx_range;
+                        tx_range_state.interval_blocks = 0;
+                        tx_range_state.interval_bundles = 0;
+                    }
+                })
+            }
         }
     }
 

@@ -3,6 +3,10 @@ pub(crate) mod provider_storage;
 #[cfg(test)]
 mod tests;
 
+use crate::connected_peers::{
+    Behaviour as ConnectedPeersBehaviour, Config as ConnectedPeersConfig,
+    Event as ConnectedPeersEvent,
+};
 use crate::peer_info::{
     Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
 };
@@ -50,7 +54,16 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) peer_info_config: PeerInfoConfig,
     /// Provides peer-info for local peer.
     pub(crate) peer_info_provider: PeerInfoProvider,
+    /// The configuration for the [`ConnectedPeers`] protocol (general instance).
+    pub(crate) general_connected_peers_config: ConnectedPeersConfig,
+    /// The configuration for the [`ConnectedPeers`] protocol (special instance).
+    pub(crate) special_connected_peers_config: ConnectedPeersConfig,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GeneralConnectedPeersInstance;
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SpecialConnectedPeersInstance;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "Event")]
@@ -65,6 +78,8 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
     pub(crate) peer_info: PeerInfoBehaviour,
+    pub(crate) general_connected_peers: ConnectedPeersBehaviour<GeneralConnectedPeersInstance>,
+    pub(crate) special_connected_peers: ConnectedPeersBehaviour<SpecialConnectedPeersInstance>,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -104,6 +119,12 @@ where
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
             peer_info: PeerInfoBehaviour::new(config.peer_info_config, config.peer_info_provider),
+            general_connected_peers: ConnectedPeersBehaviour::new(
+                config.general_connected_peers_config,
+            ),
+            special_connected_peers: ConnectedPeersBehaviour::new(
+                config.special_connected_peers_config,
+            ),
         }
     }
 }
@@ -119,4 +140,6 @@ pub(crate) enum Event {
     VoidEventStub(VoidEvent),
     ReservedPeers(ReservedPeersEvent),
     PeerInfo(PeerInfoEvent),
+    GeneralConnectedPeers(ConnectedPeersEvent<GeneralConnectedPeersInstance>),
+    SpecialConnectedPeers(ConnectedPeersEvent<SpecialConnectedPeersInstance>),
 }
