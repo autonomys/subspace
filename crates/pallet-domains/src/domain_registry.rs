@@ -16,7 +16,8 @@ use sp_core::Get;
 use sp_domains::domain::generate_genesis_state_root;
 use sp_domains::{DomainId, GenesisDomain, ReceiptHash, RuntimeId, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Zero};
-use sp_std::vec;
+use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
 
 /// Domain registry specific errors
@@ -159,8 +160,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         StakingSummary {
             current_epoch_index: 0,
             current_total_stake: Zero::zero(),
-            current_operators: vec![],
-            next_operators: vec![],
+            current_operators: BTreeMap::new(),
+            next_operators: BTreeSet::new(),
         },
     );
 
