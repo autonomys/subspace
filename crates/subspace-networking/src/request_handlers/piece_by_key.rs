@@ -27,7 +27,5 @@ pub struct PieceByHashResponse {
     pub piece: Option<Piece>,
 }
 
-//TODO: remove attribute on the first usage
-#[allow(dead_code)]
 /// Create a new piece-by-hash request handler.
 pub type PieceByHashRequestHandler = GenericRequestHandler<PieceByHashRequest>;

@@ -36,6 +36,7 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
 use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use tokio::sync::{broadcast, OwnedSemaphorePermit};
 use tokio::time::sleep;
@@ -45,6 +46,7 @@ use zeroize::Zeroizing;
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 const GET_PIECE_MAX_RETRIES_COUNT: u16 = 3;
 const GET_PIECE_DELAY_IN_SECS: u64 = 3;
+const POPULATE_PIECE_DELAY: Duration = Duration::from_secs(10);
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
@@ -154,8 +156,9 @@ where
         Box::pin({
             let piece_cache = piece_cache.clone();
             let piece_getter = piece_getter.clone();
+            let node = node.clone();
 
-            populate_pieces_cache(last_segment_index, piece_getter, piece_cache)
+            populate_pieces_cache(node, last_segment_index, piece_getter, piece_cache)
         }),
         "pieces-cache-population".to_string(),
     )?;
@@ -427,6 +430,7 @@ fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
 /// previous segments to see if they are already in the cache. If they are not, they are added
 /// from DSN.
 async fn populate_pieces_cache<PG, PC>(
+    node: Node,
     segment_index: SegmentIndex,
     piece_getter: Arc<FarmerPieceGetter<PG, PC>>,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
@@ -434,6 +438,9 @@ async fn populate_pieces_cache<PG, PC>(
     PG: PieceGetter + Send + Sync,
     PC: PieceCache + Send + 'static,
 {
+    // Give some time to obtain DSN connection.
+    let _ = node.wait_for_connected_peers(POPULATE_PIECE_DELAY).await;
+
     debug!(%segment_index, "Started syncing piece cache...");
     let final_piece_index =
         u64::from(segment_index.first_piece_index()) + ArchivedHistorySegment::NUM_PIECES as u64;
