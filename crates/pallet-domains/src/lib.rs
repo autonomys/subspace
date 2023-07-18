@@ -27,6 +27,7 @@ mod tests;
 pub mod domain_registry;
 pub mod runtime_registry;
 mod staking;
+mod staking_epoch;
 pub mod weights;
 
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
@@ -74,11 +75,14 @@ mod pallet {
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
+    use crate::staking_epoch::{
+        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals, PendingNominatorUnlock,
+    };
     use crate::weights::WeightInfo;
     use crate::{BalanceOf, FreezeIdentifier, NominatorId};
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
-    use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
+    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -91,6 +95,7 @@ mod pallet {
         Zero,
     };
     use sp_runtime::SaturatedConversion;
+    use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -139,7 +144,9 @@ mod pallet {
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
-        type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>
+            + MutateFreeze<Self::AccountId>
+            + InspectFreeze<Self::AccountId>;
 
         /// Type representing the shares in the staking protocol.
         type Share: Parameter
@@ -188,6 +195,12 @@ mod pallet {
 
         /// Minimum operator stake required to become operator of a domain.
         type MinOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Minimum number of blocks after which any finalized withdrawls are released to nominators.
+        type StakeWithdrawalLockingPeriod: Get<Self::BlockNumber>;
+
+        /// Domain epoch transition interval
+        type StakeEpochDuration: Get<Self::DomainNumber>;
     }
 
     #[pallet::pallet]
@@ -228,6 +241,7 @@ mod pallet {
     pub(super) type DomainStakingSummary<T: Config> =
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
+    /// List of all registered operators and their configuration.
     #[pallet::storage]
     pub(super) type Operators<T: Config> =
         StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
@@ -238,6 +252,7 @@ mod pallet {
     pub(super) type PendingOperatorSwitches<T: Config> =
         StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
 
+    /// List of all current epoch's nominators and their shares under a given operator,
     #[pallet::storage]
     pub(super) type Nominators<T: Config> = StorageDoubleMap<
         _,
@@ -249,6 +264,9 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Deposits initiated a nominator under this operator.
+    /// Will be stored temporarily until the current epoch is complete.
+    /// Once, epoch is complete, these deposits are staked beginning next epoch.
     #[pallet::storage]
     pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
         _,
@@ -260,6 +278,9 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Withdrawals initiated a nominator under this operator.
+    /// Will be stored temporarily until the current epoch is complete.
+    /// Once, epoch is complete, these will be moved to PendingNominatorUnlocks.
     #[pallet::storage]
     pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
         _,
@@ -275,7 +296,33 @@ mod pallet {
     /// Stored here temporarily until domain epoch is complete.
     #[pallet::storage]
     pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageValue<_, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+
+    /// Stores a list of operators who are unlocking in the coming blocks.
+    /// The operator will be removed when the wait period is over
+    /// or when the operator is slashed.
+    #[pallet::storage]
+    pub(super) type PendingOperatorUnlocks<T: Config> =
+        StorageValue<_, BTreeSet<OperatorId>, ValueQuery>;
+
+    /// All the pending unlocks for the nominators.
+    /// We use this storage to fetch all the pending unlocks under a operator pool at the time of slashing.
+    #[pallet::storage]
+    pub(super) type PendingNominatorUnlocks<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        T::BlockNumber,
+        Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
+        OptionQuery,
+    >;
+
+    /// A list of operators that are either unregistering or one more of the nominators
+    /// are withdrawing some staked funds.
+    #[pallet::storage]
+    pub(super) type PendingUnlocks<T: Config> =
+        StorageMap<_, Identity, T::BlockNumber, BTreeSet<OperatorId>, OptionQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
@@ -698,30 +745,11 @@ mod pallet {
                     nomination_tax: genesis_domain.nomination_tax,
                 };
                 let operator_stake = T::MinOperatorStake::get();
-                let operator_id = do_register_operator::<T>(
-                    domain_owner,
-                    domain_id,
-                    operator_stake,
-                    operator_config,
-                )
-                .expect("Genesis operator registration must succeed");
+                do_register_operator::<T>(domain_owner, domain_id, operator_stake, operator_config)
+                    .expect("Genesis operator registration must succeed");
 
-                // TODO: Enact the epoch transition logic properly.
-                Operators::<T>::mutate(operator_id, |maybe_operator| {
-                    let operator = maybe_operator
-                        .as_mut()
-                        .expect("Genesis operator must exist");
-                    operator.current_total_stake = operator_stake;
-                });
-                DomainStakingSummary::<T>::insert(
-                    domain_id,
-                    StakingSummary {
-                        current_epoch_index: 0,
-                        current_total_stake: operator_stake,
-                        current_operators: vec![operator_id],
-                        next_operators: vec![],
-                    },
-                );
+                do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero(), Zero::zero())
+                    .expect("Genesis epoch must succeed");
             }
         }
     }
@@ -733,6 +761,9 @@ mod pallet {
             SuccessfulBundles::<T>::kill();
 
             do_upgrade_runtimes::<T>(block_number);
+
+            do_unlock_pending_withdrawals::<T>(block_number)
+                .expect("Pending unlocks should not fail due to checks at epoch");
 
             Weight::zero()
         }
@@ -834,7 +865,11 @@ impl<T: Config> Pallet<T> {
             DomainStakingSummary::<T>::get(domain_id),
         ) {
             (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
-                current_operators: stake_summary.current_operators,
+                current_operators: stake_summary
+                    .current_operators
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<OperatorId>>(),
                 total_domain_stake: stake_summary.current_total_stake,
                 bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
             }),
@@ -921,7 +956,7 @@ impl<T: Config> Pallet<T> {
 
         if !domain_stake_summary
             .current_operators
-            .contains(&operator_id)
+            .contains_key(&operator_id)
         {
             return Err(BundleError::BadOperator);
         }

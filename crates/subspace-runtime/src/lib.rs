@@ -464,6 +464,9 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
+    // TODO: revisit these
+    pub const StakeWithdrawalLockingPeriod: BlockNumber = 100;
+    pub const StakeEpochDuration: DomainNumber = 5;
 }
 
 impl pallet_domains::Config for Runtime {
@@ -484,6 +487,8 @@ impl pallet_domains::Config for Runtime {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
+    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type StakeEpochDuration = StakeEpochDuration;
 }
 
 parameter_types! {
