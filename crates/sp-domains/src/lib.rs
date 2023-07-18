@@ -21,6 +21,7 @@ pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
+pub mod v2;
 
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -75,6 +76,12 @@ impl sp_runtime::BoundToRuntimeAppPublic for OperatorKey {
 ///
 /// Derived from the Balance and can't be smaller than u128.
 pub type StakeWeight = u128;
+
+/// The hash of a execution receipt.
+pub type ReceiptHash = H256;
+
+/// The Merkle root of all extrinsics included in a bundle.
+pub type ExtrinsicsRoot = H256;
 
 /// Unique identifier of a domain.
 #[derive(
@@ -419,7 +426,7 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisDomain<AccountId> {
     // Domain runtime items
     pub runtime_name: Vec<u8>,
@@ -505,7 +512,7 @@ pub trait GenerateGenesisStateRoot: Send + Sync {
     fn generate_genesis_state_root(
         &self,
         runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        runtime_code: Vec<u8>,
     ) -> Option<H256>;
 }
 
@@ -529,13 +536,13 @@ pub trait Domain {
     fn generate_genesis_state_root(
         &mut self,
         runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
+        runtime_code: Vec<u8>,
     ) -> Option<H256> {
         use sp_externalities::ExternalitiesExt;
 
         self.extension::<GenesisReceiptExtension>()
             .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(runtime_type, raw_runtime_genesis_config)
+            .generate_genesis_state_root(runtime_type, runtime_code)
     }
 }
 
@@ -547,6 +554,7 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(
+            domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash>;
 
