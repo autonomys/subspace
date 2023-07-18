@@ -2,12 +2,9 @@
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
-use crate::chiapos::table::types::{Metadata, X, Y};
 use crate::chiapos::table::{
-    calculate_left_targets, compute_f1, compute_fn, find_matches, fn_hashing_input_bytes,
-    metadata_size_bytes, partial_y, y_size_bytes,
+    calculate_left_targets, compute_f1, compute_fn, find_matches, partial_y,
 };
-use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::Seed;
 use std::collections::BTreeMap;
 
@@ -26,13 +23,12 @@ fn test_compute_f1_k25() {
         12, 13, 11, 15, 16,
     ]);
 
-    let xs = [525, 526, 625_usize];
-    let expected_ys = [2_016_650_816, 2_063_162_112, 1_930_299_520_usize];
+    let xs = [525, 526, 625_u32];
+    let expected_ys = [2_016_650_816, 2_063_162_112, 1_930_299_520_u32];
 
     for (x, expected_y) in xs.into_iter().zip(expected_ys) {
         let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
-        let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
-        let y = usize::from(&y);
+        let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
         assert_eq!(y, expected_y);
     }
 }
@@ -49,64 +45,13 @@ fn test_compute_f1_k22() {
         192_837_491,
         192_837_491 + 1,
         192_837_491 + 2,
-        192_837_491 + 255_usize,
+        192_837_491 + 255_u32,
     ];
-    let expected_ys = [71_434_750, 107_364_222, 235_889_534, 143_140_990_usize];
+    let expected_ys = [71_434_750, 107_364_222, 235_889_534, 143_140_990_u32];
 
     for (x, expected_y) in xs.into_iter().zip(expected_ys) {
         let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
-        let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
-        let y = usize::from(&y);
-        assert_eq!(y, expected_y);
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-#[test]
-fn test_compute_f1_k35() {
-    const K: u8 = 35;
-    let seed = to_chia_seed(&[
-        0, 2, 3, 4, 5, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 41, 5, 6, 7, 8, 9, 10, 11,
-        12, 13, 11, 15, 16,
-    ]);
-
-    let xs = [525, 526, 625_usize];
-    let expected_ys = [948_868_477_184, 2_100_559_512_384, 1_455_233_158_208_usize];
-
-    for (x, expected_y) in xs.into_iter().zip(expected_ys) {
-        let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
-        let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
-        let y = usize::from(&y);
-        assert_eq!(y, expected_y);
-    }
-}
-
-#[cfg(target_pointer_width = "64")]
-#[test]
-fn test_compute_f1_k32() {
-    const K: u8 = 32;
-    let seed = to_chia_seed(&[
-        0, 2, 3, 4, 5, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 41, 5, 6, 7, 8, 9, 10, 11,
-        12, 13, 11, 15, 16,
-    ]);
-
-    let xs = [
-        192_837_491,
-        192_837_491 + 1,
-        192_837_491 + 2,
-        192_837_491 + 255_usize,
-    ];
-    let expected_ys = [
-        206_843_700_930,
-        32_315_542_210,
-        156_034_446_146,
-        128_694_732_738_usize,
-    ];
-
-    for (x, expected_y) in xs.into_iter().zip(expected_ys) {
-        let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
-        let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
-        let y = usize::from(&y);
+        let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
         assert_eq!(y, expected_y);
     }
 }
@@ -152,8 +97,8 @@ fn test_matches() {
     for _ in 0..=1 << (K - 4) {
         for _ in 0..16 {
             let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
-            let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
-            let bucket_index = usize::from(&y) / usize::from(PARAM_BC);
+            let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
+            let bucket_index = y as usize / usize::from(PARAM_BC);
 
             buckets.entry(bucket_index).or_default().push(y);
 
@@ -179,15 +124,15 @@ fn test_matches() {
         right_bucket.sort_unstable();
         right_bucket.reverse();
 
-        let matches = find_matches::<K>(
+        let matches = find_matches(
             &left_bucket,
             &right_bucket,
             &mut rmap_scratch,
             &left_targets,
         );
         for m in matches.unwrap() {
-            let yl = usize::from(left_bucket.get(m.left_index).unwrap());
-            let yr = usize::from(right_bucket.get(m.right_index).unwrap());
+            let yl = *left_bucket.get(m.left_index as usize).unwrap() as usize;
+            let yr = *right_bucket.get(m.right_index as usize).unwrap() as usize;
 
             assert!(check_match(yl, yr));
             total_matches += 1;
@@ -205,29 +150,17 @@ fn test_matches() {
 }
 
 fn verify_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
-    left_metadata: usize,
-    right_metadata: usize,
-    y: usize,
-    y_output_expected: usize,
-    metadata_expected: usize,
-) where
-    EvaluatableUsize<{ y_size_bytes(K) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    EvaluatableUsize<{ fn_hashing_input_bytes(K) }>: Sized,
-{
-    let (y_output, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-        Y::<K>::from(y),
-        Metadata::<K, PARENT_TABLE_NUMBER>::from(left_metadata),
-        Metadata::<K, PARENT_TABLE_NUMBER>::from(right_metadata),
-    );
-    let y_output = usize::from(&y_output);
+    left_metadata: u128,
+    right_metadata: u128,
+    y: u32,
+    y_output_expected: u32,
+    metadata_expected: u128,
+) {
+    let (y_output, metadata) =
+        compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(y, left_metadata, right_metadata);
     assert_eq!(y_output, y_output_expected);
     if metadata_expected != 0 {
-        assert_eq!(
-            metadata,
-            Metadata::<K, TABLE_NUMBER>::from(metadata_expected)
-        );
+        assert_eq!(metadata, metadata_expected);
     }
 }
 

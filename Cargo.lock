@@ -10735,7 +10735,6 @@ dependencies = [
 name = "subspace-proof-of-space"
 version = "0.1.0"
 dependencies = [
- "bitvec",
  "blake3",
  "chacha20 0.9.1",
  "criterion",

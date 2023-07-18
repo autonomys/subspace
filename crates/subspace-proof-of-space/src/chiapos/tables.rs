@@ -1,27 +1,21 @@
 #[cfg(test)]
 mod tests;
 
-use crate::chiapos::table::types::{CopyBitsDestination, Metadata, Position, X, Y};
+use crate::chiapos::constants::PARAM_EXT;
+use crate::chiapos::table::types::{Metadata, Position, Y};
 pub use crate::chiapos::table::TablesCache;
-use crate::chiapos::table::{
-    compute_f1, compute_fn, fn_hashing_input_bytes, max_metadata_size_bits, metadata_size_bytes,
-    num_matches, partial_y, x_size_bytes, y_size_bits, y_size_bytes, Table,
-};
+use crate::chiapos::table::{compute_f1, compute_fn, num_matches, partial_y, Table};
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::{Challenge, Quality, Seed};
-use bitvec::prelude::*;
 use core::mem;
 use sha2::{Digest, Sha256};
 
 /// Pick position in `table_number` based on challenge bits
-const fn pick_position<const K: u8>(
-    [left_position, right_position]: [Position<K>; 2],
+const fn pick_position(
+    [left_position, right_position]: [Position; 2],
     last_5_challenge_bits: u8,
     table_number: u8,
-) -> Position<K>
-where
-    EvaluatableUsize<{ x_size_bytes(K) }>: Sized,
-{
+) -> Position {
     if ((last_5_challenge_bits >> (table_number - 2)) & 1) == 0 {
         left_position
     } else {
@@ -29,24 +23,9 @@ where
     }
 }
 
-pub const fn quality_hashing_buffer_bytes(k: u8) -> usize {
-    mem::size_of::<Challenge>() + (k as usize * 2).div_ceil(u8::BITS as usize)
-}
-
 /// Collection of Chia tables
 #[derive(Debug)]
-pub(super) struct TablesGeneric<const K: u8>
-where
-    EvaluatableUsize<{ x_size_bytes(K) }>: Sized,
-    EvaluatableUsize<{ y_size_bytes(K) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-{
+pub(super) struct TablesGeneric<const K: u8> {
     table_1: Table<K, 1>,
     table_2: Table<K, 2>,
     table_3: Table<K, 3>,
@@ -58,36 +37,11 @@ where
 
 impl<const K: u8> TablesGeneric<K>
 where
-    EvaluatableUsize<{ x_size_bytes(K) }>: Sized,
-    EvaluatableUsize<{ y_size_bytes(K) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
-    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
-    EvaluatableUsize<{ fn_hashing_input_bytes(K) }>: Sized,
-    EvaluatableUsize<{ quality_hashing_buffer_bytes(K) }>: Sized,
     EvaluatableUsize<{ 64 * K as usize / 8 }>: Sized,
 {
     /// Create Chia proof of space tables. There also exists [`Self::create_parallel()`] that trades
     /// CPU efficiency and memory usage for lower latency.
-    ///
-    /// ## Panics
-    /// Panics when [`K`] is too large on current platform.
     pub(super) fn create(seed: Seed, cache: &mut TablesCache<K>) -> Self {
-        let heap_size_bits = usize::MAX as u128 * u128::from(u8::BITS);
-        let num_values = 1 << K;
-        // Check that space for `y` values can be allocated on the heap
-        assert!(num_values * y_size_bits(K) as u128 <= heap_size_bits);
-        // Check that positions can be allocated on the heap
-        assert!(num_values * u128::from(K) * 2 <= heap_size_bits);
-        // Check that metadata can be allocated on the heap
-        assert!(num_values * max_metadata_size_bits(K) as u128 * 2 <= heap_size_bits);
-        // `y` must fit into `usize`
-        assert!(y_size_bits(K) <= usize::BITS as usize);
-
         let table_1 = Table::<K, 1>::create(seed);
         let table_2 = Table::<K, 2>::create(&table_1, cache);
         let table_3 = Table::<K, 3>::create(&table_2, cache);
@@ -110,22 +64,8 @@ where
     /// Almost the same as [`Self::create()`], but uses parallelism internally for better
     /// performance (though not efficiency of CPU and memory usage), if you create multiple tables
     /// in parallel, prefer [`Self::create()`] for better overall performance.
-    ///
-    /// ## Panics
-    /// Panics when [`K`] is too large on current platform.
     #[cfg(any(feature = "parallel", test))]
     pub(super) fn create_parallel(seed: Seed, cache: &mut TablesCache<K>) -> Self {
-        let heap_size_bits = usize::MAX as u128 * u128::from(u8::BITS);
-        let num_values = 1 << K;
-        // Check that space for `y` values can be allocated on the heap
-        assert!(num_values * y_size_bits(K) as u128 <= heap_size_bits);
-        // Check that positions can be allocated on the heap
-        assert!(num_values * u128::from(K) * 2 <= heap_size_bits);
-        // Check that metadata can be allocated on the heap
-        assert!(num_values * max_metadata_size_bits(K) as u128 * 2 <= heap_size_bits);
-        // `y` must fit into `usize`
-        assert!(y_size_bits(K) <= usize::BITS as usize);
-
         let table_1 = Table::<K, 1>::create_parallel(seed);
         let table_2 = Table::<K, 2>::create_parallel(&table_1, cache);
         let table_3 = Table::<K, 3>::create_parallel(&table_2, cache);
@@ -149,37 +89,33 @@ where
     pub(super) fn find_quality<'a>(
         &'a self,
         challenge: &'a Challenge,
-    ) -> impl Iterator<Item = Quality> + 'a
-    where
-        EvaluatableUsize<
-            { mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize) },
-        >: Sized,
-    {
+    ) -> impl Iterator<Item = Quality> + 'a {
         let last_5_challenge_bits = challenge[challenge.len() - 1] & 0b00011111;
 
         let ys = self.table_7.ys();
         // We take advantage of the fact that entries are sorted by `y` (as big-endian numbers) to
         // quickly seek to desired offset
-        let mut first_k_challenge_bits = Y::<K>::default();
-        first_k_challenge_bits.copy_bits_from(challenge, 0_usize, usize::from(K), 0_usize);
+        let first_k_challenge_bits = u32::from_be_bytes(
+            challenge[..mem::size_of::<u32>()]
+                .try_into()
+                .expect("Challenge is known to statically have enough bytes; qed"),
+        ) >> (u32::BITS as usize - usize::from(K));
         let first_matching_element = ys
-            .binary_search(&first_k_challenge_bits)
+            .binary_search_by(|&y| (y >> usize::from(PARAM_EXT)).cmp(&first_k_challenge_bits))
             .unwrap_or_else(|insert| insert);
 
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
         ys[first_matching_element..]
             .iter()
-            .take_while(move |&y| {
-                let mut y_k_bits = Y::<K>::default();
-                y_k_bits.copy_bits_from(y, 0_usize, usize::from(K), 0_usize);
-                // Check if first K bits match
-                y_k_bits == first_k_challenge_bits
+            .take_while(move |&&y| {
+                // Check if first K bits of `y` match
+                (y >> usize::from(PARAM_EXT)) == first_k_challenge_bits
             })
-            .zip(first_matching_element..)
+            .zip(first_matching_element as u32..)
             .map(move |(_y, position)| {
                 let positions = self
                     .table_7
-                    .position(Position::<K>::from(position))
+                    .position(position)
                     .expect("Internally generated pointers must be correct; qed");
                 let positions = self
                     .table_6
@@ -202,36 +138,24 @@ where
                     .position(pick_position(positions, last_5_challenge_bits, 2))
                     .expect("Internally generated pointers must be correct; qed");
 
-                let left_x = self
+                let left_x = *self
                     .table_1
                     .xs()
-                    .get(usize::from(left_position))
+                    .get(left_position as usize)
                     .expect("Internally generated pointers must be correct; qed");
-                let right_x = self
+                let right_x = *self
                     .table_1
                     .xs()
-                    .get(usize::from(right_position))
+                    .get(right_position as usize)
                     .expect("Internally generated pointers must be correct; qed");
-
-                let mut buffer =
-                    [0; mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize)];
-
-                buffer[..mem::size_of::<Challenge>()].copy_from_slice(challenge);
-                buffer.copy_bits_from(
-                    left_x,
-                    0_usize,
-                    usize::from(K),
-                    mem::size_of::<Challenge>() * u8::BITS as usize,
-                );
-                buffer.copy_bits_from(
-                    right_x,
-                    0_usize,
-                    usize::from(K),
-                    mem::size_of::<Challenge>() * u8::BITS as usize + usize::from(K),
-                );
 
                 let mut hasher = Sha256::new();
-                hasher.update(buffer);
+                hasher.update(challenge);
+                let left_right_xs = (u64::from(left_x) << (u64::BITS as usize - usize::from(K)))
+                    | (u64::from(right_x) << (u64::BITS as usize - usize::from(K * 2)));
+                hasher.update(
+                    &left_right_xs.to_be_bytes()[..(K as usize * 2).div_ceil(u8::BITS as usize)],
+                );
                 hasher.finalize().into()
             })
     }
@@ -244,27 +168,28 @@ where
         let ys = self.table_7.ys();
         // We take advantage of the fact that entries are sorted by `y` (as big-endian numbers) to
         // quickly seek to desired offset
-        let mut first_k_challenge_bits = Y::<K>::default();
-        first_k_challenge_bits.copy_bits_from(challenge, 0_usize, usize::from(K), 0_usize);
+        let first_k_challenge_bits = u32::from_be_bytes(
+            challenge[..mem::size_of::<u32>()]
+                .try_into()
+                .expect("Challenge is known to statically have enough bytes; qed"),
+        ) >> (u32::BITS as usize - usize::from(K));
         let first_matching_element = ys
-            .binary_search(&first_k_challenge_bits)
+            .binary_search_by(|&y| (y >> usize::from(PARAM_EXT)).cmp(&first_k_challenge_bits))
             .unwrap_or_else(|insert| insert);
 
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
         ys[first_matching_element..]
             .iter()
-            .take_while(move |&y| {
-                let mut y_k_bits = Y::<K>::default();
-                y_k_bits.copy_bits_from(y, 0_usize, usize::from(K), 0_usize);
-                // Check if first K bits match
-                y_k_bits == first_k_challenge_bits
+            .take_while(move |&&y| {
+                // Check if first K bits of `y` match
+                (y >> usize::from(PARAM_EXT)) == first_k_challenge_bits
             })
-            .zip(first_matching_element..)
+            .zip(first_matching_element as u32..)
             .map(move |(_y, position)| {
                 let mut proof = [0u8; 64 * K as usize / 8];
 
                 self.table_7
-                    .position(Position::<K>::from(position))
+                    .position(position)
                     .expect("Internally generated pointers must be correct; qed")
                     .into_iter()
                     .flat_map(|position| {
@@ -295,12 +220,31 @@ where
                     .map(|position| {
                         self.table_1
                             .xs()
-                            .get(usize::from(position))
+                            .get(position as usize)
                             .expect("Internally generated pointers must be correct; qed")
                     })
                     .enumerate()
-                    .for_each(|(offset, x)| {
-                        proof.copy_bits_from(x, 0_usize, usize::from(K), usize::from(K) * offset)
+                    .for_each(|(offset, &x)| {
+                        let x_offset_in_bits = usize::from(K) * offset;
+                        // Collect bytes where bits of `x` will be written
+                        let proof_bytes = &mut proof[x_offset_in_bits / u8::BITS as usize..]
+                            [..(x_offset_in_bits % u8::BITS as usize + usize::from(K))
+                                .div_ceil(u8::BITS as usize)];
+
+                        // Bits of `x` already shifted to correct location as they will appear in
+                        // `proof`
+                        let x_shifted = x
+                            << (u32::BITS as usize
+                                - (usize::from(K) + x_offset_in_bits % u8::BITS as usize));
+
+                        // Copy `x` bits into proof
+                        x_shifted
+                            .to_be_bytes()
+                            .iter()
+                            .zip(proof_bytes)
+                            .for_each(|(from, to)| {
+                                *to |= from;
+                            });
                     });
 
                 proof
@@ -317,28 +261,34 @@ where
     ) -> Option<Quality>
     where
         EvaluatableUsize<{ (K as usize * 2).div_ceil(u8::BITS as usize) }>: Sized,
-        EvaluatableUsize<
-            { mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize) },
-        >: Sized,
     {
         let last_5_challenge_bits = challenge[challenge.len() - 1] & 0b00011111;
+        let first_k_challenge_bits = u32::from_be_bytes(
+            challenge[..mem::size_of::<u32>()]
+                .try_into()
+                .expect("Challenge is known to statically have enough bytes; qed"),
+        ) >> (u32::BITS as usize - usize::from(K));
 
         let ys_and_metadata = (0..64_usize)
             .map(|offset| {
-                let mut x = X::default();
-                x.copy_bits_from(
-                    proof_of_space,
-                    usize::from(K) * offset,
-                    usize::from(K),
-                    0_usize,
+                let mut pre_x_bytes = 0u64.to_be_bytes();
+                let offset_in_bits = usize::from(K) * offset;
+                let bytes_to_copy = (offset_in_bits % u8::BITS as usize + usize::from(K))
+                    .div_ceil(u8::BITS as usize);
+                // Copy full bytes that contain bits of `x`
+                pre_x_bytes[..bytes_to_copy].copy_from_slice(
+                    &proof_of_space[offset_in_bits / u8::BITS as usize..][..bytes_to_copy],
                 );
+                // Extract `pre_x` whose last `K` bits start with `x`
+                let pre_x = u64::from_be_bytes(pre_x_bytes)
+                    >> (u64::BITS as usize - (usize::from(K) + offset_in_bits % u8::BITS as usize));
+                // Convert to desired type and clear extra bits
+                let x = pre_x as u32 & (u32::MAX >> (u32::BITS as usize - usize::from(K)));
 
-                let (partial_y, partial_y_offset) = partial_y::<K>(seed, usize::from(&x));
+                let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
                 let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
 
-                let mut metadata = Metadata::<K, 1>::default();
-                metadata.copy_bits_from(&x, 0_usize, K, 0_usize);
-                (y, metadata)
+                (y, Metadata::from(x))
             })
             .collect::<Vec<_>>();
 
@@ -353,41 +303,53 @@ where
                     .first()
                     .expect("On success returns exactly one entry; qed");
 
-                y.starts_with(&challenge.view_bits::<Msb0>()[..usize::from(K)])
+                // Check if first K bits of `y` match
+                (y >> usize::from(PARAM_EXT)) == first_k_challenge_bits
             })
             .map(|_| {
-                let mut buffer =
-                    [0; mem::size_of::<Challenge>() + (K as usize * 2).div_ceil(u8::BITS as usize)];
-
-                buffer[..mem::size_of::<Challenge>()].copy_from_slice(challenge);
                 let mut quality_index = 0_usize.to_be_bytes();
                 quality_index[0] = last_5_challenge_bits;
                 let quality_index = usize::from_be_bytes(quality_index);
 
-                buffer.copy_bits_from(
-                    proof_of_space,
-                    quality_index * usize::from(K) * 2,
-                    usize::from(K) * 2,
-                    mem::size_of::<Challenge>() * u8::BITS as usize,
+                let mut hasher = Sha256::new();
+                hasher.update(challenge);
+
+                let left_right_xs_bit_offset = quality_index * usize::from(K * 2);
+                // Collect `left_x` and `right_x` bits, potentially with extra bits at the beginning
+                // and the end
+                let left_right_xs_bytes =
+                    &proof_of_space[left_right_xs_bit_offset / u8::BITS as usize..]
+                        [..(left_right_xs_bit_offset % u8::BITS as usize + usize::from(K * 2))
+                            .div_ceil(u8::BITS as usize)];
+
+                let mut left_right_xs = 0u64.to_be_bytes();
+                left_right_xs[..left_right_xs_bytes.len()].copy_from_slice(left_right_xs_bytes);
+                // Move `left_x` and `right_x` bits to most significant bits
+                let left_right_xs = u64::from_be_bytes(left_right_xs)
+                    << (left_right_xs_bit_offset % u8::BITS as usize);
+                // Clear extra bits
+                let left_right_xs_mask = u64::MAX << (u64::BITS as usize - usize::from(K * 2));
+                let left_right_xs = left_right_xs & left_right_xs_mask;
+
+                hasher.update(
+                    &left_right_xs.to_be_bytes()[..usize::from(K * 2).div_ceil(u8::BITS as usize)],
                 );
 
-                let mut hasher = Sha256::new();
-                hasher.update(buffer);
                 hasher.finalize().into()
             })
     }
 
     fn collect_ys_and_metadata<const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
-        ys_and_metadata: &[(Y<K>, Metadata<K, PARENT_TABLE_NUMBER>)],
-    ) -> Option<Vec<(Y<K>, Metadata<K, TABLE_NUMBER>)>>
-    where
-        EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
-        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
-    {
+        ys_and_metadata: &[(Y, Metadata)],
+    ) -> Option<Vec<(Y, Metadata)>> {
         ys_and_metadata
             .array_chunks::<2>()
             .map(|&[(left_y, left_metadata), (right_y, right_metadata)]| {
-                (num_matches(&left_y, &right_y) == 1).then_some(compute_fn(
+                (num_matches(left_y, right_y) == 1).then_some(compute_fn::<
+                    K,
+                    TABLE_NUMBER,
+                    PARENT_TABLE_NUMBER,
+                >(
                     left_y,
                     left_metadata,
                     right_metadata,

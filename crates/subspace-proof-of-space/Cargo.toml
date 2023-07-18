@@ -16,7 +16,6 @@ include = [
 bench = false
 
 [dependencies]
-bitvec = { version = "1.0.1", default-features = false, features = ["alloc", "atomic"], optional = true }
 blake3 = { version = "1.4.0", default-features = false, optional = true }
 chacha20 = { version = "0.9.1", default-features = false, optional = true }
 rayon = { version = "1.7.0", optional = true }
@@ -35,7 +34,6 @@ harness = false
 [features]
 default = ["std"]
 std = [
-    "bitvec?/std",
     "blake3?/std",
     "chacha20?/std",
     "subspace-core-primitives/std",
@@ -45,13 +43,10 @@ parallel = [
 ]
 # Enable Chia proof of space support
 chia = [
-    "bitvec",
     "blake3",
     "chacha20",
     "sha2",
 ]
-# Enable support for all possible K for chia: from smallest to insanely large as well as not popular in general
-all-chia-k = []
 # Enables shim proof of space that works much faster than Chia and can be used for testing purposes to reduce memory
 # and CPU usage
 shim = []
