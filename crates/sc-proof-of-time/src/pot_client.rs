@@ -2,48 +2,65 @@
 //! master network. The Pot client is the interface to the
 //! clock masters from the subspace-node side.
 
-use crate::pot_state::{pot_state, PotStateInterface};
+use crate::pot_state::PotState;
 use crate::utils::{topic, PotGossip, LOG_TARGET};
-use crate::PotConfig;
+use crate::{get_consensus_tip_proofs, PotPartial};
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Decode;
 use sc_network::PeerId;
-use sc_utils::mpsc::TracingUnboundedReceiver;
+use sp_blockchain::{HeaderBackend, Info};
+use sp_consensus::SyncOracle;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::PotProof;
-use subspace_proof_of_time::ProofOfTime;
 use tracing::{debug, error, info, warn};
 
 /// The PoT client implementation
-pub struct PotClient<Block: BlockT> {
-    config: PotConfig,
-    proof_of_time: Arc<ProofOfTime>,
+pub struct PotClient<Block: BlockT, Client, SO> {
     gossip: PotGossip<Block>,
+    pot_state: Arc<dyn PotState>,
+    client: Arc<Client>,
+    sync_oracle: Arc<SO>,
+    chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
 }
 
-impl<Block: BlockT> PotClient<Block> {
+impl<Block, Client, SO> PotClient<Block, Client, SO>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
+    SO: SyncOracle + Send + Sync + Clone + 'static,
+{
     /// Creates the PoT client instance.
-    pub fn new(config: PotConfig, gossip: PotGossip<Block>) -> Self {
-        let proof_of_time = Arc::new(ProofOfTime::new(
-            config.num_checkpoints,
-            config.checkpoint_iterations,
-        ));
-
+    pub fn new(
+        pot_partial: PotPartial<Block>,
+        gossip: PotGossip<Block>,
+        client: Arc<Client>,
+        sync_oracle: Arc<SO>,
+        chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
+    ) -> Self {
+        let PotPartial { pot_state, .. } = pot_partial;
         Self {
-            config,
-            proof_of_time,
             gossip,
+            pot_state,
+            client,
+            sync_oracle,
+            chain_info_fn,
         }
     }
 
     /// Starts the workers.
-    pub async fn run(
-        mut self,
-        mut local_proof_receiver: Option<TracingUnboundedReceiver<PotProof>>,
-    ) {
-        let state = pot_state(self.config.clone(), self.proof_of_time.clone());
+    pub async fn run(self) {
+        // Wait for sync to complete, get the proof from the tip.
+        let proofs = get_consensus_tip_proofs(
+            self.client.clone(),
+            self.sync_oracle.clone(),
+            self.chain_info_fn.clone(),
+        )
+        .await
+        .expect("PoT client: Failed to get initial proofs");
+        self.pot_state.init(proofs);
+
         let mut incoming_messages = Box::pin(
             self.gossip
                 .engine
@@ -66,16 +83,10 @@ impl<Block: BlockT> PotClient<Block> {
             let gossip_engine = futures::future::poll_fn(|cx| engine.lock().poll_unpin(cx));
 
             futures::select! {
-                local_proof = Self::next_local_proof(local_proof_receiver.as_mut()).fuse() => {
-                    if let Some(proof) = local_proof {
-                        debug!(target: LOG_TARGET, "clock_master: got local proof: {proof}");
-                        self.on_local_proof(state.as_ref(), proof);
-                    }
-                },
                 gossiped = incoming_messages.next().fuse() => {
                     if let Some((sender, proof)) = gossiped {
                         debug!(target: LOG_TARGET, "pot_client: got gossiped proof: {sender} => {proof}");
-                        self.on_gossip_message(state.as_ref(), sender, proof);
+                        self.on_gossip_message(self.pot_state.as_ref(), sender, proof);
                     }
                 },
                 _ = gossip_engine.fuse() => {
@@ -86,26 +97,8 @@ impl<Block: BlockT> PotClient<Block> {
         }
     }
 
-    /// Handles the locally generated proof from clock master.
-    fn on_local_proof(&mut self, state: &dyn PotStateInterface, proof: PotProof) {
-        let start_ts = Instant::now();
-        let ret = state.on_proof(&proof);
-        let elapsed = start_ts.elapsed();
-
-        if let Err(err) = ret {
-            warn!(target: LOG_TARGET, "pot_client::local proof: {err:?}");
-        } else {
-            info!(target: LOG_TARGET, "pot_client::local proof: {proof}, time=[{elapsed:?}]");
-        }
-    }
-
     /// Handles the incoming gossip message.
-    fn on_gossip_message(
-        &mut self,
-        state: &dyn PotStateInterface,
-        sender: PeerId,
-        proof: PotProof,
-    ) {
+    fn on_gossip_message(&self, state: &dyn PotState, sender: PeerId, proof: PotProof) {
         let start_ts = Instant::now();
         let ret = state.on_proof_from_peer(sender, &proof);
         let elapsed = start_ts.elapsed();
@@ -114,20 +107,6 @@ impl<Block: BlockT> PotClient<Block> {
             warn!(target: LOG_TARGET, "pot_client::on gossip: {err:?}, {sender}");
         } else {
             info!(target: LOG_TARGET, "pot_client::on gossip: {proof}, time=[{elapsed:?}], {sender}");
-        }
-    }
-
-    /// Helper to receive the next local proof, if local clock master is
-    /// enabled.
-    async fn next_local_proof(
-        local_proof_receiver: Option<&mut TracingUnboundedReceiver<PotProof>>,
-    ) -> Option<PotProof> {
-        match local_proof_receiver {
-            Some(receiver) => receiver.next().await,
-            None => {
-                futures::future::pending::<PotProof>().await;
-                None
-            }
         }
     }
 }

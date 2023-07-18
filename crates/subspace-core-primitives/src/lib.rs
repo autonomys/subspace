@@ -264,7 +264,7 @@ pub struct PotCheckpoint(PotBytes);
 
 /// Proof of time.
 /// TODO: versioning.
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
 pub struct PotProof {
     /// Slot the proof was evaluated for.
     pub slot_number: SlotNumber,
@@ -1046,7 +1046,7 @@ impl SectorId {
 }
 
 /// A Vec<> that enforces the invariant that it cannot be empty.
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 /// Error codes for `NonEmptyVec`.
@@ -1080,6 +1080,19 @@ impl<T: Clone> NonEmptyVec<T> {
     /// Returns an iterator for the entries.
     pub fn iter(&self) -> Box<dyn Iterator<Item = &T> + '_> {
         Box::new(self.0.iter())
+    }
+
+    /// Returns a mutable iterator for the entries.
+    pub fn iter_mut(&mut self) -> Box<dyn Iterator<Item = &mut T> + '_> {
+        Box::new(self.0.iter_mut())
+    }
+
+    /// Returns the first entry.
+    pub fn first(&self) -> T {
+        self.0
+            .first()
+            .expect("NonEmptyVec::first(): collection cannot be empty")
+            .clone()
     }
 
     /// Returns the last entry.

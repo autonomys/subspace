@@ -28,6 +28,7 @@ use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
+use sc_proof_of_time::PotConsensus;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -105,6 +106,7 @@ pub(super) struct SubspaceSlotWorker<PosTable, Block: BlockT, Client, E, I, SO, 
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
+    pub(super) proof_of_time: Arc<dyn PotConsensus<Block>>,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 
@@ -166,8 +168,8 @@ where
         slot: Slot,
         _epoch_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
-        let parent_slot = match extract_pre_digest(parent_header) {
-            Ok(pre_digest) => pre_digest.slot,
+        let pre_digest = match extract_pre_digest(parent_header) {
+            Ok(pre_digest) => pre_digest,
             Err(error) => {
                 error!(
                     target: "subspace",
@@ -177,6 +179,7 @@ where
                 return None;
             }
         };
+        let parent_slot = pre_digest.slot;
 
         if slot <= parent_slot {
             debug!(
@@ -191,6 +194,28 @@ where
 
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
+        let block_number = *parent_header.number() + One::one();
+        let pot_proofs = match self.proof_of_time.get_block_proofs(
+            slot.into(),
+            block_number,
+            &pre_digest.proof_of_time,
+        ) {
+            Ok(proofs) => {
+                debug!(
+                    target: "subspace",
+                    "claim slot: PoT: {parent_slot}/{slot}/{block_number}/{parent_hash}: {}",
+                    proofs.len()
+                );
+                proofs
+            }
+            Err(err) => {
+                warn!(
+                    target: "subspace",
+                    "claim slot: PoT: {parent_slot}/{slot}/{block_number}/{parent_hash}: err={err:?}"
+                );
+                vec![]
+            }
+        };
 
         let global_randomness =
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
@@ -327,7 +352,11 @@ where
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
-                        maybe_pre_digest.replace(PreDigest { solution, slot });
+                        maybe_pre_digest.replace(PreDigest {
+                            solution,
+                            slot,
+                            proof_of_time: pot_proofs.clone(),
+                        });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
                         // verification wouldn't be possible due to missing (for now) segment commitment
@@ -347,7 +376,6 @@ where
         //  https://github.com/subspace/subspace/issues/871, also being discussed in
         //  https://substrate.stackexchange.com/questions/7886/is-block-creation-guaranteed-to-be-running-after-parent-block-is-fully-imported
         if maybe_pre_digest.is_some() {
-            let block_number = *parent_header.number() + One::one();
             let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
             self.subspace_link

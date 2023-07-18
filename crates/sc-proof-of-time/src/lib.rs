@@ -5,13 +5,16 @@ mod pot_client;
 mod pot_state;
 mod utils;
 
+use crate::pot_state::{init_pot_state, PotState};
 use crate::utils::GOSSIP_PROTOCOL;
 use sc_network::config::NonDefaultSetConfig;
-use sc_service::TaskManager;
-use sc_utils::mpsc::tracing_unbounded;
+use sp_blockchain::{HeaderBackend, Info};
 use sp_consensus::SyncOracle;
-use sp_runtime::traits::Block as BlockT;
-use subspace_core_primitives::{BlockHash, BlockNumber, PotKey, SlotNumber};
+use sp_consensus_subspace::digests::extract_pre_digest;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
+use std::sync::Arc;
+use subspace_core_primitives::{BlockHash, BlockNumber, PotKey, PotProof, SlotNumber};
+use subspace_proof_of_time::ProofOfTime;
 
 pub use clock_master::ClockMaster;
 pub use pot_client::PotClient;
@@ -60,27 +63,185 @@ impl Default for PotConfig {
     }
 }
 
-/// Inputs to build the initial proof.
+/// Components initialized during the new_partial() phase of set up.
+pub struct PotPartial<Block> {
+    /// Proof of time implementation.
+    proof_of_time: Arc<ProofOfTime>,
+
+    /// Protocol interface.
+    pot_state: Arc<dyn PotState>,
+
+    /// Consensus interface.
+    pot_consensus: Arc<dyn PotConsensus<Block>>,
+}
+
+impl<Block: BlockT> PotPartial<Block> {
+    /// Sets up the partial components.
+    pub fn new() -> Self {
+        let config = PotConfig::default();
+        let proof_of_time = Arc::new(ProofOfTime::new(
+            config.num_checkpoints,
+            config.checkpoint_iterations,
+        ));
+        let (pot_state, pot_consensus) =
+            init_pot_state(config, proof_of_time.clone(), vec![]);
+
+        Self {
+            proof_of_time,
+            pot_state,
+            pot_consensus,
+        }
+    }
+
+    /// Returns the consensus interface.
+    pub fn pot_consensus(&self) -> Arc<dyn PotConsensus<Block>> {
+        self.pot_consensus.clone()
+    }
+}
+
+impl<Block: BlockT> Default for PotPartial<Block> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
+/// Inputs for bootstrapping.
 #[derive(Debug, Clone)]
-pub struct InitialPotProofInputs {
+pub struct BootstrapParams {
     /// Genesis block hash.
     pub genesis_hash: BlockHash,
 
-    /// Slot number for the genesis block.
-    pub genesis_slot: SlotNumber,
-
     /// The initial key to be used.
     pub key: PotKey,
+
+    /// Initial slot number.
+    pub slot: SlotNumber,
 }
 
-impl InitialPotProofInputs {
-    pub fn new(genesis_hash: BlockHash, genesis_slot: SlotNumber) -> Self {
+impl BootstrapParams {
+    pub fn new(genesis_hash: BlockHash, slot: SlotNumber) -> Self {
         Self {
             genesis_hash,
-            genesis_slot,
             key: PotKey::initial_key(),
+            slot,
         }
     }
+}
+
+/// The role of subspace-node
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum PotRole {
+    /// Clock master role of producing proofs + initial bootstrapping.
+    ClockMasterBootStrap,
+
+    /// Clock master role of producing proofs.
+    ClockMaster,
+
+    /// Listens to proofs from clock masters.
+    Client,
+}
+
+impl PotRole {
+    /// Checks if the role is clock master.
+    pub fn is_clock_master(&self) -> bool {
+        *self == Self::ClockMasterBootStrap || *self == Self::ClockMaster
+    }
+
+    /// Checks if the role is clock master bootstrap.
+    pub fn is_clock_master_bootstrap(&self) -> bool {
+        *self == Self::ClockMasterBootStrap
+    }
+}
+
+/// PoT interface to consensus.
+pub trait PotConsensus<Block: BlockT>: Send + Sync {
+    /// Called by consensus when trying to claim the slot.
+    /// Returns the proofs in the slot range
+    /// [parent.last_proof.slot + 1, slot_number - global_randomness_reveal_lag_slots].
+    fn get_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        parent_block_proofs: &[PotProof],
+    ) -> Result<Vec<PotProof>, PotConsensusError>;
+
+    /// Called during block import validation.
+    /// Verifies the sequence of proofs in the block being validated.
+    fn verify_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        block_proofs: &[PotProof],
+        parent_block_proofs: &[PotProof],
+    ) -> Result<(), PotConsensusError>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PotConsensusError {
+    #[error("Parent block proofs empty: {cur_tip}/{slot_number}/{block_number}")]
+    ParentProofsEmpty {
+        cur_tip: String,
+        slot_number: SlotNumber,
+        block_number: String,
+    },
+
+    #[error("Invalid slot range: {cur_tip}/{start_slot}/{end_slot}/{block_number}")]
+    InvalidRange {
+        cur_tip: String,
+        start_slot: SlotNumber,
+        end_slot: SlotNumber,
+        block_number: String,
+    },
+
+    #[error("Proof unavailable to send: {cur_tip}/{start_slot}/{end_slot}/{block_number}/{slot}")]
+    ProofUnavailable {
+        cur_tip: String,
+        start_slot: SlotNumber,
+        end_slot: SlotNumber,
+        block_number: String,
+        slot: SlotNumber,
+    },
+
+    #[error("Unexpected proof count: {cur_tip}/{block_number}/{slot}/{expected}/{actual}")]
+    UnexpectedProofCount {
+        cur_tip: String,
+        block_number: String,
+        slot: SlotNumber,
+        expected: usize,
+        actual: usize,
+    },
+
+    #[error("Received proof locally missing: {cur_tip}/{block_number}/{slot}")]
+    ReceivedSlotMissing {
+        cur_tip: String,
+        block_number: String,
+        slot: SlotNumber,
+    },
+
+    #[error("Received proof did not match local proof: {cur_tip}/{block_number}/{slot}")]
+    ReceivedProofMismatch {
+        cur_tip: String,
+        block_number: String,
+        slot: SlotNumber,
+    },
+
+    #[error("Received block with no proofs: {cur_tip}/{slot_number}/{block_number}")]
+    ReceivedProofsEmpty {
+        cur_tip: String,
+        slot_number: SlotNumber,
+        block_number: String,
+    },
+
+    #[error(
+        "Received proofs with unexpected slot number: {cur_tip}/{block_number}/{expected}/{actual}"
+    )]
+    ReceivedUnexpectedSlotNumber {
+        cur_tip: String,
+        block_number: String,
+        expected: SlotNumber,
+        actual: SlotNumber,
+    },
 }
 
 /// Returns the network configuration for PoT gossip.
@@ -90,48 +251,34 @@ pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
     cfg
 }
 
-/// Starts the PoT components.
-#[allow(clippy::type_complexity)]
-pub fn start_pot<Block, SO>(
-    clock_master_components: Option<(
-        ClockMaster<Block, SO>,
-        Box<dyn Fn() -> Option<InitialPotProofInputs> + Send>,
-    )>,
-    pot_client: PotClient<Block>,
-    task_manager: &TaskManager,
-) where
+/// Helper to retrieve the PoT state from latest tip.
+async fn get_consensus_tip_proofs<Block, Client, SO>(
+    client: Arc<Client>,
+    sync_oracle: Arc<SO>,
+    chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
+) -> Result<Vec<PotProof>, String>
+where
     Block: BlockT,
+    Client: HeaderBackend<Block>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
-    let receiver = clock_master_components.map(|(clock_master, init_fn)| {
-        // Producer thread -> clock master.
-        let (sender_clock_master, receiver_clock_master) =
-            tracing_unbounded("clock-master-local-proofs-channel", 100);
-        // Producer thread -> PoT client.
-        let (sender_pot_client, receiver_pot_client) =
-            tracing_unbounded("pot-client-local-proofs-channel", 100);
-        task_manager.spawn_essential_handle().spawn_blocking(
-            "subspace-proof-of-time-clock-master",
-            Some("subspace-proof-of-time-clock-master"),
-            async move {
-                clock_master
-                    .run(
-                        init_fn,
-                        sender_clock_master,
-                        receiver_clock_master,
-                        sender_pot_client,
-                    )
-                    .await;
-            },
-        );
-        receiver_pot_client
-    });
+    // Wait for sync to complete
+    let delay = tokio::time::Duration::from_secs(10);
+    while sync_oracle.is_major_syncing() {
+        tokio::time::sleep(delay).await;
+    }
 
-    task_manager.spawn_essential_handle().spawn_blocking(
-        "subspace-proof-of-time-client",
-        Some("subspace-proof-of-time-client"),
-        async move {
-            pot_client.run(receiver).await;
-        },
-    );
+    // Get the hdr of the best block hash
+    let info = (chain_info_fn)();
+    let header = client
+        .header(info.best_hash)
+        .map_err(|err| format!("get_consensus_tip_proofs(): failed to get hdr: {err:?}, {info:?}"))?
+        .ok_or(format!("get_consensus_tip_proofs(): missing hdr: {info:?}"))?;
+
+    // Get the pre-digest from the block hdr
+    let pre_digest = extract_pre_digest(&header).map_err(|err| {
+        format!("get_consensus_tip_proofs(): failed to get pre digest: {err:?}, {info:?}")
+    })?;
+
+    Ok(pre_digest.proof_of_time)
 }

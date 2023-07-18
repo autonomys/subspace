@@ -50,6 +50,7 @@ use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
+use sc_proof_of_time::PotConsensus;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
@@ -397,6 +398,9 @@ where
 
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
+
+    /// Proof of time interface.
+    pub proof_of_time: Arc<dyn PotConsensus<B>>,
 }
 
 /// Start the Subspace worker.
@@ -415,6 +419,7 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, Error>
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        proof_of_time,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -457,6 +462,7 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        proof_of_time,
         _pos_table: PhantomData::<PosTable>,
     };
 
@@ -805,6 +811,7 @@ pub struct SubspaceBlockImport<PosTable, Block: BlockT, Client, I, CIDP> {
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
+    proof_of_time: Arc<dyn PotConsensus<Block>>,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -822,6 +829,7 @@ where
             block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+            proof_of_time: self.proof_of_time.clone(),
             _pos_table: PhantomData,
         }
     }
@@ -843,6 +851,7 @@ where
         >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
+        proof_of_time: Arc<dyn PotConsensus<Block>>,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -850,6 +859,7 @@ where
             block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
+            proof_of_time,
             _pos_table: PhantomData,
         }
     }
@@ -1029,7 +1039,19 @@ where
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
 
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
+        let parent_pre_digest = extract_pre_digest(&parent_header)?;
+        let parent_slot = parent_pre_digest.slot;
+        let pot_status = self.proof_of_time.verify_block_proofs(
+            *pre_digest.slot,
+            block_number,
+            &pre_digest.proof_of_time,
+            &parent_pre_digest.proof_of_time,
+        );
+        debug!(
+            target: "subspace",
+            "block import verification: PoT: {}/{block_number}/{block_hash}: {pot_status:?}",
+            *pre_digest.slot,
+        );
 
         // Make sure that slot number is strictly increasing
         if pre_digest.slot <= parent_slot {
@@ -1273,6 +1295,7 @@ pub fn block_import<PosTable, Client, Block, I, CIDP>(
     client: Arc<Client>,
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
+    proof_of_time: Arc<dyn PotConsensus<Block>>,
 ) -> ClientResult<(
     SubspaceBlockImport<PosTable, Block, Client, I, CIDP>,
     SubspaceLink<Block>,
@@ -1323,6 +1346,7 @@ where
         block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
+        proof_of_time,
     );
 
     Ok((import, link))

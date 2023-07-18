@@ -16,11 +16,11 @@ parity-scale-codec = { version = "3.6.1", features = ["derive"] }
 parking_lot = "0.12.1"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sc-network-gossip = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", default-features = false }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-core = { version = "21.0.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }

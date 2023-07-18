@@ -17,6 +17,7 @@
 //! Private implementation details of Subspace consensus digests.
 
 use crate::{ConsensusLog, FarmerPublicKey, FarmerSignature, SUBSPACE_ENGINE_ID};
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use log::trace;
 use sp_api::HeaderT;
@@ -27,7 +28,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    PotProof, Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -39,6 +40,11 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
+    /// Proof-of-time. The global randomness for the block is derived
+    /// from the last proof in the sequence of proofs.
+    /// TODO: change this to NonEmptyVec<> after filling a default
+    /// value in genesis block.
+    pub proof_of_time: Vec<PotProof>,
 }
 
 /// A digest item which is usable with Subspace consensus.
@@ -570,6 +576,7 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
+            proof_of_time: Default::default(),
         });
     }
 

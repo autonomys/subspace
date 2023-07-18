@@ -55,8 +55,8 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_proof_of_time::{
-    pot_gossip_peers_set_config, start_pot, ClockMaster, InitialPotProofInputs, PotClient,
-    PotConfig, PotGossip,
+    pot_gossip_peers_set_config, BootstrapParams, ClockMaster, PotClient, PotGossip, PotPartial,
+    PotRole,
 };
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
@@ -64,7 +64,7 @@ use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, HeaderT, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderMetadata;
+use sp_blockchain::{HeaderMetadata, Info};
 use sp_consensus::{Error as ConsensusError, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
@@ -208,8 +208,8 @@ pub struct SubspaceConfiguration {
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
-    /// Enable clock master processing for proof of time.
-    pub enable_pot_clock_master: bool,
+    /// PoT role.
+    pub pot_role: PotRole,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -274,6 +274,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             SubspaceLink<Block>,
             Option<Telemetry>,
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            PotPartial<Block>,
         ),
     >,
     ServiceError,
@@ -379,6 +380,7 @@ where
 
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
+    let pot_partial = PotPartial::new();
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<PosTable, _, _, _, _>(
         sc_consensus_subspace::slot_duration(&*client)?,
@@ -412,6 +414,7 @@ where
                 }
             }
         },
+        pot_partial.pot_consensus(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -440,7 +443,13 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, telemetry, bundle_validator),
+        other: (
+            block_import,
+            subspace_link,
+            telemetry,
+            bundle_validator,
+            pot_partial,
+        ),
     })
 }
 
@@ -522,6 +531,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             SubspaceLink<Block>,
             Option<Telemetry>,
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+            PotPartial<Block>,
         ),
     >,
     enable_rpc_extensions: bool,
@@ -563,7 +573,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
+        other: (block_import, subspace_link, mut telemetry, mut bundle_validator, pot_partial),
     } = partial_components;
 
     let segment_header_cache = SegmentHeaderCache::new(client.clone()).map_err(|error| {
@@ -895,6 +905,61 @@ where
         SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
 
     if config.role.is_authority() || config.force_new_slot_notifications {
+        // PoT client to receive proofs for global randomness from clock masters.
+        let pot_gossip = PotGossip::<Block>::new(network_service.clone(), sync_service.clone());
+        let pot_consensus = pot_partial.pot_consensus();
+        let client_cl = client.clone();
+        let chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync> =
+            Arc::new(move || client_cl.chain_info());
+
+        // Enable clock master functionality if enabled.
+        info!("subspace-service: PoT role = {:?}", config.pot_role);
+        if config.pot_role.is_clock_master() {
+            let client = client.clone();
+            let bootstrap_params = if config.pot_role.is_clock_master_bootstrap() {
+                Some(BootstrapParams::new(
+                    client.chain_info().genesis_hash.to_fixed_bytes(),
+                    Slot::from_timestamp(
+                        *sp_timestamp::InherentDataProvider::from_system_time(),
+                        subspace_link.slot_duration(),
+                    )
+                    .into(),
+                ))
+            } else {
+                None
+            };
+            info!("subspace-service: PoT bootstrap_params = {bootstrap_params:?}");
+            let clock_master = ClockMaster::<Block, _, _>::new(
+                pot_partial,
+                pot_gossip,
+                client,
+                sync_service.clone(),
+                chain_info_fn,
+            );
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subspace-proof-of-time-clock-master",
+                Some("subspace-proof-of-time-clock-master"),
+                async move {
+                    clock_master.run(bootstrap_params).await;
+                },
+            );
+        } else {
+            let pot_client = PotClient::<Block, _, _>::new(
+                pot_partial,
+                pot_gossip,
+                client.clone(),
+                sync_service.clone(),
+                chain_info_fn,
+            );
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subspace-proof-of-time-client",
+                Some("subspace-proof-of-time-client"),
+                async move {
+                    pot_client.run().await;
+                },
+            );
+        };
+
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -944,6 +1009,7 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            proof_of_time: pot_consensus,
         };
 
         let subspace =
@@ -958,39 +1024,6 @@ where
             Some("block-authoring"),
             subspace,
         );
-
-        // PoT client to receive proofs for global randomness from clock masters.
-        let pot_config = PotConfig::default();
-        let pot_gossip = PotGossip::<Block>::new(network_service.clone(), sync_service.clone());
-        let pot_client = PotClient::<Block>::new(pot_config.clone(), pot_gossip.clone());
-
-        // Enable clock master functionality if enabled.
-        let clock_master_components = if config.enable_pot_clock_master {
-            let client = client.clone();
-            let init_fn: Box<dyn Fn() -> Option<InitialPotProofInputs> + Send> =
-                Box::new(move || {
-                    let info = client.chain_info();
-                    // genesis_slot() of genesis_hash, finalized_hash return Ok(None),
-                    // use best_hash for now.
-                    client
-                        .runtime_api()
-                        .genesis_slot(info.best_hash)
-                        .ok()
-                        .flatten()
-                        .map(|genesis_slot| {
-                            InitialPotProofInputs::new(
-                                info.genesis_hash.to_fixed_bytes(),
-                                genesis_slot,
-                            )
-                        })
-                });
-            let clock_master =
-                ClockMaster::<Block, _>::new(pot_config, pot_gossip, sync_service.clone());
-            Some((clock_master, init_fn))
-        } else {
-            None
-        };
-        start_pot(clock_master_components, pot_client, &task_manager);
     }
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {

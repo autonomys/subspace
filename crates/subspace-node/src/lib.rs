@@ -23,9 +23,11 @@ mod import_blocks_from_dsn;
 
 pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 use bytesize::ByteSize;
+use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
+use sc_proof_of_time::PotRole;
 use sc_service::ChainSpec;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -169,6 +171,29 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
+/// Assigned proof of time role.
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum CliPotRole {
+    /// Clock master role of producing proofs + initial bootstrapping.
+    ClockMasterBootStrap,
+
+    /// Clock master role of producing proofs.
+    ClockMaster,
+
+    /// Listens to proofs from clock masters.
+    Client,
+}
+
+impl From<CliPotRole> for PotRole {
+    fn from(cli_role: CliPotRole) -> Self {
+        match cli_role {
+            CliPotRole::ClockMasterBootStrap => PotRole::ClockMasterBootStrap,
+            CliPotRole::ClockMaster => PotRole::ClockMaster,
+            CliPotRole::Client => PotRole::Client,
+        }
+    }
+}
+
 /// Subspace Cli.
 #[derive(Debug, Parser)]
 #[clap(
@@ -249,9 +274,9 @@ pub struct Cli {
     #[arg(long)]
     pub enable_subspace_block_relay: bool,
 
-    /// Enable clock master processing for proof of time.
-    #[arg(long)]
-    pub enable_pot_clock_master: bool,
+    /// Assigned PoT role for this node.
+    #[arg(long, default_value="client", value_parser(EnumValueParser::<CliPotRole>::new()))]
+    pub pot_role: CliPotRole,
 }
 
 impl SubstrateCli for Cli {

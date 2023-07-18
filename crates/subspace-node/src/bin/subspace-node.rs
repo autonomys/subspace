@@ -175,7 +175,8 @@ fn main() -> Result<(), Error> {
                     client,
                     import_queue,
                     task_manager,
-                    other: (_block_import, subspace_link, _telemetry, _bundle_validator),
+                    other:
+                        (_block_import, subspace_link, _telemetry, _bundle_validator, _pot_partial),
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config, None,
@@ -459,7 +460,7 @@ fn main() -> Result<(), Error> {
                         },
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay,
-                        enable_pot_clock_master: cli.enable_pot_clock_master,
+                        pot_role: cli.pot_role.into(),
                     };
 
                     let construct_domain_genesis_block_builder =

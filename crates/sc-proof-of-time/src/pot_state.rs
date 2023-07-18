@@ -1,9 +1,10 @@
 //! PoT state management.
 
 use crate::utils::LOG_TARGET;
-use crate::PotConfig;
+use crate::{PotConfig, PotConsensus, PotConsensusError};
 use parking_lot::Mutex;
 use sc_network::PeerId;
+use sp_runtime::traits::{Block as BlockT, NumberFor, One};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -58,8 +59,8 @@ enum ExtendAction {
 }
 
 /// The shared PoT state.
-struct PotStateInternal {
-    /// Last N entries of the PotChain, sorted by slot number.
+struct InternalState {
+    /// Last N entries of the PotChain, sorted by height.
     chain: Vec<PotProof>,
 
     /// Proofs for future slot numbers, indexed by slot number.
@@ -67,8 +68,8 @@ struct PotStateInternal {
     future_proofs: BTreeMap<SlotNumber, BTreeMap<PeerId, PotProof>>,
 }
 
-/// Wrapper around the PoT state.
-struct PotState {
+/// Wrapper to manage the PoT state.
+struct StateManager {
     /// Pot config
     config: PotConfig,
 
@@ -76,17 +77,17 @@ struct PotState {
     proof_of_time: Arc<ProofOfTime>,
 
     /// The PoT state
-    state: Mutex<PotStateInternal>,
+    state: Mutex<InternalState>,
 }
 
-impl PotState {
+impl StateManager {
     /// Creates the state.
-    pub fn new(config: PotConfig, proof_of_time: Arc<ProofOfTime>) -> Self {
+    pub fn new(config: PotConfig, proof_of_time: Arc<ProofOfTime>, chain: Vec<PotProof>) -> Self {
         Self {
             config,
             proof_of_time,
-            state: Mutex::new(PotStateInternal {
-                chain: Vec::new(),
+            state: Mutex::new(InternalState {
+                chain,
                 future_proofs: BTreeMap::new(),
             }),
         }
@@ -177,7 +178,7 @@ impl PotState {
     /// Handles the received proof for a future slot.
     fn handle_future_proof(
         &self,
-        state: &mut PotStateInternal,
+        state: &mut InternalState,
         tip: &PotProof,
         sender: PeerId,
         proof: &PotProof,
@@ -224,7 +225,7 @@ impl PotState {
     /// Called when the chain is extended with a new proof.
     /// Tries to advance the tip as much as possible, by merging with
     /// the pending future proofs.
-    fn merge_future_proofs(&self, state: &mut PotStateInternal) {
+    fn merge_future_proofs(&self, state: &mut InternalState) {
         loop {
             let tip = if let Some(tip) = state.chain.last() {
                 tip.clone()
@@ -266,7 +267,7 @@ impl PotState {
     }
 
     /// Adds the proof to the current tip
-    fn add_to_tip(&self, state: &mut PotStateInternal, proof: &PotProof, action: ExtendAction) {
+    fn add_to_tip(&self, state: &mut InternalState, proof: &PotProof, action: ExtendAction) {
         state.chain.push(proof.clone());
         state.future_proofs.remove(&proof.slot_number);
         if action == ExtendAction::MergeFutureProofs {
@@ -275,8 +276,11 @@ impl PotState {
     }
 }
 
-/// The state interface to the clock master/PoT clients.
-pub(crate) trait PotStateInterface: Send + Sync {
+/// PoT interface to the protocols (clock master, PoT client).
+pub(crate) trait PotState: Send + Sync {
+    /// Initializes the state with the given proofs.
+    fn init(&self, proofs: Vec<PotProof>);
+
     /// Returns the current tip
     fn tip(&self) -> Option<PotProof>;
 
@@ -287,7 +291,13 @@ pub(crate) trait PotStateInterface: Send + Sync {
     fn on_proof_from_peer(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotStateError>;
 }
 
-impl PotStateInterface for PotState {
+impl PotState for StateManager {
+    fn init(&self, mut proofs: Vec<PotProof>) {
+        let mut state = self.state.lock();
+        state.chain.clear();
+        state.chain.append(&mut proofs);
+        state.future_proofs.clear();
+    }
     fn tip(&self) -> Option<PotProof> {
         self.state.lock().chain.last().cloned()
     }
@@ -301,9 +311,197 @@ impl PotStateInterface for PotState {
     }
 }
 
-pub(crate) fn pot_state(
+impl<Block: BlockT> PotConsensus<Block> for StateManager {
+    fn get_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        parent_block_proofs: &[PotProof],
+    ) -> Result<Vec<PotProof>, PotConsensusError> {
+        let state = self.state.lock();
+        let cur_tip = state.chain.iter().last().map_or_else(
+            || "None".to_string(),
+            |proof| format!("{}", proof.slot_number),
+        );
+        let start_slot = parent_block_proofs
+            .iter()
+            .last()
+            .ok_or(PotConsensusError::ParentProofsEmpty {
+                cur_tip: cur_tip.clone(),
+                slot_number,
+                block_number: format!("{block_number}"),
+            })?
+            .slot_number;
+        let end_slot = slot_number - self.config.global_randomness_reveal_lag_slots;
+
+        // For block 1, just return one proof at the target slot,
+        // as the parent(genesis) does not have any proofs.
+        if block_number.is_one() {
+            let proof = state
+                .chain
+                .iter()
+                .find(|proof| proof.slot_number == end_slot)
+                .ok_or(PotConsensusError::ProofUnavailable {
+                    cur_tip,
+                    start_slot,
+                    end_slot,
+                    block_number: format!("{block_number}"),
+                    slot: end_slot,
+                })?;
+            return Ok(vec![proof.clone()]);
+        }
+
+        if start_slot > end_slot {
+            return Err(PotConsensusError::InvalidRange {
+                cur_tip,
+                start_slot,
+                end_slot,
+                block_number: format!("{block_number}"),
+            });
+        }
+
+        // Collect the proofs in the requested range.
+        let mut proofs = Vec::with_capacity((end_slot - start_slot + 1) as usize);
+        for slot in start_slot..=end_slot {
+            // TODO: avoid repeated search by copying the range.
+            let proof = state
+                .chain
+                .iter()
+                .find(|proof| proof.slot_number == slot)
+                .ok_or(PotConsensusError::ProofUnavailable {
+                    cur_tip: cur_tip.clone(),
+                    start_slot,
+                    end_slot,
+                    block_number: format!("{block_number}"),
+                    slot,
+                })?;
+            proofs.push(proof.clone());
+        }
+
+        Ok(proofs)
+    }
+
+    fn verify_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        block_proofs: &[PotProof],
+        parent_block_proofs: &[PotProof],
+    ) -> Result<(), PotConsensusError> {
+        let state = self.state.lock();
+        let cur_tip = state.chain.iter().last().map_or_else(
+            || "None".to_string(),
+            |proof| format!("{}", proof.slot_number),
+        );
+
+        if block_number.is_one() {
+            // If block 1, check it has one proof.
+            // TODO: we currently don't have a way to check the slot number at the
+            // sender, to be resolved.
+            if block_proofs.len() != 1 {
+                return Err(PotConsensusError::UnexpectedProofCount {
+                    cur_tip,
+                    block_number: format!("{block_number}"),
+                    slot: slot_number,
+                    expected: 1,
+                    actual: block_proofs.len(),
+                });
+            }
+
+            let received = &block_proofs[0]; // Safe to index.
+            let proof = state
+                .chain
+                .iter()
+                .find(|proof| proof.slot_number == received.slot_number)
+                .ok_or(PotConsensusError::ReceivedSlotMissing {
+                    cur_tip: cur_tip.clone(),
+                    block_number: format!("{block_number}"),
+                    slot: received.slot_number,
+                })?;
+            // Safe to index.
+            if *proof != *received {
+                return Err(PotConsensusError::ReceivedProofMismatch {
+                    cur_tip,
+                    block_number: format!("{block_number}"),
+                    slot: received.slot_number,
+                });
+            }
+
+            return Ok(());
+        }
+
+        // Check that the parent last proof and the block first proof
+        // form a chain.
+        let last_parent_proof =
+            parent_block_proofs
+                .iter()
+                .last()
+                .ok_or(PotConsensusError::ParentProofsEmpty {
+                    cur_tip: cur_tip.clone(),
+                    slot_number,
+                    block_number: format!("{block_number}"),
+                })?;
+        let first_block_proof =
+            block_proofs
+                .get(0)
+                .ok_or(PotConsensusError::ReceivedProofsEmpty {
+                    cur_tip: cur_tip.clone(),
+                    slot_number,
+                    block_number: format!("{block_number}"),
+                })?;
+        if first_block_proof.slot_number != (last_parent_proof.slot_number + 1) {
+            return Err(PotConsensusError::ReceivedUnexpectedSlotNumber {
+                cur_tip,
+                block_number: format!("{block_number}"),
+                expected: last_parent_proof.slot_number + 1,
+                actual: first_block_proof.slot_number,
+            });
+        }
+
+        // Compare the received proofs against the local chain. Since the
+        // local chain is already validated, not doing the AES check on the
+        // received proofs.
+        let mut expected_slot = first_block_proof.slot_number;
+        for received in block_proofs {
+            if received.slot_number != expected_slot {
+                return Err(PotConsensusError::ReceivedUnexpectedSlotNumber {
+                    cur_tip,
+                    block_number: format!("{block_number}"),
+                    expected: expected_slot,
+                    actual: received.slot_number,
+                });
+            }
+            expected_slot += 1;
+
+            // TODO: avoid repeated lookups, locate start of range
+            let local_proof = state
+                .chain
+                .iter()
+                .find(|local_proof| local_proof.slot_number == received.slot_number)
+                .ok_or(PotConsensusError::ReceivedSlotMissing {
+                    cur_tip: cur_tip.clone(),
+                    block_number: format!("{block_number}"),
+                    slot: received.slot_number,
+                })?;
+
+            if *local_proof != *received {
+                return Err(PotConsensusError::ReceivedProofMismatch {
+                    cur_tip,
+                    block_number: format!("{block_number}"),
+                    slot: received.slot_number,
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub(crate) fn init_pot_state<Block: BlockT>(
     config: PotConfig,
     proof_of_time: Arc<ProofOfTime>,
-) -> Arc<dyn PotStateInterface> {
-    Arc::new(PotState::new(config, proof_of_time))
+    chain: Vec<PotProof>,
+) -> (Arc<dyn PotState>, Arc<dyn PotConsensus<Block>>) {
+    let state = Arc::new(StateManager::new(config, proof_of_time, chain));
+    (state.clone(), state)
 }
