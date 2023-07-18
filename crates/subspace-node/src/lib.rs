@@ -224,7 +224,7 @@ pub struct Cli {
     pub dsn_disable_private_ips: bool,
 
     /// Enables DSN-sync on startup.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub sync_from_dsn: bool,
 
     /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
