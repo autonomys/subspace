@@ -74,7 +74,6 @@ parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = 10;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const MaxDomainBlockSize: u32 = 1024 * 1024;
@@ -157,7 +156,6 @@ impl pallet_domains::Config for Test {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
-    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
     type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;

@@ -413,7 +413,6 @@ impl Node {
         Ok(result_receiver)
     }
 
-    // TODO: add timeout
     /// Waits for peers connection to the swarm and for Kademlia address registration.
     pub async fn wait_for_connected_peers(
         &self,

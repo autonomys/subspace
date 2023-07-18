@@ -21,6 +21,8 @@ use crate::{
 use codec::Encode;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_utils::mpsc::tracing_unbounded;
@@ -35,7 +37,7 @@ use std::sync::Arc;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, SegmentHeader};
+use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader};
 
 /// How deep (in segments) should block be in order to be finalized.
 ///
@@ -304,7 +306,35 @@ where
                     })
                     .unwrap_or_default();
 
-                let encoded_block = block.encode();
+                let encoded_block = if block_number_to_archive.is_zero() {
+                    let mut encoded_block = block.encode();
+                    let encoded_block_length = encoded_block.len();
+
+                    // We extend encoding of genesis block with extra data such that the very first
+                    // archived segment can be produced right away, bootstrapping the farming
+                    // process.
+                    //
+                    // Note: we add it to the end of the encoded block, so during decoding it'll
+                    // actually be ignored (unless `DecodeAll::decode_all()` is used) even though it
+                    // is technically present in encoded form.
+                    encoded_block.resize(RecordedHistorySegment::SIZE, 0);
+                    let mut rng = ChaCha8Rng::from_seed(
+                        block
+                            .block
+                            .header()
+                            .state_root()
+                            .as_ref()
+                            .try_into()
+                            .expect(
+                                "State root in Subspace must be 32 bytes, panic otherwise; qed",
+                            ),
+                    );
+                    rng.fill(&mut encoded_block[encoded_block_length..]);
+
+                    encoded_block
+                } else {
+                    block.encode()
+                };
                 debug!(
                     target: "subspace",
                     "Encoded block {} has size of {:.2} kiB",
