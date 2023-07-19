@@ -98,7 +98,8 @@ mod pallet {
         OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals, PendingNominatorUnlock,
+        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
+        Error as StakingEpochError, PendingNominatorUnlock,
     };
     use crate::weights::WeightInfo;
     use crate::{BalanceOf, FreezeIdentifier, NominatorId, OpaqueBundleOf};
@@ -379,7 +380,7 @@ mod pallet {
         DomainId,
         Identity,
         T::DomainNumber,
-        BTreeSet<H256>,
+        BTreeSet<ReceiptHash>,
         ValueQuery,
     >;
 
@@ -459,6 +460,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<StakingEpochError> for Error<T> {
+        fn from(err: StakingEpochError) -> Self {
+            Error::StakingEpoch(err)
+        }
+    }
+
     impl<T> From<DomainRegistryError> for Error<T> {
         fn from(err: DomainRegistryError) -> Self {
             Error::DomainRegistry(err)
@@ -479,6 +486,8 @@ mod pallet {
         RuntimeRegistry(RuntimeRegistryError),
         /// Staking related errors.
         Staking(StakingError),
+        /// Staking epoch specific errors.
+        StakingEpoch(crate::staking_epoch::Error),
         /// Domain registry specific errors
         DomainRegistry(DomainRegistryError),
         /// Block tree specific errors
@@ -612,17 +621,29 @@ mod pallet {
                     return Ok(());
                 }
                 ReceiptType::Rejected(rejected_receipt_type) => {
-                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into())
+                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
                 // Add the exeuctione receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
-                    process_execution_receipt::<T>(
+                    let maybe_pruned_domain_block_number = process_execution_receipt::<T>(
                         domain_id,
                         operator_id,
                         receipt,
                         accepted_receipt_type,
                     )
                     .map_err(Error::<T>::from)?;
+
+                    // if any domain block is pruned, then we have a new head added
+                    // so progress staking epoch
+                    if let Some(pruned_block_number) = maybe_pruned_domain_block_number {
+                        let consensus_block_number = frame_system::Pallet::<T>::block_number();
+                        do_finalize_domain_current_epoch::<T>(
+                            domain_id,
+                            pruned_block_number,
+                            consensus_block_number,
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
                 }
             }
 

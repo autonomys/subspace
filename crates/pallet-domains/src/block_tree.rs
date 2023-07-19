@@ -173,12 +173,14 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 }
 
 /// Process the execution receipt to add it to the block tree
+/// Returns the domain block number that was pruned, if any
 pub(crate) fn process_execution_receipt<T: Config>(
     domain_id: DomainId,
     submitter: OperatorId,
     execution_receipt: ExecutionReceiptOf<T>,
     receipt_type: AcceptedReceiptType,
-) -> Result<(), Error> {
+) -> Result<Option<T::DomainNumber>, Error> {
+    let mut pruned_domain_block_number = None;
     match receipt_type {
         AcceptedReceiptType::NewBranch => {
             add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
@@ -201,6 +203,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 // Remove the block's `ExecutionInbox` as the block is pruned and does not need
                 // to verify its receipt's `extrinsics_root` anymore
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
+                pruned_domain_block_number = Some(to_prune)
             }
         }
         AcceptedReceiptType::CurrentHead => {
@@ -214,7 +217,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
             });
         }
     }
-    Ok(())
+    Ok(pruned_domain_block_number)
 }
 
 fn add_new_receipt_to_block_tree<T: Config>(

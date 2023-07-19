@@ -29,8 +29,6 @@ pub enum Error {
 
 /// Finalizes the domain's current epoch and begins the next epoch.
 /// Returns true of the epoch indeed was finished.
-// TODO: remove once connected with block tree
-#[allow(dead_code)]
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
