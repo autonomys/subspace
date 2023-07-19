@@ -1,7 +1,6 @@
 //! Miscellaneous utilities for networking.
 
 pub mod multihash;
-pub mod piece_announcement;
 pub mod piece_provider;
 pub(crate) mod prometheus;
 #[cfg(test)]
