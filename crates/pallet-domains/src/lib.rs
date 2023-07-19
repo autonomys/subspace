@@ -93,7 +93,7 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_register_operator,
+        do_deregister_operator, do_nominate_operator, do_register_operator, do_reward_operators,
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
@@ -487,7 +487,7 @@ mod pallet {
         /// Staking related errors.
         Staking(StakingError),
         /// Staking epoch specific errors.
-        StakingEpoch(crate::staking_epoch::Error),
+        StakingEpoch(StakingEpochError),
         /// Domain registry specific errors
         DomainRegistry(DomainRegistryError),
         /// Block tree specific errors
@@ -625,7 +625,7 @@ mod pallet {
                 }
                 // Add the exeuctione receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
-                    let maybe_pruned_domain_block_number = process_execution_receipt::<T>(
+                    let maybe_pruned_domain_block_info = process_execution_receipt::<T>(
                         domain_id,
                         operator_id,
                         receipt,
@@ -634,12 +634,19 @@ mod pallet {
                     .map_err(Error::<T>::from)?;
 
                     // if any domain block is pruned, then we have a new head added
-                    // so progress staking epoch
-                    if let Some(pruned_block_number) = maybe_pruned_domain_block_number {
+                    // so distribute the operator rewards and, if required, do epoch transition as well.
+                    if let Some(pruned_block_info) = maybe_pruned_domain_block_info {
+                        do_reward_operators::<T>(
+                            domain_id,
+                            pruned_block_info.operator_ids.into_iter(),
+                            pruned_block_info.rewards,
+                        )
+                        .map_err(Error::<T>::from)?;
+
                         let consensus_block_number = frame_system::Pallet::<T>::block_number();
                         do_finalize_domain_current_epoch::<T>(
                             domain_id,
-                            pruned_block_number,
+                            pruned_block_info.domain_block_number,
                             consensus_block_number,
                         )
                         .map_err(Error::<T>::from)?;

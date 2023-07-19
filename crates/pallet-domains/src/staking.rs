@@ -371,7 +371,6 @@ pub(crate) fn do_withdraw_stake<T: Config>(
     })
 }
 
-#[allow(dead_code)]
 /// Distribute the reward to the operators equally and drop any dust to treasury.
 pub(crate) fn do_reward_operators<T: Config>(
     domain_id: DomainId,
