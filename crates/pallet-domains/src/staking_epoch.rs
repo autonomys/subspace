@@ -1,12 +1,14 @@
 //! Staking epoch transition for domain
 
 use crate::pallet::{
-    DomainStakingSummary, Nominators, OperatorIdOwner, Operators, PendingDeposits,
-    PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
-    PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
+    DomainStakingSummary, Nominators, OngoingEpochTransition, OperatorIdOwner, Operators,
+    PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
 };
 use crate::staking::{Error as TransitionError, Nominator, Withdraw};
-use crate::{BalanceOf, Config, FreezeIdentifier, FungibleFreezeId, NominatorId};
+use crate::{
+    BalanceOf, Config, ElectionVerificationParams, FreezeIdentifier, FungibleFreezeId, NominatorId,
+};
 use codec::{Decode, Encode};
 use frame_support::dispatch::TypeInfo;
 use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
@@ -322,6 +324,13 @@ fn do_finalize_domain_pending_transfers<T: Config>(
             current_operators.insert(*next_operator_id, operator_stake);
         }
 
+        let election_verification_params = ElectionVerificationParams {
+            operators: stake_summary.current_operators.clone(),
+            total_domain_stake: stake_summary.current_total_stake,
+        };
+
+        OngoingEpochTransition::<T>::insert(domain_id, election_verification_params);
+
         stake_summary.current_epoch_index = next_epoch;
         stake_summary.current_total_stake = total_domain_stake;
         stake_summary.current_operators = current_operators;
@@ -541,9 +550,9 @@ fn finalize_nominator_deposit<T: Config>(
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, Nominators, OperatorIdOwner, Operators, PendingDeposits,
-        PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
-        PendingUnlocks, PendingWithdrawals,
+        DomainStakingSummary, Nominators, OngoingEpochTransition, OperatorIdOwner, Operators,
+        PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches,
+        PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
     };
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, Nominator, Operator, StakingSummary,
@@ -914,7 +923,15 @@ mod tests {
                 domain_stake_summary.current_total_stake,
                 total_updated_stake
             );
-            assert_eq!(domain_stake_summary.current_epoch_index, 1)
+            assert_eq!(domain_stake_summary.current_epoch_index, 1);
+
+            // should also store the previous epoch details in-block
+            let election_params = OngoingEpochTransition::<Test>::get(domain_id).unwrap();
+            assert_eq!(
+                election_params.operators,
+                BTreeMap::from_iter(vec![(operator_id, operator_stake)])
+            );
+            assert_eq!(election_params.total_domain_stake, total_stake);
         });
     }
 

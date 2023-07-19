@@ -32,10 +32,12 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
+use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
@@ -43,6 +45,7 @@ use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeI
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -75,6 +78,13 @@ pub type OpaqueBundleOf<T> = sp_domains::v2::OpaqueBundle<
     BalanceOf<T>,
 >;
 
+/// Parameters used to verify proof of election.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub(crate) struct ElectionVerificationParams<Balance> {
+    operators: BTreeMap<OperatorId, Balance>,
+    total_domain_stake: Balance,
+}
+
 #[frame_support::pallet]
 mod pallet {
     // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
@@ -102,7 +112,9 @@ mod pallet {
         Error as StakingEpochError, PendingNominatorUnlock,
     };
     use crate::weights::WeightInfo;
-    use crate::{BalanceOf, FreezeIdentifier, NominatorId, OpaqueBundleOf};
+    use crate::{
+        BalanceOf, ElectionVerificationParams, FreezeIdentifier, NominatorId, OpaqueBundleOf,
+    };
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
@@ -427,6 +439,14 @@ mod pallet {
     #[pallet::storage]
     type PendingGenesisDomain<T: Config> =
         StorageValue<_, GenesisDomain<T::AccountId>, OptionQuery>;
+
+    /// A temporary storage to hold any previous epoch details for a given domain
+    /// if the epoch transitioned in this block so that all the submitted bundles
+    /// within this block are verified.
+    /// The storage is cleared on block finalization.
+    #[pallet::storage]
+    pub(super) type OngoingEpochTransition<T: Config> =
+        StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -957,6 +977,7 @@ mod pallet {
         }
 
         fn on_finalize(_: T::BlockNumber) {
+            let _ = OngoingEpochTransition::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
         }
     }
@@ -1172,43 +1193,56 @@ impl<T: Config> Pallet<T> {
 
         verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
-        // TODO: The current staking distribution may be unusable when there is an epoch
-        // transition, track the last stake distribution in that case.
         let proof_of_election = &sealed_header.header.proof_of_election;
-
         proof_of_election
             .verify_vrf_signature(&operator.signing_key)
             .map_err(|_| BundleError::BadVrfSignature)?;
-
-        let domain_stake_summary =
-            DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
-
-        if !domain_stake_summary
-            .current_operators
-            .contains_key(&operator_id)
-        {
-            return Err(BundleError::BadOperator);
-        }
 
         let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config
             .bundle_slot_probability;
 
-        let operator_stake = operator.current_total_stake;
-        let total_domain_stake = domain_stake_summary.current_total_stake;
+        let ElectionVerificationParams {
+            operators,
+            total_domain_stake,
+        } = Self::fetch_election_params(domain_id)?;
 
-        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
-            operator_stake.saturated_into(),
-            total_domain_stake.saturated_into(),
-            bundle_slot_probability,
-        );
+        if let Some(operator_stake) = operators.get(&operator_id) {
+            let threshold = sp_domains::bundle_producer_election::calculate_threshold(
+                (*operator_stake).saturated_into(),
+                total_domain_stake.saturated_into(),
+                bundle_slot_probability,
+            );
 
-        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
-            return Err(BundleError::ThresholdUnsatisfied);
+            if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+                return Err(BundleError::ThresholdUnsatisfied);
+            }
+        } else {
+            return Err(BundleError::BadOperator);
         }
 
         Ok(())
+    }
+
+    /// Return election verification params for Proof verification.
+    /// If there was an epoch transition in this block for this domain,
+    ///     then return the parameters from previous epoch stored in OnGoingEpochTransition
+    /// Else, return those details from the Domain's stake summary for this epoch.
+    fn fetch_election_params(
+        domain_id: DomainId,
+    ) -> Result<ElectionVerificationParams<BalanceOf<T>>, BundleError> {
+        match OngoingEpochTransition::<T>::get(domain_id) {
+            None => {
+                let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id)
+                    .ok_or(BundleError::InvalidDomainId)?;
+                Ok(ElectionVerificationParams {
+                    operators: domain_stake_summary.current_operators.clone(),
+                    total_domain_stake: domain_stake_summary.current_total_stake,
+                })
+            }
+            Some(pending_election_params) => Ok(pending_election_params),
+        }
     }
 
     /// Called when a bundle is added to update the bundle state for tx range
