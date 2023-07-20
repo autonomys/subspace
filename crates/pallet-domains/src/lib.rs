@@ -32,10 +32,12 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
+use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
@@ -43,6 +45,7 @@ use sp_domains::{DomainId, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeI
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -75,6 +78,13 @@ pub type OpaqueBundleOf<T> = sp_domains::v2::OpaqueBundle<
     BalanceOf<T>,
 >;
 
+/// Parameters used to verify proof of election.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub(crate) struct ElectionVerificationParams<Balance> {
+    operators: BTreeMap<OperatorId, Balance>,
+    total_domain_stake: Balance,
+}
+
 #[frame_support::pallet]
 mod pallet {
     // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
@@ -93,15 +103,18 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_register_operator,
+        do_deregister_operator, do_nominate_operator, do_register_operator, do_reward_operators,
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals, PendingNominatorUnlock,
+        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
+        Error as StakingEpochError, PendingNominatorUnlock,
     };
     use crate::weights::WeightInfo;
-    use crate::{BalanceOf, FreezeIdentifier, NominatorId, OpaqueBundleOf};
+    use crate::{
+        BalanceOf, ElectionVerificationParams, FreezeIdentifier, NominatorId, OpaqueBundleOf,
+    };
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
@@ -379,7 +392,7 @@ mod pallet {
         DomainId,
         Identity,
         T::DomainNumber,
-        BTreeSet<H256>,
+        BTreeSet<ReceiptHash>,
         ValueQuery,
     >;
 
@@ -427,6 +440,14 @@ mod pallet {
     type PendingGenesisDomain<T: Config> =
         StorageValue<_, GenesisDomain<T::AccountId>, OptionQuery>;
 
+    /// A temporary storage to hold any previous epoch details for a given domain
+    /// if the epoch transitioned in this block so that all the submitted bundles
+    /// within this block are verified.
+    /// The storage is cleared on block finalization.
+    #[pallet::storage]
+    pub(super) type LastEpochStakingDistribution<T: Config> =
+        StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -459,6 +480,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<StakingEpochError> for Error<T> {
+        fn from(err: StakingEpochError) -> Self {
+            Error::StakingEpoch(err)
+        }
+    }
+
     impl<T> From<DomainRegistryError> for Error<T> {
         fn from(err: DomainRegistryError) -> Self {
             Error::DomainRegistry(err)
@@ -479,6 +506,8 @@ mod pallet {
         RuntimeRegistry(RuntimeRegistryError),
         /// Staking related errors.
         Staking(StakingError),
+        /// Staking epoch specific errors.
+        StakingEpoch(StakingEpochError),
         /// Domain registry specific errors
         DomainRegistry(DomainRegistryError),
         /// Block tree specific errors
@@ -612,17 +641,36 @@ mod pallet {
                     return Ok(());
                 }
                 ReceiptType::Rejected(rejected_receipt_type) => {
-                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into())
+                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
                 // Add the exeuctione receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
-                    process_execution_receipt::<T>(
+                    let maybe_pruned_domain_block_info = process_execution_receipt::<T>(
                         domain_id,
                         operator_id,
                         receipt,
                         accepted_receipt_type,
                     )
                     .map_err(Error::<T>::from)?;
+
+                    // if any domain block is pruned, then we have a new head added
+                    // so distribute the operator rewards and, if required, do epoch transition as well.
+                    if let Some(pruned_block_info) = maybe_pruned_domain_block_info {
+                        do_reward_operators::<T>(
+                            domain_id,
+                            pruned_block_info.operator_ids.into_iter(),
+                            pruned_block_info.rewards,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        let consensus_block_number = frame_system::Pallet::<T>::block_number();
+                        do_finalize_domain_current_epoch::<T>(
+                            domain_id,
+                            pruned_block_info.domain_block_number,
+                            consensus_block_number,
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
                 }
             }
 
@@ -929,6 +977,7 @@ mod pallet {
         }
 
         fn on_finalize(_: T::BlockNumber) {
+            let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
         }
     }
@@ -1144,31 +1193,18 @@ impl<T: Config> Pallet<T> {
 
         verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
-        // TODO: The current staking distribution may be unusable when there is an epoch
-        // transition, track the last stake distribution in that case.
         let proof_of_election = &sealed_header.header.proof_of_election;
-
         proof_of_election
             .verify_vrf_signature(&operator.signing_key)
             .map_err(|_| BundleError::BadVrfSignature)?;
-
-        let domain_stake_summary =
-            DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
-
-        if !domain_stake_summary
-            .current_operators
-            .contains_key(&operator_id)
-        {
-            return Err(BundleError::BadOperator);
-        }
 
         let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config
             .bundle_slot_probability;
 
-        let operator_stake = operator.current_total_stake;
-        let total_domain_stake = domain_stake_summary.current_total_stake;
+        let (operator_stake, total_domain_stake) =
+            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
         let threshold = sp_domains::bundle_producer_election::calculate_threshold(
             operator_stake.saturated_into(),
@@ -1181,6 +1217,36 @@ impl<T: Config> Pallet<T> {
         }
 
         Ok(())
+    }
+
+    /// Return operators specific election verification params for Proof of Election verification.
+    /// If there was an epoch transition in this block for this domain,
+    ///     then return the parameters from previous epoch stored in LastEpochStakingDistribution
+    /// Else, return those details from the Domain's stake summary for this epoch.
+    fn fetch_operator_stake_info(
+        domain_id: DomainId,
+        operator_id: &OperatorId,
+    ) -> Result<(BalanceOf<T>, BalanceOf<T>), BundleError> {
+        match LastEpochStakingDistribution::<T>::get(domain_id) {
+            None => {
+                let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id)
+                    .ok_or(BundleError::InvalidDomainId)?;
+
+                let operator_stake = domain_stake_summary
+                    .current_operators
+                    .get(operator_id)
+                    .ok_or(BundleError::BadOperator)?;
+
+                Ok((*operator_stake, domain_stake_summary.current_total_stake))
+            }
+            Some(pending_election_params) => {
+                let operator_stake = pending_election_params
+                    .operators
+                    .get(operator_id)
+                    .ok_or(BundleError::BadOperator)?;
+                Ok((*operator_stake, pending_election_params.total_domain_stake))
+            }
+        }
     }
 
     /// Called when a bundle is added to update the bundle state for tx range

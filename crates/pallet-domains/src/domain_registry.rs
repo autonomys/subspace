@@ -162,6 +162,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
             current_total_stake: Zero::zero(),
             current_operators: BTreeMap::new(),
             next_operators: BTreeSet::new(),
+            current_epoch_rewards: BTreeMap::new(),
         },
     );
 
