@@ -439,33 +439,34 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     right_bucket: &'a Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<usize>>],
-) -> impl Iterator<Item = (Y, Metadata<TABLE_NUMBER>, [Position; 2])> + 'a {
-    let maybe_matches = find_matches(
+    results_table: &mut Vec<(Y, Metadata<TABLE_NUMBER>, [Position; 2])>,
+) {
+    let Some(matches) = find_matches(
         &left_bucket.ys,
         &right_bucket.ys,
         rmap_scratch,
         left_targets,
-    );
+    ) else {
+        return;
+    };
 
-    maybe_matches.into_iter().flat_map(|matches| {
-        matches.map(|m| {
-            let left_position = left_bucket.start_position + m.left_index;
-            let right_position = right_bucket.start_position + m.right_index;
-            let left_metadata = last_table
-                .metadata(left_position)
-                .expect("Position resulted from matching is correct; qed");
-            let right_metadata = last_table
-                .metadata(right_position)
-                .expect("Position resulted from matching is correct; qed");
+    matches.for_each(|m| {
+        let left_position = left_bucket.start_position + m.left_index;
+        let right_position = right_bucket.start_position + m.right_index;
+        let left_metadata = last_table
+            .metadata(left_position)
+            .expect("Position resulted from matching is correct; qed");
+        let right_metadata = last_table
+            .metadata(right_position)
+            .expect("Position resulted from matching is correct; qed");
 
-            let (y, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                m.left_y,
-                left_metadata,
-                right_metadata,
-            );
-            (y, metadata, [left_position, right_position])
-        })
-    })
+        let (y, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+            m.left_y,
+            left_metadata,
+            right_metadata,
+        );
+        results_table.push((y, metadata, [left_position, right_position]));
+    });
 }
 
 #[derive(Debug)]
@@ -626,14 +627,13 @@ where
                 continue;
             }
 
-            t_n.extend(
-                match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                    last_table,
-                    left_bucket,
-                    right_bucket,
-                    rmap_scratch,
-                    left_targets,
-                ),
+            match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+                last_table,
+                left_bucket,
+                right_bucket,
+                rmap_scratch,
+                left_targets,
+                &mut t_n,
             );
 
             if bucket_index == right_bucket.bucket_index + 1 {
@@ -657,14 +657,13 @@ where
             }
         }
         // Iteration stopped, but we did not process contents of the last pair of buckets yet
-        t_n.extend(
-            match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                last_table,
-                left_bucket,
-                right_bucket,
-                rmap_scratch,
-                left_targets,
-            ),
+        match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+            last_table,
+            left_bucket,
+            right_bucket,
+            rmap_scratch,
+            left_targets,
+            &mut t_n,
         );
 
         t_n.sort_unstable();
@@ -754,14 +753,16 @@ where
         let num_values = 1 << K;
         let mut t_n = Vec::with_capacity(num_values);
         t_n.par_extend(buckets.par_windows(2).flat_map_iter(|buckets| {
+            let mut results = Vec::new();
             match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
                 last_table,
                 &buckets[0],
                 &buckets[1],
                 &mut Vec::new(),
                 left_targets,
-            )
-            .collect::<Vec<_>>()
+                &mut results,
+            );
+            results
         }));
 
         // Drop in thread pool to return faster from here
