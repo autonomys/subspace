@@ -68,7 +68,9 @@ impl Y {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into, Add)]
+#[derive(
+    Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into, Add, AddAssign,
+)]
 #[repr(transparent)]
 pub(crate) struct Position(u32);
 
@@ -94,6 +96,7 @@ impl From<Position> for usize {
 
 impl Position {
     pub(crate) const ZERO: Self = Self(0);
+    pub(crate) const ONE: Self = Self(1);
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]

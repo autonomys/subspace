@@ -170,7 +170,7 @@ impl Default for Bucket {
 
 #[derive(Debug, Default, Copy, Clone)]
 pub(super) struct RmapItem {
-    count: usize,
+    count: Position,
     start_index: Position,
 }
 
@@ -292,10 +292,10 @@ fn find_matches<'a>(
         // Same `y` and as the result `r` can appear in the table multiple times, in which case
         // they'll all occupy consecutive slots in `right_bucket` and all we need to store is just
         // the first position and number of elements.
-        if rmap[r].count == 0 {
+        if rmap[r].count == Position::ZERO {
             rmap[r].start_index = right_index;
         }
-        rmap[r].count += 1;
+        rmap[r].count += Position::ONE;
     }
     let rmap = rmap.as_slice();
 
@@ -317,13 +317,13 @@ fn find_matches<'a>(
                     let r_target = left_targets[m];
                     let rmap_item = rmap[r_target];
 
-                    (rmap_item.start_index..)
-                        .take(rmap_item.count)
-                        .map(move |right_index| Match {
+                    (rmap_item.start_index..rmap_item.start_index + rmap_item.count).map(
+                        move |right_index| Match {
                             left_index,
                             left_y: y,
                             right_index,
-                        })
+                        },
+                    )
                 })
             }),
     )
