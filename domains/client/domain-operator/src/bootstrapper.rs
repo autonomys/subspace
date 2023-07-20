@@ -44,7 +44,7 @@ where
         }
     }
 
-    pub async fn run(
+    pub async fn fetch_domain_bootstrap_info(
         self,
         self_domain_id: DomainId,
     ) -> std::result::Result<BootstrapResult<CBlock>, Box<dyn std::error::Error>> {
@@ -65,7 +65,7 @@ where
         }
 
         // Check each imported consensus block to get the domain instance data
-        let domain_instance_data = 'outter: loop {
+        let domain_instance_data = 'outer: loop {
             if let Some(block_imported) = imported_block_notification_stream.next().await {
                 let header = block_imported.header;
                 for item in header.digest().logs.iter() {
@@ -77,7 +77,7 @@ where
                                 .domain_instance_data(header.hash(), domain_id)?;
 
                             match res {
-                                Some(data) => break 'outter data,
+                                Some(data) => break 'outer data,
                                 None => {
                                     return Err(format!(
                                     "Failed to get domain instance data for domain {domain_id:?}"

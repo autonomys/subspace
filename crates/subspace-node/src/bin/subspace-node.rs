@@ -541,15 +541,17 @@ fn main() -> Result<(), Error> {
                             "domain",
                             None,
                             Box::pin(async move {
-                                let bootstrap_result = match bootstrapper.run(domain_id).await {
-                                    Err(err) => {
-                                        log::error!(
-                                            "Domain bootsrapper exited with an error {err:?}"
-                                        );
-                                        return;
-                                    }
-                                    Ok(res) => res,
-                                };
+                                let bootstrap_result =
+                                    match bootstrapper.fetch_domain_bootstrap_info(domain_id).await
+                                    {
+                                        Err(err) => {
+                                            log::error!(
+                                                "Domain bootsrapper exited with an error {err:?}"
+                                            );
+                                            return;
+                                        }
+                                        Ok(res) => res,
+                                    };
                                 if let Err(error) = domain_starter.start(bootstrap_result).await {
                                     log::error!("Domain starter exited with an error {error:?}");
                                 }

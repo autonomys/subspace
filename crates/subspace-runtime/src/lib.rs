@@ -867,6 +867,9 @@ impl_runtime_apis! {
             Domains::domain_tx_range(domain_id)
         }
 
+        fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
+            Domains::genesis_state_root(domain_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

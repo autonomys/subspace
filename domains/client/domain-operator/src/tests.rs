@@ -19,12 +19,11 @@ use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
 use sp_domains::transaction::InvalidTransactionCode;
-use sp_domains::{Bundle, DomainId, DomainsApi, GenerateGenesisStateRoot, RuntimeType};
+use sp_domains::{Bundle, DomainId, DomainsApi, RuntimeType};
 use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
-use subspace_node::domain::DomainGenesisBlockBuilder;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
@@ -58,22 +57,22 @@ async fn test_domain_instance_bootstrapper() {
     let domain_id = DomainId::new(0u32);
     let bootstrapper = Bootstrapper::<Block, _, _>::new(ferdie.client.clone());
 
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
     let domain_instance_data = bootstrapper
-        .run(domain_id)
+        .fetch_domain_bootstrap_info(domain_id)
         .await
         .unwrap()
         .domain_instance_data;
     assert_eq!(domain_instance_data.runtime_type, RuntimeType::Evm);
 
-    // TODO: get the genesis state root from runtime after https://github.com/subspace/subspace/pull/1650
-    // is landed
-    let expected_genesis_state_root = {
-        let builder =
-            DomainGenesisBlockBuilder::new(ferdie.backend.clone(), ferdie.executor.clone());
-        builder
-            .generate_genesis_state_root(domain_id, domain_instance_data.clone())
-            .unwrap()
-    };
+    let expected_genesis_state_root = ferdie
+        .client
+        .runtime_api()
+        .genesis_state_root(ferdie.client.info().best_hash, domain_id)
+        .unwrap()
+        .unwrap();
 
     let chain_spec = {
         let genesis_config =

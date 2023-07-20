@@ -20,10 +20,10 @@ use crate::chain_spec_utils::chain_spec_properties;
 use crate::domain::AccountId32ToAccountId20Converter;
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
-    Precompiles, SudoConfig, SystemConfig, WASM_BINARY,
+    Precompiles, SelfDomainIdConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
-use parking_lot::Mutex;
+use once_cell::sync::OnceCell;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::{sr25519, Pair, Public};
@@ -226,24 +226,25 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
 }
 
 // HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `GenesisConfig`
-// dosen't drive `Clone`, using global variable and serialization/deserialization to workaround
+// dosen't derive `Clone`, using global variable and serialization/deserialization to workaround
 // these limits.
-lazy_static::lazy_static! {
-    pub static ref GENESIS_CONFIG: Mutex<Option<Vec<u8>>> = Mutex::new(None);
-}
+static GENESIS_CONFIG: OnceCell<Vec<u8>> = OnceCell::new();
 
 // Load chain spec that contains the given `GenesisConfig`
 fn load_chain_spec_with(
     spec_id: &str,
     genesis_config: GenesisConfig,
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
-    GENESIS_CONFIG.lock().replace(
-        serde_json::to_vec(&genesis_config).expect("Gnesis config serialization never fails; qed"),
-    );
+    GENESIS_CONFIG
+        .set(
+            serde_json::to_vec(&genesis_config)
+                .expect("Genesis config serialization never fails; qed"),
+        )
+        .expect("This function should only call once upon node initialization");
     let constructor = || {
-        let raw_genesis_config = GENESIS_CONFIG.lock();
-        serde_json::from_slice(raw_genesis_config.as_ref().expect("Value just set; qed"))
-            .expect("Gnesis config deserialization never fails; qed")
+        let raw_genesis_config = GENESIS_CONFIG.get().expect("Value just set; qed");
+        serde_json::from_slice(raw_genesis_config)
+            .expect("Genesis config deserialization never fails; qed")
     };
 
     let chain_spec = match spec_id {
@@ -334,6 +335,9 @@ fn testnet_genesis(
         },
         ethereum: Default::default(),
         base_fee: Default::default(),
-        self_domain_id: Default::default(),
+        self_domain_id: SelfDomainIdConfig {
+            // Id of the genesis domain
+            domain_id: Some(DomainId::new(0)),
+        },
     }
 }

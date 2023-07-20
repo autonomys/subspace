@@ -1102,6 +1102,13 @@ impl<T: Config> Pallet<T> {
         })
     }
 
+    pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
+        BlockTree::<T>::get(domain_id, T::DomainNumber::zero())
+            .first()
+            .and_then(DomainBlocks::<T>::get)
+            .map(|block| block.execution_receipt.final_state_root.into())
+    }
+
     /// Returns the tx range for the domain.
     pub fn domain_tx_range(domain_id: DomainId) -> U256 {
         DomainTxRangeState::<T>::try_get(domain_id)

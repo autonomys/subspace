@@ -607,6 +607,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the current Tx range for the given domain Id.
         fn domain_tx_range(domain_id: DomainId) -> U256;
+
+        /// Return the genesis state root if not pruned
+        fn genesis_state_root(domain_id: DomainId) -> Option<H256>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

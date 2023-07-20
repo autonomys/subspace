@@ -22,7 +22,9 @@ sp-domains = { version = "0.1.0", default-features = false, path = "../../../cra
 [features]
 default = ["std"]
 std = [
+  "codec/std",
   "frame-support/std",
   "frame-system/std",
+  "scale-info/std",
   "sp-domains/std",
 ]

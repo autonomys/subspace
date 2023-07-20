@@ -28,7 +28,7 @@ mod pallet {
     pub trait Config: frame_system::Config {}
 
     #[pallet::storage]
-    pub(super) type SelfDomainId<T> = StorageValue<_, DomainId, OptionQuery>;
+    pub(super) type SelfDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
 
     /// Pallet domain-id to store self domain id.
     #[pallet::pallet]
@@ -44,7 +44,10 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig {
         fn build(&self) {
-            SelfDomainId::<T>::set(self.domain_id);
+            SelfDomainId::<T>::set(
+                self.domain_id
+                    .expect("Genesis config of pallet-domain-id must be set"),
+            );
         }
     }
 }
