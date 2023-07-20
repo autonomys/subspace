@@ -7,8 +7,10 @@ mod tables;
 mod tests;
 mod utils;
 
+use crate::chiapos::table::metadata_size_bytes;
 pub use crate::chiapos::table::TablesCache;
 use crate::chiapos::tables::TablesGeneric;
+use crate::chiapos::utils::EvaluatableUsize;
 
 type Seed = [u8; 32];
 type Challenge = [u8; 32];
@@ -16,7 +18,15 @@ type Quality = [u8; 32];
 
 /// Collection of Chia tables
 #[derive(Debug)]
-pub struct Tables<const K: u8>(TablesGeneric<K>);
+pub struct Tables<const K: u8>(TablesGeneric<K>)
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized;
 
 macro_rules! impl_any {
     ($($k: expr$(,)? )*) => {

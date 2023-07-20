@@ -25,8 +25,13 @@ pub(super) const fn y_size_bits(k: u8) -> usize {
     k as usize + PARAM_EXT as usize
 }
 
+/// Metadata size in bytes
+pub const fn metadata_size_bytes(k: u8, table_number: u8) -> usize {
+    metadata_size_bits(k, table_number).div_ceil(u8::BITS as usize)
+}
+
 /// Metadata size in bits
-pub const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
+pub(super) const fn metadata_size_bits(k: u8, table_number: u8) -> usize {
     k as usize
         * match table_number {
             1 => 1,
@@ -350,9 +355,13 @@ pub(super) fn num_matches(left_y: Y, right_y: Y) -> usize {
 
 pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
     y: Y,
-    left_metadata: Metadata<PARENT_TABLE_NUMBER>,
-    right_metadata: Metadata<PARENT_TABLE_NUMBER>,
-) -> (Y, Metadata<TABLE_NUMBER>) {
+    left_metadata: Metadata<K, PARENT_TABLE_NUMBER>,
+    right_metadata: Metadata<K, PARENT_TABLE_NUMBER>,
+) -> (Y, Metadata<K, TABLE_NUMBER>)
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
     // Remove these 2 conversions
     let left_metadata = u128::from(left_metadata);
     let right_metadata = u128::from(right_metadata);
@@ -438,7 +447,11 @@ pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE
 fn match_to_result<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
     last_table: &Table<K, PARENT_TABLE_NUMBER>,
     m: Match,
-) -> (Y, Metadata<TABLE_NUMBER>, [Position; 2]) {
+) -> (Y, Metadata<K, TABLE_NUMBER>, [Position; 2])
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
     let left_metadata = last_table
         .metadata(m.left_position)
         .expect("Position resulted from matching is correct; qed");
@@ -458,8 +471,11 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     right_bucket: &'a Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<Position>>],
-    results_table: &mut Vec<(Y, Metadata<TABLE_NUMBER>, [Position; 2])>,
-) {
+    results_table: &mut Vec<(Y, Metadata<K, TABLE_NUMBER>, [Position; 2])>,
+) where
+    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
     let Some(matches) = find_matches(
         left_bucket,
         right_bucket,
@@ -475,7 +491,10 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
 }
 
 #[derive(Debug)]
-pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
+pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8>
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
     /// First table with contents of entries split into separate vectors for more efficient access
     First {
         /// Derived values computed from `x`
@@ -490,11 +509,14 @@ pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
         /// Left and right entry positions in a previous table encoded into bits
         positions: Vec<[Position; 2]>,
         /// Metadata corresponding to each entry
-        metadatas: Vec<Metadata<TABLE_NUMBER>>,
+        metadatas: Vec<Metadata<K, TABLE_NUMBER>>,
     },
 }
 
-impl<const K: u8> Table<K, 1> {
+impl<const K: u8> Table<K, 1>
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
+{
     /// Create the table
     pub(super) fn create(seed: Seed) -> Self
     where
@@ -581,28 +603,50 @@ mod private {
     pub(in super::super) trait SupportedOtherTables {}
 }
 
-impl<const K: u8> private::SupportedOtherTables for Table<K, 2> {}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 2> where
+    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized
+{
+}
 
-impl<const K: u8> private::SupportedOtherTables for Table<K, 3> {}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 3> where
+    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized
+{
+}
 
-impl<const K: u8> private::SupportedOtherTables for Table<K, 4> {}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 4> where
+    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized
+{
+}
 
-impl<const K: u8> private::SupportedOtherTables for Table<K, 5> {}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 5> where
+    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized
+{
+}
 
-impl<const K: u8> private::SupportedOtherTables for Table<K, 6> {}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 6> where
+    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized
+{
+}
 
-impl<const K: u8> private::SupportedOtherTables for Table<K, 7> {}
+impl<const K: u8> private::SupportedOtherTables for Table<K, 7> where
+    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized
+{
+}
 
 impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
 where
     Self: private::SupportedOtherTables,
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
     /// Creates new [`TABLE_NUMBER`] table. There also exists [`Self::create_parallel()`] that
     /// trades CPU efficiency and memory usage for lower latency.
     pub(super) fn create<const PARENT_TABLE_NUMBER: u8>(
         last_table: &Table<K, PARENT_TABLE_NUMBER>,
         cache: &mut TablesCache<K>,
-    ) -> Self {
+    ) -> Self
+    where
+        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    {
         let left_bucket = &mut cache.left_bucket;
         let right_bucket = &mut cache.right_bucket;
         let rmap_scratch = &mut cache.rmap_scratch;
@@ -700,7 +744,10 @@ where
     pub(super) fn create_parallel<const PARENT_TABLE_NUMBER: u8>(
         last_table: &Table<K, PARENT_TABLE_NUMBER>,
         cache: &mut TablesCache<K>,
-    ) -> Self {
+    ) -> Self
+    where
+        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    {
         let left_bucket = &mut cache.left_bucket;
         let right_bucket = &mut cache.right_bucket;
         let left_targets = &cache.left_targets;
@@ -798,7 +845,10 @@ where
     }
 }
 
-impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER> {
+impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER>
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
     /// All `y`s as [`BitSlice`], for individual `x`s needs to be slices into [`K`] bits slices
     pub(super) fn ys(&self) -> &[Y] {
         let (Table::First { ys, .. } | Table::Other { ys, .. }) = self;
@@ -815,7 +865,7 @@ impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER> {
     }
 
     /// Returns `None` on invalid position or for table number 7
-    pub(super) fn metadata(&self, position: Position) -> Option<Metadata<TABLE_NUMBER>> {
+    pub(super) fn metadata(&self, position: Position) -> Option<Metadata<K, TABLE_NUMBER>> {
         match self {
             Table::First { xs, .. } => xs.get(usize::from(position)).map(|&x| Metadata::from(x)),
             Table::Other { metadatas, .. } => metadatas.get(usize::from(position)).copied(),

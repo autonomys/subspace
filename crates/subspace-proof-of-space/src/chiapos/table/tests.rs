@@ -4,9 +4,10 @@
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
-    calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches, partial_y,
-    Bucket, COMPUTE_F1_SIMD_FACTOR,
+    calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches,
+    metadata_size_bytes, partial_y, Bucket, COMPUTE_F1_SIMD_FACTOR,
 };
+use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::Seed;
 use bitvec::prelude::*;
 use std::collections::BTreeMap;
@@ -185,7 +186,10 @@ fn verify_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>
     y: u32,
     y_output_expected: u32,
     metadata_expected: u128,
-) {
+) where
+    EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
     let (y_output, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
         Y::from(y),
         Metadata::from(left_metadata),

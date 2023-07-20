@@ -4,7 +4,8 @@ mod tests;
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 pub use crate::chiapos::table::TablesCache;
 use crate::chiapos::table::{
-    compute_f1, compute_fn, num_matches, partial_y, Table, COMPUTE_F1_SIMD_FACTOR,
+    compute_f1, compute_fn, metadata_size_bytes, num_matches, partial_y, Table,
+    COMPUTE_F1_SIMD_FACTOR,
 };
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::{Challenge, Quality, Seed};
@@ -26,7 +27,16 @@ const fn pick_position(
 
 /// Collection of Chia tables
 #[derive(Debug)]
-pub(super) struct TablesGeneric<const K: u8> {
+pub(super) struct TablesGeneric<const K: u8>
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
+{
     table_1: Table<K, 1>,
     table_2: Table<K, 2>,
     table_3: Table<K, 3>,
@@ -38,6 +48,13 @@ pub(super) struct TablesGeneric<const K: u8> {
 
 impl<const K: u8> TablesGeneric<K>
 where
+    EvaluatableUsize<{ metadata_size_bytes(K, 1) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 2) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 3) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 4) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 5) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 6) }>: Sized,
+    EvaluatableUsize<{ metadata_size_bytes(K, 7) }>: Sized,
     EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
     EvaluatableUsize<{ 64 * K as usize / 8 }>: Sized,
 {
@@ -342,8 +359,12 @@ where
     }
 
     fn collect_ys_and_metadata<const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
-        ys_and_metadata: &[(Y, Metadata<PARENT_TABLE_NUMBER>)],
-    ) -> Option<Vec<(Y, Metadata<TABLE_NUMBER>)>> {
+        ys_and_metadata: &[(Y, Metadata<K, PARENT_TABLE_NUMBER>)],
+    ) -> Option<Vec<(Y, Metadata<K, TABLE_NUMBER>)>>
+    where
+        EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+        EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
+    {
         ys_and_metadata
             .array_chunks::<2>()
             .map(|&[(left_y, left_metadata), (right_y, right_metadata)]| {
