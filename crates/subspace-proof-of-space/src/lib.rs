@@ -10,6 +10,7 @@
     generic_const_exprs,
     int_roundings,
     iter_collect_into,
+    portable_simd,
     step_trait
 )]
 

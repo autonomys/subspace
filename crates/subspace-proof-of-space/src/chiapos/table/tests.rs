@@ -4,9 +4,11 @@
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 use crate::chiapos::table::types::{Metadata, X, Y};
 use crate::chiapos::table::{
-    calculate_left_targets, compute_f1, compute_fn, find_matches, partial_y,
+    calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches, partial_y,
+    COMPUTE_F1_SIMD_FACTOR,
 };
 use crate::chiapos::Seed;
+use bitvec::prelude::*;
 use std::collections::BTreeMap;
 
 /// Chia does this for some reason 🤷‍
@@ -32,6 +34,13 @@ fn test_compute_f1_k25() {
         let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
         let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
         assert_eq!(y, Y::from(expected_y));
+
+        // Make sure SIMD matches non-SIMD version
+        let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
+        partial_ys.view_bits_mut::<Msb0>()[..usize::from(K)]
+            .copy_from_bitslice(&partial_y.view_bits()[partial_y_offset..][..usize::from(K)]);
+        let y = compute_f1_simd::<K>([x; COMPUTE_F1_SIMD_FACTOR], &partial_ys);
+        assert_eq!(y[0], Y::from(expected_y));
     }
 }
 
@@ -56,6 +65,13 @@ fn test_compute_f1_k22() {
         let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
         let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
         assert_eq!(y, Y::from(expected_y));
+
+        // Make sure SIMD matches non-SIMD version
+        let mut partial_ys = [0; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize];
+        partial_ys.view_bits_mut::<Msb0>()[..usize::from(K)]
+            .copy_from_bitslice(&partial_y.view_bits()[partial_y_offset..][..usize::from(K)]);
+        let y = compute_f1_simd::<K>([x; COMPUTE_F1_SIMD_FACTOR], &partial_ys);
+        assert_eq!(y[0], Y::from(expected_y));
     }
 }
 

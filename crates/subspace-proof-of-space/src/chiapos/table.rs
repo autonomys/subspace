@@ -6,14 +6,19 @@ extern crate alloc;
 
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT, PARAM_M};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
+use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::Seed;
 use alloc::vec;
 use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
 use core::mem;
+use core::simd::Simd;
 #[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
+use seq_macro::seq;
+
+pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 
 /// Compute the size of `y` in bits
 pub(super) const fn y_size_bits(k: u8) -> usize {
@@ -186,14 +191,76 @@ pub(super) fn compute_f1<const K: u8>(x: X, partial_y: &[u8], partial_y_offset: 
         & (u32::MAX >> (u32::BITS as usize - usize::from(K + PARAM_EXT)));
 
     // Extract `PARAM_EXT` most significant bits from `x` and store in the final offset of
-    // eventual `y` with the rest of bits set to `0` with the rest of bits being in undefined state.
-    let pre_ext = u32::from(x) >> (usize::from(K) - usize::from(PARAM_EXT));
+    // eventual `y` with the rest of bits being in undefined state.
+    let pre_ext = u32::from(x) >> (usize::from(K - PARAM_EXT));
     // Mask for clearing the rest of bits of `pre_ext`.
     let pre_ext_mask = u32::MAX >> (u32::BITS as usize - usize::from(PARAM_EXT));
 
     // Combine all of the bits together:
     // [padding zero bits][`K` bits rom `partial_y`][`PARAM_EXT` bits from `x`]
     Y::from((pre_y & pre_y_mask) | (pre_ext & pre_ext_mask))
+}
+
+pub(super) fn compute_f1_simd<const K: u8>(
+    xs: [X; COMPUTE_F1_SIMD_FACTOR],
+    partial_ys: &[u8; K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize],
+) -> [Y; COMPUTE_F1_SIMD_FACTOR] {
+    // Each element contains `K` desired bits of `partial_ys` in the final offset of eventual `ys`
+    // with the rest of bits being in undefined state
+    let pre_ys_bytes = Simd::from(seq!(N in 0..8 {
+        [
+        #(
+        {
+            #[allow(clippy::erasing_op, clippy::identity_op)]
+            let partial_y_offset = N * usize::from(K);
+            let partial_y_length =
+                (partial_y_offset % u8::BITS as usize + usize::from(K)).div_ceil(u8::BITS as usize);
+            let mut pre_y_bytes = 0u64.to_be_bytes();
+            pre_y_bytes[..partial_y_length].copy_from_slice(
+                &partial_ys[partial_y_offset / u8::BITS as usize..][..partial_y_length],
+            );
+
+            u64::from_be_bytes(pre_y_bytes)
+        },
+        )*
+        ]
+    }));
+    let pre_ys_right_offset = Simd::from(seq!(N in 0..8 {
+        [
+        #(
+        {
+            #[allow(clippy::erasing_op, clippy::identity_op)]
+            let partial_y_offset = N * u32::from(K);
+            u64::from(u64::BITS - u32::from(K + PARAM_EXT) - partial_y_offset % u8::BITS)
+        },
+        )*
+        ]
+    }));
+    // TODO: both this and above operations are most likely possible on x86-64 with a special
+    //  intrinsic in a more efficient way
+    let pre_ys = pre_ys_bytes >> pre_ys_right_offset;
+
+    // Mask for clearing the rest of bits of `pre_ys`.
+    let pre_ys_mask = Simd::splat(
+        (u32::MAX << usize::from(PARAM_EXT))
+            & (u32::MAX >> (u32::BITS as usize - usize::from(K + PARAM_EXT))),
+    );
+
+    // SAFETY: `X` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
+    let xs = unsafe { mem::transmute::<_, [u32; COMPUTE_F1_SIMD_FACTOR]>(xs) };
+    // Extract `PARAM_EXT` most significant bits from `xs` and store in the final offset of
+    // eventual `ys` with the rest of bits being in undefined state.
+    let pre_exts = Simd::from(xs) >> Simd::splat(u32::from(K - PARAM_EXT));
+
+    // Mask for clearing the rest of bits of `pre_exts`.
+    let pre_exts_mask = Simd::splat(u32::MAX >> (u32::BITS as usize - usize::from(PARAM_EXT)));
+
+    // Combine all of the bits together:
+    // [padding zero bits][`K` bits rom `partial_y`][`PARAM_EXT` bits from `x`]
+    let ys = (pre_ys.cast() & pre_ys_mask) | (pre_exts & pre_exts_mask);
+
+    // SAFETY: `Y` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
+    unsafe { mem::transmute(ys.to_array()) }
 }
 
 /// `rmap_scratch` is just an optimization to reuse allocations between calls.
@@ -423,17 +490,32 @@ pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
 
 impl<const K: u8> Table<K, 1> {
     /// Create the table
-    pub(super) fn create(seed: Seed) -> Self {
+    pub(super) fn create(seed: Seed) -> Self
+    where
+        EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
+    {
         let partial_ys = partial_ys::<K>(seed);
 
-        let mut t_1 = X::all::<K>()
-            .map(|x| {
-                let partial_y_offset = usize::from(x) * usize::from(K);
-                let y = compute_f1::<K>(x, &partial_ys, partial_y_offset);
+        let mut t_1 = Vec::with_capacity(1_usize << K);
+        for (x_start, partial_ys) in X::all::<K>().step_by(COMPUTE_F1_SIMD_FACTOR).zip(
+            partial_ys
+                .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
+                .copied(),
+        ) {
+            let xs = seq!(N in 0..8 {
+                [
+                #(
+                #[allow(clippy::erasing_op, clippy::identity_op)]
+                {
+                    x_start + X::from(N)
+                },
+                )*
+                ]
+            });
 
-                (y, x)
-            })
-            .collect::<Vec<_>>();
+            let ys = compute_f1_simd::<K>(xs, &partial_ys);
+            t_1.extend(ys.into_iter().zip(xs));
+        }
 
         t_1.sort_unstable();
 
@@ -444,17 +526,32 @@ impl<const K: u8> Table<K, 1> {
 
     /// Create the table, leverages available parallelism
     #[cfg(any(feature = "parallel", test))]
-    pub(super) fn create_parallel(seed: Seed) -> Self {
+    pub(super) fn create_parallel(seed: Seed) -> Self
+    where
+        EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
+    {
         let partial_ys = partial_ys::<K>(seed);
 
-        let mut t_1 = X::all::<K>()
-            .map(|x| {
-                let partial_y_offset = usize::from(x) * usize::from(K);
-                let y = compute_f1::<K>(x, &partial_ys, partial_y_offset);
+        let mut t_1 = Vec::with_capacity(1_usize << K);
+        for (x_start, partial_ys) in X::all::<K>().step_by(COMPUTE_F1_SIMD_FACTOR).zip(
+            partial_ys
+                .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
+                .copied(),
+        ) {
+            let xs = seq!(N in 0..8 {
+                [
+                #(
+                #[allow(clippy::erasing_op, clippy::identity_op)]
+                {
+                    x_start + X::from(N)
+                },
+                )*
+                ]
+            });
 
-                (y, x)
-            })
-            .collect::<Vec<_>>();
+            let ys = compute_f1_simd::<K>(xs, &partial_ys);
+            t_1.extend(ys.into_iter().zip(xs));
+        }
 
         t_1.par_sort_unstable();
 

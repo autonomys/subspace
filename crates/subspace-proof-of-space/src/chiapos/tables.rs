@@ -3,7 +3,9 @@ mod tests;
 
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 pub use crate::chiapos::table::TablesCache;
-use crate::chiapos::table::{compute_f1, compute_fn, num_matches, partial_y, Table};
+use crate::chiapos::table::{
+    compute_f1, compute_fn, num_matches, partial_y, Table, COMPUTE_F1_SIMD_FACTOR,
+};
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::{Challenge, Quality, Seed};
 use core::mem;
@@ -36,6 +38,7 @@ pub(super) struct TablesGeneric<const K: u8> {
 
 impl<const K: u8> TablesGeneric<K>
 where
+    EvaluatableUsize<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>: Sized,
     EvaluatableUsize<{ 64 * K as usize / 8 }>: Sized,
 {
     /// Create Chia proof of space tables. There also exists [`Self::create_parallel()`] that trades

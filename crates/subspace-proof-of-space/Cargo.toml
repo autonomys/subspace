@@ -20,10 +20,12 @@ blake3 = { version = "1.4.0", default-features = false, optional = true }
 chacha20 = { version = "0.9.1", default-features = false, optional = true }
 derive_more = { version = "0.99.17", optional = true }
 rayon = { version = "1.7.0", optional = true }
+seq-macro = { version = "0.3.5", optional = true }
 sha2 = { version = "0.10.7", optional = true }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
+bitvec = "1.0.1"
 criterion = "0.5.1"
 rand = "0.8.5"
 subspace-chiapos = { git = "https://github.com/subspace/chiapos", rev = "3b1ab3ca24764d25da30e0c8243e0bf304b776a5" }
@@ -47,6 +49,7 @@ chia = [
     "blake3",
     "chacha20",
     "derive_more",
+    "seq-macro",
     "sha2",
 ]
 # Enables shim proof of space that works much faster than Chia and can be used for testing purposes to reduce memory
