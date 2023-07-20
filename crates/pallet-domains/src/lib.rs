@@ -445,7 +445,7 @@ mod pallet {
     /// within this block are verified.
     /// The storage is cleared on block finalization.
     #[pallet::storage]
-    pub(super) type OngoingEpochTransition<T: Config> =
+    pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -977,7 +977,7 @@ mod pallet {
         }
 
         fn on_finalize(_: T::BlockNumber) {
-            let _ = OngoingEpochTransition::<T>::clear(u32::MAX, None);
+            let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
         }
     }
@@ -1203,45 +1203,49 @@ impl<T: Config> Pallet<T> {
             .domain_config
             .bundle_slot_probability;
 
-        let ElectionVerificationParams {
-            operators,
-            total_domain_stake,
-        } = Self::fetch_election_params(domain_id)?;
+        let (operator_stake, total_domain_stake) =
+            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
-        if let Some(operator_stake) = operators.get(&operator_id) {
-            let threshold = sp_domains::bundle_producer_election::calculate_threshold(
-                (*operator_stake).saturated_into(),
-                total_domain_stake.saturated_into(),
-                bundle_slot_probability,
-            );
+        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
+            operator_stake.saturated_into(),
+            total_domain_stake.saturated_into(),
+            bundle_slot_probability,
+        );
 
-            if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
-                return Err(BundleError::ThresholdUnsatisfied);
-            }
-        } else {
-            return Err(BundleError::BadOperator);
+        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+            return Err(BundleError::ThresholdUnsatisfied);
         }
 
         Ok(())
     }
 
-    /// Return election verification params for Proof verification.
+    /// Return operators specific election verification params for Proof of Election verification.
     /// If there was an epoch transition in this block for this domain,
-    ///     then return the parameters from previous epoch stored in OnGoingEpochTransition
+    ///     then return the parameters from previous epoch stored in LastEpochStakingDistribution
     /// Else, return those details from the Domain's stake summary for this epoch.
-    fn fetch_election_params(
+    fn fetch_operator_stake_info(
         domain_id: DomainId,
-    ) -> Result<ElectionVerificationParams<BalanceOf<T>>, BundleError> {
-        match OngoingEpochTransition::<T>::get(domain_id) {
+        operator_id: &OperatorId,
+    ) -> Result<(BalanceOf<T>, BalanceOf<T>), BundleError> {
+        match LastEpochStakingDistribution::<T>::get(domain_id) {
             None => {
                 let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id)
                     .ok_or(BundleError::InvalidDomainId)?;
-                Ok(ElectionVerificationParams {
-                    operators: domain_stake_summary.current_operators.clone(),
-                    total_domain_stake: domain_stake_summary.current_total_stake,
-                })
+
+                let operator_stake = domain_stake_summary
+                    .current_operators
+                    .get(operator_id)
+                    .ok_or(BundleError::BadOperator)?;
+
+                Ok((*operator_stake, domain_stake_summary.current_total_stake))
             }
-            Some(pending_election_params) => Ok(pending_election_params),
+            Some(pending_election_params) => {
+                let operator_stake = pending_election_params
+                    .operators
+                    .get(operator_id)
+                    .ok_or(BundleError::BadOperator)?;
+                Ok((*operator_stake, pending_election_params.total_domain_stake))
+            }
         }
     }
 

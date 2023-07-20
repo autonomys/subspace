@@ -1,7 +1,7 @@
 //! Staking epoch transition for domain
 
 use crate::pallet::{
-    DomainStakingSummary, Nominators, OngoingEpochTransition, OperatorIdOwner, Operators,
+    DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
     PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
     PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
 };
@@ -329,7 +329,7 @@ fn do_finalize_domain_pending_transfers<T: Config>(
             total_domain_stake: stake_summary.current_total_stake,
         };
 
-        OngoingEpochTransition::<T>::insert(domain_id, election_verification_params);
+        LastEpochStakingDistribution::<T>::insert(domain_id, election_verification_params);
 
         stake_summary.current_epoch_index = next_epoch;
         stake_summary.current_total_stake = total_domain_stake;
@@ -550,7 +550,7 @@ fn finalize_nominator_deposit<T: Config>(
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
-        DomainStakingSummary, Nominators, OngoingEpochTransition, OperatorIdOwner, Operators,
+        DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
         PendingDeposits, PendingOperatorDeregistrations, PendingOperatorSwitches,
         PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
     };
@@ -926,7 +926,7 @@ mod tests {
             assert_eq!(domain_stake_summary.current_epoch_index, 1);
 
             // should also store the previous epoch details in-block
-            let election_params = OngoingEpochTransition::<Test>::get(domain_id).unwrap();
+            let election_params = LastEpochStakingDistribution::<Test>::get(domain_id).unwrap();
             assert_eq!(
                 election_params.operators,
                 BTreeMap::from_iter(vec![(operator_id, operator_stake)])
