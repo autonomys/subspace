@@ -2,10 +2,10 @@
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
-use crate::chiapos::table::types::{Metadata, X, Y};
+use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
     calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches, partial_y,
-    COMPUTE_F1_SIMD_FACTOR,
+    Bucket, COMPUTE_F1_SIMD_FACTOR,
 };
 use crate::chiapos::Seed;
 use bitvec::prelude::*;
@@ -111,7 +111,7 @@ fn test_matches() {
         204, 10, 9, 10, 11, 129, 139, 171, 15, 18,
     ]);
 
-    let mut buckets = BTreeMap::<usize, Vec<_>>::new();
+    let mut bucket_ys = BTreeMap::<usize, Vec<_>>::new();
     let mut x = X::from(0);
     for _ in 0..=1 << (K - 4) {
         for _ in 0..16 {
@@ -119,7 +119,7 @@ fn test_matches() {
             let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
             let bucket_index = usize::from(y) / usize::from(PARAM_BC);
 
-            buckets.entry(bucket_index).or_default().push(y);
+            bucket_ys.entry(bucket_index).or_default().push(y);
 
             if x + X::from(1) > X::from((1 << K) - 1) {
                 break;
@@ -135,13 +135,24 @@ fn test_matches() {
 
     let left_targets = calculate_left_targets();
     let mut rmap_scratch = Vec::new();
-    let buckets = buckets.into_values().collect::<Vec<_>>();
+    let bucket_ys = bucket_ys.into_values().collect::<Vec<_>>();
     let mut total_matches = 0_usize;
-    for [mut left_bucket, mut right_bucket] in buckets.array_windows::<2>().cloned() {
-        left_bucket.sort_unstable();
-        left_bucket.reverse();
-        right_bucket.sort_unstable();
-        right_bucket.reverse();
+    for [mut left_bucket_ys, mut right_bucket_ys] in bucket_ys.array_windows::<2>().cloned() {
+        left_bucket_ys.sort_unstable();
+        left_bucket_ys.reverse();
+        right_bucket_ys.sort_unstable();
+        right_bucket_ys.reverse();
+
+        let left_bucket = Bucket {
+            bucket_index: 0,
+            ys: left_bucket_ys,
+            start_position: Position::ZERO,
+        };
+        let right_bucket = Bucket {
+            bucket_index: 0,
+            ys: right_bucket_ys,
+            start_position: Position::ZERO,
+        };
 
         let matches = find_matches(
             &left_bucket,
@@ -150,8 +161,8 @@ fn test_matches() {
             &left_targets,
         );
         for m in matches.unwrap() {
-            let yl = usize::from(*left_bucket.get(usize::from(m.left_index)).unwrap());
-            let yr = usize::from(*right_bucket.get(usize::from(m.right_index)).unwrap());
+            let yl = usize::from(*left_bucket.ys.get(usize::from(m.left_position)).unwrap());
+            let yr = usize::from(*right_bucket.ys.get(usize::from(m.right_position)).unwrap());
 
             assert!(check_match(yl, yr));
             total_matches += 1;

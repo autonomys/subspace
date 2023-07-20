@@ -142,9 +142,9 @@ impl<const K: u8> Default for TablesCache<K> {
 
 #[derive(Debug)]
 pub(super) struct Match {
-    left_index: Position,
+    left_position: Position,
     left_y: Y,
-    right_index: Position,
+    right_position: Position,
 }
 
 #[derive(Debug, Clone)]
@@ -270,8 +270,8 @@ pub(super) fn compute_f1_simd<const K: u8>(
 ///
 /// Returns `None` if either of buckets is empty.
 fn find_matches<'a>(
-    left_bucket_ys: &'a [Y],
-    right_bucket_ys: &'a [Y],
+    left_bucket: &'a Bucket,
+    right_bucket: &'a Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<Position>>],
 ) -> Option<impl Iterator<Item = Match> + 'a> {
@@ -281,13 +281,13 @@ fn find_matches<'a>(
     let rmap = rmap_scratch;
 
     // Both left and right buckets can be empty
-    let first_left_bucket_y = *left_bucket_ys.first()?;
-    let first_right_bucket_y = *right_bucket_ys.first()?;
+    let first_left_bucket_y = *left_bucket.ys.first()?;
+    let first_right_bucket_y = *right_bucket.ys.first()?;
     // Since all entries in a bucket are obtained after division by `PARAM_BC`, we can compute
     // quotient more efficiently by subtracting base value rather than computing remainder of
     // division
     let base = (usize::from(first_right_bucket_y) / usize::from(PARAM_BC)) * usize::from(PARAM_BC);
-    for (&y, right_index) in right_bucket_ys.iter().zip(Position::ZERO..) {
+    for (&y, right_index) in right_bucket.ys.iter().zip(Position::ZERO..) {
         let r = usize::from(y) - base;
 
         // Same `y` and as the result `r` can appear in the table multiple times, in which case
@@ -307,7 +307,8 @@ fn find_matches<'a>(
     let left_targets = &left_targets[parity];
 
     Some(
-        left_bucket_ys
+        left_bucket
+            .ys
             .iter()
             .zip(Position::ZERO..)
             .flat_map(move |(&y, left_index)| {
@@ -320,9 +321,9 @@ fn find_matches<'a>(
 
                     (rmap_item.start_index..rmap_item.start_index + rmap_item.count).map(
                         move |right_index| Match {
-                            left_index,
+                            left_position: left_bucket.start_position + left_index,
                             left_y: y,
-                            right_index,
+                            right_position: right_bucket.start_position + right_index,
                         },
                     )
                 })
@@ -434,6 +435,23 @@ pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE
     (y_output, Metadata::from(metadata))
 }
 
+fn match_to_result<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
+    last_table: &Table<K, PARENT_TABLE_NUMBER>,
+    m: Match,
+) -> (Y, Metadata<TABLE_NUMBER>, [Position; 2]) {
+    let left_metadata = last_table
+        .metadata(m.left_position)
+        .expect("Position resulted from matching is correct; qed");
+    let right_metadata = last_table
+        .metadata(m.right_position)
+        .expect("Position resulted from matching is correct; qed");
+
+    let (y, metadata) =
+        compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(m.left_y, left_metadata, right_metadata);
+
+    (y, metadata, [m.left_position, m.right_position])
+}
+
 fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
     last_table: &'a Table<K, PARENT_TABLE_NUMBER>,
     left_bucket: &'a Bucket,
@@ -443,8 +461,8 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     results_table: &mut Vec<(Y, Metadata<TABLE_NUMBER>, [Position; 2])>,
 ) {
     let Some(matches) = find_matches(
-        &left_bucket.ys,
-        &right_bucket.ys,
+        left_bucket,
+        right_bucket,
         rmap_scratch,
         left_targets,
     ) else {
@@ -452,21 +470,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     };
 
     matches.for_each(|m| {
-        let left_position = left_bucket.start_position + m.left_index;
-        let right_position = right_bucket.start_position + m.right_index;
-        let left_metadata = last_table
-            .metadata(left_position)
-            .expect("Position resulted from matching is correct; qed");
-        let right_metadata = last_table
-            .metadata(right_position)
-            .expect("Position resulted from matching is correct; qed");
-
-        let (y, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-            m.left_y,
-            left_metadata,
-            right_metadata,
-        );
-        results_table.push((y, metadata, [left_position, right_position]));
+        results_table.push(match_to_result(last_table, m));
     });
 }
 
