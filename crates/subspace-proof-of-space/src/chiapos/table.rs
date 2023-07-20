@@ -79,20 +79,21 @@ pub(super) fn partial_y<const K: u8>(
     (output, skip_bits)
 }
 
-fn calculate_left_targets() -> Vec<Vec<Vec<usize>>> {
-    let param_b = usize::from(PARAM_B);
-    let param_c = usize::from(PARAM_C);
+fn calculate_left_targets() -> Vec<Vec<Vec<Position>>> {
+    let param_b = u32::from(PARAM_B);
+    let param_c = u32::from(PARAM_C);
 
-    (0..=1usize)
+    (0..=1u32)
         .map(|parity| {
-            (0..usize::from(PARAM_BC))
+            (0..u32::from(PARAM_BC))
                 .map(|r| {
                     let c = r / param_c;
 
-                    (0..usize::from(PARAM_M))
+                    (0..u32::from(PARAM_M))
                         .map(|m| {
-                            ((c + m) % param_b) * param_c
-                                + (((2 * m + parity) * (2 * m + parity) + r) % param_c)
+                            let target = ((c + m) % param_b) * param_c
+                                + (((2 * m + parity) * (2 * m + parity) + r) % param_c);
+                            Position::from(target)
                         })
                         .collect()
                 })
@@ -116,7 +117,7 @@ pub struct TablesCache<const K: u8> {
     left_bucket: Bucket,
     right_bucket: Bucket,
     rmap_scratch: Vec<RmapItem>,
-    left_targets: Vec<Vec<Vec<usize>>>,
+    left_targets: Vec<Vec<Vec<Position>>>,
 }
 
 impl<const K: u8> Default for TablesCache<K> {
@@ -272,7 +273,7 @@ fn find_matches<'a>(
     left_bucket_ys: &'a [Y],
     right_bucket_ys: &'a [Y],
     rmap_scratch: &'a mut Vec<RmapItem>,
-    left_targets: &'a [Vec<Vec<usize>>],
+    left_targets: &'a [Vec<Vec<Position>>],
 ) -> Option<impl Iterator<Item = Match> + 'a> {
     // Clear and set to correct size with zero values
     rmap_scratch.clear();
@@ -315,7 +316,7 @@ fn find_matches<'a>(
 
                 (0..usize::from(PARAM_M)).flat_map(move |m| {
                     let r_target = left_targets[m];
-                    let rmap_item = rmap[r_target];
+                    let rmap_item = rmap[usize::from(r_target)];
 
                     (rmap_item.start_index..rmap_item.start_index + rmap_item.count).map(
                         move |right_index| Match {
@@ -438,7 +439,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     left_bucket: &'a Bucket,
     right_bucket: &'a Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
-    left_targets: &'a [Vec<Vec<usize>>],
+    left_targets: &'a [Vec<Vec<Position>>],
     results_table: &mut Vec<(Y, Metadata<TABLE_NUMBER>, [Position; 2])>,
 ) {
     let Some(matches) = find_matches(
