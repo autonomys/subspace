@@ -9,7 +9,8 @@
     const_trait_impl,
     generic_const_exprs,
     int_roundings,
-    iter_collect_into
+    iter_collect_into,
+    step_trait
 )]
 
 #[cfg(feature = "chia")]

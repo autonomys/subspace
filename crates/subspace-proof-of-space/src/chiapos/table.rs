@@ -57,7 +57,7 @@ pub(super) fn partial_y<const K: u8>(
     seed: Seed,
     x: X,
 ) -> ([u8; (K as usize * 2).div_ceil(u8::BITS as usize)], usize) {
-    let skip_bits = usize::from(K) * x as usize;
+    let skip_bits = usize::from(K) * usize::from(x);
     let skip_bytes = skip_bits / u8::BITS as usize;
     let skip_bits = skip_bits % u8::BITS as usize;
 
@@ -158,7 +158,7 @@ impl Default for Bucket {
             // TODO: Currently twice the average size (*2), re-consider size in the future if it is
             //  typically exceeded
             ys: Vec::with_capacity(usize::from(PARAM_BC) / (1 << PARAM_EXT) * 2),
-            start_position: 0,
+            start_position: Position::ZERO,
         }
     }
 }
@@ -170,7 +170,7 @@ pub(super) struct RmapItem {
 }
 
 /// `partial_y_offset` is in bits
-pub(super) fn compute_f1<const K: u8>(x: u32, partial_y: &[u8], partial_y_offset: usize) -> u32 {
+pub(super) fn compute_f1<const K: u8>(x: X, partial_y: &[u8], partial_y_offset: usize) -> Y {
     let partial_y_length =
         (partial_y_offset % u8::BITS as usize + usize::from(K)).div_ceil(u8::BITS as usize);
     let mut pre_y_bytes = 0u64.to_be_bytes();
@@ -187,13 +187,13 @@ pub(super) fn compute_f1<const K: u8>(x: u32, partial_y: &[u8], partial_y_offset
 
     // Extract `PARAM_EXT` most significant bits from `x` and store in the final offset of
     // eventual `y` with the rest of bits set to `0` with the rest of bits being in undefined state.
-    let pre_ext = x >> (usize::from(K) - usize::from(PARAM_EXT));
+    let pre_ext = u32::from(x) >> (usize::from(K) - usize::from(PARAM_EXT));
     // Mask for clearing the rest of bits of `pre_ext`.
     let pre_ext_mask = u32::MAX >> (u32::BITS as usize - usize::from(PARAM_EXT));
 
     // Combine all of the bits together:
     // [padding zero bits][`K` bits rom `partial_y`][`PARAM_EXT` bits from `x`]
-    (pre_y & pre_y_mask) | (pre_ext & pre_ext_mask)
+    Y::from((pre_y & pre_y_mask) | (pre_ext & pre_ext_mask))
 }
 
 /// `rmap_scratch` is just an optimization to reuse allocations between calls.
@@ -213,14 +213,14 @@ fn find_matches<'a>(
     let rmap = rmap_scratch;
 
     // Both left and right buckets can be empty
-    let first_left_bucket_y = *left_bucket_ys.first()? as usize;
-    let first_right_bucket_y = *right_bucket_ys.first()? as usize;
+    let first_left_bucket_y = *left_bucket_ys.first()?;
+    let first_right_bucket_y = *right_bucket_ys.first()?;
     // Since all entries in a bucket are obtained after division by `PARAM_BC`, we can compute
     // quotient more efficiently by subtracting base value rather than computing remainder of
     // division
-    let base = (first_right_bucket_y / usize::from(PARAM_BC)) * usize::from(PARAM_BC);
-    for (&y, right_index) in right_bucket_ys.iter().zip(0u32..) {
-        let r = y as usize - base;
+    let base = (usize::from(first_right_bucket_y) / usize::from(PARAM_BC)) * usize::from(PARAM_BC);
+    for (&y, right_index) in right_bucket_ys.iter().zip(Position::ZERO..) {
+        let r = usize::from(y) - base;
 
         // Same `y` and as the result `r` can appear in the table multiple times, in which case
         // they'll all occupy consecutive slots in `right_bucket` and all we need to store is just
@@ -235,15 +235,15 @@ fn find_matches<'a>(
     // Same idea as above, but avoids division by leveraging the fact that each bucket is exactly
     // `PARAM_BC` away from the previous one in terms of divisor by `PARAM_BC`
     let base = base - usize::from(PARAM_BC);
-    let parity = (first_left_bucket_y / usize::from(PARAM_BC)) % 2;
+    let parity = (usize::from(first_left_bucket_y) / usize::from(PARAM_BC)) % 2;
     let left_targets = &left_targets[parity];
 
     Some(
         left_bucket_ys
             .iter()
-            .zip(0u32..)
+            .zip(Position::ZERO..)
             .flat_map(move |(&y, left_index)| {
-                let r = y as usize - base;
+                let r = usize::from(y) - base;
                 let left_targets = &left_targets[r];
 
                 (0..usize::from(PARAM_M)).flat_map(move |m| {
@@ -264,9 +264,9 @@ fn find_matches<'a>(
 
 /// Simplified version of [`find_matches`] for verification purposes.
 pub(super) fn num_matches(left_y: Y, right_y: Y) -> usize {
-    let right_r = right_y as usize % usize::from(PARAM_BC);
-    let parity = (left_y as usize / usize::from(PARAM_BC)) % 2;
-    let left_r = left_y as usize % usize::from(PARAM_BC);
+    let right_r = usize::from(right_y) % usize::from(PARAM_BC);
+    let parity = (usize::from(left_y) / usize::from(PARAM_BC)) % 2;
+    let left_r = usize::from(left_y) % usize::from(PARAM_BC);
 
     let mut matches = 0;
     for m in 0..usize::from(PARAM_M) {
@@ -281,9 +281,13 @@ pub(super) fn num_matches(left_y: Y, right_y: Y) -> usize {
 
 pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
     y: Y,
-    left_metadata: Metadata,
-    right_metadata: Metadata,
-) -> (Y, Metadata) {
+    left_metadata: Metadata<PARENT_TABLE_NUMBER>,
+    right_metadata: Metadata<PARENT_TABLE_NUMBER>,
+) -> (Y, Metadata<TABLE_NUMBER>) {
+    // Remove these 2 conversions
+    let left_metadata = u128::from(left_metadata);
+    let right_metadata = u128::from(right_metadata);
+
     let parent_metadata_bits = metadata_size_bits(K, PARENT_TABLE_NUMBER);
 
     // Only supports `K` from 15 to 25 (otherwise math will not be correct when concatenating y,
@@ -330,11 +334,13 @@ pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE
         }
     };
 
-    let y_output = u32::from_be_bytes(
-        hash.as_bytes()[..mem::size_of::<u32>()]
-            .try_into()
-            .expect("Hash if statically guaranteed to have enough bytes; qed"),
-    ) >> (u32::BITS as usize - y_size_bits(K));
+    let y_output = Y::from(
+        u32::from_be_bytes(
+            hash.as_bytes()[..mem::size_of::<u32>()]
+                .try_into()
+                .expect("Hash if statically guaranteed to have enough bytes; qed"),
+        ) >> (u32::BITS as usize - y_size_bits(K)),
+    );
 
     let metadata_size_bits = metadata_size_bits(K, TABLE_NUMBER);
 
@@ -357,7 +363,7 @@ pub(super) fn compute_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE
         0
     };
 
-    (y_output, metadata)
+    (y_output, Metadata::from(metadata))
 }
 
 fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
@@ -366,7 +372,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     right_bucket: &'a Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<usize>>],
-) -> impl Iterator<Item = (Y, Metadata, [Position; 2])> + 'a {
+) -> impl Iterator<Item = (Y, Metadata<TABLE_NUMBER>, [Position; 2])> + 'a {
     let maybe_matches = find_matches(
         &left_bucket.ys,
         &right_bucket.ys,
@@ -411,7 +417,7 @@ pub(super) enum Table<const K: u8, const TABLE_NUMBER: u8> {
         /// Left and right entry positions in a previous table encoded into bits
         positions: Vec<[Position; 2]>,
         /// Metadata corresponding to each entry
-        metadatas: Vec<Metadata>,
+        metadatas: Vec<Metadata<TABLE_NUMBER>>,
     },
 }
 
@@ -420,9 +426,9 @@ impl<const K: u8> Table<K, 1> {
     pub(super) fn create(seed: Seed) -> Self {
         let partial_ys = partial_ys::<K>(seed);
 
-        let mut t_1 = (0..1u32 << K)
+        let mut t_1 = X::all::<K>()
             .map(|x| {
-                let partial_y_offset = x as usize * usize::from(K);
+                let partial_y_offset = usize::from(x) * usize::from(K);
                 let y = compute_f1::<K>(x, &partial_ys, partial_y_offset);
 
                 (y, x)
@@ -441,9 +447,9 @@ impl<const K: u8> Table<K, 1> {
     pub(super) fn create_parallel(seed: Seed) -> Self {
         let partial_ys = partial_ys::<K>(seed);
 
-        let mut t_1 = (0..1u32 << K)
+        let mut t_1 = X::all::<K>()
             .map(|x| {
-                let partial_y_offset = x as usize * usize::from(K);
+                let partial_y_offset = usize::from(x) * usize::from(K);
                 let y = compute_f1::<K>(x, &partial_ys, partial_y_offset);
 
                 (y, x)
@@ -502,15 +508,15 @@ where
         // Clear input variables just in case
         left_bucket.bucket_index = 0;
         left_bucket.ys.clear();
-        left_bucket.start_position = 0;
+        left_bucket.start_position = Position::ZERO;
         right_bucket.bucket_index = 1;
         right_bucket.ys.clear();
-        right_bucket.start_position = 0;
+        right_bucket.start_position = Position::ZERO;
 
         let num_values = 1 << K;
         let mut t_n = Vec::with_capacity(num_values);
-        for (&y, position) in last_table.ys().iter().zip(0u32..) {
-            let bucket_index = y as usize / usize::from(PARAM_BC);
+        for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
+            let bucket_index = usize::from(y) / usize::from(PARAM_BC);
 
             if bucket_index == left_bucket.bucket_index {
                 left_bucket.ys.push(y);
@@ -601,15 +607,15 @@ where
         // Clear input variables just in case
         left_bucket.bucket_index = 0;
         left_bucket.ys.clear();
-        left_bucket.start_position = 0;
+        left_bucket.start_position = Position::ZERO;
         right_bucket.bucket_index = 1;
         right_bucket.ys.clear();
-        right_bucket.start_position = 0;
+        right_bucket.start_position = Position::ZERO;
 
         // Experimentally found that this value seems reasonable
         let mut buckets = Vec::with_capacity(usize::from(PARAM_BC) / (1 << PARAM_EXT) * 3);
-        for (&y, position) in last_table.ys().iter().zip(0u32..) {
-            let bucket_index = y as usize / usize::from(PARAM_BC);
+        for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
+            let bucket_index = usize::from(y) / usize::from(PARAM_BC);
 
             if bucket_index == left_bucket.bucket_index {
                 left_bucket.ys.push(y);
@@ -701,15 +707,15 @@ impl<const K: u8, const TABLE_NUMBER: u8> Table<K, TABLE_NUMBER> {
     pub(super) fn position(&self, position: Position) -> Option<[Position; 2]> {
         match self {
             Table::First { .. } => None,
-            Table::Other { positions, .. } => positions.get(position as usize).copied(),
+            Table::Other { positions, .. } => positions.get(usize::from(position)).copied(),
         }
     }
 
     /// Returns `None` on invalid position or for table number 7
-    pub(super) fn metadata(&self, position: Position) -> Option<Metadata> {
+    pub(super) fn metadata(&self, position: Position) -> Option<Metadata<TABLE_NUMBER>> {
         match self {
-            Table::First { xs, .. } => xs.get(position as usize).map(|&x| u128::from(x)),
-            Table::Other { metadatas, .. } => metadatas.get(position as usize).copied(),
+            Table::First { xs, .. } => xs.get(usize::from(position)).map(|&x| Metadata::from(x)),
+            Table::Other { metadatas, .. } => metadatas.get(usize::from(position)).copied(),
         }
     }
 }

@@ -2,6 +2,7 @@
 //! https://github.com/Chia-Network/chiapos/blob/a2049c5367fe60930533a995f7ffded538f04dc4/tests/test.cpp
 
 use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
+use crate::chiapos::table::types::{Metadata, X, Y};
 use crate::chiapos::table::{
     calculate_left_targets, compute_f1, compute_fn, find_matches, partial_y,
 };
@@ -27,9 +28,10 @@ fn test_compute_f1_k25() {
     let expected_ys = [2_016_650_816, 2_063_162_112, 1_930_299_520_u32];
 
     for (x, expected_y) in xs.into_iter().zip(expected_ys) {
+        let x = X::from(x);
         let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
         let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
-        assert_eq!(y, expected_y);
+        assert_eq!(y, Y::from(expected_y));
     }
 }
 
@@ -50,9 +52,10 @@ fn test_compute_f1_k22() {
     let expected_ys = [71_434_750, 107_364_222, 235_889_534, 143_140_990_u32];
 
     for (x, expected_y) in xs.into_iter().zip(expected_ys) {
+        let x = X::from(x);
         let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
         let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
-        assert_eq!(y, expected_y);
+        assert_eq!(y, Y::from(expected_y));
     }
 }
 
@@ -93,23 +96,23 @@ fn test_matches() {
     ]);
 
     let mut buckets = BTreeMap::<usize, Vec<_>>::new();
-    let mut x = 0;
+    let mut x = X::from(0);
     for _ in 0..=1 << (K - 4) {
         for _ in 0..16 {
             let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
             let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
-            let bucket_index = y as usize / usize::from(PARAM_BC);
+            let bucket_index = usize::from(y) / usize::from(PARAM_BC);
 
             buckets.entry(bucket_index).or_default().push(y);
 
-            if x + 1 > (1 << K) - 1 {
+            if x + X::from(1) > X::from((1 << K) - 1) {
                 break;
             }
 
-            x += 1;
+            x += X::from(1);
         }
 
-        if x + 1 > (1 << K) - 1 {
+        if x + X::from(1) > X::from((1 << K) - 1) {
             break;
         }
     }
@@ -131,8 +134,8 @@ fn test_matches() {
             &left_targets,
         );
         for m in matches.unwrap() {
-            let yl = *left_bucket.get(m.left_index as usize).unwrap() as usize;
-            let yr = *right_bucket.get(m.right_index as usize).unwrap() as usize;
+            let yl = usize::from(*left_bucket.get(usize::from(m.left_index)).unwrap());
+            let yr = usize::from(*right_bucket.get(usize::from(m.right_index)).unwrap());
 
             assert!(check_match(yl, yr));
             total_matches += 1;
@@ -156,11 +159,14 @@ fn verify_fn<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>
     y_output_expected: u32,
     metadata_expected: u128,
 ) {
-    let (y_output, metadata) =
-        compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(y, left_metadata, right_metadata);
-    assert_eq!(y_output, y_output_expected);
+    let (y_output, metadata) = compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+        Y::from(y),
+        Metadata::from(left_metadata),
+        Metadata::from(right_metadata),
+    );
+    assert_eq!(y_output, Y::from(y_output_expected));
     if metadata_expected != 0 {
-        assert_eq!(metadata, metadata_expected);
+        assert_eq!(metadata, Metadata::from(metadata_expected));
     }
 }
 

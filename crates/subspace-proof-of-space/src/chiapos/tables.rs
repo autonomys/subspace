@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::chiapos::constants::PARAM_EXT;
-use crate::chiapos::table::types::{Metadata, Position, Y};
+use crate::chiapos::table::types::{Metadata, Position, X, Y};
 pub use crate::chiapos::table::TablesCache;
 use crate::chiapos::table::{compute_f1, compute_fn, num_matches, partial_y, Table};
 use crate::chiapos::utils::EvaluatableUsize;
@@ -101,7 +100,7 @@ where
                 .expect("Challenge is known to statically have enough bytes; qed"),
         ) >> (u32::BITS as usize - usize::from(K));
         let first_matching_element = ys
-            .binary_search_by(|&y| (y >> usize::from(PARAM_EXT)).cmp(&first_k_challenge_bits))
+            .binary_search_by(|&y| y.first_k_bits::<K>().cmp(&first_k_challenge_bits))
             .unwrap_or_else(|insert| insert);
 
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
@@ -109,9 +108,9 @@ where
             .iter()
             .take_while(move |&&y| {
                 // Check if first K bits of `y` match
-                (y >> usize::from(PARAM_EXT)) == first_k_challenge_bits
+                y.first_k_bits::<K>() == first_k_challenge_bits
             })
-            .zip(first_matching_element as u32..)
+            .zip(Position::from(first_matching_element as u32)..)
             .map(move |(_y, position)| {
                 let positions = self
                     .table_7
@@ -141,12 +140,12 @@ where
                 let left_x = *self
                     .table_1
                     .xs()
-                    .get(left_position as usize)
+                    .get(usize::from(left_position))
                     .expect("Internally generated pointers must be correct; qed");
                 let right_x = *self
                     .table_1
                     .xs()
-                    .get(right_position as usize)
+                    .get(usize::from(right_position))
                     .expect("Internally generated pointers must be correct; qed");
 
                 let mut hasher = Sha256::new();
@@ -174,7 +173,7 @@ where
                 .expect("Challenge is known to statically have enough bytes; qed"),
         ) >> (u32::BITS as usize - usize::from(K));
         let first_matching_element = ys
-            .binary_search_by(|&y| (y >> usize::from(PARAM_EXT)).cmp(&first_k_challenge_bits))
+            .binary_search_by(|&y| y.first_k_bits::<K>().cmp(&first_k_challenge_bits))
             .unwrap_or_else(|insert| insert);
 
         // Iterate just over elements that are matching `first_k_challenge_bits` prefix
@@ -182,9 +181,9 @@ where
             .iter()
             .take_while(move |&&y| {
                 // Check if first K bits of `y` match
-                (y >> usize::from(PARAM_EXT)) == first_k_challenge_bits
+                y.first_k_bits::<K>() == first_k_challenge_bits
             })
-            .zip(first_matching_element as u32..)
+            .zip(Position::from(first_matching_element as u32)..)
             .map(move |(_y, position)| {
                 let mut proof = [0u8; 64 * K as usize / 8];
 
@@ -220,7 +219,7 @@ where
                     .map(|position| {
                         self.table_1
                             .xs()
-                            .get(position as usize)
+                            .get(usize::from(position))
                             .expect("Internally generated pointers must be correct; qed")
                     })
                     .enumerate()
@@ -233,7 +232,7 @@ where
 
                         // Bits of `x` already shifted to correct location as they will appear in
                         // `proof`
-                        let x_shifted = x
+                        let x_shifted = u32::from(x)
                             << (u32::BITS as usize
                                 - (usize::from(K) + x_offset_in_bits % u8::BITS as usize));
 
@@ -283,7 +282,7 @@ where
                 let pre_x = u64::from_be_bytes(pre_x_bytes)
                     >> (u64::BITS as usize - (usize::from(K) + offset_in_bits % u8::BITS as usize));
                 // Convert to desired type and clear extra bits
-                let x = pre_x as u32 & (u32::MAX >> (u32::BITS as usize - usize::from(K)));
+                let x = X::from(pre_x as u32 & (u32::MAX >> (u32::BITS as usize - usize::from(K))));
 
                 let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
                 let y = compute_f1::<K>(x, &partial_y, partial_y_offset);
@@ -304,7 +303,7 @@ where
                     .expect("On success returns exactly one entry; qed");
 
                 // Check if first K bits of `y` match
-                (y >> usize::from(PARAM_EXT)) == first_k_challenge_bits
+                y.first_k_bits::<K>() == first_k_challenge_bits
             })
             .map(|_| {
                 let mut quality_index = 0_usize.to_be_bytes();
@@ -340,8 +339,8 @@ where
     }
 
     fn collect_ys_and_metadata<const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
-        ys_and_metadata: &[(Y, Metadata)],
-    ) -> Option<Vec<(Y, Metadata)>> {
+        ys_and_metadata: &[(Y, Metadata<PARENT_TABLE_NUMBER>)],
+    ) -> Option<Vec<(Y, Metadata<TABLE_NUMBER>)>> {
         ys_and_metadata
             .array_chunks::<2>()
             .map(|&[(left_y, left_metadata), (right_y, right_metadata)]| {

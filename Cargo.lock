@@ -10738,6 +10738,7 @@ dependencies = [
  "blake3",
  "chacha20 0.9.1",
  "criterion",
+ "derive_more",
  "rand 0.8.5",
  "rayon",
  "sha2 0.10.7",
