@@ -447,7 +447,7 @@ where
 fn match_to_result<const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
     last_table: &Table<K, PARENT_TABLE_NUMBER>,
     m: Match,
-) -> (Y, Metadata<K, TABLE_NUMBER>, [Position; 2])
+) -> (Y, [Position; 2], Metadata<K, TABLE_NUMBER>)
 where
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
@@ -462,7 +462,7 @@ where
     let (y, metadata) =
         compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(m.left_y, left_metadata, right_metadata);
 
-    (y, metadata, [m.left_position, m.right_position])
+    (y, [m.left_position, m.right_position], metadata)
 }
 
 fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
@@ -471,7 +471,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     right_bucket: &'a Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<Position>>],
-    results_table: &mut Vec<(Y, Metadata<K, TABLE_NUMBER>, [Position; 2])>,
+    results_table: &mut Vec<(Y, [Position; 2], Metadata<K, TABLE_NUMBER>)>,
 ) where
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
@@ -721,7 +721,7 @@ where
         let mut positions = Vec::with_capacity(num_values);
         let mut metadatas = Vec::with_capacity(num_values);
 
-        for (y, metadata, [left_position, right_position]) in t_n {
+        for (y, [left_position, right_position], metadata) in t_n {
             ys.push(y);
             positions.push([left_position, right_position]);
             // Last table doesn't have metadata
@@ -828,7 +828,7 @@ where
         let mut positions = Vec::with_capacity(num_values);
         let mut metadatas = Vec::with_capacity(num_values);
 
-        for (y, metadata, [left_position, right_position]) in t_n {
+        for (y, [left_position, right_position], metadata) in t_n {
             ys.push(y);
             positions.push([left_position, right_position]);
             // Last table doesn't have metadata
