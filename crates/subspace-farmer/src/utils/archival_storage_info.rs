@@ -13,16 +13,16 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::CuckooFilterDTO;
 
 const CONNECTED_PEERS_NUMBER_LIMIT: usize = 50;
-const DISCONNECTED_PEERS_NUMBER_LIMIT: usize = 50;
+
+struct PeerFilter {
+    cuckoo_filter: CuckooFilter<DefaultHasher>,
+    // defines whether the peer owning this filter is currently connected
+    peer_connected: bool,
+}
 
 #[derive(Clone, Default)]
 pub struct ArchivalStorageInfo {
     peers: Arc<Mutex<HashMap<PeerId, PeerFilter>>>,
-}
-
-struct PeerFilter {
-    cuckoo_filter: CuckooFilter<DefaultHasher>,
-    connected: bool,
 }
 
 impl Debug for ArchivalStorageInfo {
@@ -35,13 +35,15 @@ impl Debug for ArchivalStorageInfo {
 
 impl ArchivalStorageInfo {
     pub fn update_cuckoo_filter(
-        &mut self,
+        &self,
         peer_id: PeerId,
         cuckoo_filter_dto: Arc<CuckooFilterDTO>,
         currently_connected_peers: &[PeerId],
     ) {
-        let currently_connected_peers =
-            HashSet::<PeerId>::from_iter(currently_connected_peers.iter().cloned());
+        let currently_connected_peers = currently_connected_peers
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
 
         let exported_filter = ExportedCuckooFilter {
             values: cuckoo_filter_dto.values.clone(),
@@ -56,31 +58,25 @@ impl ArchivalStorageInfo {
             peer_id,
             PeerFilter {
                 cuckoo_filter,
-                connected: true,
+                peer_connected: true,
             },
         );
 
-        let mut connected_peers = Vec::new();
-        let mut disconnected_peers = Vec::new();
+        peer_filters.iter_mut().for_each(|(peer_id, peer_filter)| {
+            peer_filter.peer_connected = currently_connected_peers.contains(peer_id);
+        });
 
-        for (peer_id, peer_filter) in peer_filters.iter_mut() {
-            let connected = currently_connected_peers.contains(peer_id);
-            peer_filter.connected = connected;
-
-            if connected {
-                connected_peers.push(*peer_id);
-            } else {
-                disconnected_peers.push(*peer_id);
-            }
-        }
+        peer_filters.retain(|_, peer_filter| peer_filter.peer_connected);
 
         // Truncate current peer set by limits.
+        let mut connected_peers = peer_filters
+            .iter()
+            .map(|(peer_id, _)| *peer_id)
+            .collect::<Vec<_>>();
+
         let exceeding_number_of_connected_peers = connected_peers
             .len()
             .saturating_div(CONNECTED_PEERS_NUMBER_LIMIT);
-        let exceeding_number_of_disonnected_peers = connected_peers
-            .len()
-            .saturating_div(DISCONNECTED_PEERS_NUMBER_LIMIT);
 
         let mut rng = StdRng::seed_from_u64({
             // Hash of PeerID
@@ -89,6 +85,7 @@ impl ArchivalStorageInfo {
             s.finish()
         });
 
+        // Remove random peers when we exceed the limit of storing peers (and their cuckoo-filters).
         for _ in 0..exceeding_number_of_connected_peers {
             let random_index = rng.gen_range(0..connected_peers.len());
 
@@ -96,18 +93,7 @@ impl ArchivalStorageInfo {
                 .get(random_index)
                 .expect("Index is checked to be present.");
 
-            connected_peers.remove(random_index);
-            peer_filters.remove(&removing_peer_id);
-        }
-
-        for _ in 0..exceeding_number_of_disonnected_peers {
-            let random_index = rng.gen_range(0..disconnected_peers.len());
-
-            let removing_peer_id = *disconnected_peers
-                .get(random_index)
-                .expect("Index is checked to be present.");
-
-            disconnected_peers.remove(random_index);
+            connected_peers.swap_remove(random_index);
             peer_filters.remove(&removing_peer_id);
         }
     }

@@ -598,7 +598,7 @@ impl Node {
             .map_err(|_| ConnectedPeersError::ConnectedPeers)
     }
 
-    /// Callback is called when we receive new [`PeerInfo`]
+    /// Callback is called when we receive new [`crate::peer_info::PeerInfo`]
     pub fn on_peer_info(&self, callback: HandlerFn<NewPeerInfo>) -> HandlerId {
         self.shared.handlers.new_peer_info.add(callback)
     }

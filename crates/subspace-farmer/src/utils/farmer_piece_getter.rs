@@ -70,7 +70,6 @@ where
         }
 
         // L1 piece acquisition
-        // TODO: consider using not connected peers as well
         // TODO: consider using retry policy for L1 lookups as well.
         let connected_peers =
             HashSet::<PeerId>::from_iter(self.node.connected_peers().await?.into_iter());

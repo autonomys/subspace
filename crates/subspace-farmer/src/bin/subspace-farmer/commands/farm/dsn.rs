@@ -328,8 +328,6 @@ pub(super) fn configure_dsn(
                     let peer_info = new_peer_info.peer_info.clone();
 
                     if let PeerInfo::Farmer { cuckoo_filter } = &peer_info {
-                        let mut archival_storage_info = archival_storage_info.clone();
-
                         archival_storage_info.update_cuckoo_filter(
                             peer_id,
                             cuckoo_filter.clone(),

@@ -1,9 +1,9 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
+use crate::peer_info::PeerInfo;
 use crate::request_responses::RequestFailure;
 use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
-use crate::PeerInfo;
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};

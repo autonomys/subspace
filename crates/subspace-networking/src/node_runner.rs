@@ -12,9 +12,8 @@ use crate::create::{
 };
 use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
-use crate::shared::{Command, CreatedSubscription, Shared};
+use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
 use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
-use crate::NewPeerInfo;
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -812,9 +811,9 @@ where
         trace!(?event, "Peer info event.");
 
         if let Ok(PeerInfoSuccess::Received(peer_info)) = event.result {
-            let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
-
             if let Some(shared) = self.shared_weak.upgrade() {
+                let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
+
                 shared.handlers.new_peer_info.call_simple(&NewPeerInfo {
                     peer_id: event.peer_id,
                     peer_info: peer_info.clone(),
