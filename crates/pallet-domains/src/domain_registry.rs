@@ -1,8 +1,11 @@
 //! Domain registry for domains
 
+use crate::block_tree::import_genesis_receipt;
 use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
-use crate::{Config, DomainRegistry, FreezeIdentifier, NextDomainId, RuntimeRegistry};
+use crate::{
+    Config, DomainRegistry, ExecutionReceiptOf, FreezeIdentifier, NextDomainId, RuntimeRegistry,
+};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateFreeze};
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -10,10 +13,15 @@ use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, DomainsDigestItem, GenesisDomain, RuntimeId};
+use sp_domains::domain::generate_genesis_state_root;
+use sp_domains::{
+    DomainId, DomainInstanceData, DomainsDigestItem, GenesisDomain, ReceiptHash, RuntimeId,
+    RuntimeType,
+};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
-use sp_std::vec;
+use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
 
 /// Domain registry specific errors
@@ -28,6 +36,7 @@ pub enum Error {
     InsufficientFund,
     DomainNameTooLong,
     BalanceFreeze,
+    FailedToGenerateGenesisStateRoot,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -64,13 +73,13 @@ impl DomainConfig {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct DomainObject<Number, Hash, AccountId> {
+pub struct DomainObject<Number, AccountId> {
     /// The address of the domain creator, used to validate updating the domain config.
     pub owner_account_id: AccountId,
     /// The consensus chain block number when the domain first instantiated.
     pub created_at: Number,
     /// The hash of the genesis execution receipt for this domain.
-    pub genesis_receipt_hash: Hash,
+    pub genesis_receipt_hash: ReceiptHash,
     /// The domain config.
     pub domain_config: DomainConfig,
 }
@@ -124,14 +133,21 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
+    let domain_id = NextDomainId::<T>::get();
+
+    let genesis_receipt = {
+        let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
+            .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
+        initialize_genesis_receipt::<T>(domain_id, runtime_obj.runtime_type, runtime_obj.code)?
+    };
+    let genesis_receipt_hash = genesis_receipt.hash();
+
     let domain_obj = DomainObject {
         owner_account_id: owner_account_id.clone(),
         created_at,
-        // TODO: drive the `genesis_receipt_hash` from genesis config through host function
-        genesis_receipt_hash: T::Hash::default(),
+        genesis_receipt_hash,
         domain_config,
     };
-    let domain_id = NextDomainId::<T>::get();
     DomainRegistry::<T>::insert(domain_id, domain_obj);
 
     let next_domain_id = domain_id.checked_add(&1.into()).ok_or(Error::MaxDomainId)?;
@@ -150,17 +166,37 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         StakingSummary {
             current_epoch_index: 0,
             current_total_stake: Zero::zero(),
-            current_operators: vec![],
-            next_operators: vec![],
+            current_operators: BTreeMap::new(),
+            next_operators: BTreeSet::new(),
+            current_epoch_rewards: BTreeMap::new(),
         },
     );
 
+    import_genesis_receipt::<T>(domain_id, genesis_receipt);
+
     frame_system::Pallet::<T>::deposit_log(DigestItem::domain_instantiation(domain_id));
 
-    // TODO: initialize the genesis block in the domain block tree once we can drive the
-    // genesis ER from genesis config through host function
-
     Ok(domain_id)
+}
+
+fn initialize_genesis_receipt<T: Config>(
+    domain_id: DomainId,
+    runtime_type: RuntimeType,
+    runtime_code: Vec<u8>,
+) -> Result<ExecutionReceiptOf<T>, Error> {
+    let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero());
+    let genesis_state_root = generate_genesis_state_root(
+        domain_id,
+        DomainInstanceData {
+            runtime_type,
+            runtime_code,
+        },
+    )
+    .ok_or(Error::FailedToGenerateGenesisStateRoot)?;
+    Ok(ExecutionReceiptOf::<T>::genesis(
+        consensus_genesis_hash,
+        genesis_state_root.into(),
+    ))
 }
 
 #[cfg(test)]
@@ -168,10 +204,13 @@ mod tests {
     use super::*;
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
-    use crate::tests::{new_test_ext, Test};
+    use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
     use frame_support::traits::Currency;
+    use sp_domains::GenesisReceiptExtension;
     use sp_runtime::traits::One;
+    use sp_std::vec;
     use sp_version::RuntimeVersion;
+    use std::sync::Arc;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -190,6 +229,9 @@ mod tests {
         };
 
         let mut ext = new_test_ext();
+        ext.register_extension(GenesisReceiptExtension::new(Arc::new(
+            GenesisStateRootGenerater,
+        )));
         ext.execute_with(|| {
             assert_eq!(NextDomainId::<Test>::get(), 0.into());
 

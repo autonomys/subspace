@@ -19,7 +19,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
+    ParityDbProviderStorage, PeerInfo, PeerInfoProvider, PieceAnnouncementRequestHandler,
     PieceAnnouncementResponse, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
     ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
     SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
@@ -296,7 +296,11 @@ pub(super) fn configure_dsn(
         max_pending_outgoing_connections: pending_out_connections,
         max_established_incoming_connections: in_connections,
         max_pending_incoming_connections: pending_in_connections,
-        target_connections,
+        general_target_connections: target_connections,
+        // maintain permanent connections between farmers
+        special_connected_peers_handler: Arc::new(PeerInfo::is_farmer),
+        // other (non-farmer) connections
+        general_connected_peers_handler: Arc::new(|peer_info| !PeerInfo::is_farmer(peer_info)),
         ..default_config
     };
 

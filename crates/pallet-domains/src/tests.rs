@@ -6,9 +6,10 @@ use frame_support::weights::Weight;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
+use sp_domains::v2::{BundleHeader, ExecutionReceipt, OpaqueBundle, SealedBundleHeader};
 use sp_domains::{
-    create_dummy_bundle_with_receipts_generic, BundleHeader, DomainId, DomainsFreezeIdentifier,
-    ExecutionReceipt, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection, SealedBundleHeader,
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, GenerateGenesisStateRoot, OperatorId,
+    OperatorPair, ProofOfElection,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -22,6 +23,9 @@ type Balance = u128;
 
 // TODO: Remove when DomainRegistry is usable.
 const DOMAIN_ID: DomainId = DomainId::new(0);
+
+// Operator id used for testing
+const OPERATOR_ID: OperatorId = 0u64;
 
 frame_support::construct_runtime!(
     pub struct Test
@@ -67,17 +71,16 @@ impl frame_system::Config for Test {
 }
 
 parameter_types! {
-    pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = 10;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
-    pub const ExpectedBundlesPerInterval: u64 = 600;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const MaxDomainBlockSize: u32 = 1024 * 1024;
     pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
     pub const DomainInstantiationDeposit: Balance = 100;
     pub const MaxDomainNameLength: u32 = 16;
+    pub const BlockTreePruningDepth: u32 = 256;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -140,6 +143,8 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const MinOperatorStake: Balance = 100 * SSC;
+    pub const StakeWithdrawalLockingPeriod: BlockNumber = 5;
+    pub const StakeEpochDuration: BlockNumber = 5;
 }
 
 impl pallet_domains::Config for Test {
@@ -153,7 +158,6 @@ impl pallet_domains::Config for Test {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
-    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
     type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
@@ -161,6 +165,9 @@ impl pallet_domains::Config for Test {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type StakeEpochDuration = StakeEpochDuration;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -171,62 +178,98 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     t.into()
 }
 
-fn create_dummy_receipt(
-    consensus_block_number: BlockNumber,
+pub(crate) fn create_dummy_receipt(
+    block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256> {
+    parent_domain_block_receipt_hash: H256,
+    block_extrinsics_roots: Vec<H256>,
+) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128> {
     ExecutionReceipt {
-        consensus_block_number,
+        domain_block_number: block_number,
+        parent_domain_block_receipt_hash,
+        consensus_block_number: block_number,
         consensus_block_hash,
-        domain_block_number: consensus_block_number,
-        domain_hash: H256::random(),
-        trace: if consensus_block_number == 0 {
-            Vec::new()
-        } else {
-            vec![H256::random(), H256::random()]
-        },
-        trace_root: Default::default(),
+        block_extrinsics_roots,
+        final_state_root: Default::default(),
+        execution_trace_root: Default::default(),
+        total_rewards: 0,
     }
 }
 
 fn create_dummy_bundle(
     domain_id: DomainId,
-    consensus_block_number: BlockNumber,
+    block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256, u128> {
+    let execution_receipt = create_dummy_receipt(
+        block_number,
+        consensus_block_hash,
+        Default::default(),
+        vec![],
+    );
+    create_dummy_bundle_with_receipts(
+        domain_id,
+        block_number,
+        OPERATOR_ID,
+        Default::default(),
+        execution_receipt,
+    )
+}
+
+pub(crate) fn create_dummy_bundle_with_receipts(
+    domain_id: DomainId,
+    block_number: BlockNumber,
+    operator_id: OperatorId,
+    bundle_extrinsics_root: H256,
+    receipt: ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128>,
+) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256, u128> {
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
-    let execution_receipt = create_dummy_receipt(consensus_block_number, consensus_block_hash);
-
     let header = BundleHeader {
-        consensus_block_number,
-        consensus_block_hash,
-        extrinsics_root: Default::default(),
+        operator_id,
+        consensus_block_number: block_number,
         proof_of_election: ProofOfElection::dummy(domain_id, 0u64),
+        receipt,
+        bundle_size: 0u32,
+        estimated_bundle_weight: Default::default(),
+        bundle_extrinsics_root,
     };
 
     let signature = pair.sign(header.hash().as_ref());
 
     OpaqueBundle {
         sealed_header: SealedBundleHeader::new(header, signature),
-        receipt: execution_receipt,
         extrinsics: Vec::new(),
+        execution_trace: if block_number == 0 {
+            Vec::new()
+        } else {
+            vec![H256::random(), H256::random()]
+        },
     }
 }
 
-#[allow(dead_code)]
-fn create_dummy_bundle_with_receipts(
-    domain_id: DomainId,
-    consensus_block_number: BlockNumber,
-    consensus_block_hash: Hash,
-    receipt: ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256>,
-) -> OpaqueBundle<BlockNumber, Hash, BlockNumber, H256> {
-    create_dummy_bundle_with_receipts_generic::<BlockNumber, Hash, BlockNumber, H256>(
-        domain_id,
-        consensus_block_number,
-        consensus_block_hash,
-        receipt,
-    )
+pub(crate) struct GenesisStateRootGenerater;
+
+impl GenerateGenesisStateRoot for GenesisStateRootGenerater {
+    fn generate_genesis_state_root(
+        &self,
+        _domain_id: DomainId,
+        _domain_instance_data: DomainInstanceData,
+    ) -> Option<H256> {
+        Some(Default::default())
+    }
+}
+
+pub(crate) struct ReadRuntimeVersion(pub Vec<u8>);
+
+impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
+    fn read_runtime_version(
+        &self,
+        _wasm_code: &[u8],
+        _ext: &mut dyn sp_externalities::Externalities,
+    ) -> Result<Vec<u8>, String> {
+        Ok(self.0.clone())
+    }
 }
 
 // TODO: Unblock once bundle producer election v2 is finished.

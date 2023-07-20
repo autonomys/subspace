@@ -31,7 +31,6 @@ use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
 pub use archiver::create_subspace_archiver;
-use codec::Encode;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
@@ -75,9 +74,8 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
+use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, PublicKey, Randomness, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
     Solution, SolutionRange,
@@ -978,23 +976,15 @@ where
         // This is not a very nice hack due to the fact that at the time first block is produced
         // extrinsics with segment headers are not yet in runtime.
         let maybe_segment_commitment = if block_number.is_one() {
-            let genesis_block_hash = self.client.info().genesis_hash;
-            let archived_segments = Archiver::new(self.subspace_link.kzg.clone())
-                .expect("Incorrect parameters for archiver")
-                .add_block(
-                    self.client
-                        .block(genesis_block_hash)?
-                        .ok_or(Error::GenesisUnavailable)?
-                        .encode(),
-                    BlockObjectMapping::default(),
-                );
-            archived_segments.into_iter().find_map(|archived_segment| {
-                if archived_segment.segment_header.segment_index() == segment_index {
-                    Some(archived_segment.segment_header.segment_commitment())
-                } else {
-                    None
-                }
-            })
+            self.subspace_link
+                .segment_headers
+                .lock()
+                .get(&One::one())
+                .and_then(|segment_headers| {
+                    segment_headers
+                        .first()
+                        .map(|segment_header| segment_header.segment_commitment())
+                })
         } else {
             aux_schema::load_segment_commitment(self.client.as_ref(), segment_index)?
         };

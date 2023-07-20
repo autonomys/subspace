@@ -11,14 +11,16 @@ use subspace_core_primitives::Randomness;
 use subspace_verification::derive_randomness;
 
 pub(crate) fn extract_successful_bundles(
+    domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
 ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
-    let successful_bundles = Domains::successful_bundles();
+    let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if successful_bundles.contains(&opaque_bundle.hash()) =>
+                if opaque_bundle.domain_id() == domain_id
+                    && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
                 Some(opaque_bundle)
             }
@@ -33,7 +35,7 @@ pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
 ) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
-    let successful_bundles = Domains::successful_bundles();
+    let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {

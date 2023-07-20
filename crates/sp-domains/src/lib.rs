@@ -21,6 +21,7 @@ pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
 pub mod transaction;
+pub mod v2;
 
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -75,6 +76,12 @@ impl sp_runtime::BoundToRuntimeAppPublic for OperatorKey {
 ///
 /// Derived from the Balance and can't be smaller than u128.
 pub type StakeWeight = u128;
+
+/// The hash of a execution receipt.
+pub type ReceiptHash = H256;
+
+/// The Merkle root of all extrinsics included in a bundle.
+pub type ExtrinsicsRoot = H256;
 
 /// Unique identifier of a domain.
 #[derive(
@@ -423,7 +430,7 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisDomain<AccountId> {
     // Domain runtime items
     pub runtime_name: Vec<u8>,
@@ -576,6 +583,7 @@ sp_api::decl_runtime_apis! {
 
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(
+            domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash>;
 

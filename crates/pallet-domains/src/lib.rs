@@ -24,15 +24,20 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod block_tree;
 pub mod domain_registry;
 pub mod runtime_registry;
 mod staking;
+mod staking_epoch;
 pub mod weights;
 
+use crate::block_tree::verify_execution_receipt;
+use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
@@ -40,8 +45,9 @@ use sp_domains::{
     DomainId, DomainInstanceData, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
-use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -58,11 +64,38 @@ pub trait FreezeIdentifier<T: Config> {
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
 }
 
+pub type ExecutionReceiptOf<T> = sp_domains::v2::ExecutionReceipt<
+    <T as frame_system::Config>::BlockNumber,
+    <T as frame_system::Config>::Hash,
+    <T as Config>::DomainNumber,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
+pub type OpaqueBundleOf<T> = sp_domains::v2::OpaqueBundle<
+    <T as frame_system::Config>::BlockNumber,
+    <T as frame_system::Config>::Hash,
+    <T as Config>::DomainNumber,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
+/// Parameters used to verify proof of election.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub(crate) struct ElectionVerificationParams<Balance> {
+    operators: BTreeMap<OperatorId, Balance>,
+    total_domain_stake: Balance,
+}
+
 #[frame_support::pallet]
 mod pallet {
     // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
     #![allow(clippy::large_enum_variant)]
 
+    use crate::block_tree::{
+        execution_receipt_type, process_execution_receipt, DomainBlock, Error as BlockTreeError,
+        ReceiptType,
+    };
     use crate::domain_registry::{
         do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
     };
@@ -72,27 +105,37 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_register_operator,
+        do_deregister_operator, do_nominate_operator, do_register_operator, do_reward_operators,
         do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
         OperatorConfig, StakingSummary, Withdraw,
     };
+    use crate::staking_epoch::{
+        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
+        Error as StakingEpochError, PendingNominatorUnlock,
+    };
     use crate::weights::WeightInfo;
-    use crate::{calculate_tx_range, BalanceOf, FreezeIdentifier, NominatorId};
+    use crate::{
+        BalanceOf, ElectionVerificationParams, FreezeIdentifier, NominatorId, OpaqueBundleOf,
+    };
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
-    use frame_support::traits::fungible::{InspectFreeze, MutateFreeze};
+    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
-    use sp_domains::{DomainId, GenesisDomain, OpaqueBundle, OperatorId, RuntimeId, RuntimeType};
+    use sp_domains::{
+        DomainId, ExtrinsicsRoot, GenesisDomain, OpaqueBundle, OperatorId, ReceiptHash, RuntimeId,
+        RuntimeType,
+    };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
-        Zero,
+        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
+        One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
+    use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -132,7 +175,8 @@ mod pallet {
             + AsRef<[u8]>
             + AsMut<[u8]>
             + MaxEncodedLen
-            + Into<H256>;
+            + Into<H256>
+            + From<H256>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
@@ -141,7 +185,9 @@ mod pallet {
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
-        type Currency: MutateFreeze<Self::AccountId> + InspectFreeze<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>
+            + MutateFreeze<Self::AccountId>
+            + InspectFreeze<Self::AccountId>;
 
         /// Type representing the shares in the staking protocol.
         type Share: Parameter
@@ -158,6 +204,17 @@ mod pallet {
 
         /// Identifier used for Freezing the funds used for staking.
         type FreezeIdentifier: FreezeIdentifier<Self>;
+
+        /// The block tree pruning depth, its value should <= `BlockHashCount` because we
+        /// need the consensus block hash to verify execution receipt, which is used to
+        /// construct the node of the block tree.
+        ///
+        /// TODO: `BlockTreePruningDepth` <= `BlockHashCount` is not enough to guarantee the consensus block
+        /// hash must exists while verifying receipt because the domain block is not mapping to the consensus
+        /// block one by one, we need to either store the consensus block hash in runtime manually or store
+        /// the consensus block hash in the client side and use host function to get them in runtime.
+        #[pallet::constant]
+        type BlockTreePruningDepth: Get<Self::DomainNumber>;
 
         /// The maximum block size limit for all domain.
         #[pallet::constant]
@@ -188,11 +245,14 @@ mod pallet {
         /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
         type DomainTxRangeAdjustmentInterval: Get<u64>;
 
-        /// Expected bundles to be produced per adjustment interval.
-        type ExpectedBundlesPerInterval: Get<u64>;
-
         /// Minimum operator stake required to become operator of a domain.
         type MinOperatorStake: Get<BalanceOf<Self>>;
+
+        /// Minimum number of blocks after which any finalized withdrawls are released to nominators.
+        type StakeWithdrawalLockingPeriod: Get<Self::BlockNumber>;
+
+        /// Domain epoch transition interval
+        type StakeEpochDuration: Get<Self::DomainNumber>;
     }
 
     #[pallet::pallet]
@@ -201,7 +261,7 @@ mod pallet {
 
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
-    pub(super) type SuccessfulBundles<T> = StorageValue<_, Vec<H256>, ValueQuery>;
+    pub(super) type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
 
     /// Stores the next runtime id.
     #[pallet::storage]
@@ -233,6 +293,7 @@ mod pallet {
     pub(super) type DomainStakingSummary<T: Config> =
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
+    /// List of all registered operators and their configuration.
     #[pallet::storage]
     pub(super) type Operators<T: Config> =
         StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
@@ -243,6 +304,7 @@ mod pallet {
     pub(super) type PendingOperatorSwitches<T: Config> =
         StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
 
+    /// List of all current epoch's nominators and their shares under a given operator,
     #[pallet::storage]
     pub(super) type Nominators<T: Config> = StorageDoubleMap<
         _,
@@ -254,6 +316,9 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Deposits initiated a nominator under this operator.
+    /// Will be stored temporarily until the current epoch is complete.
+    /// Once, epoch is complete, these deposits are staked beginning next epoch.
     #[pallet::storage]
     pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
         _,
@@ -265,6 +330,9 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// Withdrawals initiated a nominator under this operator.
+    /// Will be stored temporarily until the current epoch is complete.
+    /// Once, epoch is complete, these will be moved to PendingNominatorUnlocks.
     #[pallet::storage]
     pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
         _,
@@ -280,7 +348,33 @@ mod pallet {
     /// Stored here temporarily until domain epoch is complete.
     #[pallet::storage]
     pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageValue<_, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+
+    /// Stores a list of operators who are unlocking in the coming blocks.
+    /// The operator will be removed when the wait period is over
+    /// or when the operator is slashed.
+    #[pallet::storage]
+    pub(super) type PendingOperatorUnlocks<T: Config> =
+        StorageValue<_, BTreeSet<OperatorId>, ValueQuery>;
+
+    /// All the pending unlocks for the nominators.
+    /// We use this storage to fetch all the pending unlocks under a operator pool at the time of slashing.
+    #[pallet::storage]
+    pub(super) type PendingNominatorUnlocks<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        T::BlockNumber,
+        Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
+        OptionQuery,
+    >;
+
+    /// A list of operators that are either unregistering or one more of the nominators
+    /// are withdrawing some staked funds.
+    #[pallet::storage]
+    pub(super) type PendingUnlocks<T: Config> =
+        StorageMap<_, Identity, T::BlockNumber, BTreeSet<OperatorId>, OptionQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
@@ -288,13 +382,73 @@ mod pallet {
 
     /// The domain registry
     #[pallet::storage]
-    pub(super) type DomainRegistry<T: Config> = StorageMap<
+    pub(super) type DomainRegistry<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainObject<T::BlockNumber, T::AccountId>, OptionQuery>;
+
+    /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
+    /// which can be used get the domain block in `DomainBlocks`
+    #[pallet::storage]
+    pub(super) type BlockTree<T: Config> = StorageDoubleMap<
         _,
         Identity,
         DomainId,
-        DomainObject<T::BlockNumber, T::Hash, T::AccountId>,
+        Identity,
+        T::DomainNumber,
+        BTreeSet<ReceiptHash>,
+        ValueQuery,
+    >;
+
+    /// Mapping of domain block hash to domain block
+    #[pallet::storage]
+    pub(super) type DomainBlocks<T: Config> = StorageMap<
+        _,
+        Identity,
+        ReceiptHash,
+        DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>,
         OptionQuery,
     >;
+
+    /// The head receipt number of each domain
+    #[pallet::storage]
+    pub(super) type HeadReceiptNumber<T: Config> =
+        StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+
+    /// A set of `bundle_extrinsics_root` from all bundles that successfully submitted to the consensus
+    /// block, these extrinsics will be used to construct the domain block and `ExecutionInbox` is used
+    /// to ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles.
+    #[pallet::storage]
+    pub type ExecutionInbox<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Identity, DomainId>,
+            NMapKey<Identity, T::DomainNumber>,
+            NMapKey<Identity, T::BlockNumber>,
+        ),
+        Vec<ExtrinsicsRoot>,
+        ValueQuery,
+    >;
+
+    /// The block number of the best domain block, increase by one when the first bundle of the domain is
+    /// successfully submitted to current consensus block, which mean a new domain block with this block
+    /// number will be produce. Used as a pointer in `ExecutionInbox` to identify the current under building
+    /// domain block, also used as a mapping of consensus block number to domain block number.
+    #[pallet::storage]
+    pub(super) type HeadDomainNumber<T: Config> =
+        StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+
+    /// The genesis domian that scheduled to register at block #1, should be removed once
+    /// https://github.com/paritytech/substrate/issues/14541 is resolved.
+    #[pallet::storage]
+    type PendingGenesisDomain<T: Config> =
+        StorageValue<_, GenesisDomain<T::AccountId>, OptionQuery>;
+
+    /// A temporary storage to hold any previous epoch details for a given domain
+    /// if the epoch transitioned in this block so that all the submitted bundles
+    /// within this block are verified.
+    /// The storage is cleared on block finalization.
+    #[pallet::storage]
+    pub(super) type LastEpochStakingDistribution<T: Config> =
+        StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -313,30 +467,7 @@ mod pallet {
         /// The Bundle is created too long ago.
         StaleBundle,
         /// An invalid execution receipt found in the bundle.
-        Receipt(ExecutionReceiptError),
-    }
-
-    impl<T> From<BundleError> for Error<T> {
-        #[inline]
-        fn from(e: BundleError) -> Self {
-            Self::Bundle(e)
-        }
-    }
-
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
-    pub enum ExecutionReceiptError {
-        /// The parent execution receipt is unknown.
-        MissingParent,
-        /// The execution receipt has been pruned.
-        Pruned,
-        /// The execution receipt points to a block unknown to the history.
-        UnknownBlock,
-        /// The execution receipt is too far in the future.
-        TooFarInFuture,
-        /// Receipts are not consecutive.
-        Inconsecutive,
-        /// Receipts in a bundle can not be empty.
-        Empty,
+        Receipt(BlockTreeError),
     }
 
     impl<T> From<RuntimeRegistryError> for Error<T> {
@@ -351,24 +482,38 @@ mod pallet {
         }
     }
 
+    impl<T> From<StakingEpochError> for Error<T> {
+        fn from(err: StakingEpochError) -> Self {
+            Error::StakingEpoch(err)
+        }
+    }
+
     impl<T> From<DomainRegistryError> for Error<T> {
         fn from(err: DomainRegistryError) -> Self {
             Error::DomainRegistry(err)
         }
     }
 
+    impl<T> From<BlockTreeError> for Error<T> {
+        fn from(err: BlockTreeError) -> Self {
+            Error::BlockTree(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
-        /// Invalid bundle.
-        Bundle(BundleError),
         /// Invalid fraud proof.
         FraudProof,
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
         /// Staking related errors.
         Staking(StakingError),
+        /// Staking epoch specific errors.
+        StakingEpoch(StakingEpochError),
         /// Domain registry specific errors
         DomainRegistry(DomainRegistryError),
+        /// Block tree specific errors
+        BlockTree(BlockTreeError),
     }
 
     #[pallet::event]
@@ -433,28 +578,6 @@ mod pallet {
         pub fn on_bundle(&mut self) {
             self.interval_bundles += 1;
         }
-
-        /// Called when the current block is finalized.
-        pub fn on_finalize(
-            &mut self,
-            tx_range_adjustment_interval: u64,
-            expected_bundle_count: u64,
-        ) {
-            self.interval_blocks += 1;
-            if self.interval_blocks < tx_range_adjustment_interval {
-                return;
-            }
-
-            // End of interval. Recalculate the tx range and reset the state.
-            let prev_tx_range = self.tx_range;
-            self.tx_range =
-                calculate_tx_range(self.tx_range, self.interval_bundles, expected_bundle_count);
-            log::trace!(target: "runtime::domains",
-                "tx range update: blocks = {}, bundles = {}, prev = {prev_tx_range}, new = {}",
-                self.interval_blocks, self.interval_bundles, self.tx_range);
-            self.interval_blocks = 0;
-            self.interval_bundles = 0;
-        }
     }
 
     #[pallet::storage]
@@ -464,6 +587,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
+        // TODO: replace it with `submit_bundle_v2` after all usage of it is removed
         #[allow(deprecated)]
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::from_all(10_000))]
@@ -481,7 +605,7 @@ mod pallet {
 
             let bundle_hash = opaque_bundle.hash();
 
-            SuccessfulBundles::<T>::append(bundle_hash);
+            SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 
             Self::note_domain_bundle(domain_id);
 
@@ -489,6 +613,95 @@ mod pallet {
                 domain_id,
                 bundle_hash,
                 bundle_author: opaque_bundle.operator_id(),
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        // TODO: proper benchmark
+        pub fn submit_bundle_v2(
+            origin: OriginFor<T>,
+            opaque_bundle: OpaqueBundleOf<T>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+
+            log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
+
+            let domain_id = opaque_bundle.domain_id();
+            let bundle_hash = opaque_bundle.hash();
+            let extrinsics_root = opaque_bundle.extrinsics_root();
+            let operator_id = opaque_bundle.operator_id();
+            let receipt = opaque_bundle.into_receipt();
+
+            match execution_receipt_type::<T>(domain_id, &receipt) {
+                // The stale receipt should not be further processed, but we still track them for purposes
+                // of measuring the bundle production rate.
+                ReceiptType::Stale => {
+                    Self::note_domain_bundle(domain_id);
+                    return Ok(());
+                }
+                ReceiptType::Rejected(rejected_receipt_type) => {
+                    return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
+                }
+                // Add the exeuctione receipt to the block tree
+                ReceiptType::Accepted(accepted_receipt_type) => {
+                    let maybe_pruned_domain_block_info = process_execution_receipt::<T>(
+                        domain_id,
+                        operator_id,
+                        receipt,
+                        accepted_receipt_type,
+                    )
+                    .map_err(Error::<T>::from)?;
+
+                    // if any domain block is pruned, then we have a new head added
+                    // so distribute the operator rewards and, if required, do epoch transition as well.
+                    if let Some(pruned_block_info) = maybe_pruned_domain_block_info {
+                        do_reward_operators::<T>(
+                            domain_id,
+                            pruned_block_info.operator_ids.into_iter(),
+                            pruned_block_info.rewards,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        let consensus_block_number = frame_system::Pallet::<T>::block_number();
+                        do_finalize_domain_current_epoch::<T>(
+                            domain_id,
+                            pruned_block_info.domain_block_number,
+                            consensus_block_number,
+                        )
+                        .map_err(Error::<T>::from)?;
+                    }
+                }
+            }
+
+            // `SuccessfulBundles` is empty means this is the first accepted bundle for this domain in this
+            // consensus block, which also mean a domain block will be produced thus update `HeadDomainNumber`
+            // to this domain block's block number.
+            if SuccessfulBundles::<T>::get(domain_id).is_empty() {
+                let next_number = HeadDomainNumber::<T>::get(domain_id)
+                    .checked_add(&One::one())
+                    .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?;
+                HeadDomainNumber::<T>::set(domain_id, next_number);
+            }
+
+            // Put the `extrinsics_root` to the inbox of the current under building domain block
+            let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
+            let consensus_block_number = frame_system::Pallet::<T>::current_block_number();
+            ExecutionInbox::<T>::append(
+                (domain_id, head_domain_number, consensus_block_number),
+                extrinsics_root,
+            );
+
+            SuccessfulBundles::<T>::append(domain_id, bundle_hash);
+
+            Self::note_domain_bundle(domain_id);
+
+            Self::deposit_event(Event::BundleStored {
+                domain_id,
+                bundle_hash,
+                bundle_author: operator_id,
             });
 
             Ok(())
@@ -698,57 +911,11 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
         fn build(&self) {
+            // Delay the genesis domain register to block #1 due to the required `GenesisReceiptExtension` is not
+            // registered during genesis storage build, remove once https://github.com/paritytech/substrate/issues/14541
+            // is resolved.
             if let Some(genesis_domain) = &self.genesis_domain {
-                // Register the genesis domain runtime
-                let runtime_id = register_runtime_at_genesis::<T>(
-                    genesis_domain.runtime_name.clone(),
-                    genesis_domain.runtime_type.clone(),
-                    genesis_domain.runtime_version.clone(),
-                    genesis_domain.code.clone(),
-                    Zero::zero(),
-                )
-                .expect("Genesis runtime registration must always succeed");
-
-                // Instantiate the genesis domain
-                let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                let domain_owner = genesis_domain.owner_account_id.clone();
-                let domain_id =
-                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), Zero::zero())
-                        .expect("Genesis domain instantiation must always succeed");
-
-                // Register domain_owner as the genesis operator.
-                let operator_config = OperatorConfig {
-                    signing_key: genesis_domain.signing_key.clone(),
-                    minimum_nominator_stake: genesis_domain
-                        .minimum_nominator_stake
-                        .saturated_into(),
-                    nomination_tax: genesis_domain.nomination_tax,
-                };
-                let operator_stake = T::MinOperatorStake::get();
-                let operator_id = do_register_operator::<T>(
-                    domain_owner,
-                    domain_id,
-                    operator_stake,
-                    operator_config,
-                )
-                .expect("Genesis operator registration must succeed");
-
-                // TODO: Enact the epoch transition logic properly.
-                Operators::<T>::mutate(operator_id, |maybe_operator| {
-                    let operator = maybe_operator
-                        .as_mut()
-                        .expect("Genesis operator must exist");
-                    operator.current_total_stake = operator_stake;
-                });
-                DomainStakingSummary::<T>::insert(
-                    domain_id,
-                    StakingSummary {
-                        current_epoch_index: 0,
-                        current_total_stake: operator_stake,
-                        current_operators: vec![operator_id],
-                        next_operators: vec![],
-                    },
-                );
+                PendingGenesisDomain::<T>::set(Some(genesis_domain.clone()));
             }
         }
     }
@@ -757,14 +924,62 @@ mod pallet {
     // TODO: proper benchmark
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
-            SuccessfulBundles::<T>::kill();
+            if block_number.is_one() {
+                if let Some(ref genesis_domain) = PendingGenesisDomain::<T>::take() {
+                    // Register the genesis domain runtime
+                    let runtime_id = register_runtime_at_genesis::<T>(
+                        genesis_domain.runtime_name.clone(),
+                        genesis_domain.runtime_type.clone(),
+                        genesis_domain.runtime_version.clone(),
+                        genesis_domain.code.clone(),
+                        Zero::zero(),
+                    )
+                    .expect("Genesis runtime registration must always succeed");
+
+                    // Instantiate the genesis domain
+                    let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
+                    let domain_owner = genesis_domain.owner_account_id.clone();
+                    let domain_id = do_instantiate_domain::<T>(
+                        domain_config,
+                        domain_owner.clone(),
+                        Zero::zero(),
+                    )
+                    .expect("Genesis domain instantiation must always succeed");
+
+                    // Register domain_owner as the genesis operator.
+                    let operator_config = OperatorConfig {
+                        signing_key: genesis_domain.signing_key.clone(),
+                        minimum_nominator_stake: genesis_domain
+                            .minimum_nominator_stake
+                            .saturated_into(),
+                        nomination_tax: genesis_domain.nomination_tax,
+                    };
+                    let operator_stake = T::MinOperatorStake::get();
+                    do_register_operator::<T>(
+                        domain_owner,
+                        domain_id,
+                        operator_stake,
+                        operator_config,
+                    )
+                    .expect("Genesis operator registration must succeed");
+
+                    do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero(), Zero::zero())
+                        .expect("Genesis epoch must succeed");
+                }
+            }
 
             do_upgrade_runtimes::<T>(block_number);
+
+            do_unlock_pending_withdrawals::<T>(block_number)
+                .expect("Pending unlocks should not fail due to checks at epoch");
+
+            let _ = SuccessfulBundles::<T>::clear(u32::MAX, None);
 
             Weight::zero()
         }
 
         fn on_finalize(_: T::BlockNumber) {
+            let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
         }
     }
@@ -785,7 +1000,8 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle } => {
+                Call::submit_bundle { opaque_bundle: _ } => Ok(()),
+                Call::submit_bundle_v2 { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
                 Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
@@ -796,6 +1012,27 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_bundle { opaque_bundle } => {
+                    let bundle_create_at =
+                        opaque_bundle.sealed_header.header.consensus_block_number;
+                    let current_block_number = frame_system::Pallet::<T>::current_block_number();
+                    if let Err(e) = Self::check_stale_bundle(current_block_number, bundle_create_at)
+                    {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
+                        );
+                        return InvalidTransactionCode::Bundle.into();
+                    }
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
+                        .priority(TransactionPriority::MAX)
+                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }))
+                        .and_provides(opaque_bundle.hash())
+                        .propagate(true)
+                        .build()
+                }
+                Call::submit_bundle_v2 { opaque_bundle } => {
                     if let Err(e) = Self::validate_bundle(opaque_bundle) {
                         log::debug!(
                             target: "runtime::domains",
@@ -831,8 +1068,16 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    pub fn successful_bundles() -> Vec<H256> {
-        SuccessfulBundles::<T>::get()
+    pub fn successful_bundles(domain_id: DomainId) -> Vec<H256> {
+        SuccessfulBundles::<T>::get(domain_id)
+    }
+
+    pub fn successful_bundles_of_all_domains() -> Vec<H256> {
+        let mut res = Vec::new();
+        for mut bundles in SuccessfulBundles::<T>::iter_values() {
+            res.append(&mut bundles);
+        }
+        res
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
@@ -873,7 +1118,11 @@ impl<T: Config> Pallet<T> {
             DomainStakingSummary::<T>::get(domain_id),
         ) {
             (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
-                current_operators: stake_summary.current_operators,
+                current_operators: stake_summary
+                    .current_operators
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<OperatorId>>(),
                 total_domain_stake: stake_summary.current_total_stake,
                 bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
             }),
@@ -887,19 +1136,53 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_submit_bundle(
-        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
+        opaque_bundle: &OpaqueBundleOf<T>,
     ) -> Result<(), TransactionValidityError> {
-        // TODO: Validate domain block tree
+        let domain_id = opaque_bundle.domain_id();
+        let receipt = &opaque_bundle.sealed_header.header.receipt;
+
+        // TODO: Implement bundle validation.
+
+        verify_execution_receipt::<T>(domain_id, receipt)
+            .map_err(|_| InvalidTransaction::Call.into())
+    }
+
+    // Check if a bundle is stale
+    fn check_stale_bundle(
+        current_block_number: T::BlockNumber,
+        bundle_create_at: T::BlockNumber,
+    ) -> Result<(), BundleError> {
+        let confirmation_depth_k = T::ConfirmationDepthK::get();
+        if let Some(finalized) = current_block_number.checked_sub(&confirmation_depth_k) {
+            {
+                // Ideally, `bundle_create_at` is `current_block_number - 1`, we need
+                // to handle the edge case that `T::ConfirmationDepthK` happens to be 1.
+                let is_stale_bundle = if confirmation_depth_k.is_zero() {
+                    unreachable!(
+                        "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
+                    )
+                } else if confirmation_depth_k == One::one() {
+                    bundle_create_at < finalized
+                } else {
+                    bundle_create_at <= finalized
+                };
+
+                if is_stale_bundle {
+                    log::debug!(
+                        target: "runtime::domains",
+                        "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
+                        ConfirmationDepthK: {confirmation_depth_k:?}, `bundle_create_at`: {:?}, `finalized`: {finalized:?}",
+                        bundle_create_at,
+                    );
+                    return Err(BundleError::StaleBundle);
+                }
+            }
+        }
         Ok(())
     }
 
-    fn validate_bundle(
-        OpaqueBundle {
-            sealed_header,
-            receipt: _,
-            extrinsics: _,
-        }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
-    ) -> Result<(), BundleError> {
+    fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let sealed_header = &opaque_bundle.sealed_header;
         let operator_id = sealed_header.header.proof_of_election.operator_id;
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
@@ -911,67 +1194,31 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadBundleSignature);
         }
 
-        let header = &sealed_header.header;
+        let domain_id = opaque_bundle.domain_id();
+        let receipt = &sealed_header.header.receipt;
+        let bundle_create_at = sealed_header.header.consensus_block_number;
 
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
         // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
-        let confirmation_depth_k = T::ConfirmationDepthK::get();
-        if let Some(finalized) = current_block_number.checked_sub(&confirmation_depth_k) {
-            {
-                // Ideally, `bundle.header.primary_number` is `current_block_number - 1`, we need
-                // to handle the edge case that `T::ConfirmationDepthK` happens to be 1.
-                let is_stale_bundle = if confirmation_depth_k.is_zero() {
-                    unreachable!(
-                        "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
-                    )
-                } else if confirmation_depth_k == One::one() {
-                    header.consensus_block_number < finalized
-                } else {
-                    header.consensus_block_number <= finalized
-                };
-
-                if is_stale_bundle {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
-                        ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
-                        header.consensus_block_number,
-                    );
-                    return Err(BundleError::StaleBundle);
-                }
-            }
-        }
+        Self::check_stale_bundle(current_block_number, bundle_create_at)?;
 
         // TODO: Implement bundle validation.
 
-        // TODO: The current staking distribution may be unusable when there is an epoch
-        // transition, track the last stake distribution in that case.
-        let proof_of_election = &sealed_header.header.proof_of_election;
+        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
+        let proof_of_election = &sealed_header.header.proof_of_election;
         proof_of_election
             .verify_vrf_signature(&operator.signing_key)
             .map_err(|_| BundleError::BadVrfSignature)?;
-
-        let domain_id = proof_of_election.domain_id;
-
-        let domain_stake_summary =
-            DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
-
-        if !domain_stake_summary
-            .current_operators
-            .contains(&operator_id)
-        {
-            return Err(BundleError::BadOperator);
-        }
 
         let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?
             .domain_config
             .bundle_slot_probability;
 
-        let operator_stake = operator.current_total_stake;
-        let total_domain_stake = domain_stake_summary.current_total_stake;
+        let (operator_stake, total_domain_stake) =
+            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
         let threshold = sp_domains::bundle_producer_election::calculate_threshold(
             operator_stake.saturated_into(),
@@ -984,6 +1231,36 @@ impl<T: Config> Pallet<T> {
         }
 
         Ok(())
+    }
+
+    /// Return operators specific election verification params for Proof of Election verification.
+    /// If there was an epoch transition in this block for this domain,
+    ///     then return the parameters from previous epoch stored in LastEpochStakingDistribution
+    /// Else, return those details from the Domain's stake summary for this epoch.
+    fn fetch_operator_stake_info(
+        domain_id: DomainId,
+        operator_id: &OperatorId,
+    ) -> Result<(BalanceOf<T>, BalanceOf<T>), BundleError> {
+        match LastEpochStakingDistribution::<T>::get(domain_id) {
+            None => {
+                let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id)
+                    .ok_or(BundleError::InvalidDomainId)?;
+
+                let operator_stake = domain_stake_summary
+                    .current_operators
+                    .get(operator_id)
+                    .ok_or(BundleError::BadOperator)?;
+
+                Ok((*operator_stake, domain_stake_summary.current_total_stake))
+            }
+            Some(pending_election_params) => {
+                let operator_stake = pending_election_params
+                    .operators
+                    .get(operator_id)
+                    .ok_or(BundleError::BadOperator)?;
+                Ok((*operator_stake, pending_election_params.total_domain_stake))
+            }
+        }
     }
 
     /// Called when a bundle is added to update the bundle state for tx range
@@ -1007,14 +1284,49 @@ impl<T: Config> Pallet<T> {
     /// domains with bundles in the block.
     fn update_domain_tx_range() {
         for domain_id in DomainTxRangeState::<T>::iter_keys() {
-            DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| {
-                if let Some(state) = maybe_state {
-                    state.on_finalize(
-                        T::DomainTxRangeAdjustmentInterval::get(),
-                        T::ExpectedBundlesPerInterval::get(),
-                    );
-                }
-            })
+            if let Some(domain_config) =
+                DomainRegistry::<T>::get(domain_id).map(|obj| obj.domain_config)
+            {
+                DomainTxRangeState::<T>::mutate(domain_id, |maybe_tx_range_state| {
+                    if let Some(tx_range_state) = maybe_tx_range_state {
+                        let tx_range_adjustment_interval =
+                            T::DomainTxRangeAdjustmentInterval::get();
+
+                        tx_range_state.interval_blocks += 1;
+
+                        if tx_range_state.interval_blocks < tx_range_adjustment_interval {
+                            return;
+                        }
+
+                        // End of interval, calculate the new tx range.
+                        let TxRangeState {
+                            tx_range,
+                            interval_blocks,
+                            interval_bundles,
+                        } = tx_range_state;
+
+                        let actual_bundle_count = *interval_bundles;
+                        let expected_bundle_count = tx_range_adjustment_interval
+                            * u64::from(domain_config.target_bundles_per_block);
+
+                        let new_tx_range = calculate_tx_range(
+                            *tx_range,
+                            actual_bundle_count,
+                            expected_bundle_count,
+                        );
+
+                        log::trace!(
+                            target: "runtime::domains",
+                            "tx range update: blocks = {interval_blocks}, bundles = {actual_bundle_count}, prev = {tx_range}, new = {new_tx_range}"
+                        );
+
+                        // Reset the tx range and start over.
+                        tx_range_state.tx_range = new_tx_range;
+                        tx_range_state.interval_blocks = 0;
+                        tx_range_state.interval_bundles = 0;
+                    }
+                })
+            }
         }
     }
 

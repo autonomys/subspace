@@ -63,6 +63,13 @@ pub enum PeerInfo {
     Client,
 }
 
+impl PeerInfo {
+    /// Returns whether [`PeerInfo`] is a Farmer.
+    pub fn is_farmer(peer_info: &PeerInfo) -> bool {
+        matches!(peer_info, Self::Farmer { .. })
+    }
+}
+
 /// A [`NetworkBehaviour`] that handles inbound peer info requests and
 /// sends outbound peer info requests on the first established connection.
 pub struct Behaviour {

@@ -73,6 +73,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use static_assertions::const_assert;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
@@ -155,14 +156,6 @@ const INITIAL_DOMAIN_TX_RANGE: u64 = 10;
 
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
-
-/// Expected bundles per slot.
-/// TODO: this should come from DomainConfig when domain registry is implemented.
-const EXPECTED_BUNDLES_PER_SLOT: u64 = 1;
-
-/// Expected bundles to be produced per adjustment interval.
-const EXPECTED_BUNDLES_PER_INTERVAL: u64 =
-    TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS * SLOT_PROBABILITY.1 * EXPECTED_BUNDLES_PER_SLOT;
 
 // We assume initial plot size starts with the a single sector, where we effectively audit each
 // chunk of every piece.
@@ -460,11 +453,9 @@ impl pallet_offences_subspace::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 128;
     pub const InitialDomainTxRange: u64 = INITIAL_DOMAIN_TX_RANGE;
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
-    pub const ExpectedBundlesPerInterval: u64 = EXPECTED_BUNDLES_PER_INTERVAL;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
     // Minimum Operator stake is 2 * MaximumBlockWeight * WeightToFee
@@ -476,7 +467,15 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
+    pub const BlockTreePruningDepth: u32 = 256;
+    // TODO: revisit these
+    pub const StakeWithdrawalLockingPeriod: BlockNumber = 100;
+    pub const StakeEpochDuration: DomainNumber = 5;
 }
+
+// `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
+// execution receipt, which is used to construct the node of the block tree.
+const_assert!(BlockTreePruningDepth::get() <= BlockHashCount::get());
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -489,7 +488,6 @@ impl pallet_domains::Config for Runtime {
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
-    type ExpectedBundlesPerInterval = ExpectedBundlesPerInterval;
     type MinOperatorStake = MinOperatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
@@ -497,6 +495,9 @@ impl pallet_domains::Config for Runtime {
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
     type Share = Balance;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
+    type StakeEpochDuration = StakeEpochDuration;
 }
 
 parameter_types! {
@@ -832,13 +833,14 @@ impl_runtime_apis! {
         }
 
         fn extract_successful_bundles(
+            domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
-            crate::domains::extract_successful_bundles(extrinsics)
+            crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
         fn successful_bundle_hashes() -> Vec<H256> {
-            Domains::successful_bundles()
+            Domains::successful_bundles_of_all_domains()
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {

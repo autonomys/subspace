@@ -26,8 +26,8 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
-use sc_client_api::execution_extensions::ExecutionStrategies;
-use sc_client_api::{backend, BlockchainEvents};
+use sc_client_api::execution_extensions::{ExecutionStrategies, ExtensionsFactory};
+use sc_client_api::{backend, BlockchainEvents, ExecutorProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -56,7 +56,8 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
-use sp_domains::OpaqueBundle;
+use sp_domains::{GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle};
+use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::{BlockId, Digest};
@@ -72,6 +73,7 @@ use subspace_fraud_proof::domain_extrinsics_builder::DomainExtrinsicsBuilder;
 use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
+use subspace_node::domain::DomainGenesisBlockBuilder;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Hash};
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
@@ -182,6 +184,24 @@ type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, B
 type TxPreValidator =
     ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
 
+struct MockExtensionsFactory(Arc<dyn GenerateGenesisStateRoot>);
+
+impl<Block> ExtensionsFactory<Block> for MockExtensionsFactory
+where
+    Block: BlockT,
+{
+    fn extensions_for(
+        &self,
+        _block_hash: Block::Hash,
+        _block_number: NumberFor<Block>,
+        _capabilities: sp_core::offchain::Capabilities,
+    ) -> Extensions {
+        let mut exts = Extensions::new();
+        exts.register(GenesisReceiptExtension::new(self.0.clone()));
+        exts
+    }
+}
+
 /// A mock Subspace consensus node instance used for testing.
 pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
@@ -250,6 +270,12 @@ impl MockConsensusNode {
         let (client, backend, keystore_container, mut task_manager) =
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
+
+        client
+            .execution_extensions()
+            .set_extensions_factory(MockExtensionsFactory(Arc::new(
+                DomainGenesisBlockBuilder::new(backend.clone(), executor.clone()),
+            )));
 
         let client = Arc::new(client);
 

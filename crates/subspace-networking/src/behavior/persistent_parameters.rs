@@ -33,7 +33,7 @@ const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zer
 // Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 // Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
-const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
+pub(crate) const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
 // Defines an expiration period for the peer marked for the removal.
 const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: i64 = 86400; // 1 DAY
 

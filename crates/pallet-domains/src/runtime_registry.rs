@@ -179,7 +179,9 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) {
 mod tests {
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
     use crate::runtime_registry::{Error as RuntimeRegistryError, RuntimeObject};
-    use crate::tests::{new_test_ext, DomainRuntimeUpgradeDelay, Domains, System, Test};
+    use crate::tests::{
+        new_test_ext, DomainRuntimeUpgradeDelay, Domains, ReadRuntimeVersion, System, Test,
+    };
     use crate::Error;
     use codec::Encode;
     use frame_support::assert_ok;
@@ -189,18 +191,6 @@ mod tests {
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::{Digest, DispatchError};
     use sp_version::RuntimeVersion;
-
-    struct ReadRuntimeVersion(Vec<u8>);
-
-    impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
-        fn read_runtime_version(
-            &self,
-            _wasm_code: &[u8],
-            _ext: &mut dyn sp_externalities::Externalities,
-        ) -> Result<Vec<u8>, String> {
-            Ok(self.0.clone())
-        }
-    }
 
     #[test]
     fn create_domain_runtime() {

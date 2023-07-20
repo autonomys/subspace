@@ -19,6 +19,7 @@
 #![warn(missing_docs)]
 
 mod behavior;
+mod connected_peers;
 mod create;
 mod node;
 mod node_runner;
@@ -44,7 +45,7 @@ pub use crate::peer_info::{
 pub use behavior::provider_storage::{
     MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
 };
-pub use create::{create, peer_id, Config, CreationError, RelayMode};
+pub use create::{create, peer_id, Config, CreationError};
 pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{
