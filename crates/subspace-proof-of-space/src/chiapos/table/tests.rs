@@ -18,6 +18,49 @@ fn to_chia_seed(seed: &Seed) -> Seed {
     chia_seed
 }
 
+#[test]
+fn test_compute_f1_k25() {
+    const K: u8 = 25;
+    let seed = to_chia_seed(&[
+        0, 2, 3, 4, 5, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 41, 5, 6, 7, 8, 9, 10, 11,
+        12, 13, 11, 15, 16,
+    ]);
+
+    let xs = [525, 526, 625_usize];
+    let expected_ys = [2_016_650_816, 2_063_162_112, 1_930_299_520_usize];
+
+    for (x, expected_y) in xs.into_iter().zip(expected_ys) {
+        let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
+        let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
+        let y = usize::from(&y);
+        assert_eq!(y, expected_y);
+    }
+}
+
+#[test]
+fn test_compute_f1_k22() {
+    const K: u8 = 22;
+    let seed = to_chia_seed(&[
+        0, 2, 3, 4, 5, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 41, 5, 6, 7, 8, 9, 10, 11,
+        12, 13, 11, 15, 16,
+    ]);
+
+    let xs = [
+        192_837_491,
+        192_837_491 + 1,
+        192_837_491 + 2,
+        192_837_491 + 255_usize,
+    ];
+    let expected_ys = [71_434_750, 107_364_222, 235_889_534, 143_140_990_usize];
+
+    for (x, expected_y) in xs.into_iter().zip(expected_ys) {
+        let (partial_y, partial_y_offset) = partial_y::<K>(seed, x);
+        let y = compute_f1::<K>(X::from(x), &partial_y, partial_y_offset);
+        let y = usize::from(&y);
+        assert_eq!(y, expected_y);
+    }
+}
+
 #[cfg(target_pointer_width = "64")]
 #[test]
 fn test_compute_f1_k35() {
