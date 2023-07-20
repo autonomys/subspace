@@ -29,7 +29,7 @@ fn pos_bench<PosTable>(
         // Repeated initialization is not supported, we just ignore errors here because of it
         let _ = ThreadPoolBuilder::new()
             // Change number of threads if necessary
-            .num_threads(4)
+            // .num_threads(4)
             .build_global();
     }
 
