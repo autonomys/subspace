@@ -400,7 +400,7 @@ where
         load_decode(backend, BAD_RECEIPT_NUMBERS.encode().as_slice())?.unwrap_or_default();
 
     let expired_receipt_numbers = bad_receipt_numbers
-        .drain_filter(|number| *number < oldest_receipt_number)
+        .extract_if(|number| *number < oldest_receipt_number)
         .collect::<Vec<_>>();
 
     if !expired_receipt_numbers.is_empty() {

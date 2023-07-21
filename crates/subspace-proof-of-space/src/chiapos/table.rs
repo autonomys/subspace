@@ -17,6 +17,7 @@ use core::simd::Simd;
 #[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
 use seq_macro::seq;
+use std::simd::SimdUint;
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 
@@ -476,12 +477,7 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
-    let Some(matches) = find_matches(
-        left_bucket,
-        right_bucket,
-        rmap_scratch,
-        left_targets,
-    ) else {
+    let Some(matches) = find_matches(left_bucket, right_bucket, rmap_scratch, left_targets) else {
         return;
     };
 

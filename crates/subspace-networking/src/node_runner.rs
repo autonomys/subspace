@@ -578,7 +578,7 @@ where
             } => {
                 let mut cancelled = false;
                 if let Some(QueryResultSender::ClosestPeers { sender, .. }) =
-                    self.query_id_receivers.get_mut(&id)
+                    self.query_id_receivers.get(&id)
                 {
                     match result {
                         Ok(GetClosestPeersOk { key, peers }) => {
@@ -638,7 +638,7 @@ where
             } => {
                 let mut cancelled = false;
                 if let Some(QueryResultSender::Value { sender, .. }) =
-                    self.query_id_receivers.get_mut(&id)
+                    self.query_id_receivers.get(&id)
                 {
                     match result {
                         Ok(GetRecordOk::FoundRecord(rec)) => {
@@ -692,7 +692,7 @@ where
             } => {
                 let mut cancelled = false;
                 if let Some(QueryResultSender::Providers { sender, .. }) =
-                    self.query_id_receivers.get_mut(&id)
+                    self.query_id_receivers.get(&id)
                 {
                     match result {
                         Ok(GetProvidersOk::FoundProviders { key, providers }) => {
@@ -739,7 +739,7 @@ where
             } => {
                 let mut cancelled = false;
                 if let Some(QueryResultSender::PutValue { sender, .. }) =
-                    self.query_id_receivers.get_mut(&id)
+                    self.query_id_receivers.get(&id)
                 {
                     match result {
                         Ok(PutRecordOk { key, .. }) => {
@@ -771,7 +771,7 @@ where
     // Returns `true` if query was cancelled
     fn unbounded_send_and_cancel_on_error<T>(
         kademlia: &mut Kademlia<ProviderOnlyRecordStore<ProviderStorage>>,
-        sender: &mut mpsc::UnboundedSender<T>,
+        sender: &mpsc::UnboundedSender<T>,
         value: T,
         channel: &'static str,
         id: &QueryId,

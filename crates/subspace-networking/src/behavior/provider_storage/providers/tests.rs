@@ -48,27 +48,19 @@ fn memory_storage_provider() {
 
     println!("{:?}", store.provided());
 
-    assert_eq!(
-        HashSet::from_iter(vec![rec2.clone()].into_iter()),
-        provided_collection
-    );
+    assert_eq!(HashSet::from_iter(vec![rec2.clone()]), provided_collection);
 
     // Check single provider retrieval
-    let provided_collection: HashSet<ProviderRecord> =
-        HashSet::from_iter(store.providers(&key2).into_iter());
+    let provided_collection: HashSet<ProviderRecord> = HashSet::from_iter(store.providers(&key2));
 
     assert_eq!(
-        HashSet::from_iter(vec![rec2.clone(), rec3].into_iter()),
+        HashSet::from_iter(vec![rec2.clone(), rec3]),
         provided_collection
     );
 
     // Remove provider
     store.remove_provider(&key2, &provider3);
-    let provided_collection: HashSet<ProviderRecord> =
-        HashSet::from_iter(store.providers(&key2).into_iter());
+    let provided_collection: HashSet<ProviderRecord> = HashSet::from_iter(store.providers(&key2));
 
-    assert_eq!(
-        HashSet::from_iter(vec![rec2].into_iter()),
-        provided_collection
-    );
+    assert_eq!(HashSet::from_iter(vec![rec2]), provided_collection);
 }
