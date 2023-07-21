@@ -255,6 +255,8 @@ pub(super) fn compute_f1_simd<const K: u8>(
 
     // Combine all of the bits together:
     // [padding zero bits][`K` bits rom `partial_y`][`PARAM_EXT` bits from `x`]
+    // NOTE: `pre_exts_mask` is unnecessary here and makes no difference, but it allows compiler to
+    // generate faster code 🤷‍
     let ys = (pre_ys.cast() & pre_ys_mask) | (pre_exts & pre_exts_mask);
 
     // SAFETY: `Y` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
