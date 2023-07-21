@@ -15,7 +15,8 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot};
+use sp_domains::v2::ExecutionReceipt;
+use sp_domains::{DomainId, DomainsApi, ExtrinsicsRoot};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::sync::Arc;
@@ -213,8 +214,7 @@ where
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
-        // TODO: `bundle_extrinsics_roots` wil be used to construct the v2 `ExecutionReceipt`
-        _bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
+        bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         // Although the domain block intuitively ought to use the same fork choice
@@ -256,17 +256,17 @@ where
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
 
-        let state_root = state_root
+        let encoded_state_root = state_root
             .encode()
             .try_into()
             .expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
 
-        roots.push(state_root);
+        roots.push(encoded_state_root);
 
         let trace_root = MerkleTree::from_leaves(&roots).root().ok_or_else(|| {
             sp_blockchain::Error::Application(Box::from("Failed to get merkle root of trace"))
         })?;
-        let trace = roots
+        let trace: Vec<<Block as BlockT>::Hash> = roots
             .into_iter()
             .map(|r| {
                 Block::Hash::decode(&mut r.as_slice())
@@ -280,13 +280,41 @@ where
             "Trace root calculated for #{header_number},{header_hash}"
         );
 
+        let parent_receipt = if parent_number.is_zero() {
+            let genesis_hash = self.client.info().genesis_hash;
+            let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Domain block header for #{genesis_hash:?} not found",
+                ))
+            })?;
+            ExecutionReceipt::genesis(
+                self.consensus_client.info().genesis_hash,
+                *genesis_header.state_root(),
+            )
+        } else {
+            crate::aux_schema::load_execution_receipt_by_domain_hash::<_, Block, CBlock>(
+                &*self.client,
+                parent_hash,
+            )?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Receipt of domain block #{parent_number},{parent_hash} not found"
+                ))
+            })?
+        };
+
         let execution_receipt = ExecutionReceipt {
+            domain_block_number: header_number,
+            domain_block_hash: header_hash,
+            parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
-            domain_block_number: header_number,
-            domain_hash: header_hash,
-            trace,
-            trace_root,
+            block_extrinsics_roots: bundle_extrinsics_roots,
+            final_state_root: state_root,
+            execution_trace: trace,
+            execution_trace_root: sp_core::H256(trace_root),
+            // TODO: set proper value
+            total_rewards: Default::default(),
         };
 
         Ok(DomainBlockResult {
@@ -566,9 +594,10 @@ where
                 execution_receipt.consensus_block_number
             )))?;
 
-            if let Some(trace_mismatch_index) =
-                find_trace_mismatch(&local_receipt.trace, &execution_receipt.trace)
-            {
+            if let Some(trace_mismatch_index) = find_trace_mismatch(
+                &local_receipt.execution_trace,
+                &execution_receipt.execution_trace,
+            ) {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
                     execution_receipt.hash(),

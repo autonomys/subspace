@@ -6,14 +6,17 @@ use domain_runtime_primitives::DomainCoreApi;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
-use sp_domains::{BundleHeader, ExecutionReceipt, ProofOfElection};
+use sp_domains::v2::{BundleHeader, ExecutionReceipt};
+use sp_domains::ProofOfElection;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
+use sp_weights::Weight;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
+use subspace_runtime_primitives::Balance;
 
 pub(super) struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
     client: Arc<Client>,
@@ -36,8 +39,13 @@ impl<Block, Client, CBlock, CClient, TransactionPool> Clone
 }
 
 pub(super) type ProposeBundleOutput<Block, CBlock> = (
-    BundleHeader<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Hash>,
-    ExecutionReceiptFor<Block, CBlock>,
+    BundleHeader<
+        NumberFor<CBlock>,
+        <CBlock as BlockT>::Hash,
+        NumberFor<Block>,
+        <Block as BlockT>::Hash,
+        Balance,
+    >,
     Vec<<Block as BlockT>::Extrinsic>,
 );
 
@@ -127,12 +135,15 @@ where
 
         let header = BundleHeader {
             consensus_block_number: consensus_block_info.number,
-            consensus_block_hash: consensus_block_info.hash,
-            extrinsics_root,
             proof_of_election,
+            receipt,
+            // TODO: will set to proper value in later commit
+            bundle_size: u32::MAX,
+            estimated_bundle_weight: Weight::MAX,
+            bundle_extrinsics_root: extrinsics_root,
         };
 
-        Ok((header, receipt, extrinsics))
+        Ok((header, extrinsics))
     }
 
     /// Returns the receipt in the next domain bundle.
@@ -159,18 +170,6 @@ where
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
 
-        let load_receipt = |domain_hash, block_number| {
-            crate::aux_schema::load_execution_receipt_by_domain_hash::<_, Block, CBlock>(
-                &*self.client,
-                domain_hash,
-            )?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Receipt of domain block #{block_number},{domain_hash} not found"
-                ))
-            })
-        };
-
         let header_block_receipt_is_written = crate::aux_schema::consensus_block_hash_for::<
             _,
             _,
@@ -194,8 +193,15 @@ where
         let receipt_number = (head_receipt_number + One::one()).min(available_best_receipt_number);
 
         if receipt_number.is_zero() {
+            let genesis_hash = self.client.info().genesis_hash;
+            let genesis_header = self.client.header(genesis_hash)?.ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "Domain block header for #{genesis_hash:?} not found",
+                ))
+            })?;
             return Ok(ExecutionReceipt::genesis(
                 self.consensus_client.info().genesis_hash,
+                *genesis_header.state_root(),
             ));
         }
 
@@ -205,6 +211,14 @@ where
             ))
         })?;
 
-        load_receipt(domain_hash, receipt_number)
+        crate::aux_schema::load_execution_receipt_by_domain_hash::<_, Block, CBlock>(
+            &*self.client,
+            domain_hash,
+        )?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!(
+                "Receipt of domain block #{receipt_number},{domain_hash} not found"
+            ))
+        })
     }
 }

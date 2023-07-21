@@ -90,7 +90,7 @@ where
 {
     let block_number = execution_receipt.consensus_block_number;
     let consensus_hash = execution_receipt.consensus_block_hash;
-    let domain_hash = execution_receipt.domain_hash;
+    let domain_hash = execution_receipt.domain_block_hash;
 
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
     let mut hashes_at_block_number =
@@ -488,21 +488,26 @@ mod tests {
     use sp_runtime::traits::Header as HeaderT;
     use std::collections::HashSet;
     use std::sync::Mutex;
-    use subspace_runtime_primitives::{BlockNumber, Hash};
+    use subspace_runtime_primitives::{Balance, BlockNumber, Hash};
     use subspace_test_runtime::Block as CBlock;
     // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
-    type ExecutionReceipt = sp_domains::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash>;
+    type ExecutionReceipt =
+        sp_domains::v2::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash, Balance>;
 
     fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {
+            domain_block_number: consensus_block_number,
+            domain_block_hash: H256::random(),
+            parent_domain_block_receipt_hash: H256::random(),
             consensus_block_number,
             consensus_block_hash: H256::random(),
-            domain_block_number: consensus_block_number,
-            domain_hash: H256::random(),
-            trace: Default::default(),
-            trace_root: Default::default(),
+            block_extrinsics_roots: Default::default(),
+            final_state_root: Default::default(),
+            execution_trace: Default::default(),
+            execution_trace_root: Default::default(),
+            total_rewards: Default::default(),
         }
     }
 
