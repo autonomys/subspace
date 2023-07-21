@@ -128,19 +128,11 @@ pub struct TablesCache<const K: u8> {
 impl<const K: u8> Default for TablesCache<K> {
     /// Create new instance
     fn default() -> Self {
-        // Pair of buckets that are a sliding window of 2 buckets across the whole table
-        let left_bucket = Bucket::default();
-        let right_bucket = Bucket::default();
-
-        let left_targets = calculate_left_targets();
-        // TODO: This is the capacity chiapos allocates it with, check if it is correct
-        let rmap_scratch = Vec::with_capacity(usize::from(PARAM_BC));
-
         Self {
-            left_bucket,
-            right_bucket,
-            rmap_scratch,
-            left_targets,
+            left_bucket: Bucket::default(),
+            right_bucket: Bucket::default(),
+            rmap_scratch: Vec::new(),
+            left_targets: calculate_left_targets(),
         }
     }
 }
