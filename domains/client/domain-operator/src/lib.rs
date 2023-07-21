@@ -91,8 +91,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_domains::v2::{Bundle, ExecutionReceipt};
-use sp_domains::DomainId;
+use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,

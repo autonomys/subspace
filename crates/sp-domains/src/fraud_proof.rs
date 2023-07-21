@@ -1,5 +1,4 @@
-use crate::v2::SealedBundleHeader;
-use crate::DomainId;
+use crate::{DomainId, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;

@@ -4,8 +4,7 @@ use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::v2::ExecutionReceipt;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, ExecutionReceipt};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
 use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
@@ -14,7 +13,7 @@ use subspace_verification::derive_randomness;
 pub(crate) fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::v2::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()

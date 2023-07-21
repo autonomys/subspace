@@ -1,5 +1,5 @@
 use crate::fraud_proof::FraudProof;
-use crate::v2::OpaqueBundle;
+use crate::OpaqueBundle;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, NumberFor};

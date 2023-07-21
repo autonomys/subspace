@@ -494,7 +494,7 @@ mod tests {
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
     type ExecutionReceipt =
-        sp_domains::v2::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash, Balance>;
+        sp_domains::ExecutionReceipt<BlockNumber, Hash, BlockNumber, Hash, Balance>;
 
     fn create_execution_receipt(consensus_block_number: BlockNumber) -> ExecutionReceipt {
         ExecutionReceipt {

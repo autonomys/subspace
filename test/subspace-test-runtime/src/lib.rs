@@ -52,9 +52,9 @@ use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::v2::{ExecutionReceipt, OpaqueBundle, OpaqueBundles};
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsFreezeIdentifier, OperatorId, OperatorPublicKey,
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle,
+    OpaqueBundles, OperatorId, OperatorPublicKey,
 };
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,

@@ -42,7 +42,8 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
-    DomainBlockLimit, DomainId, DomainInstanceData, OperatorId, OperatorPublicKey, RuntimeId,
+    DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey, RuntimeId,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
@@ -64,7 +65,7 @@ pub trait FreezeIdentifier<T: Config> {
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
 }
 
-pub type ExecutionReceiptOf<T> = sp_domains::v2::ExecutionReceipt<
+pub type ExecutionReceiptOf<T> = ExecutionReceipt<
     <T as frame_system::Config>::BlockNumber,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainNumber,
@@ -72,7 +73,7 @@ pub type ExecutionReceiptOf<T> = sp_domains::v2::ExecutionReceipt<
     BalanceOf<T>,
 >;
 
-pub type OpaqueBundleOf<T> = sp_domains::v2::OpaqueBundle<
+pub type OpaqueBundleOf<T> = OpaqueBundle<
     <T as frame_system::Config>::BlockNumber,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainNumber,
@@ -89,7 +90,6 @@ pub(crate) struct ElectionVerificationParams<Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{

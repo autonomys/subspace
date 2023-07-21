@@ -10,9 +10,9 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
-use sp_domains::v2::{Bundle, SealedBundleHeader};
 use sp_domains::{
-    BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
+    Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
+    SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
@@ -22,7 +22,7 @@ use std::sync::Arc;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
-type OpaqueBundle<Block, CBlock> = sp_domains::v2::OpaqueBundle<
+type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,

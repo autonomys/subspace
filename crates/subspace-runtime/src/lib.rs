@@ -826,7 +826,7 @@ impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: sp_domains::v2::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
+            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -834,7 +834,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::v2::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 

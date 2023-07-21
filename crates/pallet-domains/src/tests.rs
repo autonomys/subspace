@@ -6,10 +6,10 @@ use frame_support::weights::Weight;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
-use sp_domains::v2::{BundleHeader, ExecutionReceipt, OpaqueBundle, SealedBundleHeader};
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsFreezeIdentifier, GenerateGenesisStateRoot, OperatorId,
-    OperatorPair, ProofOfElection,
+    BundleHeader, DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt,
+    GenerateGenesisStateRoot, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection,
+    SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
