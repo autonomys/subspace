@@ -362,7 +362,6 @@ where
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
-    // Remove these 2 conversions
     let left_metadata = u128::from(left_metadata);
     let right_metadata = u128::from(right_metadata);
 
