@@ -817,25 +817,28 @@ where
             results
         }));
 
-        // Drop in thread pool to return faster from here
-        rayon::spawn(move || {
-            drop(buckets);
-        });
-
         t_n.par_sort_unstable();
 
-        let mut ys = Vec::with_capacity(t_n.len());
-        let mut positions = Vec::with_capacity(t_n.len());
-        let mut metadatas = Vec::with_capacity(t_n.len());
+        let mut ys = vec![Default::default(); t_n.len()];
+        let mut positions = vec![Default::default(); t_n.len()];
+        let mut metadatas = vec![Default::default(); t_n.len()];
 
-        for (y, [left_position, right_position], metadata) in t_n {
-            ys.push(y);
-            positions.push([left_position, right_position]);
-            // Last table doesn't have metadata
-            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
-                metadatas.push(metadata);
-            }
-        }
+        rayon::join(
+            || {
+                // It is beneficial to drop buckets in parallel with other things
+                drop(buckets);
+            },
+            || {
+                // Going in parallel saves a bit of time
+                t_n.into_par_iter()
+                    .zip(ys.par_iter_mut().zip(&mut positions).zip(&mut metadatas))
+                    .for_each(|(input, output)| {
+                        *output.0 .0 = input.0;
+                        *output.0 .1 = input.1;
+                        *output.1 = input.2;
+                    });
+            },
+        );
 
         Self::Other {
             ys,

@@ -49,7 +49,7 @@ impl X {
     }
 }
 
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
+#[derive(Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, From, Into)]
 #[repr(transparent)]
 pub(in super::super) struct Y(u32);
 
@@ -109,6 +109,15 @@ pub(in super::super) struct Metadata<const K: u8, const TABLE_NUMBER: u8>(
 )
 where
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized;
+
+impl<const K: u8, const TABLE_NUMBER: u8> Default for Metadata<K, TABLE_NUMBER>
+where
+    EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
+{
+    fn default() -> Self {
+        Self([0; metadata_size_bytes(K, TABLE_NUMBER)])
+    }
+}
 
 impl<const K: u8, const TABLE_NUMBER: u8> From<Metadata<K, TABLE_NUMBER>> for u128
 where
