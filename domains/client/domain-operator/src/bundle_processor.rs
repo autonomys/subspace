@@ -14,7 +14,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, DomainsApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, One};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -202,13 +202,11 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = parent_number;
-        // let head_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .head_receipt_number(consensus_block_hash, self.domain_id)?
-        // .into();
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_block_hash, self.domain_id)?
+            .into();
 
         let PreprocessResult {
             extrinsics,
@@ -243,17 +241,9 @@ where
             )
             .await?;
 
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = domain_block_result.header_number - One::one();
-        // let head_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .head_receipt_number(consensus_block_hash, self.domain_id)?
-        // .into();
-
         assert!(
             domain_block_result.header_number > head_receipt_number,
-            "Consensus chain number must larger than execution chain number by at least 1"
+            "Domain chain number must larger than execution chain number by at least 1"
         );
 
         let built_block_info = (

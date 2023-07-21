@@ -1342,6 +1342,21 @@ impl<T: Config> Pallet<T> {
         U256::MAX / T::InitialDomainTxRange::get()
     }
 
+    /// Returns the best execution chain number.
+    pub fn head_receipt_number(domain_id: DomainId) -> T::DomainNumber {
+        HeadReceiptNumber::<T>::get(domain_id)
+    }
+
+    /// Returns the block number of oldest execution receipt.
+    pub fn oldest_receipt_number(domain_id: DomainId) -> T::DomainNumber {
+        Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
+    }
+
+    /// Returns the block tree pruning depth.
+    pub fn block_tree_pruning_depth() -> T::DomainNumber {
+        T::BlockTreePruningDepth::get()
+    }
+
     /// Returns the domain block limit of the given domain.
     pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
         DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {

@@ -31,7 +31,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         at: ParentChainBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError>;
 
-    fn maximum_receipt_drift(
+    fn block_tree_pruning_depth(
         &self,
         at: ParentChainBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError>;
@@ -107,38 +107,32 @@ where
 
     fn oldest_receipt_number(
         &self,
-        _at: CBlock::Hash,
+        at: CBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
-        // TODO: Implement when block tree is ready.
-        Ok(0u32.into())
-        // let oldest_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .oldest_receipt_number(at, self.domain_id)?;
-        // Ok(oldest_receipt_number.into())
+        let oldest_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .oldest_receipt_number(at, self.domain_id)?;
+        Ok(oldest_receipt_number.into())
     }
 
-    fn head_receipt_number(&self, _at: CBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
-        // TODO: Implement when block tree is ready.
-        unimplemented!("Retrieve from consensus chain runtime")
-        // let head_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .head_receipt_number(at, self.domain_id)?;
-        // Ok(head_receipt_number.into())
+    fn head_receipt_number(&self, at: CBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(at, self.domain_id)?;
+        Ok(head_receipt_number.into())
     }
 
-    fn maximum_receipt_drift(
+    fn block_tree_pruning_depth(
         &self,
-        _at: CBlock::Hash,
+        at: CBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
-        // TODO: Implement when block tree is ready.
-        Ok(256u32.into())
-        // let max_drift = self
-        // .consensus_client
-        // .runtime_api()
-        // .maximum_receipt_drift(at)?;
-        // Ok(max_drift.into())
+        let max_drift = self
+            .consensus_client
+            .runtime_api()
+            .block_tree_pruning_depth(at)?;
+        Ok(max_drift.into())
     }
 
     fn domain_block_limit(&self, at: CBlock::Hash) -> Result<DomainBlockLimit, sp_api::ApiError> {

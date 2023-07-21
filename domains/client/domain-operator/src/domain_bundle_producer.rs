@@ -170,11 +170,9 @@ where
         };
 
         let should_skip_slot = {
-            // TODO: Retrieve using consensus chain runtime API
-            let head_receipt_number = domain_best_number.saturating_sub(One::one());
-            // let head_receipt_number = self
-            // .parent_chain
-            // .head_receipt_number(self.parent_chain.best_hash())?;
+            let head_receipt_number = self
+                .parent_chain
+                .head_receipt_number(self.parent_chain.best_hash())?;
 
             // Executor is lagging behind the receipt chain on its parent chain as another executor
             // already processed a block higher than the local best and submitted the receipt to

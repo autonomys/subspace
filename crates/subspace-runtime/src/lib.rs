@@ -870,6 +870,18 @@ impl_runtime_apis! {
             Domains::genesis_state_root(domain_id)
         }
 
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::oldest_receipt_number(domain_id)
+        }
+
+        fn block_tree_pruning_depth() -> NumberFor<Block> {
+            Domains::block_tree_pruning_depth()
+        }
+
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             Domains::domain_block_limit(domain_id)
         }

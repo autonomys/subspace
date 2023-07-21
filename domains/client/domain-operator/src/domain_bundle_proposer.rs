@@ -173,10 +173,8 @@ where
         ParentChain: ParentChainInterface<Block, ParentChainBlock>,
     {
         let parent_chain_block_hash = parent_chain.best_hash();
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = header_number.saturating_sub(One::one());
-        // let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
-        let max_drift = parent_chain.maximum_receipt_drift(parent_chain_block_hash)?;
+        let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
+        let max_drift = parent_chain.block_tree_pruning_depth(parent_chain_block_hash)?;
 
         tracing::trace!(
             ?header_number,
