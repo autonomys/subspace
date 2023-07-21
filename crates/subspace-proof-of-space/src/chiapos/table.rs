@@ -177,7 +177,7 @@ impl Default for Bucket {
 #[derive(Debug, Default, Copy, Clone)]
 pub(super) struct RmapItem {
     count: Position,
-    start_index: Position,
+    start_position: Position,
 }
 
 /// `partial_y_offset` is in bits
@@ -292,14 +292,14 @@ fn find_matches<'a>(
     // quotient more efficiently by subtracting base value rather than computing remainder of
     // division
     let base = (usize::from(first_right_bucket_y) / usize::from(PARAM_BC)) * usize::from(PARAM_BC);
-    for (&y, right_index) in right_bucket.ys.iter().zip(Position::ZERO..) {
+    for (&y, right_position) in right_bucket.ys.iter().zip(right_bucket.start_position..) {
         let r = usize::from(y) - base;
 
         // Same `y` and as the result `r` can appear in the table multiple times, in which case
         // they'll all occupy consecutive slots in `right_bucket` and all we need to store is just
         // the first position and number of elements.
         if rmap[r].count == Position::ZERO {
-            rmap[r].start_index = right_index;
+            rmap[r].start_position = right_position;
         }
         rmap[r].count += Position::ONE;
     }
@@ -315,8 +315,8 @@ fn find_matches<'a>(
         left_bucket
             .ys
             .iter()
-            .zip(Position::ZERO..)
-            .flat_map(move |(&y, left_index)| {
+            .zip(left_bucket.start_position..)
+            .flat_map(move |(&y, left_position)| {
                 let r = usize::from(y) - base;
                 let left_targets = &left_targets[r];
 
@@ -324,11 +324,11 @@ fn find_matches<'a>(
                     let r_target = left_targets[m];
                     let rmap_item = rmap[usize::from(r_target)];
 
-                    (rmap_item.start_index..rmap_item.start_index + rmap_item.count).map(
-                        move |right_index| Match {
-                            left_position: left_bucket.start_position + left_index,
+                    (rmap_item.start_position..rmap_item.start_position + rmap_item.count).map(
+                        move |right_position| Match {
+                            left_position,
                             left_y: y,
-                            right_position: right_bucket.start_position + right_index,
+                            right_position,
                         },
                     )
                 })
