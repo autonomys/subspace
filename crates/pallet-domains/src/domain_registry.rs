@@ -14,8 +14,12 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::domain::generate_genesis_state_root;
-use sp_domains::{DomainId, GenesisDomain, ReceiptHash, RuntimeId, RuntimeType};
+use sp_domains::{
+    DomainId, DomainInstanceData, DomainsDigestItem, GenesisDomain, ReceiptHash, RuntimeId,
+    RuntimeType,
+};
 use sp_runtime::traits::{CheckedAdd, Zero};
+use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
@@ -129,10 +133,13 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
-    let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
-        .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
-    let genesis_receipt =
-        initialize_genesis_receipt::<T>(runtime_obj.runtime_type, runtime_obj.code)?;
+    let domain_id = NextDomainId::<T>::get();
+
+    let genesis_receipt = {
+        let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
+            .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
+        initialize_genesis_receipt::<T>(domain_id, runtime_obj.runtime_type, runtime_obj.code)?
+    };
     let genesis_receipt_hash = genesis_receipt.hash();
 
     let domain_obj = DomainObject {
@@ -141,7 +148,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         genesis_receipt_hash,
         domain_config,
     };
-    let domain_id = NextDomainId::<T>::get();
     DomainRegistry::<T>::insert(domain_id, domain_obj);
 
     let next_domain_id = domain_id.checked_add(&1.into()).ok_or(Error::MaxDomainId)?;
@@ -168,16 +174,25 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
     import_genesis_receipt::<T>(domain_id, genesis_receipt);
 
+    frame_system::Pallet::<T>::deposit_log(DigestItem::domain_instantiation(domain_id));
+
     Ok(domain_id)
 }
 
 fn initialize_genesis_receipt<T: Config>(
+    domain_id: DomainId,
     runtime_type: RuntimeType,
     runtime_code: Vec<u8>,
 ) -> Result<ExecutionReceiptOf<T>, Error> {
     let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero());
-    let genesis_state_root = generate_genesis_state_root(runtime_type, runtime_code)
-        .ok_or(Error::FailedToGenerateGenesisStateRoot)?;
+    let genesis_state_root = generate_genesis_state_root(
+        domain_id,
+        DomainInstanceData {
+            runtime_type,
+            runtime_code,
+        },
+    )
+    .ok_or(Error::FailedToGenerateGenesisStateRoot)?;
     Ok(ExecutionReceiptOf::<T>::genesis(
         consensus_genesis_hash,
         genesis_state_root.into(),
@@ -193,6 +208,7 @@ mod tests {
     use frame_support::traits::Currency;
     use sp_domains::GenesisReceiptExtension;
     use sp_runtime::traits::One;
+    use sp_std::vec;
     use sp_version::RuntimeVersion;
     use std::sync::Arc;
 

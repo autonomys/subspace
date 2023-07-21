@@ -18,7 +18,7 @@ use sc_executor::NativeExecutionDispatch;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
-use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
+use sc_service::{BasePath, ChainSpec, Role, RpcHandlers, TFullBackend, TaskManager};
 use sc_utils::mpsc::TracingUnboundedSender;
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
@@ -168,6 +168,7 @@ where
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
         run_relayer: bool,
+        maybe_chain_spec: Option<Box<dyn ChainSpec>>,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -179,6 +180,7 @@ where
             domain_nodes_exclusive,
             role.clone(),
             BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
+            maybe_chain_spec,
         )
         .expect("could not generate domain node Configuration");
 
@@ -352,6 +354,7 @@ pub struct DomainNodeBuilder {
     domain_nodes_exclusive: bool,
     base_path: BasePath,
     run_relayer: bool,
+    maybe_chain_spec: Option<Box<dyn ChainSpec>>,
 }
 
 impl DomainNodeBuilder {
@@ -372,6 +375,7 @@ impl DomainNodeBuilder {
             domain_nodes_exclusive: false,
             base_path,
             run_relayer: false,
+            maybe_chain_spec: None,
         }
     }
 
@@ -398,6 +402,12 @@ impl DomainNodeBuilder {
         self
     }
 
+    /// Set the chain spec
+    pub fn set_chain_spec(mut self, chain_spec: Box<dyn ChainSpec>) -> Self {
+        self.maybe_chain_spec.replace(chain_spec);
+        self
+    }
+
     /// Build a evm domain node
     pub async fn build_evm_node(
         self,
@@ -412,6 +422,7 @@ impl DomainNodeBuilder {
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.run_relayer,
+            self.maybe_chain_spec,
             role,
             mock_consensus_node,
         )

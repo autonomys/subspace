@@ -8,8 +8,8 @@ use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::v2::{BundleHeader, ExecutionReceipt, OpaqueBundle, SealedBundleHeader};
 use sp_domains::{
-    DomainId, DomainsFreezeIdentifier, GenerateGenesisStateRoot, OperatorId, OperatorPair,
-    ProofOfElection, RuntimeType,
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, GenerateGenesisStateRoot, OperatorId,
+    OperatorPair, ProofOfElection,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -253,8 +253,8 @@ pub(crate) struct GenesisStateRootGenerater;
 impl GenerateGenesisStateRoot for GenesisStateRootGenerater {
     fn generate_genesis_state_root(
         &self,
-        _runtime_type: RuntimeType,
-        _runtime_code: Vec<u8>,
+        _domain_id: DomainId,
+        _domain_instance_data: DomainInstanceData,
     ) -> Option<H256> {
         Some(Default::default())
     }

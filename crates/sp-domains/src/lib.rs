@@ -103,6 +103,10 @@ pub type ExtrinsicsRoot = H256;
 )]
 pub struct DomainId(u32);
 
+impl PassBy for DomainId {
+    type PassBy = pass_by::Codec<Self>;
+}
+
 impl From<u32> for DomainId {
     #[inline]
     fn from(x: u32) -> Self {
@@ -483,12 +487,16 @@ pub enum DomainsFreezeIdentifier {
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub enum DomainDigestItem {
     DomainRuntimeUpgraded(RuntimeId),
+    DomainInstantiated(DomainId),
 }
 
 /// Domains specific digest items.
 pub trait DomainsDigestItem {
     fn domain_runtime_upgrade(runtime_id: RuntimeId) -> Self;
     fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId>;
+
+    fn domain_instantiation(domain_id: DomainId) -> Self;
+    fn as_domain_instantiation(&self) -> Option<DomainId>;
 }
 
 impl DomainsDigestItem for DigestItem {
@@ -498,12 +506,33 @@ impl DomainsDigestItem for DigestItem {
 
     fn as_domain_runtime_upgrade(&self) -> Option<RuntimeId> {
         match self.try_to::<DomainDigestItem>(OpaqueDigestItemId::Other) {
-            None => None,
-            Some(domain_digest_item) => match domain_digest_item {
-                DomainDigestItem::DomainRuntimeUpgraded(runtime_id) => Some(runtime_id),
-            },
+            Some(DomainDigestItem::DomainRuntimeUpgraded(runtime_id)) => Some(runtime_id),
+            _ => None,
         }
     }
+
+    fn domain_instantiation(domain_id: DomainId) -> Self {
+        Self::Other(DomainDigestItem::DomainInstantiated(domain_id).encode())
+    }
+
+    fn as_domain_instantiation(&self) -> Option<DomainId> {
+        match self.try_to::<DomainDigestItem>(OpaqueDigestItemId::Other) {
+            Some(DomainDigestItem::DomainInstantiated(domain_id)) => Some(domain_id),
+            _ => None,
+        }
+    }
+}
+
+/// `DomainInstanceData` is used to construct `RuntimeGenesisConfig` which will be further used
+/// to construct the genesis block
+#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+pub struct DomainInstanceData {
+    pub runtime_type: RuntimeType,
+    pub runtime_code: Vec<u8>,
+}
+
+impl PassBy for DomainInstanceData {
+    type PassBy = pass_by::Codec<Self>;
 }
 
 #[cfg(feature = "std")]
@@ -511,8 +540,8 @@ pub trait GenerateGenesisStateRoot: Send + Sync {
     /// Returns the state root of genesis block built from the runtime genesis config on success.
     fn generate_genesis_state_root(
         &self,
-        runtime_type: RuntimeType,
-        runtime_code: Vec<u8>,
+        domain_id: DomainId,
+        domain_instance_data: DomainInstanceData,
     ) -> Option<H256>;
 }
 
@@ -535,14 +564,14 @@ impl GenesisReceiptExtension {
 pub trait Domain {
     fn generate_genesis_state_root(
         &mut self,
-        runtime_type: RuntimeType,
-        runtime_code: Vec<u8>,
+        domain_id: DomainId,
+        domain_instance_data: DomainInstanceData,
     ) -> Option<H256> {
         use sp_externalities::ExternalitiesExt;
 
         self.extension::<GenesisReceiptExtension>()
             .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(runtime_type, runtime_code)
+            .generate_genesis_state_root(domain_id, domain_instance_data)
     }
 }
 
@@ -570,11 +599,17 @@ sp_api::decl_runtime_apis! {
         /// Returns the runtime id for given `domain_id`.
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
+        /// Returns the domain instance data for given `domain_id`.
+        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData>;
+
         /// Returns the current timestamp at given height.
         fn timestamp() -> Moment;
 
         /// Returns the current Tx range for the given domain Id.
         fn domain_tx_range(domain_id: DomainId) -> U256;
+
+        /// Return the genesis state root if not pruned
+        fn genesis_state_root(domain_id: DomainId) -> Option<H256>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
