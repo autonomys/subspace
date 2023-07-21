@@ -15,7 +15,7 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::sync::Arc;
@@ -213,6 +213,8 @@ where
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
+        // TODO: `bundle_extrinsics_roots` wil be used to construct the v2 `ExecutionReceipt`
+        _bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         // Although the domain block intuitively ought to use the same fork choice

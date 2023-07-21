@@ -3,7 +3,7 @@ use crate::domain_block_processor::{
 };
 use crate::{DomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
-use domain_block_preprocessor::DomainBlockPreprocessor;
+use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
@@ -210,7 +210,10 @@ where
         // .head_receipt_number(consensus_block_hash, self.domain_id)?
         // .into();
 
-        let extrinsics = match self
+        let PreprocessResult {
+            extrinsics,
+            extrinsics_roots,
+        } = match self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?
         {
@@ -235,6 +238,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 extrinsics,
+                extrinsics_roots,
                 Digest::default(),
             )
             .await?;
