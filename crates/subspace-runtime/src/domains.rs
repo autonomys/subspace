@@ -1,10 +1,11 @@
-use crate::{Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
+use crate::{Balance, Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
-use sp_domains::{DomainId, ExecutionReceipt};
+use sp_domains::v2::ExecutionReceipt;
+use sp_domains::DomainId;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, Zero};
 use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
@@ -13,12 +14,12 @@ use subspace_verification::derive_randomness;
 pub(crate) fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
+) -> sp_domains::v2::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle })
                 if opaque_bundle.domain_id() == domain_id
                     && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
@@ -34,16 +35,16 @@ pub(crate) fn extract_successful_bundles(
 pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash, Balance>> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle })
                 if opaque_bundle.domain_id() == domain_id
                     && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
-                Some(opaque_bundle.receipt)
+                Some(opaque_bundle.into_receipt())
             }
             _ => None,
         })
@@ -77,7 +78,7 @@ pub(crate) fn extract_pre_validation_object(
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(fraud_proof)
         }
-        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle }) => {
             PreValidationObject::Bundle(opaque_bundle)
         }
         _ => PreValidationObject::Null,

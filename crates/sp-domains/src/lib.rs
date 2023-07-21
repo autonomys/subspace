@@ -579,13 +579,13 @@ sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
         /// Submits the transaction bundle via an unsigned extrinsic.
-        fn submit_bundle_unsigned(opaque_bundle: OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>);
+        fn submit_bundle_unsigned(opaque_bundle: crate::v2::OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>);
 
         /// Extract the bundles stored successfully from the given extrinsics.
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> OpaqueBundles<Block, DomainNumber, DomainHash>;
+        ) -> crate::v2::OpaqueBundles<Block, DomainNumber, DomainHash, Balance>;
 
         /// Returns the hash of successfully submitted bundles.
         fn successful_bundle_hashes() -> Vec<H256>;

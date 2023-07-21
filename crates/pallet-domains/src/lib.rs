@@ -1348,13 +1348,11 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
-    pub fn submit_bundle_unsigned(
-        opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
-    ) {
+    pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
         let slot = opaque_bundle.sealed_header.slot_number();
         let extrincis_count = opaque_bundle.extrinsics.len();
 
-        let call = Call::submit_bundle { opaque_bundle };
+        let call = Call::submit_bundle_v2 { opaque_bundle };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {

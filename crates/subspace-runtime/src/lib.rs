@@ -61,8 +61,7 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsFreezeIdentifier, OpaqueBundle, OperatorId,
-    OperatorPublicKey,
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, OperatorId, OperatorPublicKey,
 };
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
@@ -827,7 +826,7 @@ impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>,
+            opaque_bundle: sp_domains::v2::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -835,7 +834,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains::v2::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 

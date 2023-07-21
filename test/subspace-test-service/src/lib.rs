@@ -56,7 +56,8 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
-use sp_domains::{GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle};
+use sp_domains::v2::OpaqueBundle;
+use sp_domains::{GenerateGenesisStateRoot, GenesisReceiptExtension};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
@@ -75,7 +76,7 @@ use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVeri
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_node::domain::DomainGenesisBlockBuilder;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Hash};
+use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, FraudProofVerifier, TestExecutorDispatch};
@@ -466,7 +467,7 @@ impl MockConsensusNode {
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
         slot: Slot,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
         let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
@@ -502,7 +503,7 @@ impl MockConsensusNode {
         &mut self,
     ) -> (
         Slot,
-        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256>>,
+        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>>,
     ) {
         let slot = self.produce_slot();
 
@@ -531,11 +532,11 @@ impl MockConsensusNode {
     pub fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle }) =
                 ext.function
             {
                 if opaque_bundle.sealed_header.slot_number() == slot {

@@ -28,7 +28,8 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, OpaqueBundles, ExtrinsicsRoot};
+use sp_domains::v2::OpaqueBundles;
+use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
@@ -36,6 +37,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::Balance;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
 
@@ -103,7 +105,7 @@ where
 }
 
 fn compile_own_domain_bundles<Block, CBlock>(
-    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash>,
+    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
 ) -> Vec<Block::Extrinsic>
 where
     Block: BlockT,

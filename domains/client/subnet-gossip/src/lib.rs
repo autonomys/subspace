@@ -19,13 +19,14 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_domains::Bundle;
+use sp_domains::v2::Bundle;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_runtime_primitives::Balance;
 
 const LOG_TARGET: &str = "gossip::operator";
 
@@ -37,6 +38,7 @@ type BundleFor<Block, CBlock> = Bundle<
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,
     <Block as BlockT>::Hash,
+    Balance,
 >;
 
 // TODO: proper timeout
