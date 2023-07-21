@@ -575,6 +575,14 @@ pub trait Domain {
     }
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+pub struct DomainBlockLimit {
+    /// The max block size for the domain.
+    pub max_block_size: u32,
+    /// The max block weight for the domain.
+    pub max_block_weight: Weight,
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
@@ -610,6 +618,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the genesis state root if not pruned
         fn genesis_state_root(domain_id: DomainId) -> Option<H256>;
+
+        /// Returns the domain block limit of the given domain.
+        fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

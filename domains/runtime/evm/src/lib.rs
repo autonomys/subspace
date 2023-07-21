@@ -782,6 +782,10 @@ impl_runtime_apis! {
                 pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
             ])
         }
+
+        fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
+            ext.get_dispatch_info().weight
+        }
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {

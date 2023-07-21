@@ -102,17 +102,11 @@ where
             }
         };
 
-        // TODO: proper deadline
-        let pushing_duration = time::Duration::from_micros(500);
-
-        let start = time::Instant::now();
-
+        let domain_block_limit = parent_chain.domain_block_limit(parent_chain.best_hash())?;
         let mut extrinsics = Vec::new();
-
+        let mut estimated_bundle_weight = Weight::default();
+        let mut bundle_size = 0u32;
         for pending_tx in pending_iterator {
-            if start.elapsed() >= pushing_duration {
-                break;
-            }
             let pending_tx_data = pending_tx.data().clone();
             let should_select_this_tx = tx_selector
                 .should_select_tx(parent_hash, pending_tx_data.clone())
@@ -122,6 +116,28 @@ where
                     matches!(err, TransactionSelectError::TxSignerNotFound)
                 });
             if should_select_this_tx {
+                let tx_weight = self
+                    .client
+                    .runtime_api()
+                    .extrinsic_weight(parent_hash, &pending_tx_data)
+                    .map_err(|error| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Error getting extrinsic weight: {error}"
+                        )))
+                    })?;
+                let next_estimated_bundle_weight =
+                    estimated_bundle_weight.saturating_add(tx_weight);
+                if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
+                    break;
+                }
+
+                let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
+                if next_bundle_size > domain_block_limit.max_block_size {
+                    break;
+                }
+
+                estimated_bundle_weight = next_estimated_bundle_weight;
+                bundle_size = next_bundle_size;
                 extrinsics.push(pending_tx_data);
             }
         }
@@ -137,9 +153,8 @@ where
             consensus_block_number: consensus_block_info.number,
             proof_of_election,
             receipt,
-            // TODO: will set to proper value in later commit
-            bundle_size: u32::MAX,
-            estimated_bundle_weight: Weight::MAX,
+            bundle_size,
+            estimated_bundle_weight,
             bundle_extrinsics_root: extrinsics_root,
         };
 

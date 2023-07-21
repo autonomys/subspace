@@ -869,6 +869,10 @@ impl_runtime_apis! {
         fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
             Domains::genesis_state_root(domain_id)
         }
+
+        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
+            Domains::domain_block_limit(domain_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

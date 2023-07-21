@@ -42,7 +42,7 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
-    DomainId, DomainInstanceData, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
+    DomainBlockLimit, DomainId, DomainInstanceData, OperatorId, OperatorPublicKey, RuntimeId,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
@@ -1340,6 +1340,14 @@ impl<T: Config> Pallet<T> {
     /// Calculates the initial tx range.
     fn initial_tx_range() -> U256 {
         U256::MAX / T::InitialDomainTxRange::get()
+    }
+
+    /// Returns the domain block limit of the given domain.
+    pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
+        DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
+            max_block_size: domain_obj.domain_config.max_block_size,
+            max_block_weight: domain_obj.domain_config.max_block_weight,
+        })
     }
 }
 

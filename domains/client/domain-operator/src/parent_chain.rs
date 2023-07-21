@@ -3,7 +3,7 @@ use sc_client_api::BlockBackend;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{DomainBlockLimit, DomainId, DomainsApi};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -35,6 +35,11 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         &self,
         at: ParentChainBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError>;
+
+    fn domain_block_limit(
+        &self,
+        at: ParentChainBlock::Hash,
+    ) -> Result<DomainBlockLimit, sp_api::ApiError>;
 
     fn extract_receipts(
         &self,
@@ -134,6 +139,21 @@ where
         // .runtime_api()
         // .maximum_receipt_drift(at)?;
         // Ok(max_drift.into())
+    }
+
+    fn domain_block_limit(&self, at: CBlock::Hash) -> Result<DomainBlockLimit, sp_api::ApiError> {
+        let limit = self
+            .consensus_client
+            .runtime_api()
+            .domain_block_limit(at, self.domain_id)?
+            .ok_or(sp_blockchain::Error::Application(
+                format!(
+                    "Domain block limit for domain {:?} not found",
+                    self.domain_id
+                )
+                .into(),
+            ))?;
+        Ok(limit)
     }
 
     fn extract_receipts(
