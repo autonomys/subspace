@@ -186,11 +186,17 @@ pub(crate) fn create_dummy_receipt(
 ) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128> {
     ExecutionReceipt {
         domain_block_number: block_number,
+        domain_block_hash: H256::random(),
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,
         block_extrinsics_roots,
         final_state_root: Default::default(),
+        execution_trace: if block_number == 0 {
+            Vec::new()
+        } else {
+            vec![H256::random(), H256::random()]
+        },
         execution_trace_root: Default::default(),
         total_rewards: 0,
     }
@@ -226,9 +232,8 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
     let header = BundleHeader {
-        operator_id,
         consensus_block_number: block_number,
-        proof_of_election: ProofOfElection::dummy(domain_id, 0u64),
+        proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         bundle_size: 0u32,
         estimated_bundle_weight: Default::default(),
@@ -240,11 +245,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     OpaqueBundle {
         sealed_header: SealedBundleHeader::new(header, signature),
         extrinsics: Vec::new(),
-        execution_trace: if block_number == 0 {
-            Vec::new()
-        } else {
-            vec![H256::random(), H256::random()]
-        },
     }
 }
 
