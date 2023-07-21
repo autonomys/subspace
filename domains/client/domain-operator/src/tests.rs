@@ -183,6 +183,87 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }
 
+// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
+// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
+// due to unable to pay transaction fee, unlock once we can set customized genesis config in
+// test environment.
+#[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
+async fn test_domain_block_deriving_from_multiple_bundles() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let pre_bob_free_balance = alice.free_balance(Bob.to_account_id());
+    let alice_account_nonce = alice.account_nonce();
+    for i in 0..3 {
+        let tx = alice.construct_extrinsic(
+            alice_account_nonce + i,
+            pallet_balances::Call::transfer {
+                dest: Bob.to_account_id(),
+                value: 1,
+            },
+        );
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+
+        // Produce a bundle and submit to the tx pool of the consensus node
+        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        assert!(bundle.is_some());
+
+        // In the last iteration, produce a consensus block which will included all the bundles
+        // and drive the corresponding domain block
+        if i == 2 {
+            produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+                .await
+                .unwrap();
+        }
+    }
+    assert_eq!(
+        alice.free_balance(Bob.to_account_id()),
+        pre_bob_free_balance + 3
+    );
+    let domain_block_number = alice.client.info().best_number;
+
+    // Produce one more bundle to submit the receipt of the above 3 bundles
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // The receipt should be submitted successfully thus head receipt number
+    // is updated
+    let head_receipt_number = ferdie
+        .client
+        .runtime_api()
+        .head_receipt_number(ferdie.client.info().best_hash, 0u32.into())
+        .unwrap();
+    assert_eq!(domain_block_number, head_receipt_number);
+}
+
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -367,7 +448,12 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
+// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
+// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
+// due to unable to pay transaction fee, unlock once we can set customized genesis config in
+// test environment.
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn test_domain_tx_propagate() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
