@@ -46,7 +46,7 @@ use sp_domains::{
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
-use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
@@ -127,8 +127,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExtrinsicsRoot, GenesisDomain, OpaqueBundle, OperatorId, ReceiptHash, RuntimeId,
-        RuntimeType,
+        DomainId, ExtrinsicsRoot, GenesisDomain, OperatorId, ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
@@ -586,42 +585,10 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // TODO: proper weight
-        // TODO: replace it with `submit_bundle_v2` after all usage of it is removed
-        #[allow(deprecated)]
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::from_all(10_000))]
-        pub fn submit_bundle(
-            origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
-
-            let domain_id = opaque_bundle.domain_id();
-
-            // TODO: Implement the block tree v2.
-
-            let bundle_hash = opaque_bundle.hash();
-
-            SuccessfulBundles::<T>::append(domain_id, bundle_hash);
-
-            Self::note_domain_bundle(domain_id);
-
-            Self::deposit_event(Event::BundleStored {
-                domain_id,
-                bundle_hash,
-                bundle_author: opaque_bundle.operator_id(),
-            });
-
-            Ok(())
-        }
-
-        #[pallet::call_index(10)]
-        #[pallet::weight(Weight::from_all(10_000))]
         // TODO: proper benchmark
-        pub fn submit_bundle_v2(
+        pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
         ) -> DispatchResult {
@@ -1000,8 +967,7 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle: _ } => Ok(()),
-                Call::submit_bundle_v2 { opaque_bundle } => {
+                Call::submit_bundle { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
                 Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
@@ -1012,27 +978,6 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_bundle { opaque_bundle } => {
-                    let bundle_create_at =
-                        opaque_bundle.sealed_header.header.consensus_block_number;
-                    let current_block_number = frame_system::Pallet::<T>::current_block_number();
-                    if let Err(e) = Self::check_stale_bundle(current_block_number, bundle_create_at)
-                    {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
-                        );
-                        return InvalidTransactionCode::Bundle.into();
-                    }
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        .priority(TransactionPriority::MAX)
-                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
-                            panic!("Block number always fits in TransactionLongevity; qed")
-                        }))
-                        .and_provides(opaque_bundle.hash())
-                        .propagate(true)
-                        .build()
-                }
-                Call::submit_bundle_v2 { opaque_bundle } => {
                     if let Err(e) = Self::validate_bundle(opaque_bundle) {
                         log::debug!(
                             target: "runtime::domains",
@@ -1189,8 +1134,8 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
-        let operator_id = sealed_header.header.proof_of_election.operator_id;
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
@@ -1375,7 +1320,7 @@ where
         let slot = opaque_bundle.sealed_header.slot_number();
         let extrincis_count = opaque_bundle.extrinsics.len();
 
-        let call = Call::submit_bundle_v2 { opaque_bundle };
+        let call = Call::submit_bundle { opaque_bundle };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {

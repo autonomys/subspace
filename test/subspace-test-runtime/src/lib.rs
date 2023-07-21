@@ -905,7 +905,7 @@ fn extract_successful_bundles(
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle })
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
                 if opaque_bundle.domain_id() == domain_id
                     && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
@@ -926,7 +926,7 @@ fn extract_receipts(
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle })
+            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
                 if opaque_bundle.domain_id() == domain_id
                     && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
@@ -964,7 +964,7 @@ fn extract_pre_validation_object(
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(fraud_proof)
         }
-        RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle }) => {
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
             PreValidationObject::Bundle(opaque_bundle)
         }
         _ => PreValidationObject::Null,

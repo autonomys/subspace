@@ -385,7 +385,7 @@ mod tests {
                 bundle_extrinsics_root,
                 receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -500,7 +500,7 @@ mod tests {
                     bundle_extrinsics_root,
                     receipt,
                 );
-                assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+                assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     RawOrigin::None.into(),
                     bundle,
                 ));
@@ -597,7 +597,7 @@ mod tests {
                 H256::random(),
                 current_head_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -638,7 +638,7 @@ mod tests {
                 H256::random(),
                 stale_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -698,7 +698,7 @@ mod tests {
                 H256::random(),
                 new_branch_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));

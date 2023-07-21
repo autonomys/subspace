@@ -679,7 +679,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
 
     let bundle_to_tx = |opaque_bundle| {
         subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_bundle_v2 { opaque_bundle }.into(),
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
         )
         .into()
     };
@@ -832,7 +832,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     // Submit the bad receipt to the consensus chain
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_bundle_v2 {
+        pallet_domains::Call::submit_bundle {
             opaque_bundle: bad_bundle,
         }
         .into(),
@@ -1166,7 +1166,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
 
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_bundle_v2 {
+        pallet_domains::Call::submit_bundle {
             opaque_bundle: bundle.unwrap(),
         }
         .into(),
@@ -1246,7 +1246,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_bundle_v2 {
+        pallet_domains::Call::submit_bundle {
             opaque_bundle: bundle.unwrap(),
         }
         .into(),

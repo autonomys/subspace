@@ -536,7 +536,7 @@ impl MockConsensusNode {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
-            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle_v2 { opaque_bundle }) =
+            if let RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) =
                 ext.function
             {
                 if opaque_bundle.sealed_header.slot_number() == slot {
