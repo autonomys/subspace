@@ -1,8 +1,9 @@
 //! Utilities used for testing with the domain.
 #![warn(missing_docs)]
 
+use crate::chain_spec::{domain_instance_genesis_config, load_chain_spec_with};
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
-use domain_client_operator::OperatorStreams;
+use domain_client_operator::{Bootstrapper, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
 use domain_service::providers::DefaultProvider;
@@ -168,7 +169,7 @@ where
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
         run_relayer: bool,
-        maybe_chain_spec: Option<Box<dyn ChainSpec>>,
+        chain_spec: Box<dyn ChainSpec>,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -180,7 +181,7 @@ where
             domain_nodes_exclusive,
             role.clone(),
             BasePath::new(base_path.path().join(format!("domain-{domain_id:?}"))),
-            maybe_chain_spec,
+            chain_spec,
         )
         .expect("could not generate domain node Configuration");
 
@@ -354,7 +355,6 @@ pub struct DomainNodeBuilder {
     domain_nodes_exclusive: bool,
     base_path: BasePath,
     run_relayer: bool,
-    maybe_chain_spec: Option<Box<dyn ChainSpec>>,
 }
 
 impl DomainNodeBuilder {
@@ -375,7 +375,6 @@ impl DomainNodeBuilder {
             domain_nodes_exclusive: false,
             base_path,
             run_relayer: false,
-            maybe_chain_spec: None,
         }
     }
 
@@ -402,18 +401,26 @@ impl DomainNodeBuilder {
         self
     }
 
-    /// Set the chain spec
-    pub fn set_chain_spec(mut self, chain_spec: Box<dyn ChainSpec>) -> Self {
-        self.maybe_chain_spec.replace(chain_spec);
-        self
-    }
-
     /// Build a evm domain node
     pub async fn build_evm_node(
         self,
         role: Role,
+        domain_id: DomainId,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> EvmDomainNode {
+        let domain_instance_data = {
+            let bootstrapper = Bootstrapper::<Block, _, _>::new(mock_consensus_node.client.clone());
+            bootstrapper
+                .fetch_domain_bootstrap_info(domain_id)
+                .await
+                .expect("Failed to get domain instance data")
+                .domain_instance_data
+        };
+        let chain_spec = {
+            let genesis_config =
+                domain_instance_genesis_config(domain_id, domain_instance_data.runtime_code);
+            load_chain_spec_with(genesis_config)
+        };
         DomainNode::build(
             DomainId::new(0u32),
             self.tokio_handle,
@@ -422,7 +429,7 @@ impl DomainNodeBuilder {
             self.domain_nodes,
             self.domain_nodes_exclusive,
             self.run_relayer,
-            self.maybe_chain_spec,
+            chain_spec,
             role,
             mock_consensus_node,
         )
