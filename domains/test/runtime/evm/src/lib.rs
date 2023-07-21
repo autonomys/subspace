@@ -13,8 +13,8 @@ pub use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Index};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
-use fp_self_contained::CheckedSignature;
-use frame_support::dispatch::DispatchClass;
+use fp_self_contained::SelfContainedCall;
+use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -40,8 +40,8 @@ use sp_messenger::messages::{
     RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
-    IdentifyAccount, IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
+    BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
+    IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
 };
 use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
@@ -601,8 +601,6 @@ fn extract_xdm_proof_state_roots(
     }
 }
 
-// TODO: this is inconsistent with other domains.
-// Ref https://github.com/subspace/subspace/pull/1434#discussion_r1186633233
 pub fn extract_signers<Lookup>(
     extrinsics: Vec<UncheckedExtrinsic>,
     lookup: &Lookup,
@@ -610,17 +608,20 @@ pub fn extract_signers<Lookup>(
 where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
-    let mut signer_extrinsics = sp_std::vec![];
-    for extrinsic in extrinsics {
-        if let Ok(checked) = extrinsic.clone().check(lookup) {
-            let maybe_signer = match checked.signed {
-                CheckedSignature::SelfContained(account_id) => Some(account_id.encode()),
-                CheckedSignature::Signed(account_id, _) => Some(account_id.encode()),
-                CheckedSignature::Unsigned => None,
-            };
-
-            signer_extrinsics.push((maybe_signer, extrinsic))
-        }
+    let mut signer_extrinsics = Vec::with_capacity(extrinsics.len());
+    for ext in extrinsics {
+        let maybe_signer = if ext.0.function.is_self_contained() {
+            ext.0
+                .function
+                .check_self_contained()
+                .and_then(|signed_info| signed_info.ok())
+                .map(|account| account.encode())
+        } else {
+            ext.0.signature.as_ref().and_then(|(signed, _, _)| {
+                lookup.lookup(*signed).ok().map(|account| account.encode())
+            })
+        };
+        signer_extrinsics.push((maybe_signer, ext));
     }
 
     signer_extrinsics
