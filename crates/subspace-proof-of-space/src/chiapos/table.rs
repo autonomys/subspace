@@ -717,9 +717,9 @@ where
 
         t_n.sort_unstable();
 
-        let mut ys = Vec::with_capacity(num_values);
-        let mut positions = Vec::with_capacity(num_values);
-        let mut metadatas = Vec::with_capacity(num_values);
+        let mut ys = Vec::with_capacity(t_n.len());
+        let mut positions = Vec::with_capacity(t_n.len());
+        let mut metadatas = Vec::with_capacity(t_n.len());
 
         for (y, [left_position, right_position], metadata) in t_n {
             ys.push(y);
@@ -824,9 +824,9 @@ where
 
         t_n.par_sort_unstable();
 
-        let mut ys = Vec::with_capacity(num_values);
-        let mut positions = Vec::with_capacity(num_values);
-        let mut metadatas = Vec::with_capacity(num_values);
+        let mut ys = Vec::with_capacity(t_n.len());
+        let mut positions = Vec::with_capacity(t_n.len());
+        let mut metadatas = Vec::with_capacity(t_n.len());
 
         for (y, [left_position, right_position], metadata) in t_n {
             ys.push(y);
