@@ -1,6 +1,6 @@
 use crate::piece_cache::PieceCache;
+use parking_lot::RwLock;
 use sc_client_api::AuxStore;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use subspace_core_primitives::{ArchivedHistorySegment, FlatPieces, Piece, PieceIndex};
@@ -9,7 +9,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 
 #[derive(Default)]
 pub struct TestAuxStore {
-    store: RefCell<HashMap<Vec<u8>, Vec<u8>>>,
+    store: RwLock<HashMap<Vec<u8>, Vec<u8>>>,
 }
 
 impl AuxStore for TestAuxStore {
@@ -24,21 +24,20 @@ impl AuxStore for TestAuxStore {
         I: IntoIterator<Item = &'a (&'c [u8], &'c [u8])>,
         D: IntoIterator<Item = &'a &'b [u8]>,
     {
+        let mut store = self.store.write();
         for pair in insert {
-            self.store
-                .borrow_mut()
-                .insert(pair.0.to_vec(), pair.1.to_vec());
+            store.insert(pair.0.to_vec(), pair.1.to_vec());
         }
 
         for key in delete {
-            self.store.borrow_mut().remove(&key.to_vec());
+            store.remove(&key.to_vec());
         }
 
         Ok(())
     }
 
     fn get_aux(&self, key: &[u8]) -> sc_client_api::blockchain::Result<Option<Vec<u8>>> {
-        Ok(self.store.borrow().get(&key.to_vec()).cloned())
+        Ok(self.store.read().get(&key.to_vec()).cloned())
     }
 }
 

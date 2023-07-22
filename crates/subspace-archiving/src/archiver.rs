@@ -312,13 +312,13 @@ impl Archiver {
                     // buffer and block continuation
                     object_mapping
                         .objects
-                        .drain_filter(|block_object: &mut BlockObject| {
+                        .retain_mut(|block_object: &mut BlockObject| {
                             let current_offset = block_object.offset();
                             if current_offset >= archived_block_bytes {
                                 block_object.set_offset(current_offset - archived_block_bytes);
-                                false
-                            } else {
                                 true
+                            } else {
+                                false
                             }
                         });
                     archiver.buffer.push_back(SegmentItem::BlockContinuation {
@@ -503,7 +503,7 @@ impl Archiver {
                     let continuation_object_mapping = BlockObjectMapping {
                         objects: object_mapping
                             .objects
-                            .drain_filter(|block_object: &mut BlockObject| {
+                            .extract_if(|block_object: &mut BlockObject| {
                                 let current_offset = block_object.offset();
                                 if current_offset >= split_point as u32 {
                                     block_object.set_offset(current_offset - split_point as u32);
@@ -547,7 +547,7 @@ impl Archiver {
                     let continuation_object_mapping = BlockObjectMapping {
                         objects: object_mapping
                             .objects
-                            .drain_filter(|block_object: &mut BlockObject| {
+                            .extract_if(|block_object: &mut BlockObject| {
                                 let current_offset = block_object.offset();
                                 if current_offset >= split_point as u32 {
                                     block_object.set_offset(current_offset - split_point as u32);

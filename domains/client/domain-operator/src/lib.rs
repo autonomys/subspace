@@ -59,7 +59,7 @@
 
 #![feature(array_windows)]
 #![feature(const_option)]
-#![feature(drain_filter)]
+#![feature(extract_if)]
 
 mod aux_schema;
 mod bootstrapper;
