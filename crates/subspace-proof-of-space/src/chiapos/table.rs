@@ -129,19 +129,11 @@ pub struct TablesCache<const K: u8> {
 impl<const K: u8> Default for TablesCache<K> {
     /// Create new instance
     fn default() -> Self {
-        // Pair of buckets that are a sliding window of 2 buckets across the whole table
-        let left_bucket = Bucket::default();
-        let right_bucket = Bucket::default();
-
-        let left_targets = calculate_left_targets();
-        // TODO: This is the capacity chiapos allocates it with, check if it is correct
-        let rmap_scratch = Vec::with_capacity(usize::from(PARAM_BC));
-
         Self {
-            left_bucket,
-            right_bucket,
-            rmap_scratch,
-            left_targets,
+            left_bucket: Bucket::default(),
+            right_bucket: Bucket::default(),
+            rmap_scratch: Vec::new(),
+            left_targets: calculate_left_targets(),
         }
     }
 }
@@ -178,7 +170,7 @@ impl Default for Bucket {
 #[derive(Debug, Default, Copy, Clone)]
 pub(super) struct RmapItem {
     count: Position,
-    start_index: Position,
+    start_position: Position,
 }
 
 /// `partial_y_offset` is in bits
@@ -264,6 +256,8 @@ pub(super) fn compute_f1_simd<const K: u8>(
 
     // Combine all of the bits together:
     // [padding zero bits][`K` bits rom `partial_y`][`PARAM_EXT` bits from `x`]
+    // NOTE: `pre_exts_mask` is unnecessary here and makes no difference, but it allows compiler to
+    // generate faster code 🤷‍
     let ys = (pre_ys.cast() & pre_ys_mask) | (pre_exts & pre_exts_mask);
 
     // SAFETY: `Y` is `#[repr(transparent)]` and guaranteed to have the same memory layout as `u32`
@@ -293,14 +287,14 @@ fn find_matches<'a>(
     // quotient more efficiently by subtracting base value rather than computing remainder of
     // division
     let base = (usize::from(first_right_bucket_y) / usize::from(PARAM_BC)) * usize::from(PARAM_BC);
-    for (&y, right_index) in right_bucket.ys.iter().zip(Position::ZERO..) {
+    for (&y, right_position) in right_bucket.ys.iter().zip(right_bucket.start_position..) {
         let r = usize::from(y) - base;
 
         // Same `y` and as the result `r` can appear in the table multiple times, in which case
         // they'll all occupy consecutive slots in `right_bucket` and all we need to store is just
         // the first position and number of elements.
         if rmap[r].count == Position::ZERO {
-            rmap[r].start_index = right_index;
+            rmap[r].start_position = right_position;
         }
         rmap[r].count += Position::ONE;
     }
@@ -316,8 +310,8 @@ fn find_matches<'a>(
         left_bucket
             .ys
             .iter()
-            .zip(Position::ZERO..)
-            .flat_map(move |(&y, left_index)| {
+            .zip(left_bucket.start_position..)
+            .flat_map(move |(&y, left_position)| {
                 let r = usize::from(y) - base;
                 let left_targets = &left_targets[r];
 
@@ -325,11 +319,11 @@ fn find_matches<'a>(
                     let r_target = left_targets[m];
                     let rmap_item = rmap[usize::from(r_target)];
 
-                    (rmap_item.start_index..rmap_item.start_index + rmap_item.count).map(
-                        move |right_index| Match {
-                            left_position: left_bucket.start_position + left_index,
+                    (rmap_item.start_position..rmap_item.start_position + rmap_item.count).map(
+                        move |right_position| Match {
+                            left_position,
                             left_y: y,
-                            right_position: right_bucket.start_position + right_index,
+                            right_position,
                         },
                     )
                 })
@@ -363,7 +357,6 @@ where
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
-    // Remove these 2 conversions
     let left_metadata = u128::from(left_metadata);
     let right_metadata = u128::from(right_metadata);
 
@@ -713,9 +706,9 @@ where
 
         t_n.sort_unstable();
 
-        let mut ys = Vec::with_capacity(num_values);
-        let mut positions = Vec::with_capacity(num_values);
-        let mut metadatas = Vec::with_capacity(num_values);
+        let mut ys = Vec::with_capacity(t_n.len());
+        let mut positions = Vec::with_capacity(t_n.len());
+        let mut metadatas = Vec::with_capacity(t_n.len());
 
         for (y, [left_position, right_position], metadata) in t_n {
             ys.push(y);
@@ -813,25 +806,28 @@ where
             results
         }));
 
-        // Drop in thread pool to return faster from here
-        rayon::spawn(move || {
-            drop(buckets);
-        });
-
         t_n.par_sort_unstable();
 
-        let mut ys = Vec::with_capacity(num_values);
-        let mut positions = Vec::with_capacity(num_values);
-        let mut metadatas = Vec::with_capacity(num_values);
+        let mut ys = vec![Default::default(); t_n.len()];
+        let mut positions = vec![Default::default(); t_n.len()];
+        let mut metadatas = vec![Default::default(); t_n.len()];
 
-        for (y, [left_position, right_position], metadata) in t_n {
-            ys.push(y);
-            positions.push([left_position, right_position]);
-            // Last table doesn't have metadata
-            if metadata_size_bits(K, TABLE_NUMBER) > 0 {
-                metadatas.push(metadata);
-            }
-        }
+        rayon::join(
+            || {
+                // It is beneficial to drop buckets in parallel with other things
+                drop(buckets);
+            },
+            || {
+                // Going in parallel saves a bit of time
+                t_n.into_par_iter()
+                    .zip(ys.par_iter_mut().zip(&mut positions).zip(&mut metadatas))
+                    .for_each(|(input, output)| {
+                        *output.0 .0 = input.0;
+                        *output.0 .1 = input.1;
+                        *output.1 = input.2;
+                    });
+            },
+        );
 
         Self::Other {
             ys,
