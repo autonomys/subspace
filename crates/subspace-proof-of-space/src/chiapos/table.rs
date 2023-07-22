@@ -636,13 +636,8 @@ where
         let rmap_scratch = &mut cache.rmap_scratch;
         let left_targets = &cache.left_targets;
 
-        let mut left_bucket = Bucket {
+        let mut bucket = Bucket {
             bucket_index: 0,
-            start_position: Position::ZERO,
-            size: Position::ZERO,
-        };
-        let mut right_bucket = Bucket {
-            bucket_index: 1,
             start_position: Position::ZERO,
             size: Position::ZERO,
         };
@@ -653,46 +648,28 @@ where
             .expect("List of y values is never empty; qed");
         buckets.clear();
         buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
-        for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
-            let bucket_index = u32::from(y) / u32::from(PARAM_BC);
+        last_table
+            .ys()
+            .iter()
+            .zip(Position::ZERO..)
+            .for_each(|(&y, position)| {
+                let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
-            if bucket_index == left_bucket.bucket_index {
-                left_bucket.size += Position::ONE;
-                continue;
-            } else if bucket_index == right_bucket.bucket_index {
-                if right_bucket.size == Position::ZERO {
-                    right_bucket.start_position = position;
+                if bucket_index == bucket.bucket_index {
+                    bucket.size += Position::ONE;
+                    return;
                 }
-                right_bucket.size += Position::ONE;
-                continue;
-            }
 
-            buckets.push(left_bucket);
+                buckets.push(bucket);
 
-            if bucket_index == right_bucket.bucket_index + 1 {
-                // Move right bucket into left bucket while reusing existing allocations
-                left_bucket = right_bucket;
-
-                right_bucket = Bucket {
+                bucket = Bucket {
                     bucket_index,
                     start_position: position,
                     size: Position::ONE,
                 };
-            } else {
-                // We have skipped some buckets, clean up both left and right buckets
-                left_bucket = Bucket {
-                    bucket_index,
-                    start_position: position,
-                    size: Position::ONE,
-                };
-
-                right_bucket.bucket_index = bucket_index + 1;
-                right_bucket.size = Position::ZERO;
-            }
-        }
-        // Iteration stopped, but we did not store the last two buckets yet
-        buckets.push(left_bucket);
-        buckets.push(right_bucket);
+            });
+        // Iteration stopped, but we did not store the last bucket yet
+        buckets.push(bucket);
 
         let num_values = 1 << K;
         let mut t_n = Vec::with_capacity(num_values);
@@ -745,13 +722,8 @@ where
         let buckets = &mut cache.buckets;
         let left_targets = &cache.left_targets;
 
-        let mut left_bucket = Bucket {
+        let mut bucket = Bucket {
             bucket_index: 0,
-            start_position: Position::ZERO,
-            size: Position::ZERO,
-        };
-        let mut right_bucket = Bucket {
-            bucket_index: 1,
             start_position: Position::ZERO,
             size: Position::ZERO,
         };
@@ -762,46 +734,28 @@ where
             .expect("List of y values is never empty; qed");
         buckets.clear();
         buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
-        for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
-            let bucket_index = u32::from(y) / u32::from(PARAM_BC);
+        last_table
+            .ys()
+            .iter()
+            .zip(Position::ZERO..)
+            .for_each(|(&y, position)| {
+                let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
-            if bucket_index == left_bucket.bucket_index {
-                left_bucket.size += Position::ONE;
-                continue;
-            } else if bucket_index == right_bucket.bucket_index {
-                if right_bucket.size == Position::ZERO {
-                    right_bucket.start_position = position;
+                if bucket_index == bucket.bucket_index {
+                    bucket.size += Position::ONE;
+                    return;
                 }
-                right_bucket.size += Position::ONE;
-                continue;
-            }
 
-            buckets.push(left_bucket);
+                buckets.push(bucket);
 
-            if bucket_index == right_bucket.bucket_index + 1 {
-                // Move right bucket into left bucket while reusing existing allocations
-                left_bucket = right_bucket;
-
-                right_bucket = Bucket {
+                bucket = Bucket {
                     bucket_index,
                     start_position: position,
                     size: Position::ONE,
                 };
-            } else {
-                // We have skipped some buckets, clean up both left and right buckets
-                left_bucket = Bucket {
-                    bucket_index,
-                    start_position: position,
-                    size: Position::ONE,
-                };
-
-                right_bucket.bucket_index = bucket_index + 1;
-                right_bucket.size = Position::ZERO;
-            }
-        }
-        // Iteration stopped, but we did not store the last two buckets yet
-        buckets.push(left_bucket);
-        buckets.push(right_bucket);
+            });
+        // Iteration stopped, but we did not store the last bucket yet
+        buckets.push(bucket);
 
         let num_values = 1 << K;
         let mut t_n = Vec::with_capacity(num_values);
