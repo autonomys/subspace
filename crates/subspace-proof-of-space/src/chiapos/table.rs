@@ -644,9 +644,11 @@ where
             size: Position::ZERO,
         };
 
-        let num_values = 1 << K;
-        let mut t_n = Vec::with_capacity(num_values);
-        // TODO: Use SIMD to check buckets
+        let last_y = *last_table
+            .ys()
+            .last()
+            .expect("List of y values is never empty; qed");
+        let mut buckets = Vec::with_capacity(1 + usize::from(last_y) / usize::from(PARAM_BC));
         for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
             let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
@@ -661,18 +663,12 @@ where
                 continue;
             }
 
-            match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                last_table,
-                left_bucket,
-                right_bucket,
-                rmap_scratch,
-                left_targets,
-                &mut t_n,
-            );
+            buckets.push(left_bucket);
 
             if bucket_index == right_bucket.bucket_index + 1 {
                 // Move right bucket into left bucket while reusing existing allocations
                 left_bucket = right_bucket;
+
                 right_bucket = Bucket {
                     bucket_index,
                     start_position: position,
@@ -690,15 +686,24 @@ where
                 right_bucket.size = Position::ZERO;
             }
         }
-        // Iteration stopped, but we did not process contents of the last pair of buckets yet
-        match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-            last_table,
-            left_bucket,
-            right_bucket,
-            rmap_scratch,
-            left_targets,
-            &mut t_n,
-        );
+        // Iteration stopped, but we did not store the last two buckets yet
+        buckets.push(left_bucket);
+        buckets.push(right_bucket);
+
+        let num_values = 1 << K;
+        let mut t_n = Vec::with_capacity(num_values);
+        buckets
+            .array_windows::<2>()
+            .for_each(|&[left_bucket, right_bucket]| {
+                match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+                    last_table,
+                    left_bucket,
+                    right_bucket,
+                    rmap_scratch,
+                    left_targets,
+                    &mut t_n,
+                );
+            });
 
         t_n.sort_unstable();
 
@@ -751,7 +756,6 @@ where
             .last()
             .expect("List of y values is never empty; qed");
         let mut buckets = Vec::with_capacity(1 + usize::from(last_y) / usize::from(PARAM_BC));
-        // TODO: Use SIMD/parallelism to check buckets
         for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
             let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
