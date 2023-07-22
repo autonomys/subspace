@@ -48,6 +48,7 @@ use sp_domains::{
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
+use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
@@ -134,6 +135,7 @@ mod pallet {
         One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
+    use sp_std::boxed::Box;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
@@ -676,7 +678,7 @@ mod pallet {
 
         #[pallet::call_index(1)]
         #[pallet::weight(
-            match fraud_proof {
+            match fraud_proof.as_ref() {
                 FraudProof::InvalidStateTransition(..) => (
                     T::WeightInfo::submit_system_domain_invalid_state_transition_proof(),
                     Pays::No
@@ -687,7 +689,7 @@ mod pallet {
         )]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
+            fraud_proof: Box<FraudProof<T::BlockNumber, T::Hash>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1337,7 +1339,9 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
     pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::BlockNumber, T::Hash>) {
-        let call = Call::submit_fraud_proof { fraud_proof };
+        let call = Call::submit_fraud_proof {
+            fraud_proof: Box::new(fraud_proof),
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {

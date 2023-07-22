@@ -63,7 +63,7 @@ pub(crate) fn extract_fraud_proofs(
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
                 if fraud_proof.domain_id() == domain_id =>
             {
-                Some(fraud_proof)
+                Some(*fraud_proof)
             }
             _ => None,
         })
@@ -75,7 +75,7 @@ pub(crate) fn extract_pre_validation_object(
 ) -> PreValidationObject<Block, DomainNumber, DomainHash> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
-            PreValidationObject::FraudProof(fraud_proof)
+            PreValidationObject::FraudProof(*fraud_proof)
         }
         RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
             PreValidationObject::Bundle(opaque_bundle)

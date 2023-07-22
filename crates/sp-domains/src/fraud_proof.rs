@@ -266,6 +266,8 @@ pub struct BundleEquivocationProof<Number, Hash> {
     /// The slot at which the equivocation happened.
     pub slot: Slot,
     // TODO: The generic type should be `<Number, Hash, DomainNumber, DomainHash, Balance>`
+    // TODO: `SealedBundleHeader` contains `ExecutionReceipt` which make the size of the proof
+    // large, revisit when proceeding to fraud proof v2.
     /// The first header involved in the equivocation.
     pub first_header: SealedBundleHeader<Number, Hash, Number, H256, Balance>,
     /// The second header involved in the equivocation.

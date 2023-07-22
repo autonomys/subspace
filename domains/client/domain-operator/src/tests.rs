@@ -756,27 +756,27 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         )
         .unwrap();
         if let subspace_test_runtime::RuntimeCall::Domains(
-            pallet_domains::Call::submit_fraud_proof {
-                fraud_proof: FraudProof::InvalidStateTransition(proof),
-            },
+            pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
         {
-            match mismatch_trace_index {
-                0 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::InitializeBlock { .. }
-                )),
-                1 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::ApplyExtrinsic(_)
-                )),
-                2 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::FinalizeBlock { .. }
-                )),
-                _ => unreachable!(),
+            if let FraudProof::InvalidStateTransition(proof) = *fraud_proof {
+                match mismatch_trace_index {
+                    0 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::InitializeBlock { .. }
+                    )),
+                    1 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::ApplyExtrinsic(_)
+                    )),
+                    2 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::FinalizeBlock { .. }
+                    )),
+                    _ => unreachable!(),
+                }
+                break;
             }
-            break;
         }
     }
 
@@ -916,7 +916,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_fraud_proof {
-            fraud_proof: valid_fraud_proof.clone(),
+            fraud_proof: Box::new(valid_fraud_proof.clone()),
         }
         .into(),
     )
@@ -941,7 +941,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_fraud_proof {
-            fraud_proof: invalid_fraud_proof,
+            fraud_proof: Box::new(invalid_fraud_proof),
         }
         .into(),
     );
