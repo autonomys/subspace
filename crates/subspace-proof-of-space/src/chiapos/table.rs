@@ -749,8 +749,11 @@ where
         right_bucket.ys.clear();
         right_bucket.start_position = Position::ZERO;
 
-        // Experimentally found that this value seems reasonable
-        let mut buckets = Vec::with_capacity(usize::from(PARAM_BC) / (1 << PARAM_EXT) * 3);
+        let last_y = *last_table
+            .ys()
+            .last()
+            .expect("List of y values is never empty; qed");
+        let mut buckets = Vec::with_capacity(1 + usize::from(last_y) / usize::from(PARAM_BC));
         for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
             let bucket_index = usize::from(y) / usize::from(PARAM_BC);
 
