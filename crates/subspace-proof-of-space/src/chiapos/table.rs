@@ -120,6 +120,7 @@ fn calculate_left_target_on_demand(parity: usize, r: usize, m: usize) -> usize {
 /// Caches that can be used to optimize creation of multiple [`Tables`](super::Tables).
 #[derive(Debug)]
 pub struct TablesCache<const K: u8> {
+    buckets: Vec<Bucket>,
     rmap_scratch: Vec<RmapItem>,
     left_targets: Vec<Vec<Vec<Position>>>,
 }
@@ -128,6 +129,7 @@ impl<const K: u8> Default for TablesCache<K> {
     /// Create new instance
     fn default() -> Self {
         Self {
+            buckets: Vec::new(),
             rmap_scratch: Vec::new(),
             left_targets: calculate_left_targets(),
         }
@@ -630,6 +632,7 @@ where
     where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
+        let buckets = &mut cache.buckets;
         let rmap_scratch = &mut cache.rmap_scratch;
         let left_targets = &cache.left_targets;
 
@@ -648,7 +651,8 @@ where
             .ys()
             .last()
             .expect("List of y values is never empty; qed");
-        let mut buckets = Vec::with_capacity(1 + usize::from(last_y) / usize::from(PARAM_BC));
+        buckets.clear();
+        buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
         for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
             let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
@@ -738,6 +742,7 @@ where
     where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
+        let buckets = &mut cache.buckets;
         let left_targets = &cache.left_targets;
 
         let mut left_bucket = Bucket {
@@ -755,7 +760,8 @@ where
             .ys()
             .last()
             .expect("List of y values is never empty; qed");
-        let mut buckets = Vec::with_capacity(1 + usize::from(last_y) / usize::from(PARAM_BC));
+        buckets.clear();
+        buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
         for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
             let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
