@@ -18,6 +18,8 @@ use core::simd::Simd;
 use rayon::prelude::*;
 use seq_macro::seq;
 use std::simd::SimdUint;
+#[cfg(any(feature = "parallel", test))]
+use std::sync::mpsc;
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 
@@ -143,7 +145,7 @@ pub(super) struct Match {
     right_position: Position,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 struct Bucket {
     /// Bucket index
     bucket_index: u32,
@@ -757,21 +759,42 @@ where
         // Iteration stopped, but we did not store the last bucket yet
         buckets.push(bucket);
 
-        let num_values = 1 << K;
-        let mut t_n = Vec::with_capacity(num_values);
-        t_n.par_extend(buckets.par_windows(2).flat_map_iter(|buckets| {
-            let mut results = Vec::new();
-            match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                last_table,
-                buckets[0],
-                buckets[1],
-                &mut Vec::new(),
-                left_targets,
-                &mut results,
-            );
-            results
-        }));
+        let (entries_sender, entries_receiver) = mpsc::sync_channel(1);
 
+        let t_n_handle = std::thread::spawn(move || {
+            let num_values = 1 << K;
+            let mut t_n = Vec::with_capacity(num_values);
+
+            while let Ok(entries) = entries_receiver.recv() {
+                t_n.extend(entries);
+            }
+
+            t_n
+        });
+
+        buckets
+            .par_windows(2)
+            .fold(
+                || (Vec::new(), Vec::new()),
+                |(mut entries, mut rmap_scratch), buckets| {
+                    match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+                        last_table,
+                        buckets[0],
+                        buckets[1],
+                        &mut rmap_scratch,
+                        left_targets,
+                        &mut entries,
+                    );
+                    (entries, rmap_scratch)
+                },
+            )
+            .for_each(move |(entries, _rmap_scratch)| {
+                entries_sender
+                    .send(entries)
+                    .expect("Receiver is waiting until sender is exhausted; qed");
+            });
+
+        let mut t_n = t_n_handle.join().expect("Not joining itself; qed");
         t_n.par_sort_unstable();
 
         let mut ys = vec![Default::default(); t_n.len()];
