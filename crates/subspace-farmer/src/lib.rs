@@ -1,7 +1,5 @@
 #![feature(
     const_option,
-    drain_filter,
-    hash_drain_filter,
     impl_trait_in_assoc_type,
     io_error_other,
     iter_collect_into,

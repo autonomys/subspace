@@ -658,16 +658,13 @@ where
         let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
             .into_iter()
             .map(|segment_index| {
-                let api_result = self
-                    .segment_header_provider
+                self.segment_header_provider
                     .get_segment_header(segment_index)
                     .map_err(|_| {
                         JsonRpseeError::Custom(
                             "Internal error during `segment_headers` call".to_string(),
                         )
-                    });
-
-                api_result
+                    })
             })
             .collect();
 

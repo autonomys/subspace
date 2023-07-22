@@ -110,11 +110,9 @@ where
             kademlia,
             gossipsub,
             ping: Ping::default(),
-            request_response: RequestResponsesBehaviour::new(
-                config.request_response_protocols.into_iter(),
-            )
-            //TODO: Convert to an error.
-            .expect("RequestResponse protocols registration failed."),
+            request_response: RequestResponsesBehaviour::new(config.request_response_protocols)
+                //TODO: Convert to an error.
+                .expect("RequestResponse protocols registration failed."),
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
