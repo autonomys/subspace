@@ -18,6 +18,8 @@ use core::simd::Simd;
 use rayon::prelude::*;
 use seq_macro::seq;
 use std::simd::SimdUint;
+#[cfg(any(feature = "parallel", test))]
+use std::sync::mpsc;
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 
@@ -120,8 +122,7 @@ fn calculate_left_target_on_demand(parity: usize, r: usize, m: usize) -> usize {
 /// Caches that can be used to optimize creation of multiple [`Tables`](super::Tables).
 #[derive(Debug)]
 pub struct TablesCache<const K: u8> {
-    left_bucket: Bucket,
-    right_bucket: Bucket,
+    buckets: Vec<Bucket>,
     rmap_scratch: Vec<RmapItem>,
     left_targets: Vec<Vec<Vec<Position>>>,
 }
@@ -130,8 +131,7 @@ impl<const K: u8> Default for TablesCache<K> {
     /// Create new instance
     fn default() -> Self {
         Self {
-            left_bucket: Bucket::default(),
-            right_bucket: Bucket::default(),
+            buckets: Vec::new(),
             rmap_scratch: Vec::new(),
             left_targets: calculate_left_targets(),
         }
@@ -145,26 +145,14 @@ pub(super) struct Match {
     right_position: Position,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 struct Bucket {
     /// Bucket index
-    bucket_index: usize,
-    /// `y` values in this bucket
-    ys: Vec<Y>,
+    bucket_index: u32,
     /// Start position of this bucket in the table
     start_position: Position,
-}
-
-impl Default for Bucket {
-    fn default() -> Self {
-        Self {
-            bucket_index: 0,
-            // TODO: Currently twice the average size (*2), re-consider size in the future if it is
-            //  typically exceeded
-            ys: Vec::with_capacity(usize::from(PARAM_BC) / (1 << PARAM_EXT) * 2),
-            start_position: Position::ZERO,
-        }
-    }
+    /// Size of this bucket
+    size: Position,
 }
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -270,8 +258,10 @@ pub(super) fn compute_f1_simd<const K: u8>(
 ///
 /// Returns `None` if either of buckets is empty.
 fn find_matches<'a>(
-    left_bucket: &'a Bucket,
-    right_bucket: &'a Bucket,
+    left_bucket_ys: &'a [Y],
+    left_bucket_start_position: Position,
+    right_bucket_ys: &'a [Y],
+    right_bucket_start_position: Position,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<Position>>],
 ) -> Option<impl Iterator<Item = Match> + 'a> {
@@ -281,13 +271,13 @@ fn find_matches<'a>(
     let rmap = rmap_scratch;
 
     // Both left and right buckets can be empty
-    let first_left_bucket_y = *left_bucket.ys.first()?;
-    let first_right_bucket_y = *right_bucket.ys.first()?;
+    let first_left_bucket_y = *left_bucket_ys.first()?;
+    let first_right_bucket_y = *right_bucket_ys.first()?;
     // Since all entries in a bucket are obtained after division by `PARAM_BC`, we can compute
     // quotient more efficiently by subtracting base value rather than computing remainder of
     // division
     let base = (usize::from(first_right_bucket_y) / usize::from(PARAM_BC)) * usize::from(PARAM_BC);
-    for (&y, right_position) in right_bucket.ys.iter().zip(right_bucket.start_position..) {
+    for (&y, right_position) in right_bucket_ys.iter().zip(right_bucket_start_position..) {
         let r = usize::from(y) - base;
 
         // Same `y` and as the result `r` can appear in the table multiple times, in which case
@@ -307,10 +297,9 @@ fn find_matches<'a>(
     let left_targets = &left_targets[parity];
 
     Some(
-        left_bucket
-            .ys
+        left_bucket_ys
             .iter()
-            .zip(left_bucket.start_position..)
+            .zip(left_bucket_start_position..)
             .flat_map(move |(&y, left_position)| {
                 let r = usize::from(y) - base;
                 let left_targets = &left_targets[r];
@@ -461,8 +450,8 @@ where
 
 fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TABLE_NUMBER: u8>(
     last_table: &'a Table<K, PARENT_TABLE_NUMBER>,
-    left_bucket: &'a Bucket,
-    right_bucket: &'a Bucket,
+    left_bucket: Bucket,
+    right_bucket: Bucket,
     rmap_scratch: &'a mut Vec<RmapItem>,
     left_targets: &'a [Vec<Vec<Position>>],
     results_table: &mut Vec<(Y, [Position; 2], Metadata<K, TABLE_NUMBER>)>,
@@ -470,7 +459,16 @@ fn match_and_compute_fn<'a, const K: u8, const TABLE_NUMBER: u8, const PARENT_TA
     EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     EvaluatableUsize<{ metadata_size_bytes(K, TABLE_NUMBER) }>: Sized,
 {
-    let Some(matches) = find_matches(left_bucket, right_bucket, rmap_scratch, left_targets) else {
+    let Some(matches) = find_matches(
+        &last_table.ys()[usize::from(left_bucket.start_position)..]
+            [..usize::from(left_bucket.size)],
+        left_bucket.start_position,
+        &last_table.ys()[usize::from(right_bucket.start_position)..]
+            [..usize::from(right_bucket.size)],
+        right_bucket.start_position,
+        rmap_scratch,
+        left_targets,
+    ) else {
         return;
     };
 
@@ -636,73 +634,59 @@ where
     where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
-        let left_bucket = &mut cache.left_bucket;
-        let right_bucket = &mut cache.right_bucket;
+        let buckets = &mut cache.buckets;
         let rmap_scratch = &mut cache.rmap_scratch;
         let left_targets = &cache.left_targets;
 
-        // Clear input variables just in case
-        left_bucket.bucket_index = 0;
-        left_bucket.ys.clear();
-        left_bucket.start_position = Position::ZERO;
-        right_bucket.bucket_index = 1;
-        right_bucket.ys.clear();
-        right_bucket.start_position = Position::ZERO;
+        let mut bucket = Bucket {
+            bucket_index: 0,
+            start_position: Position::ZERO,
+            size: Position::ZERO,
+        };
+
+        let last_y = *last_table
+            .ys()
+            .last()
+            .expect("List of y values is never empty; qed");
+        buckets.clear();
+        buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
+        last_table
+            .ys()
+            .iter()
+            .zip(Position::ZERO..)
+            .for_each(|(&y, position)| {
+                let bucket_index = u32::from(y) / u32::from(PARAM_BC);
+
+                if bucket_index == bucket.bucket_index {
+                    bucket.size += Position::ONE;
+                    return;
+                }
+
+                buckets.push(bucket);
+
+                bucket = Bucket {
+                    bucket_index,
+                    start_position: position,
+                    size: Position::ONE,
+                };
+            });
+        // Iteration stopped, but we did not store the last bucket yet
+        buckets.push(bucket);
 
         let num_values = 1 << K;
         let mut t_n = Vec::with_capacity(num_values);
-        for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
-            let bucket_index = usize::from(y) / usize::from(PARAM_BC);
-
-            if bucket_index == left_bucket.bucket_index {
-                left_bucket.ys.push(y);
-                continue;
-            } else if bucket_index == right_bucket.bucket_index {
-                if right_bucket.ys.is_empty() {
-                    right_bucket.start_position = position;
-                }
-                right_bucket.ys.push(y);
-                continue;
-            }
-
-            match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                last_table,
-                left_bucket,
-                right_bucket,
-                rmap_scratch,
-                left_targets,
-                &mut t_n,
-            );
-
-            if bucket_index == right_bucket.bucket_index + 1 {
-                // Move right bucket into left bucket while reusing existing allocations
-                mem::swap(left_bucket, right_bucket);
-                right_bucket.bucket_index = bucket_index;
-                right_bucket.ys.clear();
-                right_bucket.start_position = position;
-
-                right_bucket.ys.push(y);
-            } else {
-                // We have skipped some buckets, clean up both left and right buckets
-                left_bucket.bucket_index = bucket_index;
-                left_bucket.ys.clear();
-                left_bucket.start_position = position;
-
-                left_bucket.ys.push(y);
-
-                right_bucket.bucket_index = bucket_index + 1;
-                right_bucket.ys.clear();
-            }
-        }
-        // Iteration stopped, but we did not process contents of the last pair of buckets yet
-        match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-            last_table,
-            left_bucket,
-            right_bucket,
-            rmap_scratch,
-            left_targets,
-            &mut t_n,
-        );
+        buckets
+            .array_windows::<2>()
+            .for_each(|&[left_bucket, right_bucket]| {
+                match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+                    last_table,
+                    left_bucket,
+                    right_bucket,
+                    rmap_scratch,
+                    left_targets,
+                    &mut t_n,
+                );
+            });
 
         t_n.sort_unstable();
 
@@ -737,97 +721,94 @@ where
     where
         EvaluatableUsize<{ metadata_size_bytes(K, PARENT_TABLE_NUMBER) }>: Sized,
     {
-        let left_bucket = &mut cache.left_bucket;
-        let right_bucket = &mut cache.right_bucket;
+        let buckets = &mut cache.buckets;
         let left_targets = &cache.left_targets;
 
-        // Clear input variables just in case
-        left_bucket.bucket_index = 0;
-        left_bucket.ys.clear();
-        left_bucket.start_position = Position::ZERO;
-        right_bucket.bucket_index = 1;
-        right_bucket.ys.clear();
-        right_bucket.start_position = Position::ZERO;
+        let mut bucket = Bucket {
+            bucket_index: 0,
+            start_position: Position::ZERO,
+            size: Position::ZERO,
+        };
 
-        // Experimentally found that this value seems reasonable
-        let mut buckets = Vec::with_capacity(usize::from(PARAM_BC) / (1 << PARAM_EXT) * 3);
-        for (&y, position) in last_table.ys().iter().zip(Position::ZERO..) {
-            let bucket_index = usize::from(y) / usize::from(PARAM_BC);
+        let last_y = *last_table
+            .ys()
+            .last()
+            .expect("List of y values is never empty; qed");
+        buckets.clear();
+        buckets.reserve(1 + usize::from(last_y) / usize::from(PARAM_BC));
+        last_table
+            .ys()
+            .iter()
+            .zip(Position::ZERO..)
+            .for_each(|(&y, position)| {
+                let bucket_index = u32::from(y) / u32::from(PARAM_BC);
 
-            if bucket_index == left_bucket.bucket_index {
-                left_bucket.ys.push(y);
-                continue;
-            } else if bucket_index == right_bucket.bucket_index {
-                if right_bucket.ys.is_empty() {
-                    right_bucket.start_position = position;
+                if bucket_index == bucket.bucket_index {
+                    bucket.size += Position::ONE;
+                    return;
                 }
-                right_bucket.ys.push(y);
-                continue;
+
+                buckets.push(bucket);
+
+                bucket = Bucket {
+                    bucket_index,
+                    start_position: position,
+                    size: Position::ONE,
+                };
+            });
+        // Iteration stopped, but we did not store the last bucket yet
+        buckets.push(bucket);
+
+        let (entries_sender, entries_receiver) = mpsc::sync_channel(1);
+
+        let t_n_handle = std::thread::spawn(move || {
+            let num_values = 1 << K;
+            let mut t_n = Vec::with_capacity(num_values);
+
+            while let Ok(entries) = entries_receiver.recv() {
+                t_n.extend(entries);
             }
 
-            buckets.push(left_bucket.clone());
+            t_n
+        });
 
-            if bucket_index == right_bucket.bucket_index + 1 {
-                // Move right bucket into left bucket while reusing existing allocations
-                mem::swap(left_bucket, right_bucket);
-                right_bucket.bucket_index = bucket_index;
-                right_bucket.ys.clear();
-                right_bucket.start_position = position;
+        buckets
+            .par_windows(2)
+            .fold(
+                || (Vec::new(), Vec::new()),
+                |(mut entries, mut rmap_scratch), buckets| {
+                    match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
+                        last_table,
+                        buckets[0],
+                        buckets[1],
+                        &mut rmap_scratch,
+                        left_targets,
+                        &mut entries,
+                    );
+                    (entries, rmap_scratch)
+                },
+            )
+            .for_each(move |(entries, _rmap_scratch)| {
+                entries_sender
+                    .send(entries)
+                    .expect("Receiver is waiting until sender is exhausted; qed");
+            });
 
-                right_bucket.ys.push(y);
-            } else {
-                // We have skipped some buckets, clean up both left and right buckets
-                left_bucket.bucket_index = bucket_index;
-                left_bucket.ys.clear();
-                left_bucket.start_position = position;
-
-                left_bucket.ys.push(y);
-
-                right_bucket.bucket_index = bucket_index + 1;
-                right_bucket.ys.clear();
-            }
-        }
-        // Iteration stopped, but we did not store the last two buckets yet
-        buckets.push(left_bucket.clone());
-        buckets.push(right_bucket.clone());
-
-        let num_values = 1 << K;
-        let mut t_n = Vec::with_capacity(num_values);
-        t_n.par_extend(buckets.par_windows(2).flat_map_iter(|buckets| {
-            let mut results = Vec::new();
-            match_and_compute_fn::<K, TABLE_NUMBER, PARENT_TABLE_NUMBER>(
-                last_table,
-                &buckets[0],
-                &buckets[1],
-                &mut Vec::new(),
-                left_targets,
-                &mut results,
-            );
-            results
-        }));
-
+        let mut t_n = t_n_handle.join().expect("Not joining itself; qed");
         t_n.par_sort_unstable();
 
         let mut ys = vec![Default::default(); t_n.len()];
         let mut positions = vec![Default::default(); t_n.len()];
         let mut metadatas = vec![Default::default(); t_n.len()];
 
-        rayon::join(
-            || {
-                // It is beneficial to drop buckets in parallel with other things
-                drop(buckets);
-            },
-            || {
-                // Going in parallel saves a bit of time
-                t_n.into_par_iter()
-                    .zip(ys.par_iter_mut().zip(&mut positions).zip(&mut metadatas))
-                    .for_each(|(input, output)| {
-                        *output.0 .0 = input.0;
-                        *output.0 .1 = input.1;
-                        *output.1 = input.2;
-                    });
-            },
-        );
+        // Going in parallel saves a bit of time
+        t_n.into_par_iter()
+            .zip(ys.par_iter_mut().zip(&mut positions).zip(&mut metadatas))
+            .for_each(|(input, output)| {
+                *output.0 .0 = input.0;
+                *output.0 .1 = input.1;
+                *output.1 = input.2;
+            });
 
         Self::Other {
             ys,

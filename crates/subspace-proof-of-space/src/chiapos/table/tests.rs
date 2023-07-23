@@ -5,7 +5,7 @@ use crate::chiapos::constants::{PARAM_B, PARAM_BC, PARAM_C, PARAM_EXT};
 use crate::chiapos::table::types::{Metadata, Position, X, Y};
 use crate::chiapos::table::{
     calculate_left_targets, compute_f1, compute_f1_simd, compute_fn, find_matches,
-    metadata_size_bytes, partial_y, Bucket, COMPUTE_F1_SIMD_FACTOR,
+    metadata_size_bytes, partial_y, COMPUTE_F1_SIMD_FACTOR,
 };
 use crate::chiapos::utils::EvaluatableUsize;
 use crate::chiapos::Seed;
@@ -139,26 +139,17 @@ fn test_matches() {
         right_bucket_ys.sort_unstable();
         right_bucket_ys.reverse();
 
-        let left_bucket = Bucket {
-            bucket_index: 0,
-            ys: left_bucket_ys,
-            start_position: Position::ZERO,
-        };
-        let right_bucket = Bucket {
-            bucket_index: 0,
-            ys: right_bucket_ys,
-            start_position: Position::ZERO,
-        };
-
         let matches = find_matches(
-            &left_bucket,
-            &right_bucket,
+            &left_bucket_ys,
+            Position::ZERO,
+            &right_bucket_ys,
+            Position::ZERO,
             &mut rmap_scratch,
             &left_targets,
         );
         for m in matches.unwrap() {
-            let yl = usize::from(*left_bucket.ys.get(usize::from(m.left_position)).unwrap());
-            let yr = usize::from(*right_bucket.ys.get(usize::from(m.right_position)).unwrap());
+            let yl = usize::from(*left_bucket_ys.get(usize::from(m.left_position)).unwrap());
+            let yr = usize::from(*right_bucket_ys.get(usize::from(m.right_position)).unwrap());
 
             assert!(check_match(yl, yr));
             total_matches += 1;
