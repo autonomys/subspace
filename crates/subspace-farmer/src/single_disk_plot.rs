@@ -275,6 +275,9 @@ pub enum SingleDiskPlotError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Can't preallocate plot file, probably not enough space on disk
+    #[error("Can't preallocate plot file, probably not enough space on disk: {0}")]
+    CantPreallocatePlotFile(io::Error),
     /// Can't resize plot after creation
     #[error(
         "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot \
@@ -637,7 +640,9 @@ impl SingleDiskPlot {
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
-        plot_file.preallocate(sector_size as u64 * u64::from(target_sector_count))?;
+        plot_file
+            .preallocate(sector_size as u64 * u64::from(target_sector_count))
+            .map_err(SingleDiskPlotError::CantPreallocatePlotFile)?;
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
