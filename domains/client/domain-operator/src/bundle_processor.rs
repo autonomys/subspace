@@ -243,7 +243,8 @@ where
 
         assert!(
             domain_block_result.header_number > head_receipt_number,
-            "Domain chain number must larger than execution chain number by at least 1"
+            "Domain chain number must larger than the head number of the receipt chain \
+            (which is maintained on the consensus chain) by at least 1"
         );
 
         let built_block_info = (
