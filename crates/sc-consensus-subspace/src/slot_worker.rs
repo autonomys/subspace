@@ -51,18 +51,21 @@ use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 
-#[derive(Clone)]
-pub(super) struct SlotWorkerSyncOracle<SO>
+/// Subspace sync oracle that takes into account force authoring flag, allowing to bootstrap
+/// Subspace network from scratch due to our fork of Substrate where sync state of nodes depends on
+/// connected nodes (none of which will be synced initially).
+#[derive(Debug, Clone)]
+pub struct SubspaceSyncOracle<SO>
 where
-    SO: SyncOracle + Send + Sync + Clone,
+    SO: SyncOracle + Send + Sync,
 {
-    pub(super) force_authoring: bool,
-    pub(super) inner: SO,
+    force_authoring: bool,
+    inner: SO,
 }
 
-impl<SO> SyncOracle for SlotWorkerSyncOracle<SO>
+impl<SO> SyncOracle for SubspaceSyncOracle<SO>
 where
-    SO: SyncOracle + Send + Sync + Clone,
+    SO: SyncOracle + Send + Sync,
 {
     fn is_major_syncing(&self) -> bool {
         // This allows slot worker to produce blocks even when it is offline, which according to
@@ -73,6 +76,19 @@ where
 
     fn is_offline(&self) -> bool {
         self.inner.is_offline()
+    }
+}
+
+impl<SO> SubspaceSyncOracle<SO>
+where
+    SO: SyncOracle + Send + Sync,
+{
+    /// Create new instance
+    pub fn new(force_authoring: bool, substrate_sync_oracle: SO) -> Self {
+        Self {
+            force_authoring,
+            inner: substrate_sync_oracle,
+        }
     }
 }
 
@@ -107,7 +123,7 @@ where
     E: Environment<Block, Error = Error> + Send + Sync,
     E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
     I: BlockImport<Block, Transaction = TransactionFor<Client, Block>> + Send + Sync + 'static,
-    SO: SyncOracle + Send + Sync + Clone,
+    SO: SyncOracle + Send + Sync,
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
@@ -449,7 +465,7 @@ where
     E: Environment<Block, Error = Error> + Send + Sync,
     E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
     I: BlockImport<Block, Transaction = TransactionFor<Client, Block>> + Send + Sync + 'static,
-    SO: SyncOracle + Send + Sync + Clone,
+    SO: SyncOracle + Send + Sync,
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,

@@ -50,7 +50,7 @@ use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams,
+    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -897,7 +897,7 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: sync_service.clone(),
+            sync_oracle: SubspaceSyncOracle::new(config.force_authoring, sync_service.clone()),
             justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
