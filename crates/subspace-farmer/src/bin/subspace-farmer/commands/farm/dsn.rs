@@ -325,9 +325,9 @@ pub(super) fn configure_dsn(
 
                 move |new_peer_info| {
                     let peer_id = new_peer_info.peer_id;
-                    let peer_info = new_peer_info.peer_info.clone();
+                    let peer_info = &new_peer_info.peer_info;
 
-                    if let PeerInfo::Farmer { cuckoo_filter } = &peer_info {
+                    if let PeerInfo::Farmer { cuckoo_filter } = peer_info {
                         archival_storage_info.update_cuckoo_filter(
                             peer_id,
                             cuckoo_filter.clone(),
@@ -340,6 +340,7 @@ pub(super) fn configure_dsn(
             }))
             .detach();
 
+            // Consider returning HandlerId instead of both `detach()` calls for other usages.
             (node, node_runner, piece_cache)
         })
         .map_err(Into::into)

@@ -52,22 +52,22 @@ where
         piece_index: PieceIndex,
         retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        let piece_index_hash = piece_index.hash();
-        let key = piece_index_hash.to_multihash().into();
-
-        if let Some(piece) = self.piece_cache.lock().await.get_piece(&key) {
-            return Ok(Some(piece));
-        }
-
-        // L2 piece acquisition
-        let maybe_piece = self
-            .piece_provider
-            .get_piece(piece_index, Self::convert_retry_policy(retry_policy))
-            .await?;
-
-        if maybe_piece.is_some() {
-            return Ok(maybe_piece);
-        }
+        // let piece_index_hash = piece_index.hash();
+        // let key = piece_index_hash.to_multihash().into();
+        //
+        // if let Some(piece) = self.piece_cache.lock().await.get_piece(&key) {
+        //     return Ok(Some(piece));
+        // }
+        //
+        // // L2 piece acquisition
+        // let maybe_piece = self
+        //     .piece_provider
+        //     .get_piece(piece_index, Self::convert_retry_policy(retry_policy))
+        //     .await?;
+        //
+        // if maybe_piece.is_some() {
+        //     return Ok(maybe_piece);
+        // }
 
         // L1 piece acquisition
         // TODO: consider using retry policy for L1 lookups as well.

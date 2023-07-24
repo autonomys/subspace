@@ -14,15 +14,9 @@ use subspace_networking::CuckooFilterDTO;
 
 const CONNECTED_PEERS_NUMBER_LIMIT: usize = 50;
 
-struct PeerFilter {
-    cuckoo_filter: CuckooFilter<DefaultHasher>,
-    // defines whether the peer owning this filter is currently connected
-    peer_connected: bool,
-}
-
 #[derive(Clone, Default)]
 pub struct ArchivalStorageInfo {
-    peers: Arc<Mutex<HashMap<PeerId, PeerFilter>>>,
+    peers: Arc<Mutex<HashMap<PeerId, CuckooFilter<DefaultHasher>>>>,
 }
 
 impl Debug for ArchivalStorageInfo {
@@ -54,25 +48,11 @@ impl ArchivalStorageInfo {
 
         let mut peer_filters = self.peers.lock();
 
-        peer_filters.insert(
-            peer_id,
-            PeerFilter {
-                cuckoo_filter,
-                peer_connected: true,
-            },
-        );
-
-        peer_filters.iter_mut().for_each(|(peer_id, peer_filter)| {
-            peer_filter.peer_connected = currently_connected_peers.contains(peer_id);
-        });
-
-        peer_filters.retain(|_, peer_filter| peer_filter.peer_connected);
+        peer_filters.insert(peer_id, cuckoo_filter);
+        peer_filters.retain(|peer_id, _| currently_connected_peers.contains(peer_id));
 
         // Truncate current peer set by limits.
-        let mut connected_peers = peer_filters
-            .iter()
-            .map(|(peer_id, _)| *peer_id)
-            .collect::<Vec<_>>();
+        let mut connected_peers = peer_filters.keys().cloned().collect::<Vec<_>>();
 
         let exceeding_number_of_connected_peers = connected_peers
             .len()
@@ -100,8 +80,8 @@ impl ArchivalStorageInfo {
 
     pub fn peers_contain_piece(&self, piece_index: &PieceIndex) -> Vec<PeerId> {
         let mut result = Vec::new();
-        for (peer_id, peer_filter) in self.peers.lock().iter() {
-            if peer_filter.cuckoo_filter.contains(piece_index) {
+        for (peer_id, cuckoo_filter) in self.peers.lock().iter() {
+            if cuckoo_filter.contains(piece_index) {
                 result.push(*peer_id)
             }
         }

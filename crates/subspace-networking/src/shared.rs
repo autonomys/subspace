@@ -92,6 +92,7 @@ pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
 /// [`PeerInfo`] update and related data container.
+#[derive(Debug)]
 pub struct NewPeerInfo {
     /// Peer ID for this [`PeerInfo`] update.
     pub peer_id: PeerId,
