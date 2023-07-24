@@ -93,8 +93,14 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
         }
     }
 
-    if acquired_pieces_counter.load(Ordering::SeqCst) < required_pieces_number {
-        error!(%missing_piece_index, "Recovering missing piece failed.");
+    let received_pieces = acquired_pieces_counter.load(Ordering::SeqCst);
+    if received_pieces < required_pieces_number {
+        error!(
+            %missing_piece_index,
+            %received_pieces,
+            %required_pieces_number,
+            "Recovering missing piece failed."
+        );
 
         return Err(SegmentReconstructionError::NotEnoughPiecesAcquired);
     }
