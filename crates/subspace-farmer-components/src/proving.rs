@@ -2,14 +2,13 @@ use crate::auditing::ChunkCandidate;
 use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingError};
 use crate::sector::{SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadata};
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     PieceOffset, PosProof, PublicKey, Record, SBucket, SectorId, SectorIndex, Solution,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table};
+use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
 
 /// Errors that happen during proving
@@ -116,6 +115,7 @@ impl<'a> SolutionCandidates<'a> {
         reward_address: &'a RewardAddress,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
+        table_generator: &'a mut PosTable::Generator,
     ) -> Result<
         impl ExactSizeIterator<Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>> + 'a,
         ProvingError,
@@ -135,6 +135,7 @@ impl<'a> SolutionCandidates<'a> {
             kzg,
             erasure_coding,
             self.chunk_candidates,
+            table_generator,
         )
     }
 }
@@ -148,7 +149,10 @@ struct ChunkCache {
     proof_of_space: PosProof,
 }
 
-struct SolutionCandidatesIterator<'a, RewardAddress, PosTable> {
+struct SolutionCandidatesIterator<'a, RewardAddress, PosTable>
+where
+    PosTable: Table,
+{
     public_key: &'a PublicKey,
     reward_address: &'a RewardAddress,
     sector_index: SectorIndex,
@@ -163,7 +167,7 @@ struct SolutionCandidatesIterator<'a, RewardAddress, PosTable> {
     winning_chunks: VecDeque<WinningChunk>,
     count: usize,
     chunk_cache: Option<ChunkCache>,
-    _pos_table: PhantomData<PosTable>,
+    table_generator: &'a mut PosTable::Generator,
 }
 
 // TODO: This can be potentially parallelized with rayon
@@ -200,7 +204,7 @@ where
             }
 
             // Derive PoSpace table
-            let pos_table = PosTable::generate_parallel(
+            let pos_table = self.table_generator.generate_parallel(
                 &self
                     .sector_id
                     .derive_evaluation_seed(piece_offset, self.sector_metadata.history_size),
@@ -351,6 +355,7 @@ where
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         chunk_candidates: VecDeque<ChunkCandidate>,
+        table_generator: &'a mut PosTable::Generator,
     ) -> Result<Self, ProvingError> {
         if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
             return Err(ProvingError::InvalidErasureCodingInstance);
@@ -411,7 +416,7 @@ where
             winning_chunks,
             count,
             chunk_cache: None,
-            _pos_table: PhantomData,
+            table_generator,
         })
     }
 }

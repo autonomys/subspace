@@ -11,7 +11,6 @@ use futures::stream::FuturesOrdered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
 use parking_lot::Mutex;
-use rayon::prelude::*;
 use std::error::Error;
 use std::simd::Simd;
 use std::sync::Arc;
@@ -23,7 +22,7 @@ use subspace_core_primitives::{
     RecordWitness, SBucket, SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table};
+use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, warn};
@@ -169,6 +168,7 @@ pub async fn plot_sector<PG, PosTable>(
     pieces_in_sector: u16,
     sector_output: &mut [u8],
     sector_metadata_output: &mut [u8],
+    table_generator: &mut PosTable::Generator,
 ) -> Result<PlottedSector, PlottingError>
 where
     PG: PieceGetter,
@@ -248,11 +248,13 @@ where
     (PieceOffset::ZERO..)
         .zip(raw_sector.records.iter_mut())
         .zip(sector_contents_map.iter_record_bitfields_mut())
-        // TODO: Doesn't work without a bridge: https://github.com/ferrilab/bitvec/issues/143
-        .par_bridge()
+        // TODO: Ideally, we'd use parallelism here, but using `.par_bridge()` causes Chia table
+        //  derivation to only use a single thread, which slows everything to essentially
+        //  single-threaded
         .for_each(|((piece_offset, record), mut encoded_chunks_used)| {
-            // Derive PoSpace table
-            let pos_table = PosTable::generate(
+            // Derive PoSpace table (use parallel mode because multiple tables concurrently will use
+            // too much RAM)
+            let pos_table = table_generator.generate_parallel(
                 &sector_id.derive_evaluation_seed(piece_offset, farmer_protocol_info.history_size),
             );
 
