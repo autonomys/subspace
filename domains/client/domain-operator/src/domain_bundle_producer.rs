@@ -27,6 +27,7 @@ type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,
     <Block as BlockT>::Hash,
+    Balance,
 >;
 
 pub(super) struct DomainBundleProducer<
@@ -169,11 +170,9 @@ where
         };
 
         let should_skip_slot = {
-            // TODO: Retrieve using consensus chain runtime API
-            let head_receipt_number = domain_best_number.saturating_sub(One::one());
-            // let head_receipt_number = self
-            // .parent_chain
-            // .head_receipt_number(self.parent_chain.best_hash())?;
+            let head_receipt_number = self
+                .parent_chain
+                .head_receipt_number(self.parent_chain.best_hash())?;
 
             // Executor is lagging behind the receipt chain on its parent chain as another executor
             // already processed a block higher than the local best and submitted the receipt to
@@ -214,7 +213,7 @@ where
                 tx_range,
                 self.client.clone(),
             );
-            let (bundle_header, receipt, extrinsics) = self
+            let (bundle_header, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
                     proof_of_election,
@@ -252,7 +251,6 @@ where
 
             let bundle = Bundle {
                 sealed_header: SealedBundleHeader::new(bundle_header, signature),
-                receipt,
                 extrinsics,
             };
 

@@ -3,7 +3,7 @@ use crate::domain_block_processor::{
 };
 use crate::{DomainParentChain, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
-use domain_block_preprocessor::DomainBlockPreprocessor;
+use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
@@ -14,7 +14,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, DomainsApi};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, One};
+use sp_runtime::traits::{Block as BlockT, HashFor};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -202,15 +202,16 @@ where
             on top of parent block #{parent_number},{parent_hash}"
         );
 
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = parent_number;
-        // let head_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .head_receipt_number(consensus_block_hash, self.domain_id)?
-        // .into();
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_block_hash, self.domain_id)?
+            .into();
 
-        let extrinsics = match self
+        let PreprocessResult {
+            extrinsics,
+            extrinsics_roots,
+        } = match self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?
         {
@@ -235,21 +236,15 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 extrinsics,
+                extrinsics_roots,
                 Digest::default(),
             )
             .await?;
 
-        // TODO: Retrieve using consensus chain runtime API
-        let head_receipt_number = domain_block_result.header_number - One::one();
-        // let head_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .head_receipt_number(consensus_block_hash, self.domain_id)?
-        // .into();
-
         assert!(
             domain_block_result.header_number > head_receipt_number,
-            "Consensus chain number must larger than execution chain number by at least 1"
+            "Domain chain number must larger than the head number of the receipt chain \
+            (which is maintained on the consensus chain) by at least 1"
         );
 
         let built_block_info = (

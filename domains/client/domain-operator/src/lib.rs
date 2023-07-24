@@ -99,12 +99,14 @@ use sp_runtime::traits::{
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::Balance;
 
 type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,
     <Block as BlockT>::Hash,
+    Balance,
 >;
 
 type TransactionFor<Backend, Block> =
@@ -119,6 +121,7 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
         <CBlock as BlockT>::Hash,
         NumberFor<Block>,
         <Block as BlockT>::Hash,
+        Balance,
     >,
 >;
 

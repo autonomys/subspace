@@ -92,7 +92,7 @@ where
     where
         PCB: BlockT,
     {
-        let block_hash = local_receipt.domain_hash;
+        let block_hash = local_receipt.domain_block_hash;
         let block_number = to_number_primitive(local_receipt.consensus_block_number);
 
         let header = self.header(block_hash)?;
@@ -108,12 +108,13 @@ where
 
         let parent_number = to_number_primitive(*parent_header.number());
 
-        let local_root = local_receipt.trace.get(local_trace_index as usize).ok_or(
-            FraudProofError::InvalidTraceIndex {
+        let local_root = local_receipt
+            .execution_trace
+            .get(local_trace_index as usize)
+            .ok_or(FraudProofError::InvalidTraceIndex {
                 index: local_trace_index as usize,
-                max: local_receipt.trace.len() - 1,
-            },
-        )?;
+                max: local_receipt.execution_trace.len() - 1,
+            })?;
 
         let consensus_parent_hash = H256::decode(
             &mut self
@@ -171,9 +172,10 @@ where
                 proof,
                 execution_phase,
             }
-        } else if local_trace_index as usize == local_receipt.trace.len() - 1 {
+        } else if local_trace_index as usize == local_receipt.execution_trace.len() - 1 {
             // `finalize_block` execution proof.
-            let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
+            let pre_state_root =
+                as_h256(&local_receipt.execution_trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
             let extrinsics = self.block_body(block_hash)?;
             let execution_phase = ExecutionPhase::FinalizeBlock {
@@ -214,7 +216,8 @@ where
             }
         } else {
             // Regular extrinsic execution proof.
-            let pre_state_root = as_h256(&local_receipt.trace[local_trace_index as usize - 1])?;
+            let pre_state_root =
+                as_h256(&local_receipt.execution_trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
 
             let (proof, execution_phase) = self.create_extrinsic_execution_proof(

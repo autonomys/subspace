@@ -13,12 +13,14 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use subspace_runtime_primitives::Balance;
 
 type OpaqueBundleFor<Block, CBlock> = OpaqueBundle<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,
     <Block as BlockT>::Hash,
+    Balance,
 >;
 
 pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(

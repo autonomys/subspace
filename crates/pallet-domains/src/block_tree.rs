@@ -8,8 +8,7 @@ use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::v2::ExecutionReceipt;
-use sp_domains::{DomainId, OperatorId};
+use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
@@ -385,7 +384,7 @@ mod tests {
                 bundle_extrinsics_root,
                 receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -500,7 +499,7 @@ mod tests {
                     bundle_extrinsics_root,
                     receipt,
                 );
-                assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+                assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     RawOrigin::None.into(),
                     bundle,
                 ));
@@ -597,7 +596,7 @@ mod tests {
                 H256::random(),
                 current_head_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -638,7 +637,7 @@ mod tests {
                 H256::random(),
                 stale_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -698,7 +697,7 @@ mod tests {
                 H256::random(),
                 new_branch_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));

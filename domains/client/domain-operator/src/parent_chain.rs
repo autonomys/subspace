@@ -3,7 +3,7 @@ use sc_client_api::BlockBackend;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{DomainBlockLimit, DomainId, DomainsApi};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -31,10 +31,15 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         at: ParentChainBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError>;
 
-    fn maximum_receipt_drift(
+    fn block_tree_pruning_depth(
         &self,
         at: ParentChainBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError>;
+
+    fn domain_block_limit(
+        &self,
+        at: ParentChainBlock::Hash,
+    ) -> Result<DomainBlockLimit, sp_api::ApiError>;
 
     fn extract_receipts(
         &self,
@@ -102,38 +107,47 @@ where
 
     fn oldest_receipt_number(
         &self,
-        _at: CBlock::Hash,
+        at: CBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
-        // TODO: Implement when block tree is ready.
-        Ok(0u32.into())
-        // let oldest_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .oldest_receipt_number(at, self.domain_id)?;
-        // Ok(oldest_receipt_number.into())
+        let oldest_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .oldest_receipt_number(at, self.domain_id)?;
+        Ok(oldest_receipt_number.into())
     }
 
-    fn head_receipt_number(&self, _at: CBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
-        // TODO: Implement when block tree is ready.
-        unimplemented!("Retrieve from consensus chain runtime")
-        // let head_receipt_number = self
-        // .consensus_client
-        // .runtime_api()
-        // .head_receipt_number(at, self.domain_id)?;
-        // Ok(head_receipt_number.into())
+    fn head_receipt_number(&self, at: CBlock::Hash) -> Result<NumberFor<Block>, sp_api::ApiError> {
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(at, self.domain_id)?;
+        Ok(head_receipt_number.into())
     }
 
-    fn maximum_receipt_drift(
+    fn block_tree_pruning_depth(
         &self,
-        _at: CBlock::Hash,
+        at: CBlock::Hash,
     ) -> Result<NumberFor<Block>, sp_api::ApiError> {
-        // TODO: Implement when block tree is ready.
-        Ok(256u32.into())
-        // let max_drift = self
-        // .consensus_client
-        // .runtime_api()
-        // .maximum_receipt_drift(at)?;
-        // Ok(max_drift.into())
+        let max_drift = self
+            .consensus_client
+            .runtime_api()
+            .block_tree_pruning_depth(at)?;
+        Ok(max_drift.into())
+    }
+
+    fn domain_block_limit(&self, at: CBlock::Hash) -> Result<DomainBlockLimit, sp_api::ApiError> {
+        let limit = self
+            .consensus_client
+            .runtime_api()
+            .domain_block_limit(at, self.domain_id)?
+            .ok_or(sp_blockchain::Error::Application(
+                format!(
+                    "Domain block limit for domain {:?} not found",
+                    self.domain_id
+                )
+                .into(),
+            ))?;
+        Ok(limit)
     }
 
     fn extract_receipts(

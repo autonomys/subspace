@@ -7,7 +7,7 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
-use subspace_runtime_primitives::AccountId;
+use subspace_runtime_primitives::{AccountId, Balance};
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
@@ -265,11 +265,13 @@ pub struct BundleEquivocationProof<Number, Hash> {
     pub offender: AccountId,
     /// The slot at which the equivocation happened.
     pub slot: Slot,
-    // TODO: Make H256 a generic when bundle equivocation is implemented properly.
+    // TODO: The generic type should be `<Number, Hash, DomainNumber, DomainHash, Balance>`
+    // TODO: `SealedBundleHeader` contains `ExecutionReceipt` which make the size of the proof
+    // large, revisit when proceeding to fraud proof v2.
     /// The first header involved in the equivocation.
-    pub first_header: SealedBundleHeader<Number, Hash, H256>,
+    pub first_header: SealedBundleHeader<Number, Hash, Number, H256, Balance>,
     /// The second header involved in the equivocation.
-    pub second_header: SealedBundleHeader<Number, Hash, H256>,
+    pub second_header: SealedBundleHeader<Number, Hash, Number, H256, Balance>,
 }
 
 impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>

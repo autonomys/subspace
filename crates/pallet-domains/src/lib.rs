@@ -42,11 +42,13 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
-    DomainId, DomainInstanceData, OpaqueBundle, OperatorId, OperatorPublicKey, RuntimeId,
+    DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPublicKey, RuntimeId,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
-use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
+use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
@@ -64,7 +66,7 @@ pub trait FreezeIdentifier<T: Config> {
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
 }
 
-pub type ExecutionReceiptOf<T> = sp_domains::v2::ExecutionReceipt<
+pub type ExecutionReceiptOf<T> = ExecutionReceipt<
     <T as frame_system::Config>::BlockNumber,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainNumber,
@@ -72,7 +74,7 @@ pub type ExecutionReceiptOf<T> = sp_domains::v2::ExecutionReceipt<
     BalanceOf<T>,
 >;
 
-pub type OpaqueBundleOf<T> = sp_domains::v2::OpaqueBundle<
+pub type OpaqueBundleOf<T> = OpaqueBundle<
     <T as frame_system::Config>::BlockNumber,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainNumber,
@@ -89,7 +91,6 @@ pub(crate) struct ElectionVerificationParams<Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    // TODO: a complaint on `submit_bundle` call, revisit once new v2 features are complete.
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
@@ -127,14 +128,14 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExtrinsicsRoot, GenesisDomain, OpaqueBundle, OperatorId, ReceiptHash, RuntimeId,
-        RuntimeType,
+        DomainId, ExtrinsicsRoot, GenesisDomain, OperatorId, ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
         One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
+    use sp_std::boxed::Box;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
@@ -586,42 +587,10 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // TODO: proper weight
-        // TODO: replace it with `submit_bundle_v2` after all usage of it is removed
-        #[allow(deprecated)]
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::from_all(10_000))]
-        pub fn submit_bundle(
-            origin: OriginFor<T>,
-            opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-
-            log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
-
-            let domain_id = opaque_bundle.domain_id();
-
-            // TODO: Implement the block tree v2.
-
-            let bundle_hash = opaque_bundle.hash();
-
-            SuccessfulBundles::<T>::append(domain_id, bundle_hash);
-
-            Self::note_domain_bundle(domain_id);
-
-            Self::deposit_event(Event::BundleStored {
-                domain_id,
-                bundle_hash,
-                bundle_author: opaque_bundle.operator_id(),
-            });
-
-            Ok(())
-        }
-
-        #[pallet::call_index(10)]
-        #[pallet::weight(Weight::from_all(10_000))]
         // TODO: proper benchmark
-        pub fn submit_bundle_v2(
+        pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
         ) -> DispatchResult {
@@ -709,7 +678,7 @@ mod pallet {
 
         #[pallet::call_index(1)]
         #[pallet::weight(
-            match fraud_proof {
+            match fraud_proof.as_ref() {
                 FraudProof::InvalidStateTransition(..) => (
                     T::WeightInfo::submit_system_domain_invalid_state_transition_proof(),
                     Pays::No
@@ -720,7 +689,7 @@ mod pallet {
         )]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: FraudProof<T::BlockNumber, T::Hash>,
+            fraud_proof: Box<FraudProof<T::BlockNumber, T::Hash>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1000,8 +969,7 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle: _ } => Ok(()),
-                Call::submit_bundle_v2 { opaque_bundle } => {
+                Call::submit_bundle { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
                 Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
@@ -1012,27 +980,6 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_bundle { opaque_bundle } => {
-                    let bundle_create_at =
-                        opaque_bundle.sealed_header.header.consensus_block_number;
-                    let current_block_number = frame_system::Pallet::<T>::current_block_number();
-                    if let Err(e) = Self::check_stale_bundle(current_block_number, bundle_create_at)
-                    {
-                        log::debug!(
-                            target: "runtime::domains",
-                            "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
-                        );
-                        return InvalidTransactionCode::Bundle.into();
-                    }
-                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
-                        .priority(TransactionPriority::MAX)
-                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
-                            panic!("Block number always fits in TransactionLongevity; qed")
-                        }))
-                        .and_provides(opaque_bundle.hash())
-                        .propagate(true)
-                        .build()
-                }
-                Call::submit_bundle_v2 { opaque_bundle } => {
                     if let Err(e) = Self::validate_bundle(opaque_bundle) {
                         log::debug!(
                             target: "runtime::domains",
@@ -1189,8 +1136,8 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
-        let operator_id = sealed_header.header.proof_of_election.operator_id;
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
 
@@ -1341,6 +1288,29 @@ impl<T: Config> Pallet<T> {
     fn initial_tx_range() -> U256 {
         U256::MAX / T::InitialDomainTxRange::get()
     }
+
+    /// Returns the best execution chain number.
+    pub fn head_receipt_number(domain_id: DomainId) -> T::DomainNumber {
+        HeadReceiptNumber::<T>::get(domain_id)
+    }
+
+    /// Returns the block number of oldest execution receipt.
+    pub fn oldest_receipt_number(domain_id: DomainId) -> T::DomainNumber {
+        Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
+    }
+
+    /// Returns the block tree pruning depth.
+    pub fn block_tree_pruning_depth() -> T::DomainNumber {
+        T::BlockTreePruningDepth::get()
+    }
+
+    /// Returns the domain block limit of the given domain.
+    pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
+        DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
+            max_block_size: domain_obj.domain_config.max_block_size,
+            max_block_weight: domain_obj.domain_config.max_block_weight,
+        })
+    }
 }
 
 impl<T> Pallet<T>
@@ -1348,9 +1318,7 @@ where
     T: Config + frame_system::offchain::SendTransactionTypes<Call<T>>,
 {
     /// Submits an unsigned extrinsic [`Call::submit_bundle`].
-    pub fn submit_bundle_unsigned(
-        opaque_bundle: OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
-    ) {
+    pub fn submit_bundle_unsigned(opaque_bundle: OpaqueBundleOf<T>) {
         let slot = opaque_bundle.sealed_header.slot_number();
         let extrincis_count = opaque_bundle.extrinsics.len();
 
@@ -1371,7 +1339,9 @@ where
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
     pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::BlockNumber, T::Hash>) {
-        let call = Call::submit_fraud_proof { fraud_proof };
+        let call = Call::submit_fraud_proof {
+            fraud_proof: Box::new(fraud_proof),
+        };
 
         match SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into()) {
             Ok(()) => {

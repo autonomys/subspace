@@ -2243,6 +2243,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
+ "sp-weights",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-node",
@@ -2271,6 +2272,7 @@ dependencies = [
  "sp-core",
  "sp-domains",
  "sp-runtime",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -2338,6 +2340,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "sp-weights",
  "subspace-runtime-primitives",
 ]
 
@@ -11082,6 +11085,7 @@ dependencies = [
  "sp-domains",
  "sp-runtime",
  "sp-transaction-pool",
+ "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "tracing",
 ]

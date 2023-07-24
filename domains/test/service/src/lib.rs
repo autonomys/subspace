@@ -50,6 +50,9 @@ use sp_runtime::traits::Dispatchable;
 pub use domain::*;
 pub use evm_domain_test_runtime;
 
+/// The domain id of the genesis domain
+pub const GENESIS_DOMAIN_ID: DomainId = DomainId::new(0u32);
+
 /// Create a domain node `Configuration`.
 ///
 /// By default an in-memory socket will be used, therefore you need to provide nodes if you want the
@@ -64,7 +67,7 @@ pub fn node_config(
     nodes_exclusive: bool,
     role: Role,
     base_path: BasePath,
-    maybe_chain_spec: Option<Box<dyn ChainSpec>>,
+    chain_spec: Box<dyn ChainSpec>,
 ) -> Result<ServiceConfiguration, ServiceError> {
     let root = base_path.path().to_path_buf();
     let key_seed = key.to_seed();
@@ -97,11 +100,6 @@ pub fn node_config(
     network_config.force_synced = true;
 
     network_config.transport = TransportConfig::MemoryOnly;
-
-    let chain_spec = match maybe_chain_spec {
-        Some(cs) => cs,
-        None => chain_spec::get_chain_spec(),
-    };
 
     Ok(ServiceConfiguration {
         impl_name: "domain-test-node".to_string(),

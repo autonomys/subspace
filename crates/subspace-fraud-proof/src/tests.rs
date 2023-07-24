@@ -10,6 +10,7 @@ use domain_test_service::domain::EvmDomainClient as DomainClient;
 use domain_test_service::evm_domain_test_runtime::Header;
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave};
 use domain_test_service::Sr25519Keyring::Ferdie;
+use domain_test_service::GENESIS_DOMAIN_ID;
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
@@ -115,7 +116,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
@@ -124,7 +125,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Full, &mut ferdie)
+    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Bob is able to sync blocks.
@@ -429,7 +430,7 @@ async fn invalid_execution_proof_should_not_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
@@ -438,7 +439,7 @@ async fn invalid_execution_proof_should_not_work() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Full, &mut ferdie)
+    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Bob is able to sync blocks.

@@ -124,16 +124,16 @@ fn testnet_evm_genesis() -> GenesisConfig {
 /// HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `GenesisConfig`
 /// dosen't derive `Clone`, using global variable and serialization/deserialization to workaround
 /// these limits
+// TODO: find a better solution, tests will run parallelly thus `load_chain_spec_with` multiple
+// time, when we support more domain in the future the genesis domain of different domain will
+// mixup in the current workaround.
 static GENESIS_CONFIG: OnceCell<Vec<u8>> = OnceCell::new();
 
 /// Load chain spec that contains the given `GenesisConfig`
 pub fn load_chain_spec_with(genesis_config: GenesisConfig) -> Box<dyn ChainSpec> {
-    GENESIS_CONFIG
-        .set(
-            serde_json::to_vec(&genesis_config)
-                .expect("Genesis config serialization never fails; qed"),
-        )
-        .expect("This function should only call once upon node initialization");
+    let _ = GENESIS_CONFIG.set(
+        serde_json::to_vec(&genesis_config).expect("Genesis config serialization never fails; qed"),
+    );
     let constructor = || {
         let raw_genesis_config = GENESIS_CONFIG.get().expect("Value just set; qed");
         serde_json::from_slice::<GenesisConfig>(raw_genesis_config)

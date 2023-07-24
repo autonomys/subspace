@@ -24,6 +24,7 @@ use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, LookupError,
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
+use sp_weights::Weight;
 use subspace_runtime_primitives::Moment;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -184,6 +185,9 @@ sp_api::decl_runtime_apis! {
         fn storage_keys_for_verifying_transaction_validity(
             account_id: opaque::AccountId,
         ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
+
+        /// Return the extrinsic weight
+        fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
     }
 
     /// Api that construct inherent extrinsics.
