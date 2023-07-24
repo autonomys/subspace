@@ -421,6 +421,11 @@ where
                     .handlers
                     .num_established_peer_connections_change
                     .call_simple(&num_established_peer_connections);
+
+                // No more connections
+                if num_established == 0 {
+                    shared.handlers.disconnected_peer.call_simple(&peer_id);
+                }
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {
                 if let Some(peer_id) = &peer_id {

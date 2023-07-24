@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
@@ -28,17 +28,7 @@ impl Debug for ArchivalStorageInfo {
 }
 
 impl ArchivalStorageInfo {
-    pub fn update_cuckoo_filter(
-        &self,
-        peer_id: PeerId,
-        cuckoo_filter_dto: Arc<CuckooFilterDTO>,
-        currently_connected_peers: &[PeerId],
-    ) {
-        let currently_connected_peers = currently_connected_peers
-            .iter()
-            .cloned()
-            .collect::<HashSet<_>>();
-
+    pub fn update_cuckoo_filter(&self, peer_id: PeerId, cuckoo_filter_dto: Arc<CuckooFilterDTO>) {
         let exported_filter = ExportedCuckooFilter {
             values: cuckoo_filter_dto.values.clone(),
             length: cuckoo_filter_dto.length as usize,
@@ -49,7 +39,6 @@ impl ArchivalStorageInfo {
         let mut peer_filters = self.peers.lock();
 
         peer_filters.insert(peer_id, cuckoo_filter);
-        peer_filters.retain(|peer_id, _| currently_connected_peers.contains(peer_id));
 
         // Truncate current peer set by limits.
         let mut connected_peers = peer_filters.keys().cloned().collect::<Vec<_>>();
@@ -76,6 +65,10 @@ impl ArchivalStorageInfo {
             connected_peers.swap_remove(random_index);
             peer_filters.remove(&removing_peer_id);
         }
+    }
+
+    pub fn remove_peer_filter(&self, peer_id: &PeerId) {
+        self.peers.lock().remove(peer_id);
     }
 
     pub fn peers_contain_piece(&self, piece_index: &PieceIndex) -> Vec<PeerId> {

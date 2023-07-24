@@ -107,6 +107,7 @@ pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
     pub(crate) num_established_peer_connections_change: Handler<usize>,
     pub(crate) new_peer_info: Handler<NewPeerInfo>,
+    pub(crate) disconnected_peer: Handler<PeerId>,
 }
 
 #[derive(Debug)]

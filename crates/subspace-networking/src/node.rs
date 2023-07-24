@@ -602,4 +602,9 @@ impl Node {
     pub fn on_peer_info(&self, callback: HandlerFn<NewPeerInfo>) -> HandlerId {
         self.shared.handlers.new_peer_info.add(callback)
     }
+
+    /// Callback is called when a peer is disconnected.
+    pub fn on_disconnected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
+        self.shared.handlers.disconnected_peer.add(callback)
+    }
 }

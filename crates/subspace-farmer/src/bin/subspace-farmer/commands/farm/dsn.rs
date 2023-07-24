@@ -328,11 +328,7 @@ pub(super) fn configure_dsn(
                     let peer_info = &new_peer_info.peer_info;
 
                     if let PeerInfo::Farmer { cuckoo_filter } = peer_info {
-                        archival_storage_info.update_cuckoo_filter(
-                            peer_id,
-                            cuckoo_filter.clone(),
-                            &new_peer_info.connected_peers,
-                        );
+                        archival_storage_info.update_cuckoo_filter(peer_id, cuckoo_filter.clone());
 
                         debug!(%peer_id, ?peer_info, "Peer info cached",);
                     }
@@ -340,7 +336,18 @@ pub(super) fn configure_dsn(
             }))
             .detach();
 
-            // Consider returning HandlerId instead of both `detach()` calls for other usages.
+            node.on_disconnected_peer(Arc::new({
+                let archival_storage_info = archival_storage_info.clone();
+
+                move |peer_id| {
+                    archival_storage_info.remove_peer_filter(peer_id);
+
+                    debug!(%peer_id, "Peer filter removed.",);
+                }
+            }))
+            .detach();
+
+            // Consider returning HandlerId instead of each `detach()` calls for other usages.
             (node, node_runner, piece_cache)
         })
         .map_err(Into::into)
