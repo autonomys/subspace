@@ -1366,7 +1366,8 @@ pub fn calculate_tx_range(
 
     let Some(new_tx_range) = U256::from(actual_bundle_count)
         .saturating_mul(&cur_tx_range)
-        .checked_div(&U256::from(expected_bundle_count)) else {
+        .checked_div(&U256::from(expected_bundle_count))
+    else {
         return cur_tx_range;
     };
 

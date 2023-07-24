@@ -9238,6 +9238,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f638d531eccd6e23b980caf34876660d38e265409d8e99b397ab71eb3612fad0"
 
 [[package]]
+name = "seq-macro"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3f0bf26fd526d2a95683cd0f87bf103b8539e2ca1ef48ce002d67aad59aa0b4"
+
+[[package]]
 name = "serde"
 version = "1.0.164"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10761,8 +10767,10 @@ dependencies = [
  "blake3",
  "chacha20 0.9.1",
  "criterion",
+ "derive_more",
  "rand 0.8.5",
  "rayon",
+ "seq-macro",
  "sha2 0.10.7",
  "subspace-chiapos",
  "subspace-core-primitives",

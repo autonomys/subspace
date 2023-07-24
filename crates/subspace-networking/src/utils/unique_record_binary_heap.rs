@@ -37,7 +37,7 @@ impl PartialEq<Self> for RecordHeapKey {
 
 impl PartialOrd<Self> for RecordHeapKey {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.peer_distance().partial_cmp(&other.peer_distance())
+        Some(self.cmp(other))
     }
 }
 

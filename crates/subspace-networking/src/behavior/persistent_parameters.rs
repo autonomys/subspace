@@ -308,7 +308,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             .known_addresses()
             .await
             .into_iter()
-            .chain(self.bootstrap_addresses().into_iter())
+            .chain(self.bootstrap_addresses())
             .collect::<Vec<_>>();
 
         trace!(
