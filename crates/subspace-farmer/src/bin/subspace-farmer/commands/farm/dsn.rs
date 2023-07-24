@@ -340,9 +340,9 @@ pub(super) fn configure_dsn(
                 let archival_storage_info = archival_storage_info.clone();
 
                 move |peer_id| {
-                    archival_storage_info.remove_peer_filter(peer_id);
-
-                    debug!(%peer_id, "Peer filter removed.",);
+                    if archival_storage_info.remove_peer_filter(peer_id) {
+                        debug!(%peer_id, "Peer filter removed.",);
+                    }
                 }
             }))
             .detach();
