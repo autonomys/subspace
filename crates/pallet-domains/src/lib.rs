@@ -33,6 +33,7 @@ pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
 use codec::{Decode, Encode};
+use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
@@ -45,7 +46,7 @@ use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, RuntimeId,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
+use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, CheckedSub, Hash, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
@@ -469,6 +470,10 @@ mod pallet {
         StaleBundle,
         /// An invalid execution receipt found in the bundle.
         Receipt(BlockTreeError),
+        /// Bundle size exceed the max bundle size limit in the domain config
+        BundleTooLarge,
+        // Bundle with an invalid extrinsic root
+        InvalidExtrinsicRoot,
     }
 
     impl<T> From<RuntimeRegistryError> for Error<T> {
@@ -1135,6 +1140,34 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn check_bundle_size(
+        opaque_bundle: &OpaqueBundleOf<T>,
+        max_size: u32,
+    ) -> Result<(), BundleError> {
+        let bundle_size = opaque_bundle
+            .extrinsics
+            .iter()
+            .fold(0, |acc, xt| acc + xt.encoded_size() as u32);
+        ensure!(max_size >= bundle_size, BundleError::BundleTooLarge);
+        Ok(())
+    }
+
+    fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let expected_extrinsics_root = BlakeTwo256::ordered_trie_root(
+            opaque_bundle
+                .extrinsics
+                .iter()
+                .map(|xt| xt.encode())
+                .collect(),
+            sp_core::storage::StateVersion::V1,
+        );
+        ensure!(
+            expected_extrinsics_root == opaque_bundle.extrinsics_root(),
+            BundleError::InvalidExtrinsicRoot
+        );
+        Ok(())
+    }
+
     fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
@@ -1157,7 +1190,15 @@ impl<T: Config> Pallet<T> {
         // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
         Self::check_stale_bundle(current_block_number, bundle_create_at)?;
 
-        // TODO: Implement bundle validation.
+        let domain_config = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config;
+
+        // TODO: check bundle weight with `domain_config.max_block_weight`
+
+        Self::check_bundle_size(opaque_bundle, domain_config.max_block_size)?;
+
+        Self::check_extrinsics_root(opaque_bundle)?;
 
         verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
@@ -1166,18 +1207,13 @@ impl<T: Config> Pallet<T> {
             .verify_vrf_signature(&operator.signing_key)
             .map_err(|_| BundleError::BadVrfSignature)?;
 
-        let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
-            .ok_or(BundleError::InvalidDomainId)?
-            .domain_config
-            .bundle_slot_probability;
-
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
         let threshold = sp_domains::bundle_producer_election::calculate_threshold(
             operator_stake.saturated_into(),
             total_domain_stake.saturated_into(),
-            bundle_slot_probability,
+            domain_config.bundle_slot_probability,
         );
 
         if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
