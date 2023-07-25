@@ -54,7 +54,7 @@ pub(super) fn configure_dsn(
 ) -> Result<
     (
         Node,
-        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>>,
+        NodeRunner<FarmerProviderStorage<FarmerPieceCache>>,
         FarmerPieceCache,
     ),
     anyhow::Error,
@@ -98,12 +98,7 @@ pub(super) fn configure_dsn(
         "Piece cache initialized successfully"
     );
 
-    let farmer_provider_storage = FarmerProviderStorage::new(
-        peer_id,
-        readers_and_pieces.clone(),
-        persistent_provider_storage,
-        piece_cache.clone(),
-    );
+    let farmer_provider_storage = FarmerProviderStorage::new(peer_id, piece_cache.clone());
 
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
