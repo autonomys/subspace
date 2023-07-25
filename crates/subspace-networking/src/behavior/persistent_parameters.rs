@@ -1,4 +1,4 @@
-use crate::utils::{convert_multiaddresses, CollectionBatcher, PeerAddress};
+use crate::utils::{CollectionBatcher, PeerAddress};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::future::Fuse;
@@ -70,32 +70,19 @@ impl Clone for Box<dyn NetworkingParametersRegistry> {
     }
 }
 
-/// Networking manager implementation with bootstrapped addresses. All other operations muted.
+/// Networking manager implementation with NOOP implementation.
 #[derive(Clone, Default)]
-pub struct BootstrappedNetworkingParameters {
-    bootstrap_addresses: Vec<Multiaddr>,
-}
+pub struct StubNetworkingParametersManager;
 
-impl BootstrappedNetworkingParameters {
-    /// Creates a new instance of `BootstrappedNetworkingParameters`.
-    pub fn new(bootstrap_addresses: Vec<Multiaddr>) -> Self {
-        Self {
-            bootstrap_addresses,
-        }
-    }
-
-    fn bootstrap_addresses(&self) -> Vec<PeerAddress> {
-        convert_multiaddresses(self.bootstrap_addresses.clone())
-    }
-
-    /// Returns an instance of `BootstrappedNetworkingParameters` as the `Box` reference.
+impl StubNetworkingParametersManager {
+    /// Returns an instance of `StubNetworkingParametersManager` as the `Box` reference.
     pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
         Box::new(self)
     }
 }
 
 #[async_trait]
-impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
+impl NetworkingParametersRegistry for StubNetworkingParametersManager {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
     async fn remove_known_peer_addresses(&mut self, _peer_id: PeerId, _addresses: Vec<Multiaddr>) {}
@@ -103,7 +90,7 @@ impl NetworkingParametersRegistry for BootstrappedNetworkingParameters {
     async fn remove_all_known_peer_addresses(&mut self, _peer_id: PeerId) {}
 
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
-        self.bootstrap_addresses()
+        Vec::new()
     }
 
     async fn run(&mut self) {
@@ -141,8 +128,6 @@ pub struct NetworkingParametersManager {
     column_id: u8,
     // Key to persistent parameters
     object_id: &'static [u8],
-    // Bootstrap addresses provided on creation
-    bootstrap_addresses: Vec<Multiaddr>,
     // Provides batching capabilities for the address collection (it stores the last batch index)
     collection_batcher: CollectionBatcher<PeerAddress>,
 }
@@ -150,10 +135,7 @@ pub struct NetworkingParametersManager {
 impl NetworkingParametersManager {
     /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
     /// On object creation it starts a job for networking parameters cache handling.
-    pub fn new(
-        path: &Path,
-        bootstrap_addresses: Vec<Multiaddr>,
-    ) -> Result<Self, NetworkParametersPersistenceError> {
+    pub fn new(path: &Path) -> Result<Self, NetworkParametersPersistenceError> {
         let mut options = Options::with_columns(path, 1);
         // We don't use stats
         options.stats = false;
@@ -184,7 +166,6 @@ impl NetworkingParametersManager {
             object_id,
             known_peers: cache,
             networking_parameters_save_delay: Self::default_delay(),
-            bootstrap_addresses,
             collection_batcher: CollectionBatcher::new(
                 NonZeroUsize::new(PEERS_ADDRESSES_BATCH_SIZE)
                     .expect("Manual non-zero initialization failed."),
@@ -200,12 +181,6 @@ impl NetworkingParametersManager {
                 addresses.iter().map(|addr| (*peer_id, addr.0.clone()))
             })
             .collect()
-    }
-
-    // Returns boostrap addresses from networking parameters initialization.
-    // It removes p2p-protocol suffix.
-    fn bootstrap_addresses(&self) -> Vec<PeerAddress> {
-        convert_multiaddresses(self.bootstrap_addresses.clone())
     }
 
     // Helps create a copy of the internal LruCache
@@ -304,12 +279,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
 
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
         // We take cached known addresses and combine them with manually provided bootstrap addresses.
-        let combined_addresses = self
-            .known_addresses()
-            .await
-            .into_iter()
-            .chain(self.bootstrap_addresses())
-            .collect::<Vec<_>>();
+        let combined_addresses = self.known_addresses().await.into_iter().collect::<Vec<_>>();
 
         trace!(
             "Peer addresses batch requested. Total list size: {}",
@@ -359,7 +329,6 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             db: self.db.clone(),
             column_id: self.column_id,
             object_id: self.object_id,
-            bootstrap_addresses: self.bootstrap_addresses.clone(),
             collection_batcher: self.collection_batcher.clone(),
         }
         .boxed()

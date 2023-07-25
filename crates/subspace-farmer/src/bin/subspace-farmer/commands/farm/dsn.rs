@@ -64,8 +64,7 @@ pub(super) fn configure_dsn(
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
-        NetworkingParametersManager::new(&known_addresses_db_path, bootstrap_nodes.clone())
-            .map(|manager| manager.boxed())?
+        NetworkingParametersManager::new(&known_addresses_db_path).map(|manager| manager.boxed())?
     };
 
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);

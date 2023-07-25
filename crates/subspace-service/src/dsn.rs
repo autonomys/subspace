@@ -15,12 +15,12 @@ use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
-    NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbError, ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
-    PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
+    peer_id, CreationError, MemoryProviderStorage, NetworkParametersPersistenceError,
+    NetworkingParametersManager, Node, NodeRunner, ParityDbError, ParityDbProviderStorage,
+    PeerInfoProvider, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
+    PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-    KADEMLIA_PROVIDER_TTL_IN_SECS,
+    StubNetworkingParametersManager, KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -114,13 +114,9 @@ where
             .map(|path| {
                 let db_path = path.join("known_addresses_db");
 
-                NetworkingParametersManager::new(&db_path, dsn_config.bootstrap_nodes.clone())
-                    .map(|manager| manager.boxed())
+                NetworkingParametersManager::new(&db_path).map(|manager| manager.boxed())
             })
-            .unwrap_or(Ok(BootstrappedNetworkingParameters::new(
-                dsn_config.bootstrap_nodes.clone(),
-            )
-            .boxed()))?
+            .unwrap_or(Ok(StubNetworkingParametersManager.boxed()))?
     };
 
     let provider_storage =
@@ -241,7 +237,7 @@ where
         reserved_peers: dsn_config.reserved_peers,
         // maintain permanent connections with any peer
         general_connected_peers_handler: Arc::new(|_| true),
-        bootstrap_addresses: dsn_config.bootstrap_nodes.clone(),
+        bootstrap_addresses: dsn_config.bootstrap_nodes,
 
         ..default_networking_config
     };

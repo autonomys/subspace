@@ -2,7 +2,7 @@ pub(crate) mod temporary_bans;
 mod transport;
 
 use crate::behavior::persistent_parameters::{
-    BootstrappedNetworkingParameters, NetworkingParametersRegistry,
+    NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
 use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
@@ -313,7 +313,7 @@ where
             provider_storage,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
+            networking_parameters_registry: StubNetworkingParametersManager.boxed(),
             request_response_protocols: Vec::new(),
             yamux_config,
             reserved_peers: Vec::new(),

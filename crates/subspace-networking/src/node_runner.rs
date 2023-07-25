@@ -45,7 +45,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::time::Sleep;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 // Defines a batch size for peer addresses from Kademlia buckets.
 const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
@@ -839,7 +839,7 @@ where
             let mut bootstrap_finished = shared.bootstrap_finished.lock();
             *bootstrap_finished = true;
 
-            info!(%success, "Bootstrap finished.",);
+            debug!(%success, "Bootstrap finished.",);
         }
     }
 

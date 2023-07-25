@@ -665,7 +665,7 @@ impl Node {
     /// Callback is called when a peer is connected.
     pub fn on_connected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
         self.shared.handlers.connected_peer.add(callback)
-	}
+    }
 
     pub(crate) async fn wait_for_bootstrap(&self) {
         loop {

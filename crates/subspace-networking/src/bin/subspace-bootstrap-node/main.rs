@@ -17,8 +17,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, Config, NetworkingParametersManager,
-    ParityDbProviderStorage, PeerInfoProvider, VoidProviderStorage,
+    peer_id, Config, NetworkingParametersManager, ParityDbProviderStorage, PeerInfoProvider,
+    StubNetworkingParametersManager, VoidProviderStorage,
 };
 use tracing::{debug, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -161,15 +161,10 @@ async fn main() -> anyhow::Result<()> {
                     .map(|path| {
                         let known_addresses_db = path.join("known_addresses_db");
 
-                        NetworkingParametersManager::new(
-                            &known_addresses_db,
-                            bootstrap_nodes.clone(),
-                        )
-                        .map(|manager| manager.boxed())
+                        NetworkingParametersManager::new(&known_addresses_db)
+                            .map(|manager| manager.boxed())
                     })
-                    .unwrap_or(Ok(
-                        BootstrappedNetworkingParameters::new(bootstrap_nodes).boxed()
-                    ))
+                    .unwrap_or(Ok(StubNetworkingParametersManager.boxed()))
                     .map_err(|err| anyhow!(err))?
             };
 
@@ -185,6 +180,8 @@ async fn main() -> anyhow::Result<()> {
                 // we don't maintain permanent connections with any peer
                 general_connected_peers_handler: Arc::new(|_| false),
                 special_connected_peers_handler: Arc::new(|_| false),
+                bootstrap_addresses: bootstrap_nodes,
+
                 ..Config::new(
                     protocol_version.to_string(),
                     keypair,
