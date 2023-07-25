@@ -1,6 +1,7 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
+use crate::peer_info::PeerInfo;
 use crate::request_responses::RequestFailure;
 use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
@@ -82,15 +83,32 @@ pub(crate) enum Command {
     Dial {
         address: Multiaddr,
     },
+    ConnectedPeers {
+        result_sender: oneshot::Sender<Vec<PeerId>>,
+    },
 }
 
 pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
+/// [`PeerInfo`] update and related data container.
+#[derive(Debug)]
+pub struct NewPeerInfo {
+    /// Peer ID for this [`PeerInfo`] update.
+    pub peer_id: PeerId,
+    /// [`PeerInfo`] update.
+    pub peer_info: PeerInfo,
+    /// Currently connected peers.
+    pub connected_peers: Vec<PeerId>,
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
     pub(crate) num_established_peer_connections_change: Handler<usize>,
+    pub(crate) new_peer_info: Handler<NewPeerInfo>,
+    pub(crate) disconnected_peer: Handler<PeerId>,
+    pub(crate) connected_peer: Handler<PeerId>,
 }
 
 #[derive(Debug)]

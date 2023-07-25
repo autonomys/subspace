@@ -12,7 +12,7 @@ use crate::create::{
 };
 use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
-use crate::shared::{Command, CreatedSubscription, Shared};
+use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
 use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
 use bytes::Bytes;
 use futures::channel::mpsc;
@@ -359,6 +359,11 @@ where
                     .handlers
                     .num_established_peer_connections_change
                     .call_simple(&num_established_peer_connections);
+
+                // A new connection
+                if num_established.get() == 1 {
+                    shared.handlers.connected_peer.call_simple(&peer_id);
+                }
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
@@ -421,6 +426,11 @@ where
                     .handlers
                     .num_established_peer_connections_change
                     .call_simple(&num_established_peer_connections);
+
+                // No more connections
+                if num_established == 0 {
+                    shared.handlers.disconnected_peer.call_simple(&peer_id);
+                }
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error } => {
                 if let Some(peer_id) = &peer_id {
@@ -811,6 +821,16 @@ where
         trace!(?event, "Peer info event.");
 
         if let Ok(PeerInfoSuccess::Received(peer_info)) = event.result {
+            if let Some(shared) = self.shared_weak.upgrade() {
+                let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
+
+                shared.handlers.new_peer_info.call_simple(&NewPeerInfo {
+                    peer_id: event.peer_id,
+                    peer_info: peer_info.clone(),
+                    connected_peers,
+                });
+            }
+
             let keep_alive = (self.general_connection_decision_handler)(&peer_info);
 
             self.swarm
@@ -1111,6 +1131,11 @@ where
             }
             Command::Dial { address } => {
                 let _ = self.swarm.dial(address);
+            }
+            Command::ConnectedPeers { result_sender } => {
+                let connected_peers = self.swarm.connected_peers().cloned().collect();
+
+                let _ = result_sender.send(connected_peers);
             }
         }
     }

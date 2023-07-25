@@ -30,7 +30,6 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::sector::SectorMetadata;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
-use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -95,7 +94,6 @@ pub(super) async fn plotting<NC, PG, PosTable>(
     erasure_coding: ErasureCoding,
     handlers: Arc<Handlers>,
     modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
-    concurrent_plotting_semaphore: Arc<Semaphore>,
     mut sectors_to_plot: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
 ) -> Result<(), PlottingError>
 where
@@ -121,17 +119,6 @@ where
                 )
                 .len(sector_metadata_size)
                 .map_mut(&metadata_file)?
-        };
-        let plotting_permit = match concurrent_plotting_semaphore.clone().acquire_owned().await {
-            Ok(plotting_permit) => plotting_permit,
-            Err(error) => {
-                warn!(
-                    %sector_index,
-                    %error,
-                    "Semaphore was closed, interrupting plotting"
-                );
-                return Ok(());
-            }
         };
 
         let maybe_old_sector_metadata = sectors_metadata.read().get(sector_index as usize).cloned();
@@ -233,11 +220,9 @@ where
             info!(%sector_index, "Sector plotted successfully");
         }
 
-        handlers.sector_plotted.call_simple(&(
-            plotted_sector,
-            maybe_old_plotted_sector,
-            Arc::new(plotting_permit),
-        ));
+        handlers
+            .sector_plotted
+            .call_simple(&(plotted_sector, maybe_old_plotted_sector));
     }
 
     Ok(())
