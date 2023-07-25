@@ -17,7 +17,7 @@ async-oneshot = "0.5.0"
 futures = "0.3.28"
 futures-timer = "3.0.2"
 jsonrpsee = { version = "0.16.2", features = ["server", "macros"] }
-parity-scale-codec = "3.6.1"
+parity-scale-codec = "3.6.3"
 parking_lot = "0.12.1"
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
