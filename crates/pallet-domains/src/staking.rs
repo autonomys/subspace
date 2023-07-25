@@ -75,6 +75,7 @@ pub enum Error {
     PendingOperatorSwitch,
     InsufficientBalance,
     BalanceFreeze,
+    BalanceBurn,
     MinimumOperatorStake,
     UnknownOperator,
     MinimumNominatorStake,
@@ -443,13 +444,17 @@ mod tests {
         PendingOperatorSwitches, PendingSlashes, PendingUnlocks, PendingWithdrawals,
     };
     use crate::staking::{
-        do_slash_operators, Error as StakingError, Nominator, Operator, OperatorConfig,
-        StakingSummary, Withdraw,
+        do_nominate_operator, do_slash_operators, Error as StakingError, Nominator, Operator,
+        OperatorConfig, StakingSummary, Withdraw,
     };
-    use crate::staking_epoch::{do_finalize_domain_current_epoch, do_unlock_pending_withdrawals};
+    use crate::staking_epoch::{
+        do_finalize_domain_current_epoch, do_finalize_slashed_operators,
+        do_unlock_pending_withdrawals,
+    };
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
-    use crate::{BalanceOf, Error, NominatorId};
-    use frame_support::traits::fungible::Mutate;
+    use crate::{BalanceOf, Config, Error, FreezeIdentifier, NominatorId};
+    use frame_support::traits::fungible::{Mutate, MutateFreeze};
+    use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
     use sp_domains::{DomainId, OperatorPair};
@@ -1142,11 +1147,54 @@ mod tests {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_id = 1;
+        let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
+        let operator_extra_deposit = 40 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+        let nominator_extra_deposit = 40 * SSC;
+
+        let total_balances = vec![
+            (operator_account, operator_free_balance),
+            (nominator_account, nominator_free_balance),
+        ];
+
+        let nominators = vec![
+            (operator_account, operator_stake),
+            (nominator_account, nominator_stake),
+        ];
+
+        let deposits = vec![
+            (operator_account, operator_extra_deposit),
+            (nominator_account, nominator_extra_deposit),
+        ];
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
+            for total_deposit in total_balances {
+                Balances::make_free_balance_be(&total_deposit.0, total_deposit.1);
+            }
+
+            let mut total_shares = <<Test as Config>::Share>::zero();
+            let mut total_stake = BalanceOf::<Test>::zero();
+            let freeze_id = crate::tests::FreezeIdentifier::staking_freeze_id(operator_id);
+            for nominator in nominators {
+                total_stake += nominator.1;
+                total_shares += nominator.1;
+
+                assert_ok!(Balances::set_freeze(&freeze_id, &nominator.0, nominator.1));
+                Nominators::<Test>::insert(
+                    operator_id,
+                    nominator.0,
+                    Nominator {
+                        shares: nominator.1,
+                    },
+                )
+            }
+
             DomainStakingSummary::<Test>::insert(
                 domain_id,
                 StakingSummary {
@@ -1165,14 +1213,18 @@ mod tests {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
                     next_domain_id: domain_id,
-                    minimum_nominator_stake: 100 * SSC,
+                    minimum_nominator_stake: 10 * SSC,
                     nomination_tax: Default::default(),
-                    current_total_stake: Zero::zero(),
+                    current_total_stake: total_stake,
                     current_epoch_rewards: Zero::zero(),
-                    total_shares: Zero::zero(),
+                    total_shares,
                     is_frozen: false,
                 },
             );
+
+            for deposit in deposits {
+                do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
+            }
 
             do_slash_operators::<Test>(vec![operator_id].into_iter()).unwrap();
 
@@ -1185,6 +1237,20 @@ mod tests {
             assert!(PendingSlashes::<Test>::get(domain_id)
                 .unwrap()
                 .contains(&operator_id));
+
+            do_finalize_slashed_operators::<Test>(domain_id).unwrap();
+            assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
+            assert_eq!(Operators::<Test>::get(operator_id), None);
+            assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
+
+            assert_eq!(
+                Balances::total_balance(&operator_account),
+                operator_free_balance - operator_stake - operator_extra_deposit
+            );
+            assert_eq!(
+                Balances::total_balance(&nominator_account),
+                nominator_free_balance - nominator_stake - nominator_extra_deposit
+            );
         });
     }
 }
