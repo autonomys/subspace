@@ -41,7 +41,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-use sp_runtime::traits::{Block as BlockT, Zero};
+use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
@@ -49,14 +49,12 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{
-    Piece, PieceIndex, SegmentCommitment, SegmentHeader, SegmentIndex, Solution,
-};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
     FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
-    SolutionResponse, MAX_SEGMENT_INDEXES_PER_REQUEST,
+    SolutionResponse, MAX_SEGMENT_HEADERS_PER_REQUEST,
 };
 use tracing::{debug, error, warn};
 
@@ -108,12 +106,6 @@ pub trait SubspaceRpcApi {
         item = NodeSyncStatus,
     )]
     fn subscribe_node_sync_status_change(&self);
-
-    #[method(name = "subspace_segmentCommitments")]
-    async fn segment_commitments(
-        &self,
-        segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<SegmentCommitment>>>;
 
     #[method(name = "subspace_segmentHeaders")]
     async fn segment_headers(
@@ -645,73 +637,18 @@ where
         Ok(())
     }
 
-    // TODO: Remove as unnecessary, `segment_headers` can be used instead
-    async fn segment_commitments(
-        &self,
-        segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<SegmentCommitment>>> {
-        if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
-            error!(
-                "segment_indexes length exceed the limit: {} ",
-                segment_indexes.len()
-            );
-
-            return Err(JsonRpseeError::Custom(format!(
-                "segment_indexes length exceed the limit {MAX_SEGMENT_INDEXES_PER_REQUEST}"
-            )));
-        };
-
-        let runtime_api = self.client.runtime_api();
-        let best_hash = self.client.info().best_hash;
-        let best_block_number = self.client.info().best_number;
-
-        let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
-            .into_iter()
-            .map(|segment_index| {
-                let api_result = runtime_api
-                    .segment_commitment(best_hash, segment_index)
-                    .map_err(|_| {
-                        JsonRpseeError::Custom(
-                            "Internal error during `segment_commitment` call".to_string(),
-                        )
-                    });
-
-                api_result.map(|maybe_segment_commitment| {
-                    // This is not a very nice hack due to the fact that at the time first block is
-                    //  produced extrinsics with segment headers are not yet in runtime.
-                    if maybe_segment_commitment.is_none() && best_block_number.is_zero() {
-                        self.segment_headers_store
-                            .get_segment_header(segment_index)
-                            .map(|segment_header| segment_header.segment_commitment())
-                    } else {
-                        maybe_segment_commitment
-                    }
-                })
-            })
-            .collect();
-
-        if let Err(ref err) = segment_commitment_result {
-            error!(
-                "Failed to get data from runtime API (segment_commitment): {}",
-                err
-            );
-        }
-
-        segment_commitment_result
-    }
-
     async fn segment_headers(
         &self,
         segment_indexes: Vec<SegmentIndex>,
     ) -> RpcResult<Vec<Option<SegmentHeader>>> {
-        if segment_indexes.len() > MAX_SEGMENT_INDEXES_PER_REQUEST {
+        if segment_indexes.len() > MAX_SEGMENT_HEADERS_PER_REQUEST {
             error!(
                 "segment_indexes length exceed the limit: {} ",
                 segment_indexes.len()
             );
 
             return Err(JsonRpseeError::Custom(format!(
-                "segment_indexes length exceed the limit {MAX_SEGMENT_INDEXES_PER_REQUEST}"
+                "segment_indexes length exceed the limit {MAX_SEGMENT_HEADERS_PER_REQUEST}"
             )));
         };
 

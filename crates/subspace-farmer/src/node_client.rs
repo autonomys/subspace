@@ -3,7 +3,7 @@ pub(crate) mod node_rpc_client;
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
     FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
     SolutionResponse,
@@ -49,12 +49,6 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
     async fn subscribe_node_sync_status_change(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = NodeSyncStatus> + Send + 'static>>, Error>;
-
-    /// Get segment commitments for the segments
-    async fn segment_commitments(
-        &self,
-        segment_indexes: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentCommitment>>, Error>;
 
     /// Get segment headers for the segments
     async fn segment_headers(
