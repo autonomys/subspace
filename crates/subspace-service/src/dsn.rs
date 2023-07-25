@@ -9,15 +9,12 @@ use sc_consensus_subspace::SegmentHeadersStore;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
-use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
     peer_id, CreationError, MemoryProviderStorage, NetworkParametersPersistenceError,
     NetworkingParametersManager, Node, NodeRunner, ParityDbError, ParityDbProviderStorage,
-    PeerInfoProvider, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
-    PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
+    PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
@@ -138,34 +135,6 @@ where
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry,
         request_response_protocols: vec![
-            PieceAnnouncementRequestHandler::create({
-                move |peer_id, req| {
-                    trace!(?req, %peer_id, "Piece announcement request received.");
-
-                    let provider_record = ProviderRecord {
-                        provider: peer_id,
-                        key: req.piece_index_hash.into(),
-                        addresses: req.addresses.clone(),
-                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                    };
-
-                    let result = match provider_storage.add_provider(provider_record) {
-                        Ok(()) => Some(PieceAnnouncementResponse::Success),
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %peer_id,
-                                ?req,
-                                "Failed to add provider for received key."
-                            );
-
-                            None
-                        }
-                    };
-
-                    async move { result }
-                }
-            }),
             PieceByHashRequestHandler::create(move |_, req| {
                 let result = match piece_cache.get_piece(req.piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
