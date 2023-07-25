@@ -359,6 +359,11 @@ where
                     .handlers
                     .num_established_peer_connections_change
                     .call_simple(&num_established_peer_connections);
+
+                // A new connection
+                if num_established.get() == 1 {
+                    shared.handlers.connected_peer.call_simple(&peer_id);
+                }
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
