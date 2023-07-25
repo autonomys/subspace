@@ -30,11 +30,13 @@ use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
+    SubspaceSyncOracle,
 };
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
@@ -52,13 +54,14 @@ use subspace_core_primitives::{
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
-    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
-    MAX_SEGMENT_INDEXES_PER_REQUEST,
+    FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
+    SolutionResponse, MAX_SEGMENT_INDEXES_PER_REQUEST,
 };
 use tracing::{debug, error, warn};
 
 const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
+const NODE_SYNC_STATUS_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Provides rpc methods for interacting with Subspace.
 #[rpc(client, server)]
@@ -96,6 +99,14 @@ pub trait SubspaceRpcApi {
         item = SegmentHeader,
     )]
     fn subscribe_archived_segment_header(&self);
+
+    /// Archived segment header subscription
+    #[subscription(
+        name = "subspace_subscribeNodeSyncStatusChange" => "subspace_node_sync_status_change",
+        unsubscribe = "subspace_unsubscribeNodeSyncStatusChange",
+        item = NodeSyncStatus,
+    )]
+    fn subscribe_node_sync_status_change(&self);
 
     #[method(name = "subspace_segmentCommitments")]
     async fn segment_commitments(
@@ -152,7 +163,13 @@ pub trait PieceProvider {
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider> {
+pub struct SubspaceRpc<Block, Client, RBP, PP, SO>
+where
+    Block: BlockT,
+    RBP: SegmentHeaderProvider,
+    PP: PieceProvider,
+    SO: SyncOracle + Send + Sync + Clone + 'static,
+{
     client: Arc<Client>,
     executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -167,6 +184,7 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: Pi
     archived_segment_acknowledgement_senders:
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
+    sync_oracle: SubspaceSyncOracle<SO>,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -176,8 +194,12 @@ pub struct SubspaceRpc<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: Pi
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider>
-    SubspaceRpc<Block, Client, RBP, PP>
+impl<Block, Client, RBP, PP, SO> SubspaceRpc<Block, Client, RBP, PP, SO>
+where
+    Block: BlockT,
+    RBP: SegmentHeaderProvider,
+    PP: PieceProvider,
+    SO: SyncOracle + Send + Sync + Clone + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
@@ -193,6 +215,7 @@ impl<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider>
         subspace_link: SubspaceLink<Block>,
         segment_header_provider: RBP,
         piece_provider: Option<PP>,
+        sync_oracle: SubspaceSyncOracle<SO>,
     ) -> Self {
         Self {
             client,
@@ -208,12 +231,13 @@ impl<Block: BlockT, Client, RBP: SegmentHeaderProvider, PP: PieceProvider>
             piece_provider,
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
+            sync_oracle,
         }
     }
 }
 
 #[async_trait]
-impl<Block, Client, RBP, PP> SubspaceRpcApiServer for SubspaceRpc<Block, Client, RBP, PP>
+impl<Block, Client, RBP, PP, SO> SubspaceRpcApiServer for SubspaceRpc<Block, Client, RBP, PP, SO>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -225,6 +249,7 @@ where
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
     RBP: SegmentHeaderProvider + Send + Sync + 'static,
     PP: PieceProvider + Send + Sync + 'static,
+    SO: SyncOracle + Send + Sync + Clone + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_hash = self.client.info().best_hash;
@@ -541,6 +566,48 @@ where
 
         self.executor.spawn(
             "subspace-archived-segment-header-subscription",
+            Some("rpc"),
+            fut.boxed(),
+        );
+
+        Ok(())
+    }
+
+    fn subscribe_node_sync_status_change(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
+        let sync_oracle = self.sync_oracle.clone();
+        let fut = async move {
+            let mut last_node_sync_status = None;
+            loop {
+                let node_sync_status = if sync_oracle.is_major_syncing() {
+                    NodeSyncStatus::MajorSyncing
+                } else {
+                    NodeSyncStatus::Synced
+                };
+
+                // Update subscriber if value has changed
+                if last_node_sync_status != Some(node_sync_status) {
+                    last_node_sync_status.replace(node_sync_status);
+
+                    match sink.send(&node_sync_status) {
+                        Ok(true) => {
+                            // Success
+                        }
+                        Ok(false) => {
+                            // Subscription closed
+                            return;
+                        }
+                        Err(error) => {
+                            error!("Failed to serialize node sync status: {}", error);
+                        }
+                    }
+                }
+
+                futures_timer::Delay::new(NODE_SYNC_STATUS_CHECK_INTERVAL).await;
+            }
+        };
+
+        self.executor.spawn(
+            "subspace-node-sync-status-change-subscription",
             Some("rpc"),
             fut.boxed(),
         );

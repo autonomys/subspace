@@ -5,7 +5,8 @@ use futures::Stream;
 use std::pin::Pin;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
-    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
+    SolutionResponse,
 };
 
 /// To become error type agnostic
@@ -43,6 +44,11 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
     async fn subscribe_archived_segment_headers(
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = SegmentHeader> + Send + 'static>>, Error>;
+
+    /// Subscribe to node sync status change
+    async fn subscribe_node_sync_status_change(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSyncStatus> + Send + 'static>>, Error>;
 
     /// Get segment commitments for the segments
     async fn segment_commitments(

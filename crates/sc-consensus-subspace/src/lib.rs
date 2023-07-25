@@ -29,7 +29,8 @@ mod tests;
 
 use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
-use crate::slot_worker::{SlotWorkerSyncOracle, SubspaceSlotWorker};
+use crate::slot_worker::SubspaceSlotWorker;
+pub use crate::slot_worker::SubspaceSyncOracle;
 pub use archiver::create_subspace_archiver;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -347,7 +348,10 @@ where
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS> {
+pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS>
+where
+    SO: SyncOracle + Send + Sync,
+{
     /// The client to use
     pub client: Arc<C>,
 
@@ -363,7 +367,7 @@ pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS> {
     pub block_import: I,
 
     /// A sync oracle
-    pub sync_oracle: SO,
+    pub sync_oracle: SubspaceSyncOracle<SO>,
 
     /// Hook into the sync module to control the justification sync process.
     pub justification_sync_link: L,
@@ -461,10 +465,7 @@ where
         subspace_link.slot_duration(),
         select_chain,
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
-        SlotWorkerSyncOracle {
-            force_authoring,
-            inner: sync_oracle,
-        },
+        sync_oracle,
         create_inherent_data_providers,
     );
 

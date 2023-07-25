@@ -87,3 +87,20 @@ pub struct RewardSignatureResponse {
     /// Pre-header or vote hash signature.
     pub signature: Option<RewardSignature>,
 }
+
+/// Information about new slot that just arrived
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NodeSyncStatus {
+    /// Node is fully synced
+    Synced,
+    /// Node is major syncing
+    MajorSyncing,
+}
+
+impl NodeSyncStatus {
+    /// Whether node is synced
+    pub fn is_synced(&self) -> bool {
+        matches!(self, Self::Synced)
+    }
+}

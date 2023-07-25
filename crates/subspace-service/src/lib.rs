@@ -50,7 +50,7 @@ use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams,
+    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -883,6 +883,9 @@ where
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
+    let subspace_sync_oracle =
+        SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
+
     if config.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
@@ -897,7 +900,7 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: sync_service.clone(),
+            sync_oracle: subspace_sync_oracle.clone(),
             justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
@@ -978,6 +981,7 @@ where
                     subspace_link: subspace_link.clone(),
                     segment_headers_provider: segment_header_cache.clone(),
                     piece_provider: piece_cache.clone(),
+                    sync_oracle: subspace_sync_oracle.clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)
