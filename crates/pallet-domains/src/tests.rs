@@ -184,6 +184,20 @@ pub(crate) fn create_dummy_receipt(
     parent_domain_block_receipt_hash: H256,
     block_extrinsics_roots: Vec<H256>,
 ) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128> {
+    let (execution_trace, execution_trace_root) = if block_number == 0 {
+        (Vec::new(), Default::default())
+    } else {
+        let execution_trace = vec![H256::random(), H256::random()];
+        let trace: Vec<[u8; 32]> = execution_trace
+            .iter()
+            .map(|r| r.encode().try_into().expect("H256 must fit into [u8; 32]"))
+            .collect();
+        let execution_trace_root = MerkleTree::from_leaves(trace.as_slice())
+            .root()
+            .expect("Compute merkle root of trace should success")
+            .into();
+        (execution_trace, execution_trace_root)
+    };
     ExecutionReceipt {
         domain_block_number: block_number,
         domain_block_hash: H256::random(),
@@ -192,12 +206,8 @@ pub(crate) fn create_dummy_receipt(
         consensus_block_hash,
         block_extrinsics_roots,
         final_state_root: Default::default(),
-        execution_trace: if block_number == 0 {
-            Vec::new()
-        } else {
-            vec![H256::random(), H256::random()]
-        },
-        execution_trace_root: Default::default(),
+        execution_trace,
+        execution_trace_root,
         total_rewards: 0,
     }
 }
