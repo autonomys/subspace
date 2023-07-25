@@ -20,6 +20,7 @@ pub mod chiapos;
 #[cfg(feature = "shim")]
 pub mod shim;
 
+use core::fmt;
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
 
 /// Abstraction that represents quality of the solution in the table
@@ -42,10 +43,29 @@ pub enum PosTableType {
     Shim,
 }
 
+/// Stateful table generator with better performance
+pub trait TableGenerator<T: Table>: fmt::Debug + Default + Clone + Send + Sized + 'static {
+    /// Generate new table with 32 bytes seed.
+    ///
+    /// There is also [`Self::generate_parallel()`] that can achieve lower latency.
+    fn generate(&mut self, seed: &PosSeed) -> T;
+
+    /// Generate new table with 32 bytes seed using parallelism.
+    ///
+    /// This implementation will trade efficiency of CPU and memory usage for lower latency, prefer
+    /// [`Self::generate()`] unless lower latency is critical.
+    #[cfg(any(feature = "parallel", test))]
+    fn generate_parallel(&mut self, seed: &PosSeed) -> T {
+        self.generate(seed)
+    }
+}
+
 /// Proof of space kind
 pub trait Table: Sized + Send + Sync + 'static {
     /// Proof of space table type
     const TABLE_TYPE: PosTableType;
+    /// Instance that can be used to generate tables with better performance
+    type Generator: TableGenerator<Self>;
 
     /// Abstraction that represents quality of the solution in the table
     type Quality<'a>: Quality
@@ -75,4 +95,9 @@ pub trait Table: Sized + Send + Sync + 'static {
         challenge_index: u32,
         proof: &PosProof,
     ) -> Option<PosQualityBytes>;
+
+    /// Returns a stateful table generator with better performance
+    fn generator() -> Self::Generator {
+        Self::Generator::default()
+    }
 }

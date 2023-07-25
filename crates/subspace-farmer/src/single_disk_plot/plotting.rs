@@ -101,6 +101,7 @@ where
     PG: PieceGetter + Send + 'static,
     PosTable: Table,
 {
+    let mut table_generator = PosTable::generator();
     // TODO: Concurrency
     while let Some((sector_index, _acknowledgement_sender)) = sectors_to_plot.next().await {
         trace!(%sector_index, "Preparing to plot sector");
@@ -161,6 +162,7 @@ where
             pieces_in_sector,
             &mut sector,
             &mut sector_metadata,
+            &mut table_generator,
         );
 
         // Inform others that this sector is being modified

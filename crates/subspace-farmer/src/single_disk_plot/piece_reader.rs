@@ -98,6 +98,8 @@ async fn read_pieces<PosTable>(
         }
     }
 
+    let mut table_generator = PosTable::generator();
+
     while let Some(read_piece_request) = read_piece_receiver.next().await {
         let ReadPieceRequest {
             sector_index,
@@ -145,6 +147,7 @@ async fn read_pieces<PosTable>(
             &sector_metadata,
             &global_plot_mmap,
             &erasure_coding,
+            &mut table_generator,
         );
 
         // Doesn't matter if receiver still cares about it
@@ -161,6 +164,7 @@ fn read_piece<PosTable>(
     sector_metadata: &SectorMetadata,
     global_plot: &[u8],
     erasure_coding: &ErasureCoding,
+    table_generator: &mut PosTable::Generator,
 ) -> Option<Piece>
 where
     PosTable: Table,
@@ -198,6 +202,7 @@ where
         sector_metadata,
         sector,
         erasure_coding,
+        table_generator,
     ) {
         Ok(piece) => piece,
         Err(error) => {

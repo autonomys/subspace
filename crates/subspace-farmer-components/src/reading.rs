@@ -10,7 +10,7 @@ use subspace_core_primitives::{
     Piece, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorId,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table};
+use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
 
 /// Errors that happen during reading
@@ -257,6 +257,7 @@ pub fn read_piece<PosTable>(
     sector_metadata: &SectorMetadata,
     sector: &[u8],
     erasure_coding: &ErasureCoding,
+    table_generator: &mut PosTable::Generator,
 ) -> Result<Piece, ReadingError>
 where
     PosTable: Table,
@@ -284,7 +285,7 @@ where
             pieces_in_sector,
             &sector_metadata.s_bucket_offsets(),
             &sector_contents_map,
-            &PosTable::generate(
+            &table_generator.generate(
                 &sector_id.derive_evaluation_seed(piece_offset, sector_metadata.history_size),
             ),
             sector,
