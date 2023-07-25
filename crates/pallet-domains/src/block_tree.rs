@@ -1,14 +1,14 @@
 //! Domain block tree
 
 use crate::{
-    BlockTree, Config, DomainBlocks, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
+    BalanceOf, BlockTree, Config, DomainBlocks, ExecutionInbox, ExecutionReceiptOf,
+    HeadReceiptNumber,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::v2::ExecutionReceipt;
-use sp_domains::{DomainId, OperatorId};
+use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
@@ -24,6 +24,8 @@ pub enum Error {
     BadGenesisReceipt,
     UnexpectedReceiptType,
     MaxHeadDomainNumber,
+    MultipleERsAfterChallengePeriod,
+    MissingDomainBlock,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -172,13 +174,25 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     }
 }
 
+/// Details of the pruned domain block such as operators, rewards they would receive.
+pub(crate) struct PrunedDomainBlockInfo<DomainNumber, Balance> {
+    pub domain_block_number: DomainNumber,
+    pub operator_ids: Vec<OperatorId>,
+    pub rewards: Balance,
+}
+
+pub(crate) type ProcessExecutionReceiptResult<T> =
+    Result<Option<PrunedDomainBlockInfo<<T as Config>::DomainNumber, BalanceOf<T>>>, Error>;
+
 /// Process the execution receipt to add it to the block tree
+/// Returns the domain block number that was pruned, if any
 pub(crate) fn process_execution_receipt<T: Config>(
     domain_id: DomainId,
     submitter: OperatorId,
     execution_receipt: ExecutionReceiptOf<T>,
     receipt_type: AcceptedReceiptType,
-) -> Result<(), Error> {
+) -> ProcessExecutionReceiptResult<T> {
+    let mut pruned_domain_block_info = None;
     match receipt_type {
         AcceptedReceiptType::NewBranch => {
             add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
@@ -195,12 +209,28 @@ pub(crate) fn process_execution_receipt<T: Config>(
             if let Some(to_prune) =
                 domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
             {
-                for block in BlockTree::<T>::take(domain_id, to_prune) {
-                    DomainBlocks::<T>::remove(block);
+                let receipts_at_number = BlockTree::<T>::take(domain_id, to_prune);
+                if receipts_at_number.len() != 1 {
+                    return Err(Error::MultipleERsAfterChallengePeriod);
                 }
+
+                let receipt = receipts_at_number
+                    .first()
+                    .cloned()
+                    .expect("should always have a value due to check above");
+
+                let domain_block =
+                    DomainBlocks::<T>::take(receipt).ok_or(Error::MissingDomainBlock)?;
+
                 // Remove the block's `ExecutionInbox` as the block is pruned and does not need
                 // to verify its receipt's `extrinsics_root` anymore
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
+
+                pruned_domain_block_info = Some(PrunedDomainBlockInfo {
+                    domain_block_number: to_prune,
+                    operator_ids: domain_block.operator_ids,
+                    rewards: domain_block.execution_receipt.total_rewards,
+                })
             }
         }
         AcceptedReceiptType::CurrentHead => {
@@ -214,7 +244,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
             });
         }
     }
-    Ok(())
+    Ok(pruned_domain_block_info)
 }
 
 fn add_new_receipt_to_block_tree<T: Config>(
@@ -257,6 +287,8 @@ pub(crate) fn import_genesis_receipt<T: Config>(
 mod tests {
     use super::*;
     use crate::domain_registry::DomainConfig;
+    use crate::pallet::Operators;
+    use crate::staking::Operator;
     use crate::tests::{
         create_dummy_bundle_with_receipts, create_dummy_receipt, GenesisStateRootGenerater,
         ReadRuntimeVersion, Test,
@@ -267,11 +299,12 @@ mod tests {
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
     use frame_system::Pallet as System;
-    use sp_core::H256;
-    use sp_domains::{GenesisReceiptExtension, RuntimeType};
+    use sp_core::{Pair, H256, U256};
+    use sp_domains::{GenesisReceiptExtension, OperatorPair, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use sp_version::RuntimeVersion;
     use std::sync::Arc;
+    use subspace_runtime_primitives::SSC;
 
     fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
         System::<T>::set_block_number(block_number);
@@ -280,7 +313,7 @@ mod tests {
         System::<T>::finalize();
     }
 
-    fn register_genesis_domain(creator: u64) -> DomainId {
+    fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
         assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
             RawOrigin::Root.into(),
             b"evm".to_vec(),
@@ -306,6 +339,24 @@ mod tests {
             },
         )
         .unwrap();
+
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+        for operator_id in operator_ids {
+            Operators::<Test>::insert(
+                operator_id,
+                Operator {
+                    signing_key: pair.public(),
+                    current_domain_id: domain_id,
+                    next_domain_id: domain_id,
+                    minimum_nominator_stake: SSC,
+                    nomination_tax: Default::default(),
+                    current_total_stake: Zero::zero(),
+                    current_epoch_rewards: Zero::zero(),
+                    total_shares: Zero::zero(),
+                    is_frozen: false,
+                },
+            );
+        }
 
         domain_id
     }
@@ -333,7 +384,7 @@ mod tests {
                 bundle_extrinsics_root,
                 receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -389,7 +440,7 @@ mod tests {
     fn test_genesis_receipt() {
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(0u64);
+            let domain_id = register_genesis_domain(0u64, vec![0u64]);
 
             // The genesis receipt should be added to the block tree
             let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0);
@@ -426,7 +477,7 @@ mod tests {
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator);
+            let domain_id = register_genesis_domain(creator, vec![operator_id]);
 
             // The genesis node of the block tree
             let genesis_node = get_block_tree_node_at::<Test>(domain_id, 0).unwrap();
@@ -448,7 +499,7 @@ mod tests {
                     bundle_extrinsics_root,
                     receipt,
                 );
-                assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+                assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     RawOrigin::None.into(),
                     bundle,
                 ));
@@ -516,7 +567,7 @@ mod tests {
         let operator_id2 = 2u64;
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator);
+            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -545,7 +596,7 @@ mod tests {
                 H256::random(),
                 current_head_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -561,7 +612,7 @@ mod tests {
         let operator_id2 = 2u64;
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator);
+            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
 
             // Receipt that comfirm a non-head receipt is stale receipt
@@ -586,7 +637,7 @@ mod tests {
                 H256::random(),
                 stale_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -607,7 +658,7 @@ mod tests {
         let operator_id2 = 2u64;
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator);
+            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -646,7 +697,7 @@ mod tests {
                 H256::random(),
                 new_branch_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
                 RawOrigin::None.into(),
                 bundle,
             ));
@@ -670,7 +721,7 @@ mod tests {
         let operator_id = 1u64;
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let domain_id = register_genesis_domain(creator);
+            let domain_id = register_genesis_domain(creator, vec![operator_id]);
             extend_block_tree(domain_id, operator_id, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);

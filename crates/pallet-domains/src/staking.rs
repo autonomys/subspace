@@ -12,10 +12,11 @@ use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey};
-use sp_runtime::traits::{CheckedAdd, CheckedSub, Zero};
+use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
+use sp_std::vec::IntoIter;
 
 /// Type that represents an operator details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -29,7 +30,7 @@ pub struct Operator<Balance, Share> {
     pub current_total_stake: Balance,
     /// Total rewards this operator received this current epoch.
     pub current_epoch_rewards: Balance,
-    /// Total shares of all the nominators unde this operator.
+    /// Total shares of all the nominators under this operator.
     pub total_shares: Share,
     pub is_frozen: bool,
 }
@@ -56,6 +57,8 @@ pub struct StakingSummary<OperatorId, Balance> {
     pub current_operators: BTreeMap<OperatorId, Balance>,
     /// Operators for the next epoch.
     pub next_operators: BTreeSet<OperatorId>,
+    /// Operator's current Epoch rewards
+    pub current_epoch_rewards: BTreeMap<OperatorId, Balance>,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -81,6 +84,14 @@ pub enum Error {
     OperatorFrozen,
     UnknownNominator,
     ExistingFullWithdraw,
+    MissingOperatorOwner,
+    MintBalance,
+    BlockNumberOverflow,
+    RemoveLock,
+    UpdateLock,
+    EpochOverflow,
+    ShareUnderflow,
+    ShareOverflow,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -165,14 +176,14 @@ pub(crate) fn do_nominate_operator<T: Config>(
     Ok(())
 }
 
-fn freeze_account_balance_to_operator<T: Config>(
+pub(crate) fn freeze_account_balance_to_operator<T: Config>(
     who: &T::AccountId,
     operator_id: OperatorId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
     // ensure there is enough free balance to lock
     ensure!(
-        T::Currency::reducible_balance(who, Preservation::Protect, Fortitude::Polite) >= amount,
+        T::Currency::reducible_balance(who, Preservation::Preserve, Fortitude::Polite) >= amount,
         Error::InsufficientBalance
     );
 
@@ -360,6 +371,38 @@ pub(crate) fn do_withdraw_stake<T: Config>(
     })
 }
 
+/// Distribute the reward to the operators equally and drop any dust to treasury.
+pub(crate) fn do_reward_operators<T: Config>(
+    domain_id: DomainId,
+    operators: IntoIter<OperatorId>,
+    rewards: BalanceOf<T>,
+) -> Result<(), Error> {
+    DomainStakingSummary::<T>::mutate(domain_id, |maybe_stake_summary| {
+        let stake_summary = maybe_stake_summary
+            .as_mut()
+            .ok_or(Error::DomainNotInitialized)?;
+
+        let distribution = Perbill::from_rational(One::one(), operators.len() as u32);
+        let reward_per_operator = distribution.mul_floor(rewards);
+        for operator_id in operators {
+            let total_reward = match stake_summary.current_epoch_rewards.get(&operator_id) {
+                None => reward_per_operator,
+                Some(rewards) => rewards
+                    .checked_add(&reward_per_operator)
+                    .ok_or(Error::BalanceOverflow)?,
+            };
+
+            stake_summary
+                .current_epoch_rewards
+                .insert(operator_id, total_reward);
+        }
+
+        // TODO: move remaining rewards to treasury
+
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{
@@ -405,6 +448,7 @@ mod tests {
                     current_total_stake: 0,
                     current_operators: BTreeMap::new(),
                     next_operators: BTreeSet::new(),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
 
@@ -489,6 +533,7 @@ mod tests {
                     current_total_stake: 0,
                     current_operators: BTreeMap::new(),
                     next_operators: BTreeSet::new(),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
 
@@ -554,6 +599,7 @@ mod tests {
                     current_total_stake: 0,
                     current_operators: BTreeMap::from_iter(vec![(operator_id, operator_stake)]),
                     next_operators: BTreeSet::from_iter(vec![operator_id]),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
 
@@ -564,6 +610,7 @@ mod tests {
                     current_total_stake: 0,
                     current_operators: BTreeMap::new(),
                     next_operators: BTreeSet::new(),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
 
@@ -639,6 +686,7 @@ mod tests {
                     current_total_stake: 0,
                     current_operators: BTreeMap::from_iter(vec![(operator_id, operator_stake)]),
                     next_operators: BTreeSet::from_iter(vec![operator_id]),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
 
@@ -681,6 +729,7 @@ mod tests {
                     current_total_stake: 0,
                     current_operators: BTreeMap::new(),
                     next_operators: BTreeSet::new(),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
             let res = Domains::switch_domain(
@@ -746,6 +795,7 @@ mod tests {
                     current_total_stake: total_stake,
                     current_operators: BTreeMap::from_iter(vec![(operator_id, operator_stake)]),
                     next_operators: BTreeSet::from_iter(vec![operator_id]),
+                    current_epoch_rewards: BTreeMap::new(),
                 },
             );
 

@@ -4,6 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
+use subspace_runtime_primitives::Balance;
 
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
@@ -40,7 +41,7 @@ where
 {
     Null,
     FraudProof(FraudProof<NumberFor<Block>, Block::Hash>),
-    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>),
+    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>),
 }
 
 sp_api::decl_runtime_apis! {

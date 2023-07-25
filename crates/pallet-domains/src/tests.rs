@@ -6,10 +6,10 @@ use frame_support::weights::Weight;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
-use sp_domains::v2::{BundleHeader, ExecutionReceipt, OpaqueBundle, SealedBundleHeader};
 use sp_domains::{
-    DomainId, DomainsFreezeIdentifier, GenerateGenesisStateRoot, OperatorId, OperatorPair,
-    ProofOfElection, RuntimeType,
+    BundleHeader, DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt,
+    GenerateGenesisStateRoot, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection,
+    SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
@@ -186,11 +186,17 @@ pub(crate) fn create_dummy_receipt(
 ) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128> {
     ExecutionReceipt {
         domain_block_number: block_number,
+        domain_block_hash: H256::random(),
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,
         block_extrinsics_roots,
         final_state_root: Default::default(),
+        execution_trace: if block_number == 0 {
+            Vec::new()
+        } else {
+            vec![H256::random(), H256::random()]
+        },
         execution_trace_root: Default::default(),
         total_rewards: 0,
     }
@@ -226,9 +232,8 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
     let header = BundleHeader {
-        operator_id,
         consensus_block_number: block_number,
-        proof_of_election: ProofOfElection::dummy(domain_id, 0u64),
+        proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         bundle_size: 0u32,
         estimated_bundle_weight: Default::default(),
@@ -240,11 +245,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     OpaqueBundle {
         sealed_header: SealedBundleHeader::new(header, signature),
         extrinsics: Vec::new(),
-        execution_trace: if block_number == 0 {
-            Vec::new()
-        } else {
-            vec![H256::random(), H256::random()]
-        },
     }
 }
 
@@ -253,8 +253,8 @@ pub(crate) struct GenesisStateRootGenerater;
 impl GenerateGenesisStateRoot for GenesisStateRootGenerater {
     fn generate_genesis_state_root(
         &self,
-        _runtime_type: RuntimeType,
-        _runtime_code: Vec<u8>,
+        _domain_id: DomainId,
+        _domain_instance_data: DomainInstanceData,
     ) -> Option<H256> {
         Some(Default::default())
     }

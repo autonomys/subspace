@@ -53,8 +53,8 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
-    DomainId, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey,
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle,
+    OpaqueBundles, OperatorId, OperatorPublicKey,
 };
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
@@ -900,7 +900,7 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
+) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -921,7 +921,7 @@ fn extract_successful_bundles(
 fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash, Balance>> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -930,7 +930,7 @@ fn extract_receipts(
                 if opaque_bundle.domain_id() == domain_id
                     && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
-                Some(opaque_bundle.receipt)
+                Some(opaque_bundle.into_receipt())
             }
             _ => None,
         })
@@ -950,7 +950,7 @@ fn extract_fraud_proofs(
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
                 if fraud_proof.domain_id() == domain_id =>
             {
-                Some(fraud_proof)
+                Some(*fraud_proof)
             }
             _ => None,
         })
@@ -962,7 +962,7 @@ fn extract_pre_validation_object(
 ) -> PreValidationObject<Block, DomainNumber, DomainHash> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
-            PreValidationObject::FraudProof(fraud_proof)
+            PreValidationObject::FraudProof(*fraud_proof)
         }
         RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
             PreValidationObject::Bundle(opaque_bundle)
@@ -1182,7 +1182,7 @@ impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -1190,7 +1190,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
+        ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
@@ -1210,12 +1210,36 @@ impl_runtime_apis! {
             Domains::runtime_id(domain_id)
         }
 
+        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
+            Domains::domain_instance_data(domain_id)
+        }
+
         fn timestamp() -> Moment{
             Timestamp::now()
         }
 
         fn domain_tx_range(_: DomainId) -> U256 {
             U256::MAX
+        }
+
+        fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
+            Domains::genesis_state_root(domain_id)
+        }
+
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::oldest_receipt_number(domain_id)
+        }
+
+        fn block_tree_pruning_depth() -> NumberFor<Block> {
+            Domains::block_tree_pruning_depth()
+        }
+
+        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
+            Domains::domain_block_limit(domain_id)
         }
     }
 

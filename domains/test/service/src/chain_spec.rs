@@ -1,8 +1,10 @@
 //! Chain specification for the domain test runtime.
 use crate::EcdsaKeyring::{Alice, Bob, Charlie, Dave, Eve, Ferdie};
-use evm_domain_test_runtime::{AccountId as AccountId20, Precompiles, Signature};
+use evm_domain_test_runtime::{AccountId as AccountId20, GenesisConfig, Precompiles, Signature};
+use once_cell::sync::OnceCell;
 use sc_service::{ChainSpec, ChainType, GenericChainSpec};
 use sp_core::{ecdsa, Pair, Public};
+use sp_domains::DomainId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use subspace_runtime_primitives::SSC;
 
@@ -21,28 +23,29 @@ where
     .into_account()
 }
 
+macro_rules! chain_spec_from_genesis {
+    ( $constructor:expr ) => {{
+        GenericChainSpec::from_genesis(
+            "Local Testnet",
+            "local_testnet",
+            ChainType::Local,
+            $constructor,
+            vec![],
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+    }};
+}
+
 /// Get the chain spec for the given domain.
 ///
 /// Note: for convenience, the returned chain spec give some specific accounts the ability to
 /// win the bundle election for a specific domain with (nearly) 100% probability in each slot:
 /// [Evm domain => Alice]
 pub fn get_chain_spec() -> Box<dyn ChainSpec> {
-    macro_rules! chain_spec_from_genesis {
-        ( $constructor:expr ) => {{
-            GenericChainSpec::from_genesis(
-                "Local Testnet",
-                "local_testnet",
-                ChainType::Local,
-                $constructor,
-                vec![],
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
-        }};
-    }
     Box::new(chain_spec_from_genesis!(testnet_evm_genesis))
 }
 
@@ -63,7 +66,7 @@ fn endowed_accounts() -> Vec<AccountId20> {
     ]
 }
 
-fn testnet_evm_genesis() -> evm_domain_test_runtime::GenesisConfig {
+fn testnet_evm_genesis() -> GenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
     // within contracts.
@@ -111,5 +114,39 @@ fn testnet_evm_genesis() -> evm_domain_test_runtime::GenesisConfig {
         },
         ethereum: Default::default(),
         base_fee: Default::default(),
+        self_domain_id: evm_domain_test_runtime::SelfDomainIdConfig {
+            // Id of the genesis domain
+            domain_id: Some(DomainId::new(0)),
+        },
     }
+}
+
+/// HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `GenesisConfig`
+/// dosen't derive `Clone`, using global variable and serialization/deserialization to workaround
+/// these limits
+// TODO: find a better solution, tests will run parallelly thus `load_chain_spec_with` multiple
+// time, when we support more domain in the future the genesis domain of different domain will
+// mixup in the current workaround.
+static GENESIS_CONFIG: OnceCell<Vec<u8>> = OnceCell::new();
+
+/// Load chain spec that contains the given `GenesisConfig`
+pub fn load_chain_spec_with(genesis_config: GenesisConfig) -> Box<dyn ChainSpec> {
+    let _ = GENESIS_CONFIG.set(
+        serde_json::to_vec(&genesis_config).expect("Genesis config serialization never fails; qed"),
+    );
+    let constructor = || {
+        let raw_genesis_config = GENESIS_CONFIG.get().expect("Value just set; qed");
+        serde_json::from_slice::<GenesisConfig>(raw_genesis_config)
+            .expect("Genesis config deserialization never fails; qed")
+    };
+
+    Box::new(chain_spec_from_genesis!(constructor))
+}
+
+/// Create a `GenesisConfig`
+pub fn domain_instance_genesis_config(domain_id: DomainId, runtime_code: Vec<u8>) -> GenesisConfig {
+    let mut cfg = GenesisConfig::default();
+    cfg.system.code = runtime_code;
+    cfg.self_domain_id.domain_id = Some(domain_id);
+    cfg
 }

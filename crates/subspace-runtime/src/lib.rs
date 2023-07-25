@@ -60,7 +60,9 @@ use sp_consensus_subspace::{
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::{DomainId, DomainsFreezeIdentifier, OpaqueBundle, OperatorId, OperatorPublicKey};
+use sp_domains::{
+    DomainId, DomainInstanceData, DomainsFreezeIdentifier, OperatorId, OperatorPublicKey,
+};
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
@@ -824,7 +826,7 @@ impl_runtime_apis! {
 
     impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash>,
+            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -832,7 +834,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
@@ -852,6 +854,10 @@ impl_runtime_apis! {
             Domains::runtime_id(domain_id)
         }
 
+        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
+            Domains::domain_instance_data(domain_id)
+        }
+
         fn timestamp() -> Moment{
             Timestamp::now()
         }
@@ -860,6 +866,25 @@ impl_runtime_apis! {
             Domains::domain_tx_range(domain_id)
         }
 
+        fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
+            Domains::genesis_state_root(domain_id)
+        }
+
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::oldest_receipt_number(domain_id)
+        }
+
+        fn block_tree_pruning_depth() -> NumberFor<Block> {
+            Domains::block_tree_pruning_depth()
+        }
+
+        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
+            Domains::domain_block_limit(domain_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

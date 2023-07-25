@@ -2243,8 +2243,10 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-trie",
+ "sp-weights",
  "subspace-core-primitives",
  "subspace-fraud-proof",
+ "subspace-node",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -2270,6 +2272,7 @@ dependencies = [
  "sp-core",
  "sp-domains",
  "sp-runtime",
+ "subspace-runtime-primitives",
  "tracing",
 ]
 
@@ -2337,6 +2340,7 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "sp-std",
+ "sp-weights",
  "subspace-runtime-primitives",
 ]
 
@@ -2431,6 +2435,7 @@ dependencies = [
  "frame-system",
  "frame-system-rpc-runtime-api",
  "futures",
+ "once_cell",
  "pallet-transaction-payment",
  "pallet-transaction-payment-rpc",
  "rand 0.8.5",
@@ -2446,6 +2451,7 @@ dependencies = [
  "sc-transaction-pool",
  "sc-utils",
  "serde",
+ "serde_json",
  "sp-api",
  "sp-application-crypto",
  "sp-arithmetic",
@@ -2802,6 +2808,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
+ "pallet-domain-id",
  "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
@@ -2853,6 +2860,7 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
+ "pallet-domain-id",
  "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
@@ -6308,6 +6316,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-domain-id"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-domains",
+]
+
+[[package]]
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
@@ -9219,6 +9238,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f638d531eccd6e23b980caf34876660d38e265409d8e99b397ab71eb3612fad0"
 
 [[package]]
+name = "seq-macro"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3f0bf26fd526d2a95683cd0f87bf103b8539e2ca1ef48ce002d67aad59aa0b4"
+
+[[package]]
 name = "serde"
 version = "1.0.164"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10699,12 +10724,15 @@ dependencies = [
  "log",
  "once_cell",
  "parity-scale-codec",
+ "sc-chain-spec",
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-executor",
+ "sc-network",
+ "sc-network-sync",
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
@@ -10739,8 +10767,10 @@ dependencies = [
  "blake3",
  "chacha20 0.9.1",
  "criterion",
+ "derive_more",
  "rand 0.8.5",
  "rayon",
+ "seq-macro",
  "sha2 0.10.7",
  "subspace-chiapos",
  "subspace-core-primitives",
@@ -11055,6 +11085,7 @@ dependencies = [
  "sp-domains",
  "sp-runtime",
  "sp-transaction-pool",
+ "subspace-runtime-primitives",
  "substrate-prometheus-endpoint",
  "tracing",
 ]

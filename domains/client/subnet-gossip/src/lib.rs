@@ -26,6 +26,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_runtime_primitives::Balance;
 
 const LOG_TARGET: &str = "gossip::operator";
 
@@ -37,6 +38,7 @@ type BundleFor<Block, CBlock> = Bundle<
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,
     <Block as BlockT>::Hash,
+    Balance,
 >;
 
 // TODO: proper timeout

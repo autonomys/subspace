@@ -12,6 +12,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use std::collections::{HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_runtime_primitives::Balance;
 
 /// `BundleCollector` collect all the bundle from the last K (confirm depth) blocks
 /// of the best chain
@@ -323,7 +324,13 @@ pub trait ValidateBundle<Block: BlockT, DomainNumber: Encode, DomainHash: Encode
     fn validate_bundle(
         &self,
         at: &BlockId<Block>,
-        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>,
+        opaque_bundle: &OpaqueBundle<
+            NumberFor<Block>,
+            Block::Hash,
+            DomainNumber,
+            DomainHash,
+            Balance,
+        >,
     ) -> Result<(), BundleError>;
 }
 
@@ -338,7 +345,13 @@ where
     fn validate_bundle(
         &self,
         at: &BlockId<Block>,
-        opaque_bundle: &OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>,
+        opaque_bundle: &OpaqueBundle<
+            NumberFor<Block>,
+            Block::Hash,
+            DomainNumber,
+            DomainHash,
+            Balance,
+        >,
     ) -> Result<(), BundleError> {
         // The hash used here must be the same as what is maintaining in `bundle_stored_in_last_k`,
         // namely the hash of `OpaqueBundle`
@@ -361,14 +374,14 @@ where
             .ok_or(sp_blockchain::Error::Backend(format!(
                 "Can not convert BlockId {at:?} to block number"
             )))?;
-        if opaque_bundle.receipt.consensus_block_number > best_consensus_block_number {
+        if opaque_bundle.receipt().consensus_block_number > best_consensus_block_number {
             return Err(BundleError::ReceiptInFuture);
         }
         if let Some(expected_hash) = self
             .bundle_stored_in_last_k
-            .get_canonical_block_hash(opaque_bundle.receipt.consensus_block_number)
+            .get_canonical_block_hash(opaque_bundle.receipt().consensus_block_number)
         {
-            if opaque_bundle.receipt.consensus_block_hash != expected_hash {
+            if opaque_bundle.receipt().consensus_block_hash != expected_hash {
                 return Err(BundleError::ReceiptPointToUnknownBlock);
             }
         }

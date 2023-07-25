@@ -4,6 +4,7 @@ use domain_test_primitives::TimestampApi;
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
+use domain_test_service::GENESIS_DOMAIN_ID;
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_service::{BasePath, Role};
@@ -21,6 +22,7 @@ use sp_runtime::generic::{BlockId, Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
+use subspace_runtime_primitives::Balance;
 use subspace_test_service::{
     produce_block_with, produce_blocks, produce_blocks_until, MockConsensusNode,
 };
@@ -32,6 +34,56 @@ fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
         .number(block_hash)
         .unwrap_or_else(|err| panic!("Failed to fetch number for {block_hash}: {err}"))
         .unwrap_or_else(|| panic!("header {block_hash} not in the chain"))
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_domain_instance_bootstrapper() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    let expected_genesis_state_root = ferdie
+        .client
+        .runtime_api()
+        .genesis_state_root(ferdie.client.info().best_hash, GENESIS_DOMAIN_ID)
+        .unwrap()
+        .unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let genesis_state_root = *alice
+        .client
+        .header(alice.client.info().genesis_hash)
+        .unwrap()
+        .unwrap()
+        .state_root();
+
+    assert_eq!(expected_genesis_state_root, genesis_state_root);
+
+    produce_blocks!(ferdie, alice, 3)
+        .await
+        .expect("3 consensus blocks produced successfully");
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
@@ -59,7 +111,7 @@ async fn test_domain_block_production() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     for i in 0..50 {
@@ -130,6 +182,87 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }
 
+// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
+// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
+// due to unable to pay transaction fee, unlock once we can set customized genesis config in
+// test environment.
+#[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
+async fn test_domain_block_deriving_from_multiple_bundles() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let pre_bob_free_balance = alice.free_balance(Bob.to_account_id());
+    let alice_account_nonce = alice.account_nonce();
+    for i in 0..3 {
+        let tx = alice.construct_extrinsic(
+            alice_account_nonce + i,
+            pallet_balances::Call::transfer {
+                dest: Bob.to_account_id(),
+                value: 1,
+            },
+        );
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+
+        // Produce a bundle and submit to the tx pool of the consensus node
+        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        assert!(bundle.is_some());
+
+        // In the last iteration, produce a consensus block which will included all the bundles
+        // and drive the corresponding domain block
+        if i == 2 {
+            produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+                .await
+                .unwrap();
+        }
+    }
+    assert_eq!(
+        alice.free_balance(Bob.to_account_id()),
+        pre_bob_free_balance + 3
+    );
+    let domain_block_number = alice.client.info().best_number;
+
+    // Produce one more bundle to submit the receipt of the above 3 bundles
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // The receipt should be submitted successfully thus head receipt number
+    // is updated
+    let head_receipt_number = ferdie
+        .client
+        .runtime_api()
+        .head_receipt_number(ferdie.client.info().best_hash, 0u32.into())
+        .unwrap();
+    assert_eq!(domain_block_number, head_receipt_number);
+}
+
 #[substrate_test_utils::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -158,7 +291,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut consensus_node)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut consensus_node)
     .await;
 
     produce_blocks!(consensus_node, alice, 3)
@@ -217,10 +350,10 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let consensus_block_info =
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_consensus_info =
-        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, u32, sp_core::H256>| {
+        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, u32, sp_core::H256, Balance>| {
             (
-                bundle.receipt.consensus_block_number,
-                bundle.receipt.consensus_block_hash,
+                bundle.receipt().consensus_block_number,
+                bundle.receipt().consensus_block_hash,
             )
         };
 
@@ -314,7 +447,12 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
+// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
+// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
+// due to unable to pay transaction fee, unlock once we can set customized genesis config in
+// test environment.
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn test_domain_tx_propagate() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -339,7 +477,7 @@ async fn test_domain_tx_propagate() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
@@ -349,7 +487,7 @@ async fn test_domain_tx_propagate() {
         BasePath::new(directory.path().join("bob")),
     )
     .connect_to_domain_node(alice.addr.clone())
-    .build_evm_node(Role::Full, &mut ferdie)
+    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, bob, 5).await.unwrap();
@@ -399,7 +537,7 @@ async fn test_executor_full_node_catching_up() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
@@ -408,7 +546,7 @@ async fn test_executor_full_node_catching_up() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Full, &mut ferdie)
+    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Bob is able to sync blocks.
@@ -453,7 +591,7 @@ async fn test_executor_inherent_timestamp_is_set() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Run Bob who runs the authority node for core domain
@@ -462,7 +600,7 @@ async fn test_executor_inherent_timestamp_is_set() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
@@ -535,7 +673,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     let bundle_to_tx = |opaque_bundle| {
@@ -573,14 +711,14 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
     let bad_submit_bundle_tx = {
         let mut opaque_bundle = bundle.unwrap();
-        let receipt = &mut opaque_bundle.receipt;
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         assert_eq!(
             receipt.consensus_block_number,
             target_bundle.sealed_header.header.consensus_block_number + 1
         );
-        assert_eq!(receipt.trace.len(), 3);
+        assert_eq!(receipt.execution_trace.len(), 3);
 
-        receipt.trace[mismatch_trace_index] = Default::default();
+        receipt.execution_trace[mismatch_trace_index] = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -618,27 +756,27 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         )
         .unwrap();
         if let subspace_test_runtime::RuntimeCall::Domains(
-            pallet_domains::Call::submit_fraud_proof {
-                fraud_proof: FraudProof::InvalidStateTransition(proof),
-            },
+            pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
         {
-            match mismatch_trace_index {
-                0 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::InitializeBlock { .. }
-                )),
-                1 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::ApplyExtrinsic(_)
-                )),
-                2 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::FinalizeBlock { .. }
-                )),
-                _ => unreachable!(),
+            if let FraudProof::InvalidStateTransition(proof) = *fraud_proof {
+                match mismatch_trace_index {
+                    0 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::InitializeBlock { .. }
+                    )),
+                    1 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::ApplyExtrinsic(_)
+                    )),
+                    2 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::FinalizeBlock { .. }
+                    )),
+                    _ => unreachable!(),
+                }
+                break;
             }
-            break;
         }
     }
 
@@ -673,7 +811,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
@@ -684,10 +822,10 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
         let mut opaque_bundle = bundle.unwrap();
-        opaque_bundle.receipt.trace[0] = Default::default();
+        opaque_bundle.sealed_header.header.receipt.execution_trace[0] = Default::default();
         opaque_bundle
     };
-    let bad_receipt = bad_bundle.receipt.clone();
+    let bad_receipt = bad_bundle.receipt().clone();
     let bad_receipt_number = bad_receipt.consensus_block_number;
     assert_ne!(bad_receipt_number, 1);
 
@@ -778,7 +916,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_fraud_proof {
-            fraud_proof: valid_fraud_proof.clone(),
+            fraud_proof: Box::new(valid_fraud_proof.clone()),
         }
         .into(),
     )
@@ -803,7 +941,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
         pallet_domains::Call::submit_fraud_proof {
-            fraud_proof: invalid_fraud_proof,
+            fraud_proof: Box::new(invalid_fraud_proof),
         }
         .into(),
     );
@@ -847,7 +985,7 @@ async fn set_new_code_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
@@ -920,7 +1058,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     // Run Bob (a evm domain full node)
@@ -929,7 +1067,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         Bob,
         BasePath::new(directory.path().join("bob")),
     )
-    .build_evm_node(Role::Full, &mut ferdie)
+    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
@@ -1020,7 +1158,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
@@ -1098,7 +1236,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
         Alice,
         BasePath::new(directory.path().join("alice")),
     )
-    .build_evm_node(Role::Authority, &mut ferdie)
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
     produce_blocks!(ferdie, alice, 3).await.unwrap();
@@ -1167,7 +1305,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 //         BasePath::new(directory.path().join("alice")),
 //     )
 //     .run_relayer()
-//     .build_evm_node(Role::Authority, &mut ferdie)
+//     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
 //     .await;
 //
 //     // Run Bob (a core payments domain authority node)
@@ -1350,7 +1488,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // BasePath::new(directory.path().join("alice")),
 // )
 // .run_relayer()
-// .build_evm_node(Role::Authority, &mut ferdie)
+// .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
 // .await;
 
 // // Run Bob (a core payments domain authority node)

@@ -1,4 +1,4 @@
-use crate::{Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
+use crate::{Balance, Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::FarmerPublicKey;
@@ -13,7 +13,7 @@ use subspace_verification::derive_randomness;
 pub(crate) fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash> {
+) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -34,7 +34,7 @@ pub(crate) fn extract_successful_bundles(
 pub(crate) fn extract_receipts(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash>> {
+) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash, Balance>> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -43,7 +43,7 @@ pub(crate) fn extract_receipts(
                 if opaque_bundle.domain_id() == domain_id
                     && successful_bundles.contains(&opaque_bundle.hash()) =>
             {
-                Some(opaque_bundle.receipt)
+                Some(opaque_bundle.into_receipt())
             }
             _ => None,
         })
@@ -63,7 +63,7 @@ pub(crate) fn extract_fraud_proofs(
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
                 if fraud_proof.domain_id() == domain_id =>
             {
-                Some(fraud_proof)
+                Some(*fraud_proof)
             }
             _ => None,
         })
@@ -75,7 +75,7 @@ pub(crate) fn extract_pre_validation_object(
 ) -> PreValidationObject<Block, DomainNumber, DomainHash> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
-            PreValidationObject::FraudProof(fraud_proof)
+            PreValidationObject::FraudProof(*fraud_proof)
         }
         RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
             PreValidationObject::Bundle(opaque_bundle)

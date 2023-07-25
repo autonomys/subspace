@@ -28,7 +28,7 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, OpaqueBundles};
+use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, OpaqueBundles};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
@@ -36,6 +36,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::Balance;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
 
@@ -103,7 +104,7 @@ where
 }
 
 fn compile_own_domain_bundles<Block, CBlock>(
-    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash>,
+    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
 ) -> Vec<Block::Extrinsic>
 where
     Block: BlockT,
@@ -216,6 +217,11 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     shuffled_extrinsics
 }
 
+pub struct PreprocessResult<Block: BlockT> {
+    pub extrinsics: Vec<Block::Extrinsic>,
+    pub extrinsics_roots: Vec<ExtrinsicsRoot>,
+}
+
 pub struct DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi> {
     domain_id: DomainId,
     consensus_client: Arc<CClient>,
@@ -274,7 +280,9 @@ where
         // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
         let domain_hash = Default::default();
         match self.preprocess_consensus_block(consensus_block_hash, domain_hash)? {
-            Some(extrinsics) => Ok(extrinsics.into_iter().map(|ext| ext.encode()).collect()),
+            Some(PreprocessResult { extrinsics, .. }) => {
+                Ok(extrinsics.into_iter().map(|ext| ext.encode()).collect())
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -283,7 +291,7 @@ where
         &self,
         consensus_block_hash: CBlock::Hash,
         domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<Option<Vec<Block::Extrinsic>>> {
+    ) -> sp_blockchain::Result<Option<PreprocessResult<Block>>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
             prepare_domain_block_elements::<Block, CBlock, _>(
                 self.domain_id,
@@ -299,6 +307,11 @@ where
         if bundles.is_empty() && maybe_new_runtime.is_none() {
             return Ok(None);
         }
+
+        let extrinsics_roots = bundles
+            .iter()
+            .map(|bundle| bundle.extrinsics_root())
+            .collect();
 
         let extrinsics = compile_own_domain_bundles::<Block, CBlock>(bundles);
 
@@ -332,8 +345,10 @@ where
                 })?;
             extrinsics.push(set_code_extrinsic);
         }
-
-        Ok(Some(extrinsics))
+        Ok(Some(PreprocessResult {
+            extrinsics,
+            extrinsics_roots,
+        }))
     }
 
     fn filter_invalid_xdm_extrinsics(

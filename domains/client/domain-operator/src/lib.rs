@@ -59,9 +59,10 @@
 
 #![feature(array_windows)]
 #![feature(const_option)]
-#![feature(drain_filter)]
+#![feature(extract_if)]
 
 mod aux_schema;
+mod bootstrapper;
 mod bundle_processor;
 mod bundle_producer_election_solver;
 mod domain_block_processor;
@@ -77,6 +78,7 @@ mod sortition;
 mod tests;
 mod utils;
 
+pub use self::bootstrapper::{BootstrapResult, Bootstrapper};
 pub use self::operator::Operator;
 pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
@@ -97,12 +99,14 @@ use sp_runtime::traits::{
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::Balance;
 
 type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,
     <Block as BlockT>::Hash,
+    Balance,
 >;
 
 type TransactionFor<Backend, Block> =
@@ -117,6 +121,7 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
         <CBlock as BlockT>::Hash,
         NumberFor<Block>,
         <Block as BlockT>::Hash,
+        Balance,
     >,
 >;
 
