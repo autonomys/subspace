@@ -288,9 +288,10 @@ where
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
-fn initialize_archiver<Block, Client>(
+fn initialize_archiver<Block, Client, AS>(
     best_block_hash: Block::Hash,
     best_block_number: NumberFor<Block>,
+    segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
     kzg: Kzg,
@@ -299,6 +300,7 @@ where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    AS: AuxStore,
 {
     let confirmation_depth_k = get_chain_constants(client)
         .expect("Must always be able to get chain constants")
@@ -446,6 +448,11 @@ where
                 older_archived_segments.extend(archived_segments);
 
                 if !new_segment_headers.is_empty() {
+                    if let Err(error) =
+                        segment_headers_store.add_segment_headers(&new_segment_headers)
+                    {
+                        panic!("Failed to store segment headers: {error}");
+                    }
                     // Set list of expected segment headers for the block where we expect segment
                     // header extrinsic to be included
                     subspace_link.segment_headers.lock().put(
@@ -516,7 +523,8 @@ fn finalize_block<Block, Backend, Client>(
 /// `store_segment_header` extrinsic).
 ///
 /// NOTE: Archiver is doing blocking operations and must run in a dedicated task.
-pub fn create_subspace_archiver<Block, Backend, Client>(
+pub fn create_subspace_archiver<Block, Backend, Client, AS>(
+    segment_headers_store: SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
     telemetry: Option<TelemetryHandle>,
@@ -534,6 +542,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    AS: AuxStore + Send + Sync + 'static,
 {
     let client_info = client.info();
     let best_block_hash = client_info.best_hash;
@@ -547,6 +556,7 @@ where
     } = initialize_archiver(
         best_block_hash,
         best_block_number,
+        &segment_headers_store,
         subspace_link,
         client.as_ref(),
         subspace_link.kzg.clone(),
@@ -667,6 +677,14 @@ where
             }
 
             if !new_segment_headers.is_empty() {
+                if let Err(error) = segment_headers_store.add_segment_headers(&new_segment_headers)
+                {
+                    error!(
+                        target: "subspace",
+                        "Failed to store segment headers: {error}"
+                    );
+                    return;
+                }
                 let maybe_block_number_to_finalize = {
                     let mut segment_headers = segment_headers.lock();
                     segment_headers.put(block_number + One::one(), new_segment_headers);

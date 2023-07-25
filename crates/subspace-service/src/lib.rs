@@ -21,7 +21,6 @@ pub mod dsn;
 mod metrics;
 pub mod piece_cache;
 pub mod rpc;
-pub mod segment_headers;
 mod sync_from_dsn;
 pub mod tx_pre_validator;
 
@@ -29,7 +28,6 @@ use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
-use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
@@ -50,7 +48,8 @@ use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
+    RewardSigningNotification, SegmentHeadersStore, SubspaceLink, SubspaceParams,
+    SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -559,9 +558,8 @@ where
         other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
     } = partial_components;
 
-    let segment_header_cache = SegmentHeaderCache::new(client.clone()).map_err(|error| {
-        Error::Other(format!("Failed to instantiate segment header cache: {error}").into())
-    })?;
+    let segment_headers_store =
+        SegmentHeadersStore::new(client.clone()).map_err(|error| Error::Other(error.into()))?;
 
     let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -622,7 +620,7 @@ where
                 dsn_protocol_version,
                 dsn_config.clone(),
                 piece_cache.clone(),
-                segment_header_cache.clone(),
+                segment_headers_store.clone(),
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
@@ -655,21 +653,6 @@ where
             (node, dsn_config.bootstrap_nodes, Some(piece_cache))
         }
     };
-
-    let segment_header_archiving_fut = start_segment_header_archiver(
-        segment_header_cache.clone(),
-        subspace_link
-            .archived_segment_notification_stream()
-            .subscribe(),
-    );
-
-    task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking(
-            "segment-header-archiver",
-            Some("subspace-networking"),
-            Box::pin(segment_header_archiving_fut.in_current_span()),
-        );
 
     let dsn_bootstrap_nodes = {
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
@@ -719,6 +702,7 @@ where
     };
 
     let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
+        segment_headers_store.clone(),
         &subspace_link,
         client.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
@@ -979,7 +963,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     subspace_link: subspace_link.clone(),
-                    segment_headers_provider: segment_header_cache.clone(),
+                    segment_headers_store: segment_headers_store.clone(),
                     piece_provider: piece_cache.clone(),
                     sync_oracle: subspace_sync_oracle.clone(),
                 };

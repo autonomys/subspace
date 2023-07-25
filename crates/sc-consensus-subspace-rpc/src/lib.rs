@@ -26,11 +26,11 @@ use jsonrpsee::types::SubscriptionResult;
 use jsonrpsee::SubscriptionSink;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
-    SubspaceSyncOracle,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
+    SegmentHeadersStore, SubspaceLink, SubspaceSyncOracle,
 };
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -148,13 +148,6 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
-pub trait SegmentHeaderProvider {
-    fn get_segment_header(
-        &self,
-        segment_index: SegmentIndex,
-    ) -> Result<Option<SegmentHeader>, Box<dyn Error>>;
-}
-
 pub trait PieceProvider {
     fn get_piece_by_index(
         &self,
@@ -163,10 +156,9 @@ pub trait PieceProvider {
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block, Client, RBP, PP, SO>
+pub struct SubspaceRpc<Block, Client, PP, SO, AS>
 where
     Block: BlockT,
-    RBP: SegmentHeaderProvider,
     PP: PieceProvider,
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
@@ -179,7 +171,7 @@ where
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     subspace_link: SubspaceLink<Block>,
-    segment_header_provider: RBP,
+    segment_headers_store: SegmentHeadersStore<AS>,
     piece_provider: Option<PP>,
     archived_segment_acknowledgement_senders:
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
@@ -194,12 +186,12 @@ where
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client, RBP, PP, SO> SubspaceRpc<Block, Client, RBP, PP, SO>
+impl<Block, Client, PP, SO, AS> SubspaceRpc<Block, Client, PP, SO, AS>
 where
     Block: BlockT,
-    RBP: SegmentHeaderProvider,
     PP: PieceProvider,
     SO: SyncOracle + Send + Sync + Clone + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
@@ -213,7 +205,7 @@ where
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         subspace_link: SubspaceLink<Block>,
-        segment_header_provider: RBP,
+        segment_headers_store: SegmentHeadersStore<AS>,
         piece_provider: Option<PP>,
         sync_oracle: SubspaceSyncOracle<SO>,
     ) -> Self {
@@ -227,7 +219,7 @@ where
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
             subspace_link,
-            segment_header_provider,
+            segment_headers_store,
             piece_provider,
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
@@ -237,7 +229,7 @@ where
 }
 
 #[async_trait]
-impl<Block, Client, RBP, PP, SO> SubspaceRpcApiServer for SubspaceRpc<Block, Client, RBP, PP, SO>
+impl<Block, Client, PP, SO, AS> SubspaceRpcApiServer for SubspaceRpc<Block, Client, PP, SO, AS>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -247,9 +239,9 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-    RBP: SegmentHeaderProvider + Send + Sync + 'static,
     PP: PieceProvider + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     fn get_farmer_app_info(&self) -> RpcResult<FarmerAppInfo> {
         let best_hash = self.client.info().best_hash;
@@ -722,24 +714,10 @@ where
             )));
         };
 
-        let segment_commitment_result: Result<Vec<_>, JsonRpseeError> = segment_indexes
+        Ok(segment_indexes
             .into_iter()
-            .map(|segment_index| {
-                self.segment_header_provider
-                    .get_segment_header(segment_index)
-                    .map_err(|_| {
-                        JsonRpseeError::Custom(
-                            "Internal error during `segment_headers` call".to_string(),
-                        )
-                    })
-            })
-            .collect();
-
-        if let Err(err) = &segment_commitment_result {
-            error!(?err, "Failed to get segment headers.");
-        }
-
-        segment_commitment_result
+            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
+            .collect())
     }
 
     fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
