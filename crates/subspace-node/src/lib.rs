@@ -19,9 +19,7 @@
 mod chain_spec;
 mod chain_spec_utils;
 pub mod domain;
-mod import_blocks_from_dsn;
 
-pub use crate::import_blocks_from_dsn::ImportBlocksFromDsnCmd;
 use bytesize::ByteSize;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
@@ -147,9 +145,6 @@ pub enum Subcommand {
 
     /// Import blocks.
     ImportBlocks(sc_cli::ImportBlocksCmd),
-
-    /// Import blocks from Subspace Network DSN.
-    ImportBlocksFromDsn(ImportBlocksFromDsnCmd),
 
     /// Remove the whole chain.
     PurgeChain(PurgeChainCmd),

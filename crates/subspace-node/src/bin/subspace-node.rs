@@ -167,41 +167,6 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ImportBlocksFromDsn(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
-            runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    import_queue,
-                    task_manager,
-                    other: (_block_import, subspace_link, _telemetry, _bundle_validator),
-                    ..
-                } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
-                )?;
-
-                let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
-                    &subspace_link,
-                    client.clone(),
-                    None,
-                );
-
-                task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "subspace-archiver",
-                        None,
-                        Box::pin(subspace_archiver),
-                    );
-
-                Ok((
-                    cmd.run(client, import_queue, task_manager.spawn_essential_handle())
-                        .map_err(Error::SubstrateCli),
-                    task_manager,
-                ))
-            })?;
-        }
         Some(Subcommand::PurgeChain(cmd)) => {
             // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
