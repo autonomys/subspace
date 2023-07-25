@@ -71,8 +71,7 @@ where
 
         // L1 piece acquisition
         // TODO: consider using retry policy for L1 lookups as well.
-        let connected_peers =
-            HashSet::<PeerId>::from_iter(self.node.connected_peers().await?.into_iter());
+        let connected_peers = HashSet::<PeerId>::from_iter(self.node.connected_peers().await?);
 
         for peer_id in self
             .archival_storage_info
