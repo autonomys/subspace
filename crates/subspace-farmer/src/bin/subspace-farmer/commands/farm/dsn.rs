@@ -64,7 +64,7 @@ pub(super) fn configure_dsn(
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
-        NetworkingParametersManager::new(&known_addresses_db_path, bootstrap_nodes)
+        NetworkingParametersManager::new(&known_addresses_db_path, bootstrap_nodes.clone())
             .map(|manager| manager.boxed())?
     };
 
@@ -303,6 +303,7 @@ pub(super) fn configure_dsn(
         special_connected_peers_handler: Arc::new(PeerInfo::is_farmer),
         // other (non-farmer) connections
         general_connected_peers_handler: Arc::new(|peer_info| !PeerInfo::is_farmer(peer_info)),
+        bootstrap_addresses: bootstrap_nodes,
         ..default_config
     };
 

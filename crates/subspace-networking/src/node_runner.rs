@@ -13,19 +13,21 @@ use crate::create::{
 use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
-use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
+use crate::utils::{
+    convert_multiaddresses, is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit,
+};
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
-    GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError,
-    GetRecordOk, InboundRequest, Kademlia, KademliaEvent, PeerRecord, ProgressStep, ProviderRecord,
-    PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    BootstrapOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk,
+    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, PeerRecord, ProgressStep,
+    ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -43,7 +45,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 // Defines a batch size for peer addresses from Kademlia buckets.
 const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
@@ -77,6 +79,9 @@ enum QueryResultSender {
         sender: mpsc::UnboundedSender<()>,
         // Just holding onto permit while data structure is not dropped
         _permit: ResizableSemaphorePermit,
+    },
+    Bootstrap {
+        sender: mpsc::UnboundedSender<()>,
     },
 }
 
@@ -121,6 +126,8 @@ where
     special_connection_decision_handler: ConnectedPeersHandler,
     /// Randomness generator used for choosing Kademlia addresses.
     rng: StdRng,
+    /// Addresses to bootstrap Kademlia network
+    bootstrap_addresses: Vec<Multiaddr>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -140,6 +147,7 @@ where
     pub(crate) protocol_version: String,
     pub(crate) general_connection_decision_handler: ConnectedPeersHandler,
     pub(crate) special_connection_decision_handler: ConnectedPeersHandler,
+    pub(crate) bootstrap_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -160,6 +168,7 @@ where
             protocol_version,
             general_connection_decision_handler,
             special_connection_decision_handler,
+            bootstrap_addresses,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -184,6 +193,7 @@ where
             general_connection_decision_handler,
             special_connection_decision_handler,
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
+            bootstrap_addresses,
         }
     }
 
@@ -774,7 +784,62 @@ where
                     self.query_id_receivers.remove(&id);
                 }
             }
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
+                id,
+                result: QueryResult::Bootstrap(result),
+                ..
+            } => {
+                let mut cancelled = false;
+                if let Some(QueryResultSender::Bootstrap { sender }) =
+                    self.query_id_receivers.get_mut(&id)
+                {
+                    match result {
+                        Ok(BootstrapOk {
+                            peer,
+                            num_remaining,
+                        }) => {
+                            trace!(%peer, %num_remaining, %last, "Bootstrap query step succeeded");
+
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
+                                &mut self.swarm.behaviour_mut().kademlia,
+                                sender,
+                                (),
+                                "Bootstrap",
+                                &id,
+                            ) || cancelled;
+                        }
+                        Err(error) => {
+                            debug!(?error, "Bootstrap query failed.",);
+
+                            self.set_bootstrap_finished(false);
+                        }
+                    }
+                }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+
+                    if last {
+                        self.set_bootstrap_finished(true);
+                    }
+
+                    if cancelled {
+                        self.set_bootstrap_finished(false);
+                    }
+                }
+            }
             _ => {}
+        }
+    }
+
+    fn set_bootstrap_finished(&mut self, success: bool) {
+        if let Some(shared) = self.shared_weak.upgrade() {
+            let mut bootstrap_finished = shared.bootstrap_finished.lock();
+            *bootstrap_finished = true;
+
+            info!(%success, "Bootstrap finished.",);
         }
     }
 
@@ -1136,6 +1201,31 @@ where
                 let connected_peers = self.swarm.connected_peers().cloned().collect();
 
                 let _ = result_sender.send(connected_peers);
+            }
+            Command::Bootstrap { mut result_sender } => {
+                let kademlia = &mut self.swarm.behaviour_mut().kademlia;
+
+                for (peer_id, address) in convert_multiaddresses(self.bootstrap_addresses.clone()) {
+                    kademlia.add_address(&peer_id, address);
+                }
+
+                match kademlia.bootstrap() {
+                    Ok(query_id) => {
+                        self.query_id_receivers.insert(
+                            query_id,
+                            QueryResultSender::Bootstrap {
+                                sender: result_sender,
+                            },
+                        );
+                    }
+                    Err(err) => {
+                        debug!(?err, "Bootstrap error.");
+
+                        let _ = result_sender.close().await;
+
+                        self.set_bootstrap_finished(false);
+                    }
+                }
             }
         }
     }

@@ -118,7 +118,7 @@ where
                     .map(|manager| manager.boxed())
             })
             .unwrap_or(Ok(BootstrappedNetworkingParameters::new(
-                dsn_config.bootstrap_nodes,
+                dsn_config.bootstrap_nodes.clone(),
             )
             .boxed()))?
     };
@@ -241,6 +241,7 @@ where
         reserved_peers: dsn_config.reserved_peers,
         // maintain permanent connections with any peer
         general_connected_peers_handler: Arc::new(|_| true),
+        bootstrap_addresses: dsn_config.bootstrap_nodes.clone(),
 
         ..default_networking_config
     };

@@ -87,7 +87,7 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
-use tracing::{debug, error, info, Instrument};
+use tracing::{debug, error, info, warn, Instrument};
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -651,6 +651,22 @@ where
                         .in_current_span(),
                     ),
                 );
+
+            task_manager.spawn_handle().spawn(
+                "node-runner",
+                Some("subspace-networking-bootstrapping"),
+                Box::pin(
+                    {
+                        let node = node.clone();
+                        async move {
+                            if let Err(err) = node.bootstrap().await {
+                                warn!(?err, "DSN bootstrap failed.");
+                            }
+                        }
+                    }
+                    .in_current_span(),
+                ),
+            );
 
             (node, dsn_config.bootstrap_nodes, Some(piece_cache))
         }

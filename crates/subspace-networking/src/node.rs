@@ -6,7 +6,7 @@ use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, Stream};
+use futures::{SinkExt, Stream, StreamExt};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
@@ -19,7 +19,9 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
+
+const BOOTSTRAP_CHECK_DELAY: Duration = Duration::from_secs(1);
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
@@ -275,6 +277,26 @@ impl From<oneshot::Canceled> for ConnectedPeersError {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum BootstrapError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to bootstrap a peer.
+    #[error("Failed to bootstrap a peer.")]
+    Bootstrap,
+}
+
+impl From<oneshot::Canceled> for BootstrapError {
+    #[inline]
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
 /// Implementation of a network node on Subspace Network.
 #[derive(Debug, Clone)]
 #[must_use = "Node doesn't do anything if dropped"]
@@ -297,6 +319,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
+        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -320,6 +343,7 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
+        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -340,6 +364,7 @@ impl Node {
 
     /// Subcribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
+        self.wait_for_bootstrap().await;
         let permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
@@ -368,6 +393,7 @@ impl Node {
 
     /// Subcribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
+        self.wait_for_bootstrap().await;
         let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
@@ -393,6 +419,7 @@ impl Node {
     where
         Request: GenericRequest,
     {
+        self.wait_for_bootstrap().await;
         let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
@@ -414,6 +441,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
+        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
@@ -515,6 +543,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
+        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -598,6 +627,31 @@ impl Node {
             .map_err(|_| ConnectedPeersError::ConnectedPeers)
     }
 
+    /// Bootstraps Kademlia network
+    pub async fn bootstrap(&self) -> Result<(), BootstrapError> {
+        let (result_sender, mut result_receiver) = mpsc::unbounded();
+
+        debug!("Starting 'bootstrap' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::Bootstrap { result_sender })
+            .await?;
+
+        for step in 0.. {
+            let result = result_receiver.next().await;
+
+            if result.is_some() {
+                debug!(%step, "Kademlia bootstrapping...");
+            } else {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Callback is called when we receive new [`crate::peer_info::PeerInfo`]
     pub fn on_peer_info(&self, callback: HandlerFn<NewPeerInfo>) -> HandlerId {
         self.shared.handlers.new_peer_info.add(callback)
@@ -611,5 +665,19 @@ impl Node {
     /// Callback is called when a peer is connected.
     pub fn on_connected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
         self.shared.handlers.connected_peer.add(callback)
+	}
+
+    pub(crate) async fn wait_for_bootstrap(&self) {
+        loop {
+            let was_bootstrapped = self.shared.bootstrap_finished.lock().to_owned();
+
+            if was_bootstrapped {
+                return;
+            } else {
+                trace!("Waiting for bootstrap...");
+
+                sleep(BOOTSTRAP_CHECK_DELAY).await;
+            }
+        }
     }
 }

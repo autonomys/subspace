@@ -220,6 +220,8 @@ pub struct Config<ProviderStorage> {
     pub general_target_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained for special peers.
     pub special_target_connections: u32,
+    /// Addresses to bootstrap Kademlia network
+    pub bootstrap_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -330,6 +332,7 @@ where
             special_connected_peers_handler: Arc::new(|_| false),
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
+            bootstrap_addresses: Vec::new(),
         }
     }
 }
@@ -392,6 +395,7 @@ where
         special_connected_peers_handler: special_connection_decision_handler,
         general_target_connections,
         special_target_connections,
+        bootstrap_addresses,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -498,6 +502,7 @@ where
         protocol_version,
         general_connection_decision_handler,
         special_connection_decision_handler,
+        bootstrap_addresses,
     });
 
     Ok((node, node_runner))

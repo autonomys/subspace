@@ -5,6 +5,7 @@ use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Context, Result};
+use futures::future::pending;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
@@ -351,7 +352,22 @@ where
     )?;
     let mut networking_fut = Box::pin(networking_fut).fuse();
 
+    let bootstrap_fut = Box::pin({
+        let node = node.clone();
+
+        async move {
+            if let Err(err) = node.bootstrap().await {
+                warn!(?err, "DSN bootstrap failed.");
+            }
+
+            pending::<()>().await;
+        }
+    });
+
     futures::select!(
+        // Network bootstrapping future
+        _ = bootstrap_fut.fuse() => {},
+
         // Signal future
         _ = signal.fuse() => {},
 
