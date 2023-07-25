@@ -377,6 +377,13 @@ mod pallet {
     pub(super) type PendingUnlocks<T: Config> =
         StorageMap<_, Identity, T::BlockNumber, BTreeSet<OperatorId>, OptionQuery>;
 
+    /// A list operators who were slashed during the current epoch associated with the domain.
+    /// When the epoch for a given domain is complete, operator total stake is moved to treasury and
+    /// then deleted.
+    #[pallet::storage]
+    pub(super) type PendingSlashes<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
+
     /// Stores the next domain id.
     #[pallet::storage]
     pub(super) type NextDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
