@@ -265,6 +265,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
                 Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
             >,
             SubspaceLink<Block>,
+            SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
@@ -370,10 +371,19 @@ where
         tx_pre_validator,
     );
 
+    let segment_headers_store = SegmentHeadersStore::new(client.clone())
+        .map_err(|error| ServiceError::Application(error.into()))?;
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-    let (block_import, subspace_link) = sc_consensus_subspace::block_import::<PosTable, _, _, _, _>(
+    let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
+        PosTable,
+        _,
+        _,
+        _,
+        _,
+        _,
+    >(
         sc_consensus_subspace::slot_duration(&*client)?,
         fraud_proof_block_import,
         client.clone(),
@@ -405,6 +415,7 @@ where
                 }
             }
         },
+        segment_headers_store.clone(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -433,7 +444,13 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, telemetry, bundle_validator),
+        other: (
+            block_import,
+            subspace_link,
+            segment_headers_store,
+            telemetry,
+            bundle_validator,
+        ),
     })
 }
 
@@ -513,6 +530,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
         (
             I,
             SubspaceLink<Block>,
+            SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
@@ -555,11 +573,9 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
+        other:
+            (block_import, subspace_link, segment_headers_store, mut telemetry, mut bundle_validator),
     } = partial_components;
-
-    let segment_headers_store =
-        SegmentHeadersStore::new(client.clone()).map_err(|error| Error::Other(error.into()))?;
 
     let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {

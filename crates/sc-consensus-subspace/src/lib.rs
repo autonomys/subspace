@@ -785,18 +785,22 @@ where
 }
 
 /// A block-import handler for Subspace.
-pub struct SubspaceBlockImport<PosTable, Block: BlockT, Client, I, CIDP> {
+pub struct SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>
+where
+    Block: BlockT,
+{
     inner: I,
     client: Arc<Client>,
     block_importing_notification_sender:
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
+    segment_headers_store: SegmentHeadersStore<AS>,
     _pos_table: PhantomData<PosTable>,
 }
 
-impl<PosTable, Block, I, Client, CIDP> Clone
-    for SubspaceBlockImport<PosTable, Block, Client, I, CIDP>
+impl<PosTable, Block, I, Client, CIDP, AS> Clone
+    for SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>
 where
     Block: BlockT,
     I: Clone,
@@ -809,18 +813,20 @@ where
             block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+            segment_headers_store: self.segment_headers_store.clone(),
             _pos_table: PhantomData,
         }
     }
 }
 
-impl<PosTable, Block, Client, I, CIDP> SubspaceBlockImport<PosTable, Block, Client, I, CIDP>
+impl<PosTable, Block, Client, I, CIDP, AS> SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>
 where
     PosTable: Table,
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     fn new(
         client: Arc<Client>,
@@ -830,6 +836,7 @@ where
         >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
+        segment_headers_store: SegmentHeadersStore<AS>,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -837,6 +844,7 @@ where
             block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
+            segment_headers_store,
             _pos_table: PhantomData,
         }
     }
@@ -961,34 +969,24 @@ where
         );
         let segment_index = piece_index.segment_index();
 
-        // This is not a very nice hack due to the fact that at the time first block is produced
-        // extrinsics with segment headers are not yet in runtime.
-        let maybe_segment_commitment = if block_number.is_one() {
-            self.subspace_link
-                .segment_headers
-                .lock()
-                .get(&One::one())
-                .and_then(|segment_headers| {
-                    segment_headers
-                        .first()
-                        .map(|segment_header| segment_header.segment_commitment())
-                })
-        } else {
-            aux_schema::load_segment_commitment(self.client.as_ref(), segment_index)?
-        };
+        let segment_commitment = self
+            .segment_headers_store
+            .get_segment_header(segment_index)
+            .map(|segment_header| segment_header.segment_commitment())
+            .ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
 
-        let segment_commitment =
-            maybe_segment_commitment.ok_or(Error::SegmentCommitmentNotFound(segment_index))?;
-        let sector_expiration_check_segment_commitment = aux_schema::load_segment_commitment(
-            self.client.as_ref(),
-            subspace_digest_items
-                .pre_digest
-                .solution
-                .history_size
-                .sector_expiration_check(chain_constants.min_sector_lifetime())
-                .ok_or(Error::InvalidHistorySize)?
-                .segment_index(),
-        )?;
+        let sector_expiration_check_segment_commitment = self
+            .segment_headers_store
+            .get_segment_header(
+                subspace_digest_items
+                    .pre_digest
+                    .solution
+                    .history_size
+                    .sector_expiration_check(chain_constants.min_sector_lifetime())
+                    .ok_or(Error::InvalidHistorySize)?
+                    .segment_index(),
+            )
+            .map(|segment_header| segment_header.segment_commitment());
 
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
@@ -1065,8 +1063,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<PosTable, Block, Client, Inner, CIDP> BlockImport<Block>
-    for SubspaceBlockImport<PosTable, Block, Client, Inner, CIDP>
+impl<PosTable, Block, Client, Inner, CIDP, AS> BlockImport<Block>
+    for SubspaceBlockImport<PosTable, Block, Client, Inner, CIDP, AS>
 where
     PosTable: Table,
     Block: BlockT,
@@ -1082,6 +1080,7 @@ where
         + Sync,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -1151,23 +1150,21 @@ where
         });
 
         for (&segment_index, segment_commitment) in &subspace_digest_items.segment_commitments {
-            if let Some(found_segment_commitment) =
-                aux_schema::load_segment_commitment(self.client.as_ref(), segment_index)
-                    .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-            {
-                if &found_segment_commitment != segment_commitment {
-                    return Err(ConsensusError::ClientImport(
-                        Error::<Block::Header>::DifferentSegmentCommitment(segment_index)
-                            .to_string(),
-                    ));
-                }
-            }
+            let found_segment_commitment = self
+                .segment_headers_store
+                .get_segment_header(segment_index)
+                .ok_or_else(|| {
+                    ConsensusError::ClientImport(format!(
+                        "Segment header for index {segment_index} not found"
+                    ))
+                })?
+                .segment_commitment();
 
-            aux_schema::write_segment_commitment(segment_index, segment_commitment, |values| {
-                block
-                    .auxiliary
-                    .extend(values.iter().map(|(k, v)| (k.to_vec(), Some(v.to_vec()))))
-            });
+            if &found_segment_commitment != segment_commitment {
+                return Err(ConsensusError::ClientImport(
+                    Error::<Block::Header>::DifferentSegmentCommitment(segment_index).to_string(),
+                ));
+            }
         }
 
         // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
@@ -1254,14 +1251,15 @@ where
 ///
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
-pub fn block_import<PosTable, Client, Block, I, CIDP>(
+pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     slot_duration: SlotDuration,
     wrapped_block_import: I,
     client: Arc<Client>,
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
+    segment_headers_store: SegmentHeadersStore<AS>,
 ) -> ClientResult<(
-    SubspaceBlockImport<PosTable, Block, Client, I, CIDP>,
+    SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
     SubspaceLink<Block>,
 )>
 where
@@ -1270,6 +1268,7 @@ where
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
@@ -1310,6 +1309,7 @@ where
         block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
+        segment_headers_store,
     );
 
     Ok((import, link))
