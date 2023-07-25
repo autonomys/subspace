@@ -48,7 +48,6 @@ use sp_domains::{
     OperatorPublicKey, ProofOfElection, RuntimeId,
 };
 use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, CheckedSub, Hash, One, Zero};
-use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -975,9 +974,8 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle } => {
-                    Self::pre_dispatch_submit_bundle(opaque_bundle)
-                }
+                Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
+                    .map_err(|_| InvalidTransaction::Call.into()),
                 Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
@@ -1093,19 +1091,6 @@ impl<T: Config> Pallet<T> {
     pub fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, BalanceOf<T>)> {
         Operators::<T>::get(operator_id)
             .map(|operator| (operator.signing_key, operator.current_total_stake))
-    }
-
-    fn pre_dispatch_submit_bundle(
-        opaque_bundle: &OpaqueBundleOf<T>,
-    ) -> Result<(), TransactionValidityError> {
-        let domain_id = opaque_bundle.domain_id();
-        let receipt = &opaque_bundle.sealed_header.header.receipt;
-
-        // TODO: Implement bundle validation.
-        // TODO: should we perform the same check as `validate_bundle` here?
-
-        verify_execution_receipt::<T>(domain_id, receipt)
-            .map_err(|_| InvalidTransaction::Call.into())
     }
 
     // Check if a bundle is stale
@@ -1226,9 +1211,6 @@ impl<T: Config> Pallet<T> {
 
         Self::check_extrinsics_root(opaque_bundle)?;
 
-        let receipt = &sealed_header.header.receipt;
-        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
-
         let proof_of_election = &sealed_header.header.proof_of_election;
         Self::check_proof_of_election(
             domain_id,
@@ -1237,6 +1219,9 @@ impl<T: Config> Pallet<T> {
             domain_config.bundle_slot_probability,
             proof_of_election,
         )?;
+
+        let receipt = &sealed_header.header.receipt;
+        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
         Ok(())
     }
