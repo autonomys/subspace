@@ -5,7 +5,7 @@ authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
 
 [dependencies]
-codec = { package = "parity-scale-codec", version = "3.6.1", features = [ "derive" ] }
+codec = { package = "parity-scale-codec", version = "3.6.3", features = [ "derive" ] }
 crossbeam = "0.8.2"
 domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }
