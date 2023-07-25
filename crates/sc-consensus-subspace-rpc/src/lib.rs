@@ -30,7 +30,7 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
-    SegmentHeadersStore, SubspaceLink, SubspaceSyncOracle,
+    SegmentHeadersStore, SubspaceSyncOracle,
 };
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -45,6 +45,7 @@ use sp_runtime::traits::{Block as BlockT, Zero};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -170,13 +171,13 @@ where
     solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
-    subspace_link: SubspaceLink<Block>,
     segment_headers_store: SegmentHeadersStore<AS>,
     piece_provider: Option<PP>,
     archived_segment_acknowledgement_senders:
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
     sync_oracle: SubspaceSyncOracle<SO>,
+    _block: PhantomData<Block>,
 }
 
 /// [`SubspaceRpc`] is used for notifying subscribers about arrival of new slots and for
@@ -204,7 +205,6 @@ where
             ArchivedSegmentNotification,
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
-        subspace_link: SubspaceLink<Block>,
         segment_headers_store: SegmentHeadersStore<AS>,
         piece_provider: Option<PP>,
         sync_oracle: SubspaceSyncOracle<SO>,
@@ -218,12 +218,12 @@ where
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
-            subspace_link,
             segment_headers_store,
             piece_provider,
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle,
+            _block: PhantomData,
         }
     }
 }
@@ -680,8 +680,9 @@ where
                     // This is not a very nice hack due to the fact that at the time first block is
                     //  produced extrinsics with segment headers are not yet in runtime.
                     if maybe_segment_commitment.is_none() && best_block_number.is_zero() {
-                        self.subspace_link
-                            .segment_commitment_by_segment_index(segment_index)
+                        self.segment_headers_store
+                            .get_segment_header(segment_index)
+                            .map(|segment_header| segment_header.segment_commitment())
                     } else {
                         maybe_segment_commitment
                     }

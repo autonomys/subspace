@@ -27,7 +27,7 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
-    SegmentHeadersStore, SubspaceLink, SubspaceSyncOracle,
+    SegmentHeadersStore, SubspaceSyncOracle,
 };
 use sc_consensus_subspace_rpc::{PieceProvider, SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
@@ -70,8 +70,6 @@ where
         SubspaceNotificationStream<ArchivedSegmentNotification>,
     /// Bootstrap nodes for DSN.
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
-    /// SubspaceLink shared state.
-    pub subspace_link: SubspaceLink<Block>,
     /// Segment header provider.
     pub segment_headers_store: SegmentHeadersStore<AS>,
     /// Provides pieces from piece cache.
@@ -112,7 +110,6 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
-        subspace_link,
         segment_headers_store,
         piece_provider,
         sync_oracle,
@@ -134,7 +131,6 @@ where
             reward_signing_notification_stream,
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
-            subspace_link,
             segment_headers_store,
             piece_provider,
             sync_oracle,

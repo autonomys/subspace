@@ -78,8 +78,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    HistorySize, PublicKey, Randomness, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange,
+    HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex, Solution,
+    SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -348,7 +348,7 @@ where
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS>
+pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, AS>
 where
     SO: SyncOracle + Send + Sync,
 {
@@ -384,6 +384,9 @@ where
     /// The source of timestamps for relative slots
     pub subspace_link: SubspaceLink<B>,
 
+    /// Persistent storage of segment headers
+    pub segment_headers_store: SegmentHeadersStore<AS>,
+
     /// The proportion of the slot dedicated to proposing.
     ///
     /// The block proposing will be limited to this proportion of the slot from the starting of the
@@ -400,7 +403,7 @@ where
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, Error>(
+pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -412,10 +415,11 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, Error>
         force_authoring,
         backoff_authoring_blocks,
         subspace_link,
+        segment_headers_store,
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS>,
+    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
     PosTable: Table,
@@ -442,6 +446,7 @@ where
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
+    AS: AuxStore + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
 {
     let worker = SubspaceSlotWorker {
@@ -457,6 +462,7 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        segment_headers_store,
         _pos_table: PhantomData::<PosTable>,
     };
 
@@ -551,25 +557,6 @@ impl<Block: BlockT> SubspaceLink<Block> {
             .peek(&block_number)
             .cloned()
             .unwrap_or_default()
-    }
-
-    /// Get the first found segment commitment by segment index.
-    pub fn segment_commitment_by_segment_index(
-        &self,
-        segment_index: SegmentIndex,
-    ) -> Option<SegmentCommitment> {
-        self.segment_headers
-            .lock()
-            .iter()
-            .find_map(|(_block_number, segment_headers)| {
-                segment_headers.iter().find_map(|segment_header| {
-                    if segment_header.segment_index() == segment_index {
-                        Some(segment_header.segment_commitment())
-                    } else {
-                        None
-                    }
-                })
-            })
     }
 }
 

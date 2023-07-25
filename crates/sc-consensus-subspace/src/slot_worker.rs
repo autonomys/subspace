@@ -17,7 +17,7 @@
 
 use crate::{
     get_chain_constants, BlockImportingNotification, NewSlotInfo, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink,
+    RewardSigningNotification, SegmentHeadersStore, SubspaceLink,
 };
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
@@ -92,7 +92,10 @@ where
     }
 }
 
-pub(super) struct SubspaceSlotWorker<PosTable, Block: BlockT, Client, E, I, SO, L, BS> {
+pub(super) struct SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+where
+    Block: BlockT,
+{
     pub(super) client: Arc<Client>,
     pub(super) block_import: I,
     pub(super) env: E,
@@ -105,12 +108,13 @@ pub(super) struct SubspaceSlotWorker<PosTable, Block: BlockT, Client, E, I, SO, 
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
+    pub(super) segment_headers_store: SegmentHeadersStore<AS>,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 
 #[async_trait::async_trait]
-impl<PosTable, Block, Client, E, I, Error, SO, L, BS> SimpleSlotWorker<Block>
-    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS>
+impl<PosTable, Block, Client, E, I, Error, SO, L, BS, AS> SimpleSlotWorker<Block>
+    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
 where
     PosTable: Table,
     Block: BlockT,
@@ -127,6 +131,7 @@ where
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     type BlockImport = I;
     type SyncOracle = SO;
@@ -264,17 +269,10 @@ where
                     chain_constants.recent_history_fraction(),
                 )
                 .segment_index();
-            let mut maybe_segment_commitment = runtime_api
-                .segment_commitment(parent_hash, segment_index)
-                .ok()?;
-
-            // This is not a very nice hack due to the fact that at the time first block is produced
-            // extrinsics with segment headers are not yet in runtime.
-            if maybe_segment_commitment.is_none() && parent_header.number().is_zero() {
-                maybe_segment_commitment = self
-                    .subspace_link
-                    .segment_commitment_by_segment_index(segment_index);
-            }
+            let maybe_segment_commitment = self
+                .segment_headers_store
+                .get_segment_header(segment_index)
+                .map(|segment_header| segment_header.segment_commitment());
 
             let segment_commitment = match maybe_segment_commitment {
                 Some(segment_commitment) => segment_commitment,
@@ -451,8 +449,8 @@ where
     }
 }
 
-impl<PosTable, Block, Client, E, I, Error, SO, L, BS>
-    SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS>
+impl<PosTable, Block, Client, E, I, Error, SO, L, BS, AS>
+    SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
 where
     PosTable: Table,
     Block: BlockT,
@@ -469,6 +467,7 @@ where
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     async fn create_vote(
         &self,

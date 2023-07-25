@@ -917,13 +917,14 @@ where
             force_authoring: config.force_authoring,
             backoff_authoring_blocks,
             subspace_link: subspace_link.clone(),
+            segment_headers_store: segment_headers_store.clone(),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
         };
 
         let subspace =
-            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(
+            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _, _>(
                 subspace_config,
             )?;
 
@@ -962,7 +963,6 @@ where
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
-                    subspace_link: subspace_link.clone(),
                     segment_headers_store: segment_headers_store.clone(),
                     piece_provider: piece_cache.clone(),
                     sync_oracle: subspace_sync_oracle.clone(),
