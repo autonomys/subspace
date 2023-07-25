@@ -32,6 +32,7 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
+use crate::staking::Operator;
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
@@ -44,7 +45,7 @@ use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerEle
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, RuntimeId,
+    OperatorPublicKey, ProofOfElection, RuntimeId,
 };
 use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, CheckedSub, Hash, One, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
@@ -1101,6 +1102,7 @@ impl<T: Config> Pallet<T> {
         let receipt = &opaque_bundle.sealed_header.header.receipt;
 
         // TODO: Implement bundle validation.
+        // TODO: should we perform the same check as `validate_bundle` here?
 
         verify_execution_receipt::<T>(domain_id, receipt)
             .map_err(|_| InvalidTransaction::Call.into())
@@ -1168,7 +1170,35 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    fn check_proof_of_election(
+        domain_id: DomainId,
+        operator_id: OperatorId,
+        operator: Operator<BalanceOf<T>, T::Share>,
+        bundle_slot_probability: (u64, u64),
+        proof_of_election: &ProofOfElection<T::DomainHash>,
+    ) -> Result<(), BundleError> {
+        proof_of_election
+            .verify_vrf_signature(&operator.signing_key)
+            .map_err(|_| BundleError::BadVrfSignature)?;
+
+        let (operator_stake, total_domain_stake) =
+            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
+
+        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
+            operator_stake.saturated_into(),
+            total_domain_stake.saturated_into(),
+            bundle_slot_probability,
+        );
+
+        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+            return Err(BundleError::ThresholdUnsatisfied);
+        }
+
+        Ok(())
+    }
+
     fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
         let sealed_header = &opaque_bundle.sealed_header;
 
@@ -1181,13 +1211,9 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadBundleSignature);
         }
 
-        let domain_id = opaque_bundle.domain_id();
-        let receipt = &sealed_header.header.receipt;
-        let bundle_create_at = sealed_header.header.consensus_block_number;
-
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
-
         // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+        let bundle_create_at = sealed_header.header.consensus_block_number;
         Self::check_stale_bundle(current_block_number, bundle_create_at)?;
 
         let domain_config = DomainRegistry::<T>::get(domain_id)
@@ -1200,25 +1226,17 @@ impl<T: Config> Pallet<T> {
 
         Self::check_extrinsics_root(opaque_bundle)?;
 
+        let receipt = &sealed_header.header.receipt;
         verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
         let proof_of_election = &sealed_header.header.proof_of_election;
-        proof_of_election
-            .verify_vrf_signature(&operator.signing_key)
-            .map_err(|_| BundleError::BadVrfSignature)?;
-
-        let (operator_stake, total_domain_stake) =
-            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
-
-        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
-            operator_stake.saturated_into(),
-            total_domain_stake.saturated_into(),
+        Self::check_proof_of_election(
+            domain_id,
+            operator_id,
+            operator,
             domain_config.bundle_slot_probability,
-        );
-
-        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
-            return Err(BundleError::ThresholdUnsatisfied);
-        }
+            proof_of_election,
+        )?;
 
         Ok(())
     }
