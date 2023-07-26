@@ -8675,11 +8675,19 @@ dependencies = [
 name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
+ "futures",
+ "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-network",
+ "sc-network-gossip",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-subspace",
+ "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

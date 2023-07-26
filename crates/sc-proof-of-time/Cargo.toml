@@ -11,9 +11,17 @@ include = [
 ]
 
 [dependencies]
+futures = "0.3.28"
+parity-scale-codec = { version = "3.6.1", features = ["derive"] }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sc-network-gossip = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
+sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-proof-of-time = { version = "0.1.0", path = "../subspace-proof-of-time" }
 parking_lot = "0.12.1"
 thiserror = "1.0.38"
+tokio = { version = "1.28.2", features = ["time"] }
 tracing = "0.1.37"

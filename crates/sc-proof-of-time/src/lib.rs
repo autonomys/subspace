@@ -1,9 +1,18 @@
 //! Subspace proof of time implementation.
 
+mod clock_master;
+mod gossip;
 mod state_manager;
+mod utils;
 
+use crate::state_manager::PotProtocolState;
 use core::num::{NonZeroU32, NonZeroU8};
+use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, SlotNumber};
+use subspace_proof_of_time::ProofOfTime;
+
+pub use clock_master::{BootstrapParams, ClockMaster};
+pub use gossip::{pot_gossip_peers_set_config, PotGossip};
 
 // TODO: change the fields that can't be zero to NonZero types.
 #[derive(Debug, Clone)]
@@ -35,7 +44,8 @@ pub struct PotConfig {
 
 impl Default for PotConfig {
     fn default() -> Self {
-        // TODO: fill proper values
+        // TODO: fill proper values. These are set to produce
+        // approximately 1 proof/sec during testing.
         Self {
             randomness_update_interval_blocks: 18,
             injection_depth_blocks: 90,
@@ -46,4 +56,13 @@ impl Default for PotConfig {
             num_checkpoints: NonZeroU8::new(16).expect("num_checkpoints cannot be zero"),
         }
     }
+}
+
+/// Components initialized during the new_partial() phase of set up.
+pub struct PotComponents {
+    /// Proof of time implementation.
+    proof_of_time: ProofOfTime,
+
+    /// Protocol state.
+    protocol_state: Arc<dyn PotProtocolState>,
 }
