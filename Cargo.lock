@@ -10782,6 +10782,8 @@ name = "subspace-proof-of-time"
 version = "0.1.0"
 dependencies = [
  "aes 0.8.3",
+ "criterion",
+ "rand 0.8.5",
  "rayon",
  "subspace-core-primitives",
  "thiserror",
