@@ -16,25 +16,20 @@ bench = false
 
 [dependencies]
 aes = "0.8.3"
-rayon = { version = "1.7.0", optional = true }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 thiserror = { version = "1.0.38", optional = true }
 
 [dev-dependencies]
 criterion = "0.5.1"
 rand = "0.8.5"
-rayon = "1.7.0"
 
 [[bench]]
 name = "pot"
 harness = false
 
 [features]
-default = ["std", "parallel"]
+default = ["std"]
 std = [
     "subspace-core-primitives/std",
     "thiserror",
-]
-parallel = [
-    "dep:rayon",
 ]
