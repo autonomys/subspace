@@ -32,7 +32,7 @@ where
 {
     /// Creates the PoT client instance.
     pub fn new(
-        components: PotComponents,
+        components: PotComponents<Block>,
         gossip: PotGossip<Block>,
         client: Arc<Client>,
         sync_oracle: Arc<SO>,

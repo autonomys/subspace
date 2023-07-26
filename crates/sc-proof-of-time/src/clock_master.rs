@@ -69,7 +69,7 @@ where
     /// to avoid that by using a Fn instead. Follow up with upstream
     /// to include this in the trait.
     pub fn new(
-        components: PotComponents,
+        components: PotComponents<Block>,
         gossip: PotGossip<Block>,
         client: Arc<Client>,
         sync_oracle: Arc<SO>,
