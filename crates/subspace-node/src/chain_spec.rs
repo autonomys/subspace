@@ -19,6 +19,7 @@
 use crate::chain_spec_utils::{
     chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
 };
+use crate::domain::evm_chain_spec::{self, SpecId};
 use sc_service::{ChainType, NoExtension};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
@@ -137,6 +138,7 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
                 })
                 .collect::<Vec<_>>();
             subspace_genesis_config(
+                SpecId::Gemini,
                 WASM_BINARY.expect("Wasm binary must be built for Gemini"),
                 sudo_account,
                 balances,
@@ -230,6 +232,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, Str
                 })
                 .collect::<Vec<_>>();
             subspace_genesis_config(
+                SpecId::DevNet,
                 WASM_BINARY.expect("Wasm binary must be built for Gemini"),
                 sudo_account,
                 balances,
@@ -272,6 +275,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
         ChainType::Development,
         || {
             subspace_genesis_config(
+                SpecId::Dev,
                 wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
@@ -318,6 +322,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
         ChainType::Local,
         || {
             subspace_genesis_config(
+                SpecId::Local,
                 wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
@@ -363,6 +368,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
 
 /// Configure initial storage state for FRAME modules.
 fn subspace_genesis_config(
+    spec_id: SpecId,
     wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
@@ -378,6 +384,14 @@ fn subspace_genesis_config(
         enable_transfer,
         confirmation_depth_k,
     } = genesis_params;
+
+    let raw_domain_genesis_config = {
+        let mut domain_genesis_config = evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
+        // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
+        domain_genesis_config.system = Default::default();
+        serde_json::to_vec(&domain_genesis_config)
+            .expect("Genesis config serialization never fails; qed")
+    };
 
     GenesisConfig {
         system: SystemConfig {
@@ -417,6 +431,7 @@ fn subspace_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
+                raw_genesis_config: raw_domain_genesis_config,
 
                 // TODO: Configurable genesis operator signing key.
                 signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),

@@ -109,6 +109,8 @@ fn create_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
+                // TODO: set to proper value
+                raw_genesis_config: Default::default(),
 
                 signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
                 minimum_nominator_stake: 100 * SSC,

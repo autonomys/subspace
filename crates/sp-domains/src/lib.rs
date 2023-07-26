@@ -431,6 +431,7 @@ pub struct GenesisDomain<AccountId> {
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
+    pub raw_genesis_config: Vec<u8>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,

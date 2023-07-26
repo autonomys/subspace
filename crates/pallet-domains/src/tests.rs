@@ -468,6 +468,7 @@ fn test_bundle_fromat_verification() {
             created_at: Default::default(),
             genesis_receipt_hash: Default::default(),
             domain_config,
+            raw_genesis_config: None,
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 

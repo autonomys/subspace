@@ -803,7 +803,7 @@ mod pallet {
             let who = ensure_signed(origin)?;
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, None)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
@@ -917,6 +917,7 @@ mod pallet {
                         domain_config,
                         domain_owner.clone(),
                         Zero::zero(),
+                        Some(genesis_domain.raw_genesis_config),
                     )
                     .expect("Genesis domain instantiation must always succeed");
 
