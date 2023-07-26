@@ -836,8 +836,7 @@ where
 
     fn set_bootstrap_finished(&mut self, success: bool) {
         if let Some(shared) = self.shared_weak.upgrade() {
-            let mut bootstrap_finished = shared.bootstrap_finished.lock();
-            *bootstrap_finished = true;
+            shared.bootstrap_finished.store(true, Ordering::SeqCst);
 
             debug!(%success, "Bootstrap finished.",);
         }

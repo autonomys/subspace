@@ -14,6 +14,7 @@ use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -669,7 +670,7 @@ impl Node {
 
     pub(crate) async fn wait_for_bootstrap(&self) {
         loop {
-            let was_bootstrapped = self.shared.bootstrap_finished.lock().to_owned();
+            let was_bootstrapped = self.shared.bootstrap_finished.load(Ordering::SeqCst);
 
             if was_bootstrapped {
                 return;

@@ -13,7 +13,7 @@ use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -126,7 +126,7 @@ pub(crate) struct Shared {
     pub(crate) command_sender: mpsc::Sender<Command>,
     pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
     pub(crate) regular_tasks_semaphore: ResizableSemaphore,
-    pub(crate) bootstrap_finished: Mutex<bool>,
+    pub(crate) bootstrap_finished: AtomicBool,
 }
 
 impl Shared {
@@ -145,7 +145,7 @@ impl Shared {
             command_sender,
             kademlia_tasks_semaphore,
             regular_tasks_semaphore,
-            bootstrap_finished: Mutex::new(false),
+            bootstrap_finished: AtomicBool::new(false),
         }
     }
 }

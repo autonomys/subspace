@@ -7,7 +7,7 @@ use libp2p::multiaddr::Protocol;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, StubNetworkingParametersManager};
+use subspace_networking::Config;
 
 const TOPIC: &str = "Foo";
 
@@ -49,7 +49,6 @@ async fn main() {
 
     let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
     let config_2 = Config {
-        networking_parameters_registry: StubNetworkingParametersManager.boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         bootstrap_addresses,

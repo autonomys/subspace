@@ -2,6 +2,7 @@ use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
 use crate::{Config, GenericRequest, GenericRequestHandler, StubNetworkingParametersManager};
 use futures::channel::oneshot;
+use futures::future::pending;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
@@ -172,6 +173,20 @@ async fn test_async_handler_works_with_pending_internal_future() {
     };
 
     let (node_2, mut node_runner_2) = crate::create(config_2).unwrap();
+
+    let bootstrap_fut = Box::pin({
+        let node = node_2.clone();
+
+        async move {
+            let _ = node.bootstrap().await;
+
+            pending::<()>().await;
+        }
+    });
+
+    tokio::spawn(async move {
+        bootstrap_fut.await;
+    });
 
     tokio::spawn(async move {
         node_runner_2.run().await;

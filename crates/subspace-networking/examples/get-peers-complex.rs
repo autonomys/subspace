@@ -7,7 +7,7 @@ use libp2p::PeerId;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, NetworkingParametersManager, StubNetworkingParametersManager};
+use subspace_networking::{Config, NetworkingParametersManager};
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +23,6 @@ async fn main() {
     let mut nodes = Vec::with_capacity(TOTAL_NODE_COUNT);
     for i in 0..TOTAL_NODE_COUNT {
         let config = Config {
-            networking_parameters_registry: StubNetworkingParametersManager.boxed(),
             listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
             allow_non_global_addresses_in_dht: true,
             bootstrap_addresses: bootstrap_nodes.clone(),
