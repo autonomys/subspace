@@ -15,7 +15,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
-#![feature(int_roundings, type_alias_impl_trait, type_changing_struct_update)]
+#![feature(
+    impl_trait_in_assoc_type,
+    int_roundings,
+    type_alias_impl_trait,
+    type_changing_struct_update
+)]
 
 pub mod dsn;
 mod metrics;
