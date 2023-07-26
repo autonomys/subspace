@@ -1,5 +1,6 @@
 //! Chain specification for the test runtime.
 
+use crate::domain_chain_spec::testnet_evm_genesis;
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::{GenesisDomain, OperatorPublicKey, RuntimeType};
@@ -76,6 +77,13 @@ fn create_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> GenesisConfig {
+    let raw_domain_genesis_config = {
+        let mut domain_genesis_config = testnet_evm_genesis();
+        // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
+        domain_genesis_config.system = Default::default();
+        serde_json::to_vec(&domain_genesis_config)
+            .expect("Genesis config serialization never fails; qed")
+    };
     GenesisConfig {
         system: SystemConfig {
             // Add Wasm runtime to storage.
@@ -109,8 +117,7 @@ fn create_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
-                // TODO: set to proper value
-                raw_genesis_config: Default::default(),
+                raw_genesis_config: raw_domain_genesis_config,
 
                 signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
                 minimum_nominator_stake: 100 * SSC,
