@@ -21,7 +21,6 @@ pub mod dsn;
 mod metrics;
 pub mod piece_cache;
 pub mod rpc;
-pub mod segment_headers;
 mod sync_from_dsn;
 pub mod tx_pre_validator;
 
@@ -29,7 +28,6 @@ use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
-use crate::segment_headers::{start_segment_header_archiver, SegmentHeaderCache};
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
@@ -50,7 +48,8 @@ use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
+    RewardSigningNotification, SegmentHeadersStore, SubspaceLink, SubspaceParams,
+    SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -266,6 +265,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
                 Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
             >,
             SubspaceLink<Block>,
+            SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
@@ -371,10 +371,19 @@ where
         tx_pre_validator,
     );
 
+    let segment_headers_store = SegmentHeadersStore::new(client.clone())
+        .map_err(|error| ServiceError::Application(error.into()))?;
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-    let (block_import, subspace_link) = sc_consensus_subspace::block_import::<PosTable, _, _, _, _>(
+    let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
+        PosTable,
+        _,
+        _,
+        _,
+        _,
+        _,
+    >(
         sc_consensus_subspace::slot_duration(&*client)?,
         fraud_proof_block_import,
         client.clone(),
@@ -406,6 +415,7 @@ where
                 }
             }
         },
+        segment_headers_store.clone(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -434,7 +444,13 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, telemetry, bundle_validator),
+        other: (
+            block_import,
+            subspace_link,
+            segment_headers_store,
+            telemetry,
+            bundle_validator,
+        ),
     })
 }
 
@@ -514,6 +530,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
         (
             I,
             SubspaceLink<Block>,
+            SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
             BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
@@ -556,12 +573,9 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, mut telemetry, mut bundle_validator),
+        other:
+            (block_import, subspace_link, segment_headers_store, mut telemetry, mut bundle_validator),
     } = partial_components;
-
-    let segment_header_cache = SegmentHeaderCache::new(client.clone()).map_err(|error| {
-        Error::Other(format!("Failed to instantiate segment header cache: {error}").into())
-    })?;
 
     let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
@@ -622,7 +636,7 @@ where
                 dsn_protocol_version,
                 dsn_config.clone(),
                 piece_cache.clone(),
-                segment_header_cache.clone(),
+                segment_headers_store.clone(),
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
@@ -655,21 +669,6 @@ where
             (node, dsn_config.bootstrap_nodes, Some(piece_cache))
         }
     };
-
-    let segment_header_archiving_fut = start_segment_header_archiver(
-        segment_header_cache.clone(),
-        subspace_link
-            .archived_segment_notification_stream()
-            .subscribe(),
-    );
-
-    task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking(
-            "segment-header-archiver",
-            Some("subspace-networking"),
-            Box::pin(segment_header_archiving_fut.in_current_span()),
-        );
 
     let dsn_bootstrap_nodes = {
         // Fall back to node itself as bootstrap node for DSN so farmer always has someone to
@@ -719,6 +718,7 @@ where
     };
 
     let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
+        segment_headers_store.clone(),
         &subspace_link,
         client.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
@@ -933,13 +933,14 @@ where
             force_authoring: config.force_authoring,
             backoff_authoring_blocks,
             subspace_link: subspace_link.clone(),
+            segment_headers_store: segment_headers_store.clone(),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
         };
 
         let subspace =
-            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(
+            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _, _>(
                 subspace_config,
             )?;
 
@@ -978,8 +979,7 @@ where
                     archived_segment_notification_stream: archived_segment_notification_stream
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
-                    subspace_link: subspace_link.clone(),
-                    segment_headers_provider: segment_header_cache.clone(),
+                    segment_headers_store: segment_headers_store.clone(),
                     piece_provider: piece_cache.clone(),
                     sync_oracle: subspace_sync_oracle.clone(),
                 };

@@ -18,9 +18,10 @@ use crate::{
     get_chain_constants, ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
     SubspaceNotificationSender,
 };
-use codec::Encode;
+use codec::{Decode, Encode};
 use futures::StreamExt;
 use log::{debug, error, info, warn};
+use parking_lot::Mutex;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
@@ -33,11 +34,113 @@ use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::future::Future;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader};
+use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+
+#[derive(Debug)]
+struct SegmentHeadersStoreInner<AS> {
+    aux_store: Arc<AS>,
+    next_key_index: AtomicU16,
+    /// In-memory cache of segment headers
+    cache: Mutex<Vec<SegmentHeader>>,
+}
+
+/// Persistent storage of segment headers
+#[derive(Debug)]
+pub struct SegmentHeadersStore<AS> {
+    inner: Arc<SegmentHeadersStoreInner<AS>>,
+}
+
+impl<AS> Clone for SegmentHeadersStore<AS> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl<AS> SegmentHeadersStore<AS>
+where
+    AS: AuxStore,
+{
+    const KEY_PREFIX: &[u8] = b"segment-headers";
+    const INITIAL_CACHE_CAPACITY: usize = 1_000;
+
+    /// Create new instance
+    pub fn new(aux_store: Arc<AS>) -> Result<Self, sp_blockchain::Error> {
+        let mut cache = Vec::with_capacity(Self::INITIAL_CACHE_CAPACITY);
+        let mut next_key_index = 0;
+
+        debug!(
+            target: "subspace",
+            "Started loading segment headers into cache"
+        );
+        while let Some(segment_headers) =
+            aux_store
+                .get_aux(&Self::key(next_key_index))?
+                .map(|segment_header| {
+                    Vec::<SegmentHeader>::decode(&mut segment_header.as_slice())
+                        .expect("Always correct segment header unless DB is corrupted; qed")
+                })
+        {
+            cache.extend(segment_headers);
+            next_key_index += 1;
+        }
+        debug!(
+            target: "subspace",
+            "Finished loading segment headers into cache"
+        );
+
+        Ok(Self {
+            inner: Arc::new(SegmentHeadersStoreInner {
+                aux_store,
+                next_key_index: AtomicU16::new(next_key_index),
+                cache: Mutex::new(cache),
+            }),
+        })
+    }
+
+    /// Returns last observed segment index
+    pub fn max_segment_index(&self) -> SegmentIndex {
+        SegmentIndex::from(self.inner.cache.lock().len().saturating_sub(0) as u64)
+    }
+
+    /// Add segment headers
+    pub fn add_segment_headers(
+        &self,
+        segment_headers: &[SegmentHeader],
+    ) -> Result<(), sp_blockchain::Error> {
+        // TODO: Check that segment headers are inserted sequentially
+        // TODO: Do compaction when we have too many keys: combine multiple segment headers into a
+        //  single entry for faster retrievals and more compact storage
+        let key_index = self.inner.next_key_index.fetch_add(1, Ordering::SeqCst);
+        let key = Self::key(key_index);
+        let value = segment_headers.encode();
+        let insert_data = vec![(key.as_slice(), value.as_slice())];
+
+        self.inner.aux_store.insert_aux(&insert_data, &[])?;
+        self.inner.cache.lock().extend_from_slice(segment_headers);
+
+        Ok(())
+    }
+
+    /// Get a single segment header
+    pub fn get_segment_header(&self, segment_index: SegmentIndex) -> Option<SegmentHeader> {
+        self.inner
+            .cache
+            .lock()
+            .get(u64::from(segment_index) as usize)
+            .copied()
+    }
+
+    fn key(key_index: u16) -> Vec<u8> {
+        (Self::KEY_PREFIX, key_index.to_le_bytes()).encode()
+    }
+}
 
 /// How deep (in segments) should block be in order to be finalized.
 ///
@@ -193,9 +296,10 @@ where
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
-fn initialize_archiver<Block, Client>(
+fn initialize_archiver<Block, Client, AS>(
     best_block_hash: Block::Hash,
     best_block_number: NumberFor<Block>,
+    segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
     kzg: Kzg,
@@ -204,6 +308,7 @@ where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    AS: AuxStore,
 {
     let confirmation_depth_k = get_chain_constants(client)
         .expect("Must always be able to get chain constants")
@@ -351,6 +456,11 @@ where
                 older_archived_segments.extend(archived_segments);
 
                 if !new_segment_headers.is_empty() {
+                    if let Err(error) =
+                        segment_headers_store.add_segment_headers(&new_segment_headers)
+                    {
+                        panic!("Failed to store segment headers: {error}");
+                    }
                     // Set list of expected segment headers for the block where we expect segment
                     // header extrinsic to be included
                     subspace_link.segment_headers.lock().put(
@@ -421,7 +531,8 @@ fn finalize_block<Block, Backend, Client>(
 /// `store_segment_header` extrinsic).
 ///
 /// NOTE: Archiver is doing blocking operations and must run in a dedicated task.
-pub fn create_subspace_archiver<Block, Backend, Client>(
+pub fn create_subspace_archiver<Block, Backend, Client, AS>(
+    segment_headers_store: SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
     telemetry: Option<TelemetryHandle>,
@@ -439,6 +550,7 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
+    AS: AuxStore + Send + Sync + 'static,
 {
     let client_info = client.info();
     let best_block_hash = client_info.best_hash;
@@ -452,6 +564,7 @@ where
     } = initialize_archiver(
         best_block_hash,
         best_block_number,
+        &segment_headers_store,
         subspace_link,
         client.as_ref(),
         subspace_link.kzg.clone(),
@@ -572,6 +685,14 @@ where
             }
 
             if !new_segment_headers.is_empty() {
+                if let Err(error) = segment_headers_store.add_segment_headers(&new_segment_headers)
+                {
+                    error!(
+                        target: "subspace",
+                        "Failed to store segment headers: {error}"
+                    );
+                    return;
+                }
                 let maybe_block_number_to_finalize = {
                     let mut segment_headers = segment_headers.lock();
                     segment_headers.put(block_number + One::one(), new_segment_headers);

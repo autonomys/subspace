@@ -23,15 +23,13 @@
 
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
-use sc_client_api::BlockBackend;
+use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
-    SubspaceSyncOracle,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
+    SegmentHeadersStore, SubspaceSyncOracle,
 };
-use sc_consensus_subspace_rpc::{
-    PieceProvider, SegmentHeaderProvider, SubspaceRpc, SubspaceRpcApiServer,
-};
+use sc_consensus_subspace_rpc::{PieceProvider, SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
@@ -48,7 +46,7 @@ use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
-pub struct FullDeps<C, P, RBP, PP, SO>
+pub struct FullDeps<C, P, PP, SO, AS>
 where
     SO: SyncOracle + Send + Sync + Clone,
 {
@@ -72,10 +70,8 @@ where
         SubspaceNotificationStream<ArchivedSegmentNotification>,
     /// Bootstrap nodes for DSN.
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
-    /// SubspaceLink shared state.
-    pub subspace_link: SubspaceLink<Block>,
     /// Segment header provider.
-    pub segment_headers_provider: RBP,
+    pub segment_headers_store: SegmentHeadersStore<AS>,
     /// Provides pieces from piece cache.
     pub piece_provider: Option<PP>,
     /// Subspace sync oracle
@@ -83,8 +79,8 @@ where
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P, RPB, PP, SO>(
-    deps: FullDeps<C, P, RPB, PP, SO>,
+pub fn create_full<C, P, PP, SO, AS>(
+    deps: FullDeps<C, P, PP, SO, AS>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
@@ -99,9 +95,9 @@ where
         + BlockBuilder<Block>
         + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
-    RPB: SegmentHeaderProvider + Send + Sync + 'static,
     PP: PieceProvider + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
+    AS: AuxStore + Send + Sync + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -114,8 +110,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
-        subspace_link,
-        segment_headers_provider,
+        segment_headers_store,
         piece_provider,
         sync_oracle,
     } = deps;
@@ -136,8 +131,7 @@ where
             reward_signing_notification_stream,
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
-            subspace_link,
-            segment_headers_provider,
+            segment_headers_store,
             piece_provider,
             sync_oracle,
         )

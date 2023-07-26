@@ -22,8 +22,8 @@ use subspace_core_primitives::{
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 
-/// Defines a limit for segment indexes array. It affects storage access on the runtime side.
-pub const MAX_SEGMENT_INDEXES_PER_REQUEST: usize = 300;
+/// Defines a limit for number of segments that can be requested over RPC
+pub const MAX_SEGMENT_HEADERS_PER_REQUEST: usize = 300;
 
 /// Information necessary for farmer application
 #[derive(Debug, Clone, Serialize, Deserialize)]

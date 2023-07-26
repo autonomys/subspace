@@ -3,10 +3,9 @@ pub mod node_provider_storage;
 
 use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
-use crate::SegmentHeaderCache;
 use either::Either;
 use sc_client_api::AuxStore;
-use sc_consensus_subspace_rpc::SegmentHeaderProvider;
+use sc_consensus_subspace::SegmentHeadersStore;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -88,7 +87,7 @@ pub(crate) fn create_dsn_instance<AS>(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-    segment_header_cache: SegmentHeaderCache<AS>,
+    segment_headers_store: SegmentHeadersStore<AS>,
 ) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
 where
     AS: AuxStore + Sync + Send + 'static,
@@ -200,7 +199,7 @@ where
                             block_limit = ROOT_BLOCK_NUMBER_LIMIT;
                         }
 
-                        let max_segment_index = segment_header_cache.max_segment_index();
+                        let max_segment_index = segment_headers_store.max_segment_index();
 
                         // several last segment indexes
                         (SegmentIndex::ZERO..=max_segment_index)
@@ -210,20 +209,15 @@ where
                     }
                 };
 
-                let internal_result = segment_indexes
+                let maybe_segment_headers = segment_indexes
                     .iter()
-                    .map(|segment_index| segment_header_cache.get_segment_header(*segment_index))
-                    .collect::<Result<Option<Vec<SegmentHeader>>, _>>();
+                    .map(|segment_index| segment_headers_store.get_segment_header(*segment_index))
+                    .collect::<Option<Vec<SegmentHeader>>>();
 
-                let result = match internal_result {
-                    Ok(Some(segment_headers)) => Some(SegmentHeaderResponse { segment_headers }),
-                    Ok(None) => {
+                let result = match maybe_segment_headers {
+                    Some(segment_headers) => Some(SegmentHeaderResponse { segment_headers }),
+                    None => {
                         error!("Segment header collection contained empty segment headers.");
-
-                        None
-                    }
-                    Err(error) => {
-                        error!(%error, "Failed to get segment headers from cache");
 
                         None
                     }

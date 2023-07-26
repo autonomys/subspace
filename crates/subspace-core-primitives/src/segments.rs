@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
     Eq,
     PartialEq,
     Hash,
+    From,
+    Into,
     Encode,
     Decode,
     Add,
@@ -55,20 +57,6 @@ impl Step for SegmentIndex {
     #[inline]
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
         u64::backward_checked(start.0, count).map(Self)
-    }
-}
-
-impl From<u64> for SegmentIndex {
-    #[inline]
-    fn from(original: u64) -> Self {
-        Self(original)
-    }
-}
-
-impl From<SegmentIndex> for u64 {
-    #[inline]
-    fn from(original: SegmentIndex) -> Self {
-        original.0
     }
 }
 
