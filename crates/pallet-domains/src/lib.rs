@@ -899,20 +899,27 @@ mod pallet {
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
             if block_number.is_one() {
-                if let Some(ref genesis_domain) = PendingGenesisDomain::<T>::take() {
+                if let Some(genesis_domain) = PendingGenesisDomain::<T>::take() {
                     // Register the genesis domain runtime
                     let runtime_id = register_runtime_at_genesis::<T>(
-                        genesis_domain.runtime_name.clone(),
-                        genesis_domain.runtime_type.clone(),
-                        genesis_domain.runtime_version.clone(),
-                        genesis_domain.code.clone(),
+                        genesis_domain.runtime_name,
+                        genesis_domain.runtime_type,
+                        genesis_domain.runtime_version,
+                        genesis_domain.code,
                         Zero::zero(),
                     )
                     .expect("Genesis runtime registration must always succeed");
 
                     // Instantiate the genesis domain
-                    let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
-                    let domain_owner = genesis_domain.owner_account_id.clone();
+                    let domain_config = DomainConfig {
+                        domain_name: genesis_domain.domain_name,
+                        runtime_id,
+                        max_block_size: genesis_domain.max_block_size,
+                        max_block_weight: genesis_domain.max_block_weight,
+                        bundle_slot_probability: genesis_domain.bundle_slot_probability,
+                        target_bundles_per_block: genesis_domain.target_bundles_per_block,
+                    };
+                    let domain_owner = genesis_domain.owner_account_id;
                     let domain_id = do_instantiate_domain::<T>(
                         domain_config,
                         domain_owner.clone(),
