@@ -38,7 +38,6 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Randomness, U256};
 use subspace_runtime_primitives::Balance;
 
@@ -282,7 +281,8 @@ where
             .map(|bundle| bundle.extrinsics_root())
             .collect();
 
-        let extrinsics = self.compile_own_domain_bundles(bundles, domain_hash);
+        let extrinsics =
+            self.compile_own_domain_bundles(bundles, consensus_block_hash, domain_hash);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -329,31 +329,65 @@ where
             Block::Hash,
             Balance,
         >,
+        consensus_block_hash: CBlock::Hash,
         at: Block::Hash,
-    ) -> bool {
+    ) -> sp_blockchain::Result<bool> {
+        let bundle_vrf_hash =
+            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+        let tx_range = self
+            .consensus_client
+            .runtime_api()
+            .domain_tx_range(consensus_block_hash, self.domain_id)
+            .map_err(|error| {
+                sp_blockchain::Error::Application(Box::from(format!(
+                    "Error getting tx range: {error}"
+                )))
+            })?;
+
         for opaque_extrinsic in &bundle.extrinsics {
             let Ok(extrinsic) =
                 <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
             else {
-                return false;
+                return Ok(false);
             };
 
-            // check tx range
+            let is_within_tx_range = self.client.runtime_api().is_within_tx_range(
+                at,
+                &extrinsic,
+                &bundle_vrf_hash,
+                &tx_range,
+            )?;
 
-            // check tx validity
+            if !is_within_tx_range {
+                return Ok(false);
+            }
+
+            let is_legal_tx = self
+                .client
+                .runtime_api()
+                .check_transaction_validity(at, extrinsic, at)?
+                .is_ok();
+
+            if !is_legal_tx {
+                return Ok(false);
+            }
         }
 
-        true
+        Ok(true)
     }
 
     fn compile_own_domain_bundles(
         &self,
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
+        consensus_block_hash: CBlock::Hash,
         at: Block::Hash,
     ) -> Vec<Block::Extrinsic> {
         bundles
             .into_iter()
-            .filter(|bundle| self.is_valid_bundle(bundle, at))
+            .filter(|bundle| {
+                self.is_valid_bundle(bundle, consensus_block_hash, at)
+                    .unwrap_or(false)
+            })
             .flat_map(|bundle| {
                 bundle
                     .extrinsics
