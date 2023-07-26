@@ -1,8 +1,8 @@
 //! Clock master implementation.
 
 use crate::pot_state::PotState;
-use crate::utils::{topic, PotGossip, LOG_TARGET};
-use crate::{get_consensus_tip_proofs, BootstrapParams, PotPartial};
+use crate::utils::{get_consensus_tip_proofs, topic, PotGossip, LOG_TARGET};
+use crate::{BootstrapParams, PotPartial};
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use sc_network::PeerId;
@@ -12,8 +12,8 @@ use sp_consensus::SyncOracle;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::thread;
-use std::time::{self, Instant};
-use subspace_core_primitives::{PotProof, PotSeed};
+use std::time::Instant;
+use subspace_core_primitives::{NonEmptyVec, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tracing::{debug, error, info, warn};
 
@@ -96,12 +96,11 @@ where
         );
 
         let proof_of_time = self.proof_of_time.clone();
-        let sync_oracle = self.sync_oracle.clone();
         let pot_state = self.pot_state.clone();
         thread::Builder::new()
             .name("pot-proof-producer".to_string())
             .spawn(move || {
-                Self::produce_proofs(proof_of_time, sync_oracle, pot_state, local_proof_sender);
+                Self::produce_proofs(proof_of_time, pot_state, local_proof_sender);
             })
             .expect("Failed to spawn PoT proof producer thread");
 
@@ -133,19 +132,10 @@ where
     /// Long running loop to produce the proofs.
     fn produce_proofs(
         proof_of_time: Arc<ProofOfTime>,
-        sync_oracle: Arc<SO>,
         state: Arc<dyn PotState>,
         proof_sender: TracingUnboundedSender<PotProof>,
     ) {
-        let sync_delay = time::Duration::from_secs(1);
         loop {
-            // Wait for syncing to complete before producing proofs.
-            if sync_oracle.is_major_syncing() {
-                error!(target: LOG_TARGET, "clock_master::produce proofs: waiting for sync");
-                thread::sleep(sync_delay);
-                continue;
-            }
-
             // Build the next proof on top of the latest tip.
             let last_proof = state.tip().expect("Clock master chain cannot be empty");
 
@@ -215,6 +205,7 @@ where
                 params.genesis_hash,
             )
             .expect("Initial proof creation cannot fail");
-        self.pot_state.init(vec![proof]);
+        let proofs = NonEmptyVec::new(vec![proof]).expect("Vec is non empty");
+        self.pot_state.init(proofs);
     }
 }

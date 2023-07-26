@@ -254,7 +254,11 @@ pub fn make_pre_digest(
     slot: Slot,
     solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
 ) -> Digest {
-    let log = DigestItem::subspace_pre_digest(&PreDigest { slot, solution, proof_of_time: Default::default() });
+    let log = DigestItem::subspace_pre_digest(&PreDigest {
+        slot,
+        solution,
+        proof_of_time: Default::default(),
+    });
     Digest { logs: vec![log] }
 }
 

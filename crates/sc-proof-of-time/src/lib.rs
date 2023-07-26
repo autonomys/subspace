@@ -8,9 +8,6 @@ mod utils;
 use crate::pot_state::{init_pot_state, PotState};
 use crate::utils::GOSSIP_PROTOCOL;
 use sc_network::config::NonDefaultSetConfig;
-use sp_blockchain::{HeaderBackend, Info};
-use sp_consensus::SyncOracle;
-use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::{BlockHash, BlockNumber, PotKey, PotProof, SlotNumber};
@@ -83,8 +80,7 @@ impl<Block: BlockT> PotPartial<Block> {
             config.num_checkpoints,
             config.checkpoint_iterations,
         ));
-        let (pot_state, pot_consensus) =
-            init_pot_state(config, proof_of_time.clone(), vec![]);
+        let (pot_state, pot_consensus) = init_pot_state(config, proof_of_time.clone(), vec![]);
 
         Self {
             proof_of_time,
@@ -104,7 +100,6 @@ impl<Block: BlockT> Default for PotPartial<Block> {
         Self::new()
     }
 }
-
 
 /// Inputs for bootstrapping.
 #[derive(Debug, Clone)]
@@ -249,36 +244,4 @@ pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
     let mut cfg = NonDefaultSetConfig::new(GOSSIP_PROTOCOL.into(), 5 * 1024 * 1024);
     cfg.allow_non_reserved(25, 25);
     cfg
-}
-
-/// Helper to retrieve the PoT state from latest tip.
-async fn get_consensus_tip_proofs<Block, Client, SO>(
-    client: Arc<Client>,
-    sync_oracle: Arc<SO>,
-    chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
-) -> Result<Vec<PotProof>, String>
-where
-    Block: BlockT,
-    Client: HeaderBackend<Block>,
-    SO: SyncOracle + Send + Sync + Clone + 'static,
-{
-    // Wait for sync to complete
-    let delay = tokio::time::Duration::from_secs(10);
-    while sync_oracle.is_major_syncing() {
-        tokio::time::sleep(delay).await;
-    }
-
-    // Get the hdr of the best block hash
-    let info = (chain_info_fn)();
-    let header = client
-        .header(info.best_hash)
-        .map_err(|err| format!("get_consensus_tip_proofs(): failed to get hdr: {err:?}, {info:?}"))?
-        .ok_or(format!("get_consensus_tip_proofs(): missing hdr: {info:?}"))?;
-
-    // Get the pre-digest from the block hdr
-    let pre_digest = extract_pre_digest(&header).map_err(|err| {
-        format!("get_consensus_tip_proofs(): failed to get pre digest: {err:?}, {info:?}")
-    })?;
-
-    Ok(pre_digest.proof_of_time)
 }

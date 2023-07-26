@@ -1049,7 +1049,8 @@ where
         );
         debug!(
             target: "subspace",
-            "block import verification: PoT: {}/{block_number}/{block_hash}: {pot_status:?}",
+            "block import verification: PoT: pre_digest_slot={}, block={block_number}, \
+            block_hash={block_hash}: {pot_status:?}",
             *pre_digest.slot,
         );
 

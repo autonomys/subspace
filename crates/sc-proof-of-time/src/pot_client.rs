@@ -3,8 +3,8 @@
 //! clock masters from the subspace-node side.
 
 use crate::pot_state::PotState;
-use crate::utils::{topic, PotGossip, LOG_TARGET};
-use crate::{get_consensus_tip_proofs, PotPartial};
+use crate::utils::{get_consensus_tip_proofs, topic, PotGossip, LOG_TARGET};
+use crate::PotPartial;
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Decode;
 use sc_network::PeerId;

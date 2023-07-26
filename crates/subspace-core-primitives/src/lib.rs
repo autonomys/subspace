@@ -1107,4 +1107,9 @@ impl<T: Clone> NonEmptyVec<T> {
     pub fn push(&mut self, entry: T) {
         self.0.push(entry);
     }
+
+    /// Returns the entries in the collection.
+    pub fn to_vec(self) -> Vec<T> {
+        self.0
+    }
 }

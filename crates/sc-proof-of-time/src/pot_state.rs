@@ -8,7 +8,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor, One};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use subspace_core_primitives::{PotKey, PotProof, PotSeed, SlotNumber};
+use subspace_core_primitives::{NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
 use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
 use tracing::warn;
 
@@ -279,7 +279,7 @@ impl StateManager {
 /// PoT interface to the protocols (clock master, PoT client).
 pub(crate) trait PotState: Send + Sync {
     /// Initializes the state with the given proofs.
-    fn init(&self, proofs: Vec<PotProof>);
+    fn init(&self, proofs: NonEmptyVec<PotProof>);
 
     /// Returns the current tip
     fn tip(&self) -> Option<PotProof>;
@@ -292,7 +292,8 @@ pub(crate) trait PotState: Send + Sync {
 }
 
 impl PotState for StateManager {
-    fn init(&self, mut proofs: Vec<PotProof>) {
+    fn init(&self, proofs: NonEmptyVec<PotProof>) {
+        let mut proofs = proofs.to_vec();
         let mut state = self.state.lock();
         state.chain.clear();
         state.chain.append(&mut proofs);
@@ -323,6 +324,25 @@ impl<Block: BlockT> PotConsensus<Block> for StateManager {
             || "None".to_string(),
             |proof| format!("{}", proof.slot_number),
         );
+        let proof_slot = slot_number - self.config.global_randomness_reveal_lag_slots;
+
+        // For block 1, just return one proof at the target slot,
+        // as the parent(genesis) does not have any proofs.
+        if block_number.is_one() {
+            let proof = state
+                .chain
+                .iter()
+                .find(|proof| proof.slot_number == proof_slot)
+                .ok_or(PotConsensusError::ProofUnavailable {
+                    cur_tip,
+                    start_slot: proof_slot,
+                    end_slot: proof_slot,
+                    block_number: format!("{block_number}"),
+                    slot: slot_number,
+                })?;
+            return Ok(vec![proof.clone()]);
+        }
+
         let start_slot = parent_block_proofs
             .iter()
             .last()
@@ -331,38 +351,21 @@ impl<Block: BlockT> PotConsensus<Block> for StateManager {
                 slot_number,
                 block_number: format!("{block_number}"),
             })?
-            .slot_number;
-        let end_slot = slot_number - self.config.global_randomness_reveal_lag_slots;
+            .slot_number
+            + 1;
 
-        // For block 1, just return one proof at the target slot,
-        // as the parent(genesis) does not have any proofs.
-        if block_number.is_one() {
-            let proof = state
-                .chain
-                .iter()
-                .find(|proof| proof.slot_number == end_slot)
-                .ok_or(PotConsensusError::ProofUnavailable {
-                    cur_tip,
-                    start_slot,
-                    end_slot,
-                    block_number: format!("{block_number}"),
-                    slot: end_slot,
-                })?;
-            return Ok(vec![proof.clone()]);
-        }
-
-        if start_slot > end_slot {
+        if start_slot > proof_slot {
             return Err(PotConsensusError::InvalidRange {
                 cur_tip,
                 start_slot,
-                end_slot,
+                end_slot: proof_slot,
                 block_number: format!("{block_number}"),
             });
         }
 
         // Collect the proofs in the requested range.
-        let mut proofs = Vec::with_capacity((end_slot - start_slot + 1) as usize);
-        for slot in start_slot..=end_slot {
+        let mut proofs = Vec::with_capacity((proof_slot - start_slot + 1) as usize);
+        for slot in start_slot..=proof_slot {
             // TODO: avoid repeated search by copying the range.
             let proof = state
                 .chain
@@ -371,7 +374,7 @@ impl<Block: BlockT> PotConsensus<Block> for StateManager {
                 .ok_or(PotConsensusError::ProofUnavailable {
                     cur_tip: cur_tip.clone(),
                     start_slot,
-                    end_slot,
+                    end_slot: proof_slot,
                     block_number: format!("{block_number}"),
                     slot,
                 })?;

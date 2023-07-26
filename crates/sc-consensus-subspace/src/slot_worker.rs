@@ -192,6 +192,9 @@ where
             debug!(target: "subspace", "Attempting to claim slot {}", slot);
         }
 
+        // TODO: the PoT proof is not used yet as randomness source.
+        // TODO: wait if PotConsensusError::ProofUnavailable is returned, if
+        // the proof production is running behind.
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
         let block_number = *parent_header.number() + One::one();
@@ -203,7 +206,8 @@ where
             Ok(proofs) => {
                 debug!(
                     target: "subspace",
-                    "claim slot: PoT: {parent_slot}/{slot}/{block_number}/{parent_hash}: {}",
+                    "claim slot: PoT: parent_slot={parent_slot}, slot={slot}, block={block_number},\
+                     parent_hash={parent_hash}: proofs={}",
                     proofs.len()
                 );
                 proofs
@@ -211,7 +215,8 @@ where
             Err(err) => {
                 warn!(
                     target: "subspace",
-                    "claim slot: PoT: {parent_slot}/{slot}/{block_number}/{parent_hash}: err={err:?}"
+                    "claim slot: PoT: parent_slot={parent_slot}, slot={slot}, block={block_number},\
+                     parent_hash={parent_hash}: err={err:?}",
                 );
                 vec![]
             }
