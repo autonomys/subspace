@@ -86,6 +86,9 @@ pub(crate) enum Command {
     ConnectedPeers {
         result_sender: oneshot::Sender<Vec<PeerId>>,
     },
+    Bootstrap {
+        result_sender: mpsc::UnboundedSender<()>,
+    },
 }
 
 pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;

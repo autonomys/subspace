@@ -64,8 +64,7 @@ pub(super) fn configure_dsn(
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
-        NetworkingParametersManager::new(&known_addresses_db_path, bootstrap_nodes)
-            .map(|manager| manager.boxed())?
+        NetworkingParametersManager::new(&known_addresses_db_path).map(|manager| manager.boxed())?
     };
 
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
@@ -155,7 +154,7 @@ pub(super) fn configure_dsn(
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
-        networking_parameters_registry,
+        networking_parameters_registry: Some(networking_parameters_registry),
         request_response_protocols: vec![
             PieceAnnouncementRequestHandler::create({
                 move |peer_id, req| {
@@ -305,6 +304,7 @@ pub(super) fn configure_dsn(
         special_connected_peers_handler: Arc::new(PeerInfo::is_farmer),
         // other (non-farmer) connections
         general_connected_peers_handler: Arc::new(|peer_info| !PeerInfo::is_farmer(peer_info)),
+        bootstrap_addresses: bootstrap_nodes,
         ..default_config
     };
 

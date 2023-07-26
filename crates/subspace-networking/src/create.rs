@@ -2,7 +2,7 @@ pub(crate) mod temporary_bans;
 mod transport;
 
 use crate::behavior::persistent_parameters::{
-    BootstrappedNetworkingParameters, NetworkingParametersRegistry,
+    NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
 use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
@@ -188,8 +188,8 @@ pub struct Config<ProviderStorage> {
     pub allow_non_global_addresses_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// A reference to the `NetworkingParametersRegistry` implementation.
-    pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    /// A reference to the `NetworkingParametersRegistry` implementation (optional).
+    pub networking_parameters_registry: Option<Box<dyn NetworkingParametersRegistry>>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
@@ -220,6 +220,8 @@ pub struct Config<ProviderStorage> {
     pub general_target_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained for special peers.
     pub special_target_connections: u32,
+    /// Addresses to bootstrap Kademlia network
+    pub bootstrap_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -311,7 +313,7 @@ where
             provider_storage,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
+            networking_parameters_registry: None,
             request_response_protocols: Vec::new(),
             yamux_config,
             reserved_peers: Vec::new(),
@@ -330,6 +332,7 @@ where
             special_connected_peers_handler: Arc::new(|_| false),
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
+            bootstrap_addresses: Vec::new(),
         }
     }
 }
@@ -392,6 +395,7 @@ where
         special_connected_peers_handler: special_connection_decision_handler,
         general_target_connections,
         special_target_connections,
+        bootstrap_addresses,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -491,13 +495,15 @@ where
         swarm,
         shared_weak,
         next_random_query_interval: initial_random_query_interval,
-        networking_parameters_registry,
+        networking_parameters_registry: networking_parameters_registry
+            .unwrap_or(StubNetworkingParametersManager.boxed()),
         reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
         temporary_bans,
         metrics,
         protocol_version,
         general_connection_decision_handler,
         special_connection_decision_handler,
+        bootstrap_addresses,
     });
 
     Ok((node, node_runner))

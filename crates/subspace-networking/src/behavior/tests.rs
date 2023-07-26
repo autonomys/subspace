@@ -1,7 +1,8 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
-use crate::{BootstrappedNetworkingParameters, Config, GenericRequest, GenericRequestHandler};
+use crate::{Config, GenericRequest, GenericRequestHandler};
 use futures::channel::oneshot;
+use futures::future::pending;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
@@ -159,20 +160,32 @@ async fn test_async_handler_works_with_pending_internal_future() {
     let node_1_addr = node_1_address_receiver.await.unwrap();
     drop(on_new_listener_handler);
 
+    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
     let config_2 = Config {
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
-            node_1_addr.with(Protocol::P2p(node_1.id().into()))
-        ])
-        .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
             |_, _| async { None },
         )],
+        bootstrap_addresses,
         ..Config::default()
     };
 
     let (node_2, mut node_runner_2) = crate::create(config_2).unwrap();
+
+    let bootstrap_fut = Box::pin({
+        let node = node_2.clone();
+
+        async move {
+            let _ = node.bootstrap().await;
+
+            pending::<()>().await;
+        }
+    });
+
+    tokio::spawn(async move {
+        bootstrap_fut.await;
+    });
 
     tokio::spawn(async move {
         node_runner_2.run().await;

@@ -13,7 +13,10 @@ use crate::create::{
 use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
-use crate::utils::{is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit};
+use crate::utils::{
+    convert_multiaddresses, is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit,
+};
+use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use futures::channel::mpsc;
 use futures::future::Fuse;
@@ -23,9 +26,9 @@ use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
-    GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError,
-    GetRecordOk, InboundRequest, Kademlia, KademliaEvent, PeerRecord, ProgressStep, ProviderRecord,
-    PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    BootstrapOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk,
+    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, PeerRecord, ProgressStep,
+    ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -78,6 +81,17 @@ enum QueryResultSender {
         // Just holding onto permit while data structure is not dropped
         _permit: ResizableSemaphorePermit,
     },
+    Bootstrap {
+        sender: mpsc::UnboundedSender<()>,
+    },
+}
+
+#[derive(Debug, Default)]
+enum BootstrapCommandState {
+    #[default]
+    NotStarted,
+    InProgress(mpsc::UnboundedReceiver<()>),
+    Finished,
 }
 
 /// Runner for the Node.
@@ -121,6 +135,10 @@ where
     special_connection_decision_handler: ConnectedPeersHandler,
     /// Randomness generator used for choosing Kademlia addresses.
     rng: StdRng,
+    /// Addresses to bootstrap Kademlia network
+    bootstrap_addresses: Vec<Multiaddr>,
+    /// Ensures a single bootstrap on run() invocation.
+    bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -140,6 +158,7 @@ where
     pub(crate) protocol_version: String,
     pub(crate) general_connection_decision_handler: ConnectedPeersHandler,
     pub(crate) special_connection_decision_handler: ConnectedPeersHandler,
+    pub(crate) bootstrap_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -160,6 +179,7 @@ where
             protocol_version,
             general_connection_decision_handler,
             special_connection_decision_handler,
+            bootstrap_addresses,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -184,11 +204,15 @@ where
             general_connection_decision_handler,
             special_connection_decision_handler,
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
+            bootstrap_addresses,
+            bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
         }
     }
 
     /// Drives the main networking future forward.
     pub async fn run(&mut self) {
+        self.bootstrap().await;
+
         loop {
             futures::select! {
                 _ = &mut self.random_query_timeout => {
@@ -209,7 +233,7 @@ where
                 },
                 command = self.command_receiver.next() => {
                     if let Some(command) = command {
-                        self.handle_command(command).await;
+                        self.handle_command(command);
                     } else {
                         break;
                     }
@@ -225,6 +249,67 @@ where
                 },
             }
         }
+    }
+
+    /// Bootstraps Kademlia network
+    async fn bootstrap(&mut self) {
+        let bootstrap_command_state = self.bootstrap_command_state.clone();
+        let mut bootstrap_command_state = bootstrap_command_state.lock().await;
+        let bootstrap_command_receiver = match &mut *bootstrap_command_state {
+            BootstrapCommandState::NotStarted => {
+                debug!("Bootstrap started.");
+
+                let (bootstrap_command_sender, bootstrap_command_receiver) = mpsc::unbounded();
+
+                self.handle_command(Command::Bootstrap {
+                    result_sender: bootstrap_command_sender,
+                });
+
+                *bootstrap_command_state =
+                    BootstrapCommandState::InProgress(bootstrap_command_receiver);
+                match &mut *bootstrap_command_state {
+                    BootstrapCommandState::InProgress(bootstrap_command_receiver) => {
+                        bootstrap_command_receiver
+                    }
+                    _ => {
+                        unreachable!("Was just set to that exact value");
+                    }
+                }
+            }
+            BootstrapCommandState::InProgress(bootstrap_command_receiver) => {
+                bootstrap_command_receiver
+            }
+            BootstrapCommandState::Finished => {
+                return;
+            }
+        };
+
+        debug!("Bootstrap started.");
+
+        let mut bootstrap_step = 0;
+        loop {
+            futures::select! {
+                swarm_event = self.swarm.next() => {
+                    if let Some(swarm_event) = swarm_event {
+                        self.register_event_metrics(&swarm_event);
+                        self.handle_swarm_event(swarm_event).await;
+                    } else {
+                        break;
+                    }
+                },
+                result = bootstrap_command_receiver.next() => {
+                    if result.is_some() {
+                        debug!(%bootstrap_step, "Kademlia bootstrapping...");
+                        bootstrap_step += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        debug!("Bootstrap finished.");
+        *bootstrap_command_state = BootstrapCommandState::Finished;
     }
 
     /// Handles periodical tasks.
@@ -506,7 +591,7 @@ where
                     "Peer has different protocol version. Peer was banned.",
                 );
 
-                self.ban_peer(peer_id).await;
+                self.ban_peer(peer_id);
             }
 
             if info.listen_addrs.len() > 30 {
@@ -774,6 +859,42 @@ where
                     self.query_id_receivers.remove(&id);
                 }
             }
+            KademliaEvent::OutboundQueryProgressed {
+                step: ProgressStep { last, .. },
+                id,
+                result: QueryResult::Bootstrap(result),
+                ..
+            } => {
+                let mut cancelled = false;
+                if let Some(QueryResultSender::Bootstrap { sender }) =
+                    self.query_id_receivers.get_mut(&id)
+                {
+                    match result {
+                        Ok(BootstrapOk {
+                            peer,
+                            num_remaining,
+                        }) => {
+                            trace!(%peer, %num_remaining, %last, "Bootstrap query step succeeded");
+
+                            cancelled = Self::unbounded_send_and_cancel_on_error(
+                                &mut self.swarm.behaviour_mut().kademlia,
+                                sender,
+                                (),
+                                "Bootstrap",
+                                &id,
+                            ) || cancelled;
+                        }
+                        Err(error) => {
+                            debug!(?error, "Bootstrap query failed.");
+                        }
+                    }
+                }
+
+                if last || cancelled {
+                    // There will be no more progress
+                    self.query_id_receivers.remove(&id);
+                }
+            }
             _ => {}
         }
     }
@@ -875,7 +996,7 @@ where
             .add_peers_to_dial(&peers);
     }
 
-    async fn handle_command(&mut self, command: Command) {
+    fn handle_command(&mut self, command: Command) {
         match command {
             Command::GetValue {
                 key,
@@ -1127,7 +1248,7 @@ where
                 );
             }
             Command::BanPeer { peer_id } => {
-                self.ban_peer(peer_id).await;
+                self.ban_peer(peer_id);
             }
             Command::Dial { address } => {
                 let _ = self.swarm.dial(address);
@@ -1137,10 +1258,31 @@ where
 
                 let _ = result_sender.send(connected_peers);
             }
+            Command::Bootstrap { result_sender } => {
+                let kademlia = &mut self.swarm.behaviour_mut().kademlia;
+
+                for (peer_id, address) in convert_multiaddresses(self.bootstrap_addresses.clone()) {
+                    kademlia.add_address(&peer_id, address);
+                }
+
+                match kademlia.bootstrap() {
+                    Ok(query_id) => {
+                        self.query_id_receivers.insert(
+                            query_id,
+                            QueryResultSender::Bootstrap {
+                                sender: result_sender,
+                            },
+                        );
+                    }
+                    Err(err) => {
+                        debug!(?err, "Bootstrap error.");
+                    }
+                }
+            }
         }
     }
 
-    async fn ban_peer(&mut self, peer_id: PeerId) {
+    fn ban_peer(&mut self, peer_id: PeerId) {
         // Remove temporary ban if there is any before creating a permanent one
         self.temporary_bans.lock().remove(&peer_id);
 
@@ -1149,8 +1291,7 @@ where
         self.swarm.behaviour_mut().block_list.block_peer(peer_id);
         self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
         self.networking_parameters_registry
-            .remove_all_known_peer_addresses(peer_id)
-            .await;
+            .remove_all_known_peer_addresses(peer_id);
     }
 
     fn register_event_metrics<E: Debug>(&mut self, swarm_event: &SwarmEvent<Event, E>) {

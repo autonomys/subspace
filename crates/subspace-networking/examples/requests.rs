@@ -7,8 +7,7 @@ use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::{
-    start_prometheus_metrics_server, BootstrappedNetworkingParameters, Config, GenericRequest,
-    GenericRequestHandler,
+    start_prometheus_metrics_server, Config, GenericRequest, GenericRequestHandler,
 };
 use tokio::time::sleep;
 use tracing::error;
@@ -86,16 +85,14 @@ async fn main() {
     let node_1_addr = node_1_address_receiver.await.unwrap();
     drop(on_new_listener_handler);
 
+    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
     let config_2 = Config {
-        networking_parameters_registry: BootstrappedNetworkingParameters::new(vec![
-            node_1_addr.with(Protocol::P2p(node_1.id().into()))
-        ])
-        .boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(
             |_, _| async { None },
         )],
+        bootstrap_addresses,
         ..Config::default()
     };
 
