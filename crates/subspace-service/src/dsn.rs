@@ -69,14 +69,12 @@ pub struct DsnConfig {
     pub target_connections: u32,
 }
 
-type DsnProviderStorage<AS> = PieceCache<AS>;
-
 pub(crate) fn create_dsn_instance<AS>(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
     segment_headers_store: SegmentHeadersStore<AS>,
-) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
+) -> Result<(Node, NodeRunner<PieceCache<AS>>), DsnConfigurationError>
 where
     AS: AuxStore + Sync + Send + 'static,
 {
@@ -93,12 +91,11 @@ where
             .transpose()?
     };
 
-    let provider_storage = piece_cache.clone();
     let keypair = dsn_config.keypair.clone();
     let mut default_networking_config = subspace_networking::Config::new(
         dsn_protocol_version,
         keypair,
-        provider_storage.clone(),
+        piece_cache.clone(),
         Some(PeerInfoProvider::new_node()),
     );
 
