@@ -199,6 +199,8 @@ where
 
     /// Drives the main networking future forward.
     pub async fn run(&mut self) {
+        self.bootstrap().await;
+
         loop {
             futures::select! {
                 _ = &mut self.random_query_timeout => {
@@ -235,6 +237,40 @@ where
                 },
             }
         }
+    }
+
+    /// Bootstraps Kademlia network
+    pub async fn bootstrap(&mut self) {
+        let (result_sender, mut result_receiver) = mpsc::unbounded();
+
+        debug!("Bootstrap started.");
+
+        self.handle_command(Command::Bootstrap { result_sender })
+            .await;
+
+        let mut bootstrap_step = 0;
+        loop {
+            futures::select! {
+                swarm_event = self.swarm.next() => {
+                    if let Some(swarm_event) = swarm_event {
+                        self.register_event_metrics(&swarm_event);
+                        self.handle_swarm_event(swarm_event).await;
+                    } else {
+                        break;
+                    }
+                },
+                result = result_receiver.next() => {
+                    if result.is_some() {
+                        debug!(%bootstrap_step, "Kademlia bootstrapping...");
+                        bootstrap_step += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        debug!("Bootstrap finished.");
     }
 
     /// Handles periodical tasks.

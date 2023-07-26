@@ -6,8 +6,6 @@ use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use either::Either;
-use futures::future::pending;
-use futures::FutureExt;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::{identity, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
@@ -20,7 +18,7 @@ use subspace_networking::{
     peer_id, Config, NetworkingParametersManager, ParityDbProviderStorage, PeerInfoProvider,
     VoidProviderStorage,
 };
-use tracing::{debug, info, warn, Level};
+use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -205,25 +203,7 @@ async fn main() -> anyhow::Result<()> {
             .detach();
 
             info!("Subspace Bootstrap Node started");
-            let bootstrap_fut = Box::pin({
-                let node = node.clone();
-
-                async move {
-                    if let Err(err) = node.bootstrap().await {
-                        warn!(?err, "DSN bootstrap failed.");
-                    }
-
-                    pending::<()>().await;
-                }
-            });
-
-            futures::select!(
-                // Network bootstrapping future
-                _ = bootstrap_fut.fuse() => {},
-
-                // Networking runner
-                _ = node_runner.run().fuse() => {},
-            );
+            node_runner.run().await;
         }
         Command::GenerateKeypair { json } => {
             let output = KeypairOutput::new(Keypair::generate());
