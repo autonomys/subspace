@@ -128,6 +128,8 @@ where
     rng: StdRng,
     /// Addresses to bootstrap Kademlia network
     bootstrap_addresses: Vec<Multiaddr>,
+    /// Ensures a single bootstrap on run() invocation.
+    was_bootstrapped: bool,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -194,12 +196,15 @@ where
             special_connection_decision_handler,
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
             bootstrap_addresses,
+            was_bootstrapped: false,
         }
     }
 
     /// Drives the main networking future forward.
     pub async fn run(&mut self) {
-        self.bootstrap().await;
+        if !self.was_bootstrapped {
+            self.bootstrap().await;
+        }
 
         loop {
             futures::select! {
@@ -240,7 +245,9 @@ where
     }
 
     /// Bootstraps Kademlia network
-    pub async fn bootstrap(&mut self) {
+    async fn bootstrap(&mut self) {
+        self.was_bootstrapped = true;
+
         let (result_sender, mut result_receiver) = mpsc::unbounded();
 
         debug!("Bootstrap started.");
