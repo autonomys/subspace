@@ -210,8 +210,8 @@ pub struct Config<ProviderStorage> {
     pub metrics: Option<Metrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
-    /// Specifies a source for peer information.
-    pub peer_info_provider: PeerInfoProvider,
+    /// Specifies a source for peer information. None disables the protocol.
+    pub peer_info_provider: Option<PeerInfoProvider>,
     /// Defines whether we maintain a persistent connection for common peers.
     pub general_connected_peers_handler: ConnectedPeersHandler,
     /// Defines whether we maintain a persistent connection for special peers.
@@ -239,7 +239,7 @@ impl Default for Config<MemoryProviderStorage> {
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
             MemoryProviderStorage::new(peer_id),
-            PeerInfoProvider::new_client(),
+            Some(PeerInfoProvider::new_client()),
         )
     }
 }
@@ -253,7 +253,7 @@ where
         protocol_version: String,
         keypair: identity::Keypair,
         provider_storage: ProviderStorage,
-        peer_info_provider: PeerInfoProvider,
+        peer_info_provider: Option<PeerInfoProvider>,
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
         kademlia
