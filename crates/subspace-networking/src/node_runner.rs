@@ -253,11 +253,11 @@ where
 
     /// Bootstraps Kademlia network
     async fn bootstrap(&mut self) {
-        let bootstrap_command_state = Arc::clone(&self.bootstrap_command_state);
+        let bootstrap_command_state = self.bootstrap_command_state.clone();
         let mut bootstrap_command_state = bootstrap_command_state.lock().await;
         let bootstrap_command_receiver = match &mut *bootstrap_command_state {
             BootstrapCommandState::NotStarted => {
-                error!("Bootstrap started.");
+                debug!("Bootstrap started.");
 
                 let (bootstrap_command_sender, bootstrap_command_receiver) = mpsc::unbounded();
 
