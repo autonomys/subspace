@@ -27,8 +27,7 @@ pub(crate) fn create(
             // Encrypt in place to produce the next block.
             cipher.encrypt_block(&mut cur_block);
         }
-        let bytes: PotBytes = cur_block.into();
-        checkpoints.push(PotCheckpoint::from(bytes));
+        checkpoints.push(PotCheckpoint::from(PotBytes::from(cur_block)));
     }
     checkpoints
 }
@@ -43,21 +42,21 @@ pub(crate) fn verify_sequential(
 ) -> bool {
     let key = GenericArray::from(PotBytes::from(*key));
     let cipher = Aes128::new(&key);
-    let mut cur_block = GenericArray::from(PotBytes::from(*seed));
 
-    for checkpoint in checkpoints {
-        // Encrypt in place checkpoint_iterations times
-        // and compare with the checkpoint.
-        for _ in 0..checkpoint_iterations {
-            cipher.encrypt_block(&mut cur_block);
-        }
-
-        let checkpoint_block = GenericArray::from(PotBytes::from(*checkpoint));
-        if cur_block != checkpoint_block {
-            return false;
-        }
+    let mut inputs = Vec::with_capacity(checkpoints.len());
+    inputs.push(GenericArray::from(PotBytes::from(*seed)));
+    for checkpoint in checkpoints.iter().rev().skip(1).rev() {
+        inputs.push(GenericArray::from(PotBytes::from(*checkpoint)));
     }
-    true
+
+    for _ in 0..checkpoint_iterations {
+        cipher.encrypt_blocks(&mut inputs);
+    }
+
+    inputs
+        .iter()
+        .zip(checkpoints)
+        .all(|(a, b)| a.as_slice() == b.as_ref())
 }
 
 /// Verifies the AES based proof in parallel.
