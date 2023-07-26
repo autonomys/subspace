@@ -112,7 +112,7 @@ mod pallet {
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
-        Error as StakingEpochError, PendingNominatorUnlock,
+        Error as StakingEpochError, PendingNominatorUnlock, PendingOperatorSlashInfo,
     };
     use crate::weights::WeightInfo;
     use crate::{
@@ -136,6 +136,7 @@ mod pallet {
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
+    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
@@ -303,7 +304,7 @@ mod pallet {
     /// Once epoch is complete, these operators are added to new domains under next_operators.
     #[pallet::storage]
     pub(super) type PendingOperatorSwitches<T: Config> =
-        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// List of all current epoch's nominators and their shares under a given operator,
     #[pallet::storage]
@@ -349,7 +350,7 @@ mod pallet {
     /// Stored here temporarily until domain epoch is complete.
     #[pallet::storage]
     pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// Stores a list of operators who are unlocking in the coming blocks.
     /// The operator will be removed when the wait period is over
@@ -381,8 +382,13 @@ mod pallet {
     /// When the epoch for a given domain is complete, operator total stake is moved to treasury and
     /// then deleted.
     #[pallet::storage]
-    pub(super) type PendingSlashes<T: Config> =
-        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
+    pub(super) type PendingSlashes<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        BTreeMap<OperatorId, PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>>,
+        OptionQuery,
+    >;
 
     /// Stores the next domain id.
     #[pallet::storage]

@@ -20,6 +20,7 @@ use sp_domains::{DomainId, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec::Vec;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
@@ -422,6 +423,7 @@ fn mint_funds<T: Config>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finalize_nominator_withdrawal<T: Config>(
     domain_id: DomainId,
     operator_id: OperatorId,
@@ -562,8 +564,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
     domain_id: DomainId,
 ) -> Result<(), TransitionError> {
     let mut total_slashed_amount = BalanceOf::<T>::zero();
-    for operator_id in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
-        let slashed_amount = slash_operator::<T>(operator_id)?;
+    for (operator_id, slash_info) in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
+        let slashed_amount = slash_operator::<T>(operator_id, slash_info)?;
         total_slashed_amount = total_slashed_amount
             .checked_add(&slashed_amount)
             .ok_or(TransitionError::BalanceOverflow)?;
@@ -587,20 +589,38 @@ fn thaw_and_burn_frozen_balance<T: Config>(
     Ok(())
 }
 
-fn slash_operator<T: Config>(operator_id: OperatorId) -> Result<BalanceOf<T>, TransitionError> {
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct PendingOperatorSlashInfo<NominatorId, Balance> {
+    pub unlocking_nominators: Vec<PendingNominatorUnlock<NominatorId, Balance>>,
+}
+
+fn slash_operator<T: Config>(
+    operator_id: OperatorId,
+    slash_info: PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>,
+) -> Result<BalanceOf<T>, TransitionError> {
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we slash the operator.
         let operator = maybe_operator
             .take()
             .ok_or(TransitionError::UnknownOperator)?;
 
-        // slashed_amount = current_total_stake + rewards + new deposits
-        let mut slashed_amount = operator
+        let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
+
+        let total_stake = operator
             .current_total_stake
             .checked_add(&operator.current_epoch_rewards)
             .ok_or(TransitionError::BalanceOverflow)?;
 
-        let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
+        let unlocking_withdrawals = slash_info
+            .unlocking_nominators
+            .into_iter()
+            .map(|pending_unlock| pending_unlock.balance)
+            .try_fold(BalanceOf::<T>::zero(), |acc, pending_withdrawal| {
+                acc.checked_add(&pending_withdrawal)
+                    .ok_or(TransitionError::BalanceOverflow)
+            })?;
+
+        let mut pending_deposits = BalanceOf::<T>::zero();
 
         Nominators::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, _)| {
             thaw_and_burn_frozen_balance::<T>(&freeze_identifier, &nominator_id)?;
@@ -609,7 +629,7 @@ fn slash_operator<T: Config>(operator_id: OperatorId) -> Result<BalanceOf<T>, Tr
             // then account that deposit in the slashed amount since this new deposit
             // was burned above
             if let Some(deposit) = PendingDeposits::<T>::take(operator_id, nominator_id) {
-                slashed_amount = slashed_amount
+                pending_deposits = pending_deposits
                     .checked_add(&deposit)
                     .ok_or(TransitionError::BalanceOverflow)?;
             }
@@ -617,7 +637,7 @@ fn slash_operator<T: Config>(operator_id: OperatorId) -> Result<BalanceOf<T>, Tr
             Ok(())
         })?;
 
-        // remove all of the pending deposits since we initiated withdrawal for all nominators.
+        // remove all of the pending deposits since we burned all nominator stake.
         let _ = PendingWithdrawals::<T>::clear_prefix(operator_id, u32::MAX, None);
 
         // slash any new nominators as well
@@ -625,7 +645,7 @@ fn slash_operator<T: Config>(operator_id: OperatorId) -> Result<BalanceOf<T>, Tr
         // of new epoch and before operator was slashed
         for (nominator_id, deposit) in PendingDeposits::<T>::drain_prefix(operator_id) {
             thaw_and_burn_frozen_balance::<T>(&freeze_identifier, &nominator_id)?;
-            slashed_amount = slashed_amount
+            pending_deposits = pending_deposits
                 .checked_add(&deposit)
                 .ok_or(TransitionError::BalanceOverflow)?;
         }
@@ -633,6 +653,11 @@ fn slash_operator<T: Config>(operator_id: OperatorId) -> Result<BalanceOf<T>, Tr
         // remove OperatorOwner Details
         OperatorIdOwner::<T>::remove(operator_id);
 
+        // slashed_amount = current_total_stake + rewards + unlocking withdrawals + pending deposits
+        let slashed_amount = total_stake
+            .checked_add(&unlocking_withdrawals)
+            .and_then(|acc| acc.checked_add(&pending_deposits))
+            .ok_or(TransitionError::BalanceOverflow)?;
         Ok(slashed_amount)
     })
 }

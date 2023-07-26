@@ -2,8 +2,10 @@
 
 use crate::pallet::{
     DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators, PendingDeposits,
-    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingSlashes, PendingWithdrawals,
+    PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
+    PendingOperatorUnlocks, PendingSlashes, PendingWithdrawals,
 };
+use crate::staking_epoch::{PendingNominatorUnlock, PendingOperatorSlashInfo};
 use crate::{BalanceOf, Config, FreezeIdentifier, NominatorId};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, InspectFreeze, MutateFreeze};
@@ -16,7 +18,7 @@ use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
-use sp_std::vec::IntoIter;
+use sp_std::vec::{IntoIter, Vec};
 
 /// Type that represents an operator details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -414,6 +416,13 @@ pub(crate) fn do_slash_operators<T: Config>(
     for operator_id in operator_ids {
         Operators::<T>::try_mutate(operator_id, |maybe_operator| {
             let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+            let mut pending_slashes =
+                PendingSlashes::<T>::get(operator.current_domain_id).unwrap_or_default();
+
+            if pending_slashes.contains_key(&operator_id) {
+                return Ok(());
+            }
+
             DomainStakingSummary::<T>::try_mutate(
                 operator.current_domain_id,
                 |maybe_domain_stake_summary| {
@@ -421,12 +430,52 @@ pub(crate) fn do_slash_operators<T: Config>(
                         .as_mut()
                         .ok_or(Error::DomainNotInitialized)?;
 
+                    // freeze and remove operator from next epoch set
                     operator.is_frozen = true;
-
                     stake_summary.next_operators.remove(&operator_id);
 
-                    PendingSlashes::<T>::append(operator.current_domain_id, operator_id);
+                    // remove any current operator switches
+                    PendingOperatorSwitches::<T>::mutate(
+                        operator.current_domain_id,
+                        |maybe_switching_operators| {
+                            if let Some(switching_operators) = maybe_switching_operators.as_mut() {
+                                switching_operators.remove(&operator_id);
+                            }
+                        },
+                    );
 
+                    // remove any current operator de-registrations
+                    PendingOperatorDeregistrations::<T>::mutate(
+                        operator.current_domain_id,
+                        |maybe_deregistering_operators| {
+                            if let Some(deregistering_operators) =
+                                maybe_deregistering_operators.as_mut()
+                            {
+                                deregistering_operators.remove(&operator_id);
+                            }
+                        },
+                    );
+
+                    // remove from operator unlocks
+                    PendingOperatorUnlocks::<T>::mutate(|unlocking_operators| {
+                        unlocking_operators.remove(&operator_id)
+                    });
+
+                    // remove from nominator unlocks
+                    let unlocking_nominators =
+                        PendingNominatorUnlocks::<T>::drain_prefix(operator_id)
+                            .flat_map(|(_, nominator_unlocks)| nominator_unlocks)
+                            .collect::<Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>>();
+
+                    // update pending slashed
+                    pending_slashes.insert(
+                        operator_id,
+                        PendingOperatorSlashInfo {
+                            unlocking_nominators,
+                        },
+                    );
+
+                    PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
                     Ok(())
                 },
             )
@@ -692,7 +741,7 @@ mod tests {
             assert_eq!(operator.next_domain_id, new_domain_id);
             assert_eq!(
                 PendingOperatorSwitches::<Test>::get(old_domain_id).unwrap(),
-                vec![operator_id]
+                BTreeSet::from_iter(vec![operator_id])
             );
 
             let res = Domains::switch_domain(
@@ -1230,7 +1279,7 @@ mod tests {
 
             assert!(PendingSlashes::<Test>::get(domain_id)
                 .unwrap()
-                .contains(&operator_id));
+                .contains_key(&operator_id));
 
             do_finalize_slashed_operators::<Test>(domain_id).unwrap();
             assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
