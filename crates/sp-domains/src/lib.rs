@@ -516,6 +516,11 @@ impl DomainsDigestItem for DigestItem {
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub runtime_code: Vec<u8>,
+    // The genesis config of the domain, encoded in json format.
+    //
+    // NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
+    // redundancy with the `runtime_code` field.
+    pub raw_genesis_config: Option<Vec<u8>>,
 }
 
 impl PassBy for DomainInstanceData {

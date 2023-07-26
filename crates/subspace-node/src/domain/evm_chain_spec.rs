@@ -262,13 +262,6 @@ fn load_chain_spec_with(
     Ok(Box::new(chain_spec))
 }
 
-fn domain_instance_genesis_config(domain_id: DomainId, runtime_code: Vec<u8>) -> GenesisConfig {
-    let mut cfg = GenesisConfig::default();
-    cfg.system.code = runtime_code;
-    cfg.self_domain_id.domain_id = Some(domain_id);
-    cfg
-}
-
 pub fn create_domain_spec(
     domain_id: DomainId,
     chain_id: &str,
@@ -277,11 +270,21 @@ pub fn create_domain_spec(
     let DomainInstanceData {
         runtime_type,
         runtime_code,
+        raw_genesis_config,
     } = domain_instance_data;
 
     match runtime_type {
         RuntimeType::Evm => {
-            let genesis_config = domain_instance_genesis_config(domain_id, runtime_code);
+            let mut genesis_config = match raw_genesis_config {
+                Some(raw_genesis_config) => {
+                    serde_json::from_slice(&raw_genesis_config).map_err(|_| {
+                        "Failed to deserialize genesis config of the evm domain".to_string()
+                    })?
+                }
+                None => GenesisConfig::default(),
+            };
+            genesis_config.system.code = runtime_code;
+            genesis_config.self_domain_id.domain_id = Some(domain_id);
             let spec = load_chain_spec_with(chain_id, genesis_config)?;
             Ok(spec)
         }

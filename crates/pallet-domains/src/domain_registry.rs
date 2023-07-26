@@ -145,7 +145,12 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     let genesis_receipt = {
         let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
             .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
-        initialize_genesis_receipt::<T>(domain_id, runtime_obj.runtime_type, runtime_obj.code)?
+        initialize_genesis_receipt::<T>(
+            domain_id,
+            runtime_obj.runtime_type,
+            runtime_obj.code,
+            raw_genesis_config.clone(),
+        )?
     };
     let genesis_receipt_hash = genesis_receipt.hash();
 
@@ -191,6 +196,7 @@ fn initialize_genesis_receipt<T: Config>(
     domain_id: DomainId,
     runtime_type: RuntimeType,
     runtime_code: Vec<u8>,
+    raw_genesis_config: Option<Vec<u8>>,
 ) -> Result<ExecutionReceiptOf<T>, Error> {
     let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero());
     let genesis_state_root = generate_genesis_state_root(
@@ -198,6 +204,7 @@ fn initialize_genesis_receipt<T: Config>(
         DomainInstanceData {
             runtime_type,
             runtime_code,
+            raw_genesis_config,
         },
     )
     .ok_or(Error::FailedToGenerateGenesisStateRoot)?;

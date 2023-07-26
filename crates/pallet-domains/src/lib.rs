@@ -1043,14 +1043,14 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
-        let runtime_id = DomainRegistry::<T>::get(domain_id)?
-            .domain_config
-            .runtime_id;
-        let (runtime_type, runtime_code) = RuntimeRegistry::<T>::get(runtime_id)
-            .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
+        let domain_obj = DomainRegistry::<T>::get(domain_id)?;
+        let (runtime_type, runtime_code) =
+            RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
+                .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
         Some(DomainInstanceData {
             runtime_type,
             runtime_code,
+            raw_genesis_config: domain_obj.raw_genesis_config,
         })
     }
 
