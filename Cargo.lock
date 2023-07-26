@@ -8672,6 +8672,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-proof-of-time"
+version = "0.1.0"
+dependencies = [
+ "parking_lot 0.12.1",
+ "sc-network",
+ "subspace-core-primitives",
+ "subspace-proof-of-time",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "sc-proposer-metrics"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=55c157cff49b638a59d81a9f971f0f9a66829c71#55c157cff49b638a59d81a9f971f0f9a66829c71"
