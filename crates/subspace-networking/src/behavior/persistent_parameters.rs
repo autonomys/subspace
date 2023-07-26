@@ -47,7 +47,7 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 
     /// Unregisters associated addresses for peer ID.
-    async fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId);
+    fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId);
 
     /// Returns a batch of the combined collection of known addresses from networking parameters DB
     /// and boostrap addresses from networking parameters initialization.
@@ -87,7 +87,7 @@ impl NetworkingParametersRegistry for StubNetworkingParametersManager {
 
     async fn remove_known_peer_addresses(&mut self, _peer_id: PeerId, _addresses: Vec<Multiaddr>) {}
 
-    async fn remove_all_known_peer_addresses(&mut self, _peer_id: PeerId) {}
+    fn remove_all_known_peer_addresses(&mut self, _peer_id: PeerId) {}
 
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
         Vec::new()
@@ -269,7 +269,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
         self.cache_need_saving = true;
     }
 
-    async fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId) {
+    fn remove_all_known_peer_addresses(&mut self, peer_id: PeerId) {
         trace!(%peer_id, "Remove all peer addresses from the networking parameters registry");
 
         self.known_peers.pop(&peer_id);
