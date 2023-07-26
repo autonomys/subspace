@@ -14,15 +14,12 @@ use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
 use std::pin::Pin;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
 use tracing::{debug, error, trace};
-
-const BOOTSTRAP_CHECK_DELAY: Duration = Duration::from_secs(1);
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
@@ -320,7 +317,6 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
-        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -344,7 +340,6 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -365,7 +360,6 @@ impl Node {
 
     /// Subcribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        self.wait_for_bootstrap().await;
         let permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
@@ -394,7 +388,6 @@ impl Node {
 
     /// Subcribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        self.wait_for_bootstrap().await;
         let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
@@ -420,7 +413,6 @@ impl Node {
     where
         Request: GenericRequest,
     {
-        self.wait_for_bootstrap().await;
         let _permit = self.shared.regular_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
@@ -442,7 +434,6 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
-        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
@@ -544,7 +535,6 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        self.wait_for_bootstrap().await;
         let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
@@ -666,19 +656,5 @@ impl Node {
     /// Callback is called when a peer is connected.
     pub fn on_connected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
         self.shared.handlers.connected_peer.add(callback)
-    }
-
-    pub(crate) async fn wait_for_bootstrap(&self) {
-        loop {
-            let was_bootstrapped = self.shared.bootstrap_finished.load(Ordering::SeqCst);
-
-            if was_bootstrapped {
-                return;
-            } else {
-                trace!("Waiting for bootstrap...");
-
-                sleep(BOOTSTRAP_CHECK_DELAY).await;
-            }
-        }
     }
 }
