@@ -19,27 +19,33 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("prove/sequential", |b| {
         b.iter(|| {
-            proof_of_time_sequential.create(
-                black_box(seed),
-                black_box(key),
-                black_box(slot_number),
-                black_box(injected_block_hash),
-            );
+            proof_of_time_sequential
+                .create(
+                    black_box(seed),
+                    black_box(key),
+                    black_box(slot_number),
+                    black_box(injected_block_hash),
+                )
+                .unwrap();
         })
     });
 
     c.bench_function("prove/checkpoints", |b| {
         b.iter(|| {
-            proof_of_time.create(
-                black_box(seed),
-                black_box(key),
-                black_box(slot_number),
-                black_box(injected_block_hash),
-            );
+            proof_of_time
+                .create(
+                    black_box(seed),
+                    black_box(key),
+                    black_box(slot_number),
+                    black_box(injected_block_hash),
+                )
+                .unwrap();
         })
     });
 
-    let proof = proof_of_time.create(seed, key, slot_number, injected_block_hash);
+    let proof = proof_of_time
+        .create(seed, key, slot_number, injected_block_hash)
+        .unwrap();
 
     c.bench_function("verify", |b| {
         b.iter(|| {
