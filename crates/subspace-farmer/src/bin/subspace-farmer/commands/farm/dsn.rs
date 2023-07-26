@@ -152,7 +152,7 @@ pub(super) fn configure_dsn(
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
-        networking_parameters_registry,
+        networking_parameters_registry: Some(networking_parameters_registry),
         request_response_protocols: vec![
             PieceAnnouncementRequestHandler::create({
                 move |peer_id, req| {

@@ -72,7 +72,7 @@ impl Clone for Box<dyn NetworkingParametersRegistry> {
 
 /// Networking manager implementation with NOOP implementation.
 #[derive(Clone, Default)]
-pub struct StubNetworkingParametersManager;
+pub(crate) struct StubNetworkingParametersManager;
 
 impl StubNetworkingParametersManager {
     /// Returns an instance of `StubNetworkingParametersManager` as the `Box` reference.

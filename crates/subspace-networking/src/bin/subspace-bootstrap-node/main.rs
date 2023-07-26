@@ -18,7 +18,7 @@ use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
     peer_id, Config, NetworkingParametersManager, ParityDbProviderStorage, PeerInfoProvider,
-    StubNetworkingParametersManager, VoidProviderStorage,
+    VoidProviderStorage,
 };
 use tracing::{debug, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -164,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
                         NetworkingParametersManager::new(&known_addresses_db)
                             .map(|manager| manager.boxed())
                     })
-                    .unwrap_or(Ok(StubNetworkingParametersManager.boxed()))
+                    .transpose()
                     .map_err(|err| anyhow!(err))?
             };
 

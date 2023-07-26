@@ -1,6 +1,6 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
-use crate::{Config, GenericRequest, GenericRequestHandler, StubNetworkingParametersManager};
+use crate::{Config, GenericRequest, GenericRequestHandler};
 use futures::channel::oneshot;
 use futures::future::pending;
 use libp2p::multiaddr::Protocol;
@@ -162,7 +162,6 @@ async fn test_async_handler_works_with_pending_internal_future() {
 
     let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
     let config_2 = Config {
-        networking_parameters_registry: StubNetworkingParametersManager.boxed(),
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         request_response_protocols: vec![GenericRequestHandler::<ExampleRequest>::create(

@@ -20,7 +20,7 @@ use subspace_networking::{
     PeerInfoProvider, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
     PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-    StubNetworkingParametersManager, KADEMLIA_PROVIDER_TTL_IN_SECS,
+    KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -116,7 +116,7 @@ where
 
                 NetworkingParametersManager::new(&db_path).map(|manager| manager.boxed())
             })
-            .unwrap_or(Ok(StubNetworkingParametersManager.boxed()))?
+            .transpose()?
     };
 
     let provider_storage =

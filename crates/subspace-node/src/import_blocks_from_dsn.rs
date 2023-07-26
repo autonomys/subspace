@@ -22,7 +22,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::{Config, PieceByHashRequestHandler, StubNetworkingParametersManager};
+use subspace_networking::{Config, PieceByHashRequestHandler};
 use subspace_service::dsn::import_blocks::initial_block_import_from_dsn;
 
 /// The `import-blocks-from-network` command used to import blocks from Subspace Network DSN.
@@ -61,7 +61,6 @@ impl ImportBlocksFromDsnCmd {
         IQ: sc_service::ImportQueue<B> + 'static,
     {
         let (node, mut node_runner) = subspace_networking::create(Config {
-            networking_parameters_registry: StubNetworkingParametersManager.boxed(),
             allow_non_global_addresses_in_dht: true,
             request_response_protocols: vec![PieceByHashRequestHandler::create(
                 move |_, _| async { None },
