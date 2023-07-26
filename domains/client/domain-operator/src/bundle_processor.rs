@@ -41,7 +41,7 @@ where
     keystore: KeystorePtr,
     domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
     domain_block_preprocessor:
-        DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApiFull<Client>>,
+        DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApiFull<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
 }
 
@@ -109,6 +109,7 @@ where
     ) -> Self {
         let domain_block_preprocessor = DomainBlockPreprocessor::new(
             domain_id,
+            client.clone(),
             consensus_client.clone(),
             RuntimeApiFull::new(client.clone()),
         );

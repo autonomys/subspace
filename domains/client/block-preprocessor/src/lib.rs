@@ -21,6 +21,7 @@ use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor
 use crate::xdm_verifier::verify_xdm_with_consensus_client;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
+use domain_runtime_primitives::DomainCoreApi;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -28,14 +29,17 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, OpaqueBundles};
+use sp_domains::{
+    DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, OpaqueBundle, OpaqueBundles,
+};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::crypto::blake2b_256_hash;
+use subspace_core_primitives::{Randomness, U256};
 use subspace_runtime_primitives::Balance;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
@@ -101,34 +105,6 @@ where
         .extrinsics_shuffling_seed(block_hash, header)?;
 
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
-}
-
-fn compile_own_domain_bundles<Block, CBlock>(
-    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
-) -> Vec<Block::Extrinsic>
-where
-    Block: BlockT,
-    CBlock: BlockT,
-{
-    bundles
-        .into_iter()
-        .flat_map(|bundle| {
-            bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-                match <<Block as BlockT>::Extrinsic>::decode(
-                    &mut opaque_extrinsic.encode().as_slice(),
-                ) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                                error = ?e,
-                                "Failed to decode the opaque extrisic in bundle, this should not happen"
-                            );
-                        None
-                    }
-                }
-            })
-        })
-        .collect::<Vec<_>>()
 }
 
 fn deduplicate_and_shuffle_extrinsics<Block, SE>(
@@ -222,19 +198,21 @@ pub struct PreprocessResult<Block: BlockT> {
     pub extrinsics_roots: Vec<ExtrinsicsRoot>,
 }
 
-pub struct DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi> {
+pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi> {
     domain_id: DomainId,
+    client: Arc<Client>,
     consensus_client: Arc<CClient>,
     runtime_api: RuntimeApi,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock, CClient, RuntimeApi: Clone> Clone
-    for DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi>
+impl<Block, CBlock, Client, CClient, RuntimeApi: Clone> Clone
+    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi>
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
+            client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             runtime_api: self.runtime_api.clone(),
             _phantom_data: self._phantom_data,
@@ -242,7 +220,8 @@ impl<Block, CBlock, CClient, RuntimeApi: Clone> Clone
     }
 }
 
-impl<Block, CBlock, CClient, RuntimeApi> DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi>
+impl<Block, CBlock, Client, CClient, RuntimeApi>
+    DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -252,6 +231,8 @@ where
         + StateRootExtractor<Block>
         + SetCodeConstructor<Block>
         + InherentExtrinsicConstructor<Block>,
+    Client: ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
@@ -262,11 +243,13 @@ where
 {
     pub fn new(
         domain_id: DomainId,
+        client: Arc<Client>,
         consensus_client: Arc<CClient>,
         runtime_api: RuntimeApi,
     ) -> Self {
         Self {
             domain_id,
+            client,
             consensus_client,
             runtime_api,
             _phantom_data: Default::default(),
@@ -299,7 +282,7 @@ where
             .map(|bundle| bundle.extrinsics_root())
             .collect();
 
-        let extrinsics = compile_own_domain_bundles::<Block, CBlock>(bundles);
+        let extrinsics = self.compile_own_domain_bundles(bundles, domain_hash);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -335,6 +318,62 @@ where
             extrinsics,
             extrinsics_roots,
         }))
+    }
+
+    fn is_valid_bundle(
+        &self,
+        bundle: &OpaqueBundle<
+            NumberFor<CBlock>,
+            CBlock::Hash,
+            NumberFor<Block>,
+            Block::Hash,
+            Balance,
+        >,
+        at: Block::Hash,
+    ) -> bool {
+        for opaque_extrinsic in &bundle.extrinsics {
+            let Ok(extrinsic) =
+                <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
+            else {
+                return false;
+            };
+
+            // check tx range
+
+            // check tx validity
+        }
+
+        true
+    }
+
+    fn compile_own_domain_bundles(
+        &self,
+        bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
+        at: Block::Hash,
+    ) -> Vec<Block::Extrinsic> {
+        bundles
+            .into_iter()
+            .filter(|bundle| self.is_valid_bundle(bundle, at))
+            .flat_map(|bundle| {
+                bundle
+                    .extrinsics
+                    .into_iter()
+                    .filter_map(|opaque_extrinsic| {
+                        match <<Block as BlockT>::Extrinsic>::decode(
+                            &mut opaque_extrinsic.encode().as_slice(),
+                        ) {
+                            Ok(uxt) => Some(uxt),
+                            Err(e) => {
+                                tracing::error!(
+                                    error = ?e,
+                                    "Failed to decode the opaque extrisic in bundle, this should not happen"
+                                );
+                                None
+                            }
+                        }
+                    })
+            })
+            .collect::<Vec<_>>()
     }
 
     fn filter_invalid_xdm_extrinsics(
