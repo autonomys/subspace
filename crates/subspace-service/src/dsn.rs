@@ -1,28 +1,20 @@
 pub mod import_blocks;
-pub mod node_provider_storage;
 
-use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
-use either::Either;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::SegmentHeadersStore;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    peer_id, CreationError, MemoryProviderStorage, NetworkParametersPersistenceError,
-    NetworkingParametersManager, Node, NodeRunner, ParityDbError, ParityDbProviderStorage,
-    PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
+    CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
+    NodeRunner, ParityDbError, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
-
-/// Provider records cache size
-const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
 
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
 
@@ -77,8 +69,7 @@ pub struct DsnConfig {
     pub target_connections: u32,
 }
 
-type DsnProviderStorage<AS> =
-    NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
+type DsnProviderStorage<AS> = PieceCache<AS>;
 
 pub(crate) fn create_dsn_instance<AS>(
     dsn_protocol_version: String,
@@ -91,19 +82,6 @@ where
 {
     trace!("Subspace networking starting.");
 
-    let peer_id = peer_id(&dsn_config.keypair);
-
-    let external_provider_storage = if let Some(path) = &dsn_config.base_path {
-        let db_path = path.join("storage_providers_db");
-
-        let cache_size: NonZeroUsize = NonZeroUsize::new(MAX_PROVIDER_RECORDS_LIMIT)
-            .expect("Manual value should be greater than zero.");
-
-        Either::Left(ParityDbProviderStorage::new(&db_path, cache_size, peer_id)?)
-    } else {
-        Either::Right(MemoryProviderStorage::new(peer_id))
-    };
-
     let networking_parameters_registry = {
         dsn_config
             .base_path
@@ -115,8 +93,7 @@ where
             .transpose()?
     };
 
-    let provider_storage =
-        NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
+    let provider_storage = piece_cache.clone();
     let keypair = dsn_config.keypair.clone();
     let mut default_networking_config = subspace_networking::Config::new(
         dsn_protocol_version,
