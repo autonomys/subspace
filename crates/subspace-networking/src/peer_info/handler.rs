@@ -60,6 +60,7 @@ pub enum PeerInfoSuccess {
 pub enum PeerInfoError {
     /// The peer does not support the peer info protocol.
     #[error("Peer info protocol is not supported.")]
+    #[allow(dead_code)] // We preserve errors on dial upgrades for future use.
     Unsupported,
     /// The peer info request failed.
     #[error("Peer info error: {error}")]
@@ -246,14 +247,16 @@ impl ConnectionHandler for Handler {
                 ));
             }
             ConnectionEvent::DialUpgradeError(DialUpgradeError { error, .. }) => {
-                let error = match error {
+                match error {
                     ConnectionHandlerUpgrErr::Upgrade(UpgradeError::Select(
                         NegotiationError::Failed,
-                    )) => PeerInfoError::Unsupported,
-                    e => PeerInfoError::Other { error: Box::new(e) },
+                    )) => {
+                        debug!("Peer-info protocol dial upgrade failed.");
+                    }
+                    e => {
+                        self.error = Some(PeerInfoError::Other { error: Box::new(e) });
+                    }
                 };
-
-                self.error = Some(error);
             }
             ConnectionEvent::ListenUpgradeError(ListenUpgradeError { error, .. }) => {
                 self.error = Some(PeerInfoError::Other {

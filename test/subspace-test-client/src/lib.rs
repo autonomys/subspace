@@ -150,24 +150,28 @@ async fn start_farming<PosTable, Client>(
     )
     .unwrap();
 
+    let table_generator = PosTable::generator();
+
     std::thread::spawn({
         let keypair = keypair.clone();
         let erasure_coding = erasure_coding.clone();
 
         move || {
-            let (sector, sector_metadata) = block_on(plot_one_segment::<PosTable, _>(
-                client.as_ref(),
-                &keypair,
-                MAX_PIECES_IN_SECTOR,
-                &erasure_coding,
-            ));
+            let (sector, sector_metadata, table_generator) =
+                block_on(plot_one_segment::<PosTable, _>(
+                    client.as_ref(),
+                    &keypair,
+                    MAX_PIECES_IN_SECTOR,
+                    &erasure_coding,
+                    table_generator,
+                ));
             plotting_result_sender
-                .send((sector, sector_metadata))
+                .send((sector, sector_metadata, table_generator))
                 .unwrap();
         }
     });
 
-    let (sector, plotted_sector) = plotting_result_receiver.await.unwrap();
+    let (sector, plotted_sector, mut table_generator) = plotting_result_receiver.await.unwrap();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
@@ -193,7 +197,7 @@ async fn start_farming<PosTable, Client>(
             .expect("With max solution range there must be a sector eligible; qed");
 
             let solution = solution_candidates
-                .into_iter::<_, PosTable>(&public_key, &kzg, &erasure_coding)
+                .into_iter::<_, PosTable>(&public_key, &kzg, &erasure_coding, &mut table_generator)
                 .unwrap()
                 .next()
                 .expect("With max solution range there must be a solution; qed")
@@ -213,7 +217,8 @@ async fn plot_one_segment<PosTable, Client>(
     keypair: &schnorrkel::Keypair,
     pieces_in_sector: u16,
     erasure_coding: &ErasureCoding,
-) -> (Vec<u8>, PlottedSector)
+    mut table_generator: PosTable::Generator,
+) -> (Vec<u8>, PlottedSector, PosTable::Generator)
 where
     PosTable: Table,
     Client: BlockBackend<Block> + HeaderBackend<Block>,
@@ -255,9 +260,10 @@ where
         pieces_in_sector,
         &mut sector,
         &mut sector_metadata,
+        &mut table_generator,
     )
     .await
     .expect("Plotting one sector in memory must not fail");
 
-    (sector, plotted_sector)
+    (sector, plotted_sector, table_generator)
 }

@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.28"
-parity-scale-codec = { version = "3.6.1", features = ["derive"] }
+parity-scale-codec = { version = "3.6.3", features = ["derive"] }
 parking_lot = "0.12.1"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 sc-network-common = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }

@@ -1,6 +1,6 @@
 //! Shim proof of space implementation
 
-use crate::{PosTableType, Quality, Table};
+use crate::{PosTableType, Quality, Table, TableGenerator};
 use core::iter;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, PosProof, PosQualityBytes, PosSeed, U256};
@@ -36,6 +36,18 @@ impl<'a> Quality for ShimQuality<'a> {
     }
 }
 
+/// Subspace proof of space table generator.
+///
+/// Shim implementation.
+#[derive(Debug, Default, Clone)]
+pub struct ShimTableGenerator;
+
+impl TableGenerator<ShimTable> for ShimTableGenerator {
+    fn generate(&mut self, seed: &PosSeed) -> ShimTable {
+        ShimTable::generate(seed)
+    }
+}
+
 /// Subspace proof of space table.
 ///
 /// Shim implementation.
@@ -46,6 +58,7 @@ pub struct ShimTable {
 
 impl Table for ShimTable {
     const TABLE_TYPE: PosTableType = PosTableType::Shim;
+    type Generator = ShimTableGenerator;
 
     type Quality<'a> = ShimQuality<'a>;
 
