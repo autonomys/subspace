@@ -129,7 +129,7 @@ where
         dsn_protocol_version,
         keypair,
         provider_storage.clone(),
-        PeerInfoProvider::new_node(),
+        Some(PeerInfoProvider::new_node()),
     );
 
     default_networking_config

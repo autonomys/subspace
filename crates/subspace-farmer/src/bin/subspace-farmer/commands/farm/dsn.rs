@@ -147,7 +147,9 @@ pub(super) fn configure_dsn(
         protocol_prefix,
         keypair,
         farmer_provider_storage.clone(),
-        PeerInfoProvider::new_farmer(Box::new(archival_storage_pieces)),
+        Some(PeerInfoProvider::new_farmer(Box::new(
+            archival_storage_pieces,
+        ))),
     );
     let config = Config {
         reserved_peers,
