@@ -879,16 +879,10 @@ mod tests {
 
             if let Some(withdraw) = expected_withdraw {
                 // finalize pending withdrawals
-                let current_consensus_block = 100;
                 let domain_block = 100;
                 let expected_unlock_at =
-                    current_consensus_block + crate::tests::StakeWithdrawalLockingPeriod::get();
-                do_finalize_domain_current_epoch::<Test>(
-                    domain_id,
-                    domain_block,
-                    current_consensus_block,
-                )
-                .unwrap();
+                    domain_block + crate::tests::StakeWithdrawalLockingPeriod::get();
+                do_finalize_domain_current_epoch::<Test>(domain_id, domain_block).unwrap();
                 assert_eq!(
                     PendingWithdrawals::<Test>::get(operator_id, nominator_id),
                     None
@@ -900,12 +894,12 @@ mod tests {
                 assert_eq!(pending_unlocks_at[0].nominator_id, nominator_id);
 
                 assert_eq!(
-                    PendingUnlocks::<Test>::get(expected_unlock_at),
+                    PendingUnlocks::<Test>::get((domain_id, expected_unlock_at)),
                     Some(BTreeSet::from_iter(vec![operator_id]))
                 );
 
                 let previous_usable_balance = Balances::usable_balance(nominator_id);
-                do_unlock_pending_withdrawals::<Test>(expected_unlock_at).unwrap();
+                do_unlock_pending_withdrawals::<Test>(domain_id, expected_unlock_at).unwrap();
 
                 let withdrew_amount = match withdraw {
                     Withdraw::All => {
