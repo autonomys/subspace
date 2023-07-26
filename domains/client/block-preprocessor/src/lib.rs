@@ -273,20 +273,6 @@ where
         }
     }
 
-    pub fn preprocess_consensus_block_for_verifier(
-        &self,
-        consensus_block_hash: CBlock::Hash,
-    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
-        // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
-        let domain_hash = Default::default();
-        match self.preprocess_consensus_block(consensus_block_hash, domain_hash)? {
-            Some(PreprocessResult { extrinsics, .. }) => {
-                Ok(extrinsics.into_iter().map(|ext| ext.encode()).collect())
-            }
-            None => Ok(Vec::new()),
-        }
-    }
-
     pub fn preprocess_consensus_block(
         &self,
         consensus_block_hash: CBlock::Hash,
