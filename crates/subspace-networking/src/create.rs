@@ -71,11 +71,6 @@ const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 // The default maximum connection number to be maintained for the swarm.
 const SWARM_TARGET_CONNECTION_NUMBER: u32 = 30;
-// Defines an expiration interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
-// Defines a republication interval for item providers in Kademlia network.
-const KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS: Option<Duration> =
-    Some(Duration::from_secs(3600)); /* 1 hour */
 // Defines a replication factor for Kademlia on get_record operation.
 // "Good citizen" supports the network health.
 const YAMUX_MAX_STREAMS: usize = 256;
@@ -268,11 +263,9 @@ where
             .set_max_packet_size(2 * Piece::SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)
             .set_record_filtering(KademliaStoreInserts::FilterBoth)
-            // Providers' settings
-            .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS)
-            // TODO: remove republication after removing all pieces` announcements
-            .set_provider_publication_interval(KADEMLIA_PROVIDER_REPUBLICATION_INTERVAL_IN_SECS)
-            // Our records don't expire.
+            // We don't use records and providers publication.
+            .set_provider_record_ttl(None)
+            .set_provider_publication_interval(None)
             .set_record_ttl(None)
             .set_replication_interval(None);
 

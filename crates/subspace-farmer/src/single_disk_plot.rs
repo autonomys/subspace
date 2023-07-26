@@ -43,7 +43,7 @@ use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, OwnedSemaphorePermit};
+use tokio::sync::broadcast;
 use tracing::{debug, error, info, info_span, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -264,8 +264,6 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub kzg: Kzg,
     /// Erasure coding instance to use.
     pub erasure_coding: ErasureCoding,
-    /// Semaphore to limit concurrency of plotting process.
-    pub concurrent_plotting_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -275,6 +273,9 @@ pub enum SingleDiskPlotError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Can't preallocate plot file, probably not enough space on disk
+    #[error("Can't preallocate plot file, probably not enough space on disk: {0}")]
+    CantPreallocatePlotFile(io::Error),
     /// Can't resize plot after creation
     #[error(
         "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot \
@@ -381,11 +382,7 @@ type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Default, Debug)]
 struct Handlers {
-    sector_plotted: Handler<(
-        PlottedSector,
-        Option<PlottedSector>,
-        Arc<OwnedSemaphorePermit>,
-    )>,
+    sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
     solution: Handler<SolutionResponse>,
 }
 
@@ -452,7 +449,6 @@ impl SingleDiskPlot {
             piece_getter,
             kzg,
             erasure_coding,
-            concurrent_plotting_semaphore,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -637,7 +633,9 @@ impl SingleDiskPlot {
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
-        plot_file.preallocate(sector_size as u64 * u64::from(target_sector_count))?;
+        plot_file
+            .preallocate(sector_size as u64 * u64::from(target_sector_count))
+            .map_err(SingleDiskPlotError::CantPreallocatePlotFile)?;
 
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
@@ -703,7 +701,6 @@ impl SingleDiskPlot {
                             erasure_coding,
                             handlers,
                             modifying_sector_index,
-                            concurrent_plotting_semaphore,
                             sectors_to_plot_receiver,
                         )
                         .await
@@ -948,11 +945,7 @@ impl SingleDiskPlot {
     /// throttling of the plotting process is desired.
     pub fn on_sector_plotted(
         &self,
-        callback: HandlerFn<(
-            PlottedSector,
-            Option<PlottedSector>,
-            Arc<OwnedSemaphorePermit>,
-        )>,
+        callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
     ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
     }

@@ -27,6 +27,7 @@ use sc_client_api::BlockBackend;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceLink,
+    SubspaceSyncOracle,
 };
 use sc_consensus_subspace_rpc::{
     PieceProvider, SegmentHeaderProvider, SubspaceRpc, SubspaceRpcApiServer,
@@ -38,6 +39,7 @@ use sc_transaction_pool_api::TransactionPool;
 use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use sp_consensus::SyncOracle;
 use sp_consensus_subspace::FarmerPublicKey;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
@@ -46,7 +48,10 @@ use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
-pub struct FullDeps<C, P, RBP, PP> {
+pub struct FullDeps<C, P, RBP, PP, SO>
+where
+    SO: SyncOracle + Send + Sync + Clone,
+{
     /// The client instance to use.
     pub client: Arc<C>,
     /// Transaction pool instance.
@@ -73,11 +78,13 @@ pub struct FullDeps<C, P, RBP, PP> {
     pub segment_headers_provider: RBP,
     /// Provides pieces from piece cache.
     pub piece_provider: Option<PP>,
+    /// Subspace sync oracle
+    pub sync_oracle: SubspaceSyncOracle<SO>,
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P, RPB, PP>(
-    deps: FullDeps<C, P, RPB, PP>,
+pub fn create_full<C, P, RPB, PP, SO>(
+    deps: FullDeps<C, P, RPB, PP, SO>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
@@ -94,6 +101,7 @@ where
     P: TransactionPool + 'static,
     RPB: SegmentHeaderProvider + Send + Sync + 'static,
     PP: PieceProvider + Send + Sync + 'static,
+    SO: SyncOracle + Send + Sync + Clone + 'static,
 {
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -109,6 +117,7 @@ where
         subspace_link,
         segment_headers_provider,
         piece_provider,
+        sync_oracle,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -130,6 +139,7 @@ where
             subspace_link,
             segment_headers_provider,
             piece_provider,
+            sync_oracle,
         )
         .into_rpc(),
     )?;

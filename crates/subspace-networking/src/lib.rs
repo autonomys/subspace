@@ -63,5 +63,6 @@ pub use request_handlers::pieces_by_range::{
 pub use request_handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
+pub use shared::NewPeerInfo;
 pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::unique_record_binary_heap::UniqueRecordBinaryHeap;

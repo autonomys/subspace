@@ -53,6 +53,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
+use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type PosTable = ShimTable;
@@ -412,6 +413,8 @@ pub fn create_signed_vote(
     let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);
 
+    let mut table_generator = PosTable::generator();
+
     for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = vec![0; sector_size];
         let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
@@ -427,6 +430,7 @@ pub fn create_signed_vote(
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
+            &mut table_generator,
         ))
         .unwrap();
 
@@ -445,7 +449,7 @@ pub fn create_signed_vote(
         };
 
         let solution = solution_candidates
-            .into_iter::<_, PosTable>(&reward_address, kzg, erasure_coding)
+            .into_iter::<_, PosTable>(&reward_address, kzg, erasure_coding, &mut table_generator)
             .unwrap()
             .next()
             .unwrap()

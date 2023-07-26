@@ -5,7 +5,6 @@ use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Context, Result};
-use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
@@ -22,10 +21,10 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_plot::{
     SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
 };
+use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
 use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
-use subspace_farmer::utils::node_piece_getter::NodePieceGetter;
 use subspace_farmer::utils::piece_cache::PieceCache;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
@@ -34,13 +33,11 @@ use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy, PlottedSector};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::utils::piece_announcement::announce_single_piece_index_hash_with_backoff;
-use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator};
 use subspace_networking::Node;
 use subspace_proof_of_space::Table;
-use tokio::sync::{broadcast, OwnedSemaphorePermit};
 use tokio::time::sleep;
-use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use tracing::{debug, error, info, info_span, trace, warn};
 use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
@@ -83,10 +80,6 @@ where
     info!(url = %node_rpc_url, "Connecting to node RPC");
     let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-    let concurrent_plotting_semaphore = Arc::new(tokio::sync::Semaphore::new(
-        farming_args.max_concurrent_plots.get(),
-    ));
-
     let farmer_app_info = node_client
         .farmer_app_info()
         .await
@@ -99,6 +92,7 @@ where
         / Piece::SIZE
         + 1usize;
     let archival_storage_pieces = ArchivalStoragePieces::new(cuckoo_filter_capacity);
+    let archival_storage_info = ArchivalStorageInfo::default();
 
     let (node, mut node_runner, piece_cache) = {
         // TODO: Temporary networking identity derivation from the first disk farm identity.
@@ -123,6 +117,7 @@ where
             &readers_and_pieces,
             node_client.clone(),
             archival_storage_pieces.clone(),
+            archival_storage_info.clone(),
         )?
     };
 
@@ -145,9 +140,12 @@ where
             segment_commitments_cache,
         )),
     );
+
     let piece_getter = Arc::new(FarmerPieceGetter::new(
-        NodePieceGetter::new(piece_provider),
+        node.clone(),
+        piece_provider,
         piece_cache.clone(),
+        archival_storage_info,
     ));
 
     let last_segment_index = farmer_app_info.protocol_info.history_size.segment_index();
@@ -209,7 +207,6 @@ where
                 kzg: kzg.clone(),
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
-                concurrent_plotting_semaphore: Arc::clone(&concurrent_plotting_semaphore),
             },
             disk_farm_index,
         );
@@ -300,71 +297,28 @@ where
                 "More than 256 plots are not supported, this is checked above already; qed",
             );
             let readers_and_pieces = Arc::clone(&readers_and_pieces);
-            let node = node.clone();
             let span = info_span!("farm", %disk_farm_index);
 
-            // We are not going to send anything here, but dropping of sender on dropping of
-            // corresponding `SingleDiskPlot` will allow us to stop background tasks.
-            let (dropped_sender, _dropped_receiver) = broadcast::channel::<()>(1);
-
             // Collect newly plotted pieces
-            let on_plotted_sector_callback = move |(
-                plotted_sector,
-                maybe_old_plotted_sector,
-                plotting_permit,
-            ): &(
-                PlottedSector,
-                Option<PlottedSector>,
-                Arc<OwnedSemaphorePermit>,
-            )| {
-                let _span_guard = span.enter();
-                let plotting_permit = Arc::clone(plotting_permit);
-                let node = node.clone();
-                let sector_index = plotted_sector.sector_index;
+            let on_plotted_sector_callback =
+                move |(plotted_sector, maybe_old_plotted_sector): &(
+                    PlottedSector,
+                    Option<PlottedSector>,
+                )| {
+                    let _span_guard = span.enter();
 
-                let mut dropped_receiver = dropped_sender.subscribe();
+                    {
+                        let mut readers_and_pieces = readers_and_pieces.lock();
+                        let readers_and_pieces = readers_and_pieces
+                            .as_mut()
+                            .expect("Initial value was populated above; qed");
 
-                {
-                    let mut readers_and_pieces = readers_and_pieces.lock();
-                    let readers_and_pieces = readers_and_pieces
-                        .as_mut()
-                        .expect("Initial value was populated above; qed");
-
-                    if let Some(old_plotted_sector) = maybe_old_plotted_sector {
-                        readers_and_pieces.delete_sector(disk_farm_index, old_plotted_sector);
+                        if let Some(old_plotted_sector) = maybe_old_plotted_sector {
+                            readers_and_pieces.delete_sector(disk_farm_index, old_plotted_sector);
+                        }
+                        readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
                     }
-                    readers_and_pieces.add_sector(disk_farm_index, plotted_sector);
-                }
-
-                let piece_indexes = plotted_sector.piece_indexes.clone();
-                // TODO: Remove when we no longer need announcements
-                let publish_fut = async move {
-                    let mut pieces_publishing_futures = piece_indexes
-                        .iter()
-                        .map(|piece_index| {
-                            announce_single_piece_index_hash_with_backoff(piece_index.hash(), &node)
-                        })
-                        .collect::<FuturesUnordered<_>>();
-
-                    while pieces_publishing_futures.next().await.is_some() {
-                        // Nothing is needed here, just driving all futures to completion
-                    }
-
-                    info!(?sector_index, "Sector publishing was successful.");
-
-                    // Release only after publishing is finished
-                    drop(plotting_permit);
-                }
-                .in_current_span();
-
-                tokio::spawn(async move {
-                    let result =
-                        select(Box::pin(publish_fut), Box::pin(dropped_receiver.recv())).await;
-                    if matches!(result, Either::Right(_)) {
-                        debug!("Piece publishing was cancelled due to shutdown.");
-                    }
-                });
-            };
+                };
 
             single_disk_plot
                 .on_sector_plotted(Arc::new(on_plotted_sector_callback))
@@ -429,13 +383,13 @@ fn derive_libp2p_keypair(schnorrkel_sk: &schnorrkel::SecretKey) -> Keypair {
 /// Populates piece cache on startup. It waits for the new segment index and check all pieces from
 /// previous segments to see if they are already in the cache. If they are not, they are added
 /// from DSN.
-async fn populate_pieces_cache<PG, PC>(
+async fn populate_pieces_cache<PV, PC>(
     node: Node,
     segment_index: SegmentIndex,
-    piece_getter: Arc<FarmerPieceGetter<PG, PC>>,
+    piece_getter: Arc<FarmerPieceGetter<PV, PC>>,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
 ) where
-    PG: PieceGetter + Send + Sync,
+    PV: PieceValidator + Send + Sync + 'static,
     PC: PieceCache + Send + 'static,
 {
     // Give some time to obtain DSN connection.
