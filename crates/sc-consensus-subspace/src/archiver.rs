@@ -75,6 +75,10 @@ where
         let mut cache = Vec::with_capacity(Self::INITIAL_CACHE_CAPACITY);
         let mut next_key_index = 0;
 
+        debug!(
+            target: "subspace",
+            "Started loading segment headers into cache"
+        );
         while let Some(segment_headers) =
             aux_store
                 .get_aux(&Self::key(next_key_index))?
@@ -86,6 +90,10 @@ where
             cache.extend(segment_headers);
             next_key_index += 1;
         }
+        debug!(
+            target: "subspace",
+            "Finished loading segment headers into cache"
+        );
 
         Ok(Self {
             inner: Arc::new(SegmentHeadersStoreInner {
