@@ -282,7 +282,7 @@ where
             .collect();
 
         let extrinsics =
-            self.compile_own_domain_bundles(bundles, consensus_block_hash, domain_hash);
+            self.compile_bundles_to_extrinsics(bundles, consensus_block_hash, domain_hash);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -320,6 +320,34 @@ where
         }))
     }
 
+    /// Filter out the invalid bundles first and then convert the remaining valid ones to
+    /// a list of extrinsics.
+    fn compile_bundles_to_extrinsics(
+        &self,
+        bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
+        consensus_block_hash: CBlock::Hash,
+        at: Block::Hash,
+    ) -> Vec<Block::Extrinsic> {
+        bundles
+            .into_iter()
+            .filter(|bundle| {
+                self.is_valid_bundle(bundle, consensus_block_hash, at)
+                    .map_err(|err| {
+                        tracing::error!(?err, "Error occurred in checking bundle validity");
+                    })
+                    .unwrap_or(false)
+            })
+            .flat_map(|valid_bundle| {
+                valid_bundle.extrinsics.into_iter().map(|opaque_extrinsic| {
+                    <<Block as BlockT>::Extrinsic>::decode(
+                        &mut opaque_extrinsic.encode().as_slice(),
+                    )
+                    .expect("Must succeed as it was decoded successfully before; qed")
+                })
+            })
+            .collect::<Vec<_>>()
+    }
+
     fn is_valid_bundle(
         &self,
         bundle: &OpaqueBundle<
@@ -331,23 +359,23 @@ where
         >,
         consensus_block_hash: CBlock::Hash,
         at: Block::Hash,
-    ) -> sp_blockchain::Result<bool> {
+    ) -> Result<bool, sp_api::ApiError> {
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
         let tx_range = self
             .consensus_client
             .runtime_api()
-            .domain_tx_range(consensus_block_hash, self.domain_id)
-            .map_err(|error| {
-                sp_blockchain::Error::Application(Box::from(format!(
-                    "Error getting tx range: {error}"
-                )))
-            })?;
+            .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
         for opaque_extrinsic in &bundle.extrinsics {
             let Ok(extrinsic) =
                 <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
             else {
+                tracing::error!(
+                    ?opaque_extrinsic,
+                    "Undecodable extrinsic in bundle({})",
+                    bundle.hash()
+                );
                 return Ok(false);
             };
 
@@ -359,6 +387,7 @@ where
             )?;
 
             if !is_within_tx_range {
+                // TODO: Generate a fraud proof for this invalid bundle
                 return Ok(false);
             }
 
@@ -369,45 +398,12 @@ where
                 .is_ok();
 
             if !is_legal_tx {
+                // TODO: Generate a fraud proof for this invalid bundle
                 return Ok(false);
             }
         }
 
         Ok(true)
-    }
-
-    fn compile_own_domain_bundles(
-        &self,
-        bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
-        consensus_block_hash: CBlock::Hash,
-        at: Block::Hash,
-    ) -> Vec<Block::Extrinsic> {
-        bundles
-            .into_iter()
-            .filter(|bundle| {
-                self.is_valid_bundle(bundle, consensus_block_hash, at)
-                    .unwrap_or(false)
-            })
-            .flat_map(|bundle| {
-                bundle
-                    .extrinsics
-                    .into_iter()
-                    .filter_map(|opaque_extrinsic| {
-                        match <<Block as BlockT>::Extrinsic>::decode(
-                            &mut opaque_extrinsic.encode().as_slice(),
-                        ) {
-                            Ok(uxt) => Some(uxt),
-                            Err(e) => {
-                                tracing::error!(
-                                    error = ?e,
-                                    "Failed to decode the opaque extrisic in bundle, this should not happen"
-                                );
-                                None
-                            }
-                        }
-                    })
-            })
-            .collect::<Vec<_>>()
     }
 
     fn filter_invalid_xdm_extrinsics(

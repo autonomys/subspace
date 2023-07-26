@@ -109,7 +109,7 @@ where
         for pending_tx in pending_iterator {
             let pending_tx_data = pending_tx.data();
 
-            let should_select_this_tx = self
+            let is_within_tx_range = self
                 .client
                 .runtime_api()
                 .is_within_tx_range(parent_hash, pending_tx_data, &bundle_vrf_hash, &tx_range)
@@ -122,7 +122,7 @@ where
                 })
                 .unwrap_or(false);
 
-            if should_select_this_tx {
+            if is_within_tx_range {
                 let tx_weight = self
                     .client
                     .runtime_api()

@@ -627,13 +627,13 @@ pub fn extract_signer(
 ) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)> {
     let lookup = frame_system::ChainContext::<Runtime>::default();
 
-    let mut signer_extrinsics = Vec::with_capacity(extrinsics.len());
-    for extrinsic in extrinsics {
-        let maybe_signer = extract_signer_inner(&extrinsic, &lookup);
-        signer_extrinsics.push((maybe_signer, extrinsic));
-    }
-
-    signer_extrinsics
+    extrinsics
+        .into_iter()
+        .map(|extrinsic| {
+            let maybe_signer = extract_signer_inner(&extrinsic, &lookup);
+            (maybe_signer, extrinsic)
+        })
+        .collect()
 }
 
 impl_runtime_apis! {
