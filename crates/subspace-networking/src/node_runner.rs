@@ -246,8 +246,6 @@ where
 
     /// Bootstraps Kademlia network
     async fn bootstrap(&mut self) {
-        self.was_bootstrapped = true;
-
         let (result_sender, mut result_receiver) = mpsc::unbounded();
 
         debug!("Bootstrap started.");
@@ -271,6 +269,7 @@ where
                         debug!(%bootstrap_step, "Kademlia bootstrapping...");
                         bootstrap_step += 1;
                     } else {
+                        self.was_bootstrapped = true;
                         break;
                     }
                 }
@@ -854,8 +853,6 @@ where
                         }
                         Err(error) => {
                             debug!(?error, "Bootstrap query failed.",);
-
-                            self.set_bootstrap_finished(false);
                         }
                     }
                 }
@@ -863,25 +860,9 @@ where
                 if last || cancelled {
                     // There will be no more progress
                     self.query_id_receivers.remove(&id);
-
-                    if last {
-                        self.set_bootstrap_finished(true);
-                    }
-
-                    if cancelled {
-                        self.set_bootstrap_finished(false);
-                    }
                 }
             }
             _ => {}
-        }
-    }
-
-    fn set_bootstrap_finished(&mut self, success: bool) {
-        if let Some(shared) = self.shared_weak.upgrade() {
-            shared.bootstrap_finished.store(true, Ordering::SeqCst);
-
-            debug!(%success, "Bootstrap finished.",);
         }
     }
 
@@ -1264,8 +1245,6 @@ where
                         debug!(?err, "Bootstrap error.");
 
                         let _ = result_sender.close().await;
-
-                        self.set_bootstrap_finished(false);
                     }
                 }
             }
