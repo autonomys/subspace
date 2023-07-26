@@ -10941,6 +10941,7 @@ name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
  "evm-domain-test-runtime",
+ "fp-evm 3.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "futures",
  "sc-chain-spec",
  "sc-client-api",
@@ -10948,6 +10949,7 @@ dependencies = [
  "sc-executor",
  "sc-service",
  "schnorrkel",
+ "serde_json",
  "sp-api",
  "sp-consensus-subspace",
  "sp-core",
