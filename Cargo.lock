@@ -2341,6 +2341,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-weights",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
 ]
 
@@ -2836,6 +2837,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
@@ -2888,6 +2890,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
@@ -9857,6 +9860,7 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "num-traits",
  "parity-scale-codec",
  "rs_merkle",
  "scale-info",

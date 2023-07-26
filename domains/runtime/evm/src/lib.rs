@@ -600,27 +600,36 @@ fn extract_xdm_proof_state_roots(
     }
 }
 
-pub fn extract_signers<Lookup>(
-    extrinsics: Vec<UncheckedExtrinsic>,
+fn extract_signer_inner<Lookup>(
+    ext: &UncheckedExtrinsic,
     lookup: &Lookup,
-) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)>
+) -> Option<opaque::AccountId>
 where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
+    if ext.0.function.is_self_contained() {
+        ext.0
+            .function
+            .check_self_contained()
+            .and_then(|signed_info| signed_info.ok())
+            .map(|account| account.encode())
+    } else {
+        ext.0
+            .signature
+            .as_ref()
+            .and_then(|(signed, _, _)| lookup.lookup(*signed).ok().map(|account| account.encode()))
+    }
+}
+
+pub fn extract_signer(
+    extrinsics: Vec<UncheckedExtrinsic>,
+) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)> {
+    let lookup = frame_system::ChainContext::<Runtime>::default();
+
     let mut signer_extrinsics = Vec::with_capacity(extrinsics.len());
-    for ext in extrinsics {
-        let maybe_signer = if ext.0.function.is_self_contained() {
-            ext.0
-                .function
-                .check_self_contained()
-                .and_then(|signed_info| signed_info.ok())
-                .map(|account| account.encode())
-        } else {
-            ext.0.signature.as_ref().and_then(|(signed, _, _)| {
-                lookup.lookup(*signed).ok().map(|account| account.encode())
-            })
-        };
-        signer_extrinsics.push((maybe_signer, ext));
+    for extrinsic in extrinsics {
+        let maybe_signer = extract_signer_inner(&extrinsic, &lookup);
+        signer_extrinsics.push((maybe_signer, extrinsic));
     }
 
     signer_extrinsics
@@ -735,8 +744,26 @@ impl_runtime_apis! {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)> {
+            extract_signer(extrinsics)
+        }
+
+        fn is_within_tx_range(
+            extrinsic: &<Block as BlockT>::Extrinsic,
+            bundle_vrf_hash: &subspace_core_primitives::U256,
+            tx_range: &subspace_core_primitives::U256
+        ) -> bool {
+            use subspace_core_primitives::U256;
+            use subspace_core_primitives::crypto::blake2b_256_hash;
+
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            extract_signers(extrinsics, &lookup)
+            if let Some(signer) = extract_signer_inner(extrinsic, &lookup) {
+                // Check if the signer Id hash is within the tx range
+                let signer_id_hash = U256::from_be_bytes(blake2b_256_hash(&signer.encode()));
+                sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
+            } else {
+                // Unsigned transactions are always in the range.
+                true
+            }
         }
 
         fn intermediate_roots() -> Vec<[u8; 32]> {

@@ -1,5 +1,4 @@
 use crate::parent_chain::ParentChainInterface;
-use crate::sortition::TransactionSelector;
 use crate::ExecutionReceiptFor;
 use codec::Encode;
 use domain_runtime_primitives::DomainCoreApi;
@@ -15,6 +14,7 @@ use sp_weights::Weight;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
+use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
 pub(super) struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
@@ -77,7 +77,7 @@ where
         proof_of_election: ProofOfElection<Block::Hash>,
         consensus_block_info: HashAndNumber<CBlock>,
         parent_chain: ParentChain,
-        tx_selector: TransactionSelector<Block, Client>,
+        tx_range: U256,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>>
     where
         ParentChainBlock: BlockT,
@@ -101,15 +101,18 @@ where
             }
         };
 
+        let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
         let domain_block_limit = parent_chain.domain_block_limit(parent_chain.best_hash())?;
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
         for pending_tx in pending_iterator {
-            let pending_tx_data = pending_tx.data().clone();
+            let pending_tx_data = pending_tx.data();
 
-            let should_select_this_tx = tx_selector
-                .is_within_tx_range(parent_hash, pending_tx_data.clone())
+            let should_select_this_tx = self
+                .client
+                .runtime_api()
+                .is_within_tx_range(parent_hash, pending_tx_data, &bundle_vrf_hash, &tx_range)
                 .map_err(|err| {
                     tracing::error!(
                         ?err,
@@ -123,7 +126,7 @@ where
                 let tx_weight = self
                     .client
                     .runtime_api()
-                    .extrinsic_weight(parent_hash, &pending_tx_data)
+                    .extrinsic_weight(parent_hash, pending_tx_data)
                     .map_err(|error| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Error getting extrinsic weight: {error}"
@@ -142,7 +145,7 @@ where
 
                 estimated_bundle_weight = next_estimated_bundle_weight;
                 bundle_size = next_bundle_size;
-                extrinsics.push(pending_tx_data);
+                extrinsics.push(pending_tx_data.clone());
             }
         }
 
