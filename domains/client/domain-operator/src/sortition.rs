@@ -39,15 +39,15 @@ where
 
     /// Checks if the transaction should be selected based on the
     /// sortition scheme
-    pub(crate) fn should_select_tx(
+    pub(crate) fn is_within_tx_range(
         &self,
         at: Block::Hash,
         tx: Block::Extrinsic,
     ) -> Result<bool, TransactionSelectError> {
-        // Extract the signer Id hash
-        let api = self.client.runtime_api();
-        let ret = api.extract_signer(at, vec![tx])?;
-        let signer_id_hash = ret
+        let maybe_signer_id_hash = self
+            .client
+            .runtime_api()
+            .extract_signer(at, vec![tx])?
             .into_iter()
             .next()
             .and_then(|(maybe_signer, _)| {
@@ -55,15 +55,19 @@ where
                     let bytes = signer.encode();
                     U256::from_be_bytes(blake2b_256_hash(&bytes))
                 })
-            })
-            .ok_or(TransactionSelectError::TxSignerNotFound)?;
+            });
 
-        // Check if the signer Id hash is within the tx range
-        Ok(signer_in_tx_range(
-            &self.bundle_vrf_hash,
-            &signer_id_hash,
-            &self.tx_range,
-        ))
+        if let Some(signer_id_hash) = maybe_signer_id_hash {
+            // Check if the signer Id hash is within the tx range
+            Ok(signer_in_tx_range(
+                &self.bundle_vrf_hash,
+                &signer_id_hash,
+                &self.tx_range,
+            ))
+        } else {
+            // Unsigned transactions are always in the range.
+            Ok(true)
+        }
     }
 }
 
@@ -73,8 +77,8 @@ pub enum TransactionSelectError {
     #[error(transparent)]
     RuntimeApi(#[from] sp_api::ApiError),
 
-    #[error("Transaction signer not found")]
-    TxSignerNotFound,
+    #[error(transparent)]
+    Blockchain(#[from] sp_blockchain::Error),
 }
 
 /// Checks if the signer Id hash is within the tx range

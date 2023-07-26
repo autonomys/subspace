@@ -1,5 +1,5 @@
 use crate::parent_chain::ParentChainInterface;
-use crate::sortition::{TransactionSelectError, TransactionSelector};
+use crate::sortition::TransactionSelector;
 use crate::ExecutionReceiptFor;
 use codec::Encode;
 use domain_runtime_primitives::DomainCoreApi;
@@ -107,13 +107,18 @@ where
         let mut bundle_size = 0u32;
         for pending_tx in pending_iterator {
             let pending_tx_data = pending_tx.data().clone();
+
             let should_select_this_tx = tx_selector
-                .should_select_tx(parent_hash, pending_tx_data.clone())
-                .unwrap_or_else(|err| {
-                    // Accept unsigned transactions like cross domain.
-                    tracing::trace!("propose bundle: sortition select failed: {err:?}");
-                    matches!(err, TransactionSelectError::TxSignerNotFound)
-                });
+                .is_within_tx_range(parent_hash, pending_tx_data.clone())
+                .map_err(|err| {
+                    tracing::error!(
+                        ?err,
+                        ?pending_tx_data,
+                        "Error occurred in locating the tx range"
+                    );
+                })
+                .unwrap_or(false);
+
             if should_select_this_tx {
                 let tx_weight = self
                     .client
