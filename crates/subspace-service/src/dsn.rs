@@ -173,7 +173,7 @@ where
         special_target_connections: 0,
         reserved_peers: dsn_config.reserved_peers,
         // maintain permanent connections with any peer
-        general_connected_peers_handler: Arc::new(|_| true),
+        general_connected_peers_handler: Some(Arc::new(|_| true)),
         bootstrap_addresses: dsn_config.bootstrap_nodes,
 
         ..default_networking_config

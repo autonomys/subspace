@@ -175,8 +175,8 @@ async fn main() -> anyhow::Result<()> {
                 max_pending_incoming_connections: pending_in_peers,
                 max_pending_outgoing_connections: pending_out_peers,
                 // we don't maintain permanent connections with any peer
-                general_connected_peers_handler: Arc::new(|_| false),
-                special_connected_peers_handler: Arc::new(|_| false),
+                general_connected_peers_handler: None,
+                special_connected_peers_handler: None,
                 bootstrap_addresses: bootstrap_nodes,
 
                 ..Config::new(

@@ -130,9 +130,9 @@ where
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
     /// Defines whether we maintain a persistent connection for common peers.
-    general_connection_decision_handler: ConnectedPeersHandler,
+    general_connection_decision_handler: Option<ConnectedPeersHandler>,
     /// Defines whether we maintain a persistent connection for special peers.
-    special_connection_decision_handler: ConnectedPeersHandler,
+    special_connection_decision_handler: Option<ConnectedPeersHandler>,
     /// Randomness generator used for choosing Kademlia addresses.
     rng: StdRng,
     /// Addresses to bootstrap Kademlia network
@@ -156,8 +156,8 @@ where
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
     pub(crate) protocol_version: String,
-    pub(crate) general_connection_decision_handler: ConnectedPeersHandler,
-    pub(crate) special_connection_decision_handler: ConnectedPeersHandler,
+    pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
+    pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
 }
 
@@ -952,19 +952,29 @@ where
                 });
             }
 
-            let keep_alive = (self.general_connection_decision_handler)(&peer_info);
+            if let Some(general_connected_peers) =
+                self.swarm.behaviour_mut().general_connected_peers.as_mut()
+            {
+                let keep_alive = self
+                    .general_connection_decision_handler
+                    .as_ref()
+                    .map(|handler| handler(&peer_info))
+                    .unwrap_or(false);
 
-            self.swarm
-                .behaviour_mut()
-                .general_connected_peers
-                .update_keep_alive_status(event.peer_id, keep_alive);
+                general_connected_peers.update_keep_alive_status(event.peer_id, keep_alive);
+            }
 
-            let special_keep_alive = (self.special_connection_decision_handler)(&peer_info);
+            if let Some(special_connected_peers) =
+                self.swarm.behaviour_mut().special_connected_peers.as_mut()
+            {
+                let special_keep_alive = self
+                    .special_connection_decision_handler
+                    .as_ref()
+                    .map(|handler| handler(&peer_info))
+                    .unwrap_or(false);
 
-            self.swarm
-                .behaviour_mut()
-                .special_connected_peers
-                .update_keep_alive_status(event.peer_id, special_keep_alive);
+                special_connected_peers.update_keep_alive_status(event.peer_id, special_keep_alive);
+            }
         }
     }
 
@@ -976,10 +986,11 @@ where
 
         let peers = self.get_peers_to_dial().await;
 
-        self.swarm
-            .behaviour_mut()
-            .general_connected_peers
-            .add_peers_to_dial(&peers);
+        if let Some(general_connected_peers) =
+            self.swarm.behaviour_mut().general_connected_peers.as_mut()
+        {
+            general_connected_peers.add_peers_to_dial(&peers);
+        }
     }
 
     async fn handle_special_connected_peers_event(
@@ -990,10 +1001,11 @@ where
 
         let peers = self.get_peers_to_dial().await;
 
-        self.swarm
-            .behaviour_mut()
-            .special_connected_peers
-            .add_peers_to_dial(&peers);
+        if let Some(special_connected_peers) =
+            self.swarm.behaviour_mut().special_connected_peers.as_mut()
+        {
+            special_connected_peers.add_peers_to_dial(&peers);
+        }
     }
 
     fn handle_command(&mut self, command: Command) {
@@ -1384,6 +1396,12 @@ where
             result_peers.push((peer_id, addr))
         }
 
+        let bootstrap_nodes = convert_multiaddresses(self.bootstrap_addresses.clone())
+            .into_iter()
+            .map(|(peer_id, _)| peer_id)
+            .collect::<HashSet<_>>();
+
+        result_peers.retain(|(peer_id, _)| !bootstrap_nodes.contains(peer_id));
         result_peers
     }
 }

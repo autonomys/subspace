@@ -213,9 +213,11 @@ pub struct Config<ProviderStorage> {
     /// Specifies a source for peer information. None disables the protocol.
     pub peer_info_provider: Option<PeerInfoProvider>,
     /// Defines whether we maintain a persistent connection for common peers.
-    pub general_connected_peers_handler: ConnectedPeersHandler,
+    /// None disables the protocol.
+    pub general_connected_peers_handler: Option<ConnectedPeersHandler>,
     /// Defines whether we maintain a persistent connection for special peers.
-    pub special_connected_peers_handler: ConnectedPeersHandler,
+    /// None disables the protocol.
+    pub special_connected_peers_handler: Option<ConnectedPeersHandler>,
     /// Defines target total (in and out) connection number that should be maintained for general peers.
     pub general_target_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained for special peers.
@@ -326,10 +328,9 @@ where
             metrics: None,
             protocol_version,
             peer_info_provider,
-            // maintain permanent connections with any peer
-            general_connected_peers_handler: Arc::new(|_| true),
             // we don't need to keep additional connections by default
-            special_connected_peers_handler: Arc::new(|_| false),
+            general_connected_peers_handler: None,
+            special_connected_peers_handler: None,
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             bootstrap_addresses: Vec::new(),
@@ -441,16 +442,20 @@ where
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
-        general_connected_peers_config: ConnectedPeersConfig {
-            log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-            target_connected_peers: general_target_connections,
-            ..ConnectedPeersConfig::default()
-        },
-        special_connected_peers_config: ConnectedPeersConfig {
-            log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-            target_connected_peers: special_target_connections,
-            ..ConnectedPeersConfig::default()
-        },
+        general_connected_peers_config: general_connection_decision_handler.as_ref().map(|_| {
+            ConnectedPeersConfig {
+                log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+                target_connected_peers: general_target_connections,
+                ..ConnectedPeersConfig::default()
+            }
+        }),
+        special_connected_peers_config: special_connection_decision_handler.as_ref().map(|_| {
+            ConnectedPeersConfig {
+                log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+                target_connected_peers: special_target_connections,
+                ..ConnectedPeersConfig::default()
+            }
+        }),
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
