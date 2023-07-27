@@ -93,8 +93,6 @@ pub struct Config {
     /// Time interval reserved for a decision about connections.
     /// It also affects keep-alive interval.
     pub decision_timeout: Duration,
-    /// Specifies whether we use this protocol fow connection management or not.
-    pub enabled: bool,
 }
 
 const DEFAULT_CONNECTED_PEERS_LOG_TARGET: &str = "connected-peers";
@@ -106,7 +104,6 @@ impl Default for Config {
             target_connected_peers: 30,
             dialing_peer_batch_size: 5,
             decision_timeout: Duration::from_secs(10),
-            enabled: true,
         }
     }
 }
@@ -169,7 +166,7 @@ impl<Instance> Behaviour<Instance> {
     fn new_connection_handler(&mut self, peer_id: &PeerId) -> Handler {
         let default_until = Instant::now().add(self.config.decision_timeout);
         let default_keep_alive_until = KeepAlive::Until(default_until);
-        let mut keep_alive = if let Some(state) = self.known_peers.get_mut(peer_id) {
+        let keep_alive = if let Some(state) = self.known_peers.get_mut(peer_id) {
             match state.connection_state {
                 ConnectionState::Connecting { .. } => {
                     // Connection attempt was successful.
@@ -188,11 +185,6 @@ impl<Instance> Behaviour<Instance> {
 
             default_keep_alive_until
         };
-
-        // Disable connection handler.
-        if !self.config.enabled {
-            keep_alive = KeepAlive::No;
-        }
 
         self.wake();
         Handler::new(keep_alive)
@@ -410,35 +402,33 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
         }
 
         // Schedule new peer dialing.
-        if self.config.enabled {
-            match self.dialing_delay.poll_unpin(cx) {
-                Poll::Pending => {}
-                Poll::Ready(()) => {
-                    self.dialing_delay.reset(self.config.dialing_interval);
+        match self.dialing_delay.poll_unpin(cx) {
+            Poll::Pending => {}
+            Poll::Ready(()) => {
+                self.dialing_delay.reset(self.config.dialing_interval);
 
-                    // Request new peer addresses.
-                    if self.peer_cache.is_empty() {
-                        trace!("Requesting new peers for connected-peers protocol....");
+                // Request new peer addresses.
+                if self.peer_cache.is_empty() {
+                    trace!("Requesting new peers for connected-peers protocol....");
 
-                        return Poll::Ready(ToSwarm::GenerateEvent(
-                            Event::NewDialingCandidatesRequested(PhantomData),
-                        ));
-                    }
+                    return Poll::Ready(ToSwarm::GenerateEvent(
+                        Event::NewDialingCandidatesRequested(PhantomData),
+                    ));
+                }
 
-                    // New dial candidates.
-                    if self.active_peers() < self.config.target_connected_peers {
-                        let range = 0..(self.config.dialing_peer_batch_size as usize)
-                            .min(self.peer_cache.len());
+                // New dial candidates.
+                if self.active_peers() < self.config.target_connected_peers {
+                    let range = 0..(self.config.dialing_peer_batch_size as usize)
+                        .min(self.peer_cache.len());
 
-                        let peer_addresses = self.peer_cache.drain(range);
+                    let peer_addresses = self.peer_cache.drain(range);
 
-                        for (peer_id, address) in peer_addresses {
-                            self.known_peers.entry(peer_id).or_insert_with(|| {
-                                PeerState::new(ConnectionState::Connecting {
-                                    peer_address: address,
-                                })
-                            });
-                        }
+                    for (peer_id, address) in peer_addresses {
+                        self.known_peers.entry(peer_id).or_insert_with(|| {
+                            PeerState::new(ConnectionState::Connecting {
+                                peer_address: address,
+                            })
+                        });
                     }
                 }
             }

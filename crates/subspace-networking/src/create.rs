@@ -442,18 +442,20 @@ where
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
-        general_connected_peers_config: ConnectedPeersConfig {
-            log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-            target_connected_peers: general_target_connections,
-            enabled: general_connection_decision_handler.is_some(),
-            ..ConnectedPeersConfig::default()
-        },
-        special_connected_peers_config: ConnectedPeersConfig {
-            log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-            target_connected_peers: special_target_connections,
-            enabled: special_connection_decision_handler.is_some(),
-            ..ConnectedPeersConfig::default()
-        },
+        general_connected_peers_config: general_connection_decision_handler.as_ref().map(|_| {
+            ConnectedPeersConfig {
+                log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+                target_connected_peers: general_target_connections,
+                ..ConnectedPeersConfig::default()
+            }
+        }),
+        special_connected_peers_config: special_connection_decision_handler.as_ref().map(|_| {
+            ConnectedPeersConfig {
+                log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+                target_connected_peers: special_target_connections,
+                ..ConnectedPeersConfig::default()
+            }
+        }),
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)

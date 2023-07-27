@@ -952,27 +952,29 @@ where
                 });
             }
 
-            let keep_alive = self
-                .general_connection_decision_handler
-                .as_ref()
-                .map(|handler| handler(&peer_info))
-                .unwrap_or(false);
+            if let Some(general_connected_peers) =
+                self.swarm.behaviour_mut().general_connected_peers.as_mut()
+            {
+                let keep_alive = self
+                    .general_connection_decision_handler
+                    .as_ref()
+                    .map(|handler| handler(&peer_info))
+                    .unwrap_or(false);
 
-            self.swarm
-                .behaviour_mut()
-                .general_connected_peers
-                .update_keep_alive_status(event.peer_id, keep_alive);
+                general_connected_peers.update_keep_alive_status(event.peer_id, keep_alive);
+            }
 
-            let special_keep_alive = self
-                .special_connection_decision_handler
-                .as_ref()
-                .map(|handler| handler(&peer_info))
-                .unwrap_or(false);
+            if let Some(special_connected_peers) =
+                self.swarm.behaviour_mut().special_connected_peers.as_mut()
+            {
+                let special_keep_alive = self
+                    .special_connection_decision_handler
+                    .as_ref()
+                    .map(|handler| handler(&peer_info))
+                    .unwrap_or(false);
 
-            self.swarm
-                .behaviour_mut()
-                .special_connected_peers
-                .update_keep_alive_status(event.peer_id, special_keep_alive);
+                special_connected_peers.update_keep_alive_status(event.peer_id, special_keep_alive);
+            }
         }
     }
 
@@ -984,10 +986,11 @@ where
 
         let peers = self.get_peers_to_dial().await;
 
-        self.swarm
-            .behaviour_mut()
-            .general_connected_peers
-            .add_peers_to_dial(&peers);
+        if let Some(general_connected_peers) =
+            self.swarm.behaviour_mut().general_connected_peers.as_mut()
+        {
+            general_connected_peers.add_peers_to_dial(&peers);
+        }
     }
 
     async fn handle_special_connected_peers_event(
@@ -998,10 +1001,11 @@ where
 
         let peers = self.get_peers_to_dial().await;
 
-        self.swarm
-            .behaviour_mut()
-            .special_connected_peers
-            .add_peers_to_dial(&peers);
+        if let Some(special_connected_peers) =
+            self.swarm.behaviour_mut().special_connected_peers.as_mut()
+        {
+            special_connected_peers.add_peers_to_dial(&peers);
+        }
     }
 
     fn handle_command(&mut self, command: Command) {
