@@ -269,9 +269,11 @@ pub(super) fn configure_dsn(
         max_pending_incoming_connections: pending_in_connections,
         general_target_connections: target_connections,
         // maintain permanent connections between farmers
-        special_connected_peers_handler: Arc::new(PeerInfo::is_farmer),
+        special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
         // other (non-farmer) connections
-        general_connected_peers_handler: Arc::new(|peer_info| !PeerInfo::is_farmer(peer_info)),
+        general_connected_peers_handler: Some(Arc::new(|peer_info| {
+            !PeerInfo::is_farmer(peer_info)
+        })),
         bootstrap_addresses: bootstrap_nodes,
         ..default_config
     };
