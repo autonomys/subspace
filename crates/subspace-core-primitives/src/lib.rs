@@ -49,7 +49,7 @@ use core::convert::AsRef;
 use core::fmt;
 use core::num::NonZeroU64;
 use core::simd::Simd;
-use derive_more::{Add, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
+use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
@@ -229,15 +229,21 @@ impl PosProof {
 }
 
 /// Proof of time key(input to the encryption).
-#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+#[derive(
+    Debug, Default, Copy, Clone, From, Into, AsRef, AsMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 pub struct PotKey(PotBytes);
 
 /// Proof of time seed (input to the encryption).
-#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+#[derive(
+    Debug, Default, Copy, Clone, From, Into, AsRef, AsMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 pub struct PotSeed(PotBytes);
 
 /// Proof of time ciphertext (output from the encryption).
-#[derive(Debug, Copy, Clone, From, Into, Encode, Decode)]
+#[derive(
+    Debug, Default, Copy, Clone, From, Into, AsRef, AsMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+)]
 pub struct PotCheckpoint(PotBytes);
 
 /// Proof of time.
