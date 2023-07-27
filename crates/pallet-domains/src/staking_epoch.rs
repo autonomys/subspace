@@ -3,7 +3,8 @@
 use crate::pallet::{
     DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
     PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
-    PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingUnlocks,
+    PendingWithdrawals,
 };
 use crate::staking::{Error as TransitionError, Nominator, Withdraw};
 use crate::{
@@ -12,12 +13,14 @@ use crate::{
 use codec::{Decode, Encode};
 use frame_support::dispatch::TypeInfo;
 use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
+use frame_support::traits::tokens::{Fortitude, Precision};
 use frame_support::PalletError;
 use sp_core::Get;
 use sp_domains::{DomainId, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::vec::Vec;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
@@ -27,6 +30,7 @@ pub enum Error {
     FinalizeDomainPendingTransfers(TransitionError),
     UnlockNominator(TransitionError),
     OperatorRewardStaking(TransitionError),
+    SlashOperator(TransitionError),
 }
 
 /// Finalizes the domain's current epoch and begins the next epoch.
@@ -34,11 +38,13 @@ pub enum Error {
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
-    current_consensus_block_number: T::BlockNumber,
 ) -> Result<bool, Error> {
     if domain_block_number % T::StakeEpochDuration::get() != Zero::zero() {
         return Ok(false);
     }
+
+    // slash the operators
+    do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 
     // re stake operator's tax from the rewards
     operator_take_reward_tax_and_stake::<T>(domain_id)?;
@@ -47,25 +53,26 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     do_finalize_switch_operator_domain::<T>(domain_id)?;
 
     // finalize operator de-registrations
-    do_finalize_operator_deregistrations::<T>(domain_id, current_consensus_block_number)?;
+    do_finalize_operator_deregistrations::<T>(domain_id, domain_block_number)?;
 
     // finalize any withdrawals and then deposits
-    do_finalize_domain_pending_transfers::<T>(domain_id, current_consensus_block_number)?;
+    do_finalize_domain_pending_transfers::<T>(domain_id, domain_block_number)?;
     Ok(true)
 }
 
 /// Unlocks any operators who are de-registering or nominators who are withdrawing staked funds.
 pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
-    consensus_block_number: T::BlockNumber,
+    domain_id: DomainId,
+    domain_block_number: T::DomainNumber,
 ) -> Result<(), Error> {
-    if let Some(operator_ids) = PendingUnlocks::<T>::take(consensus_block_number) {
+    if let Some(operator_ids) = PendingUnlocks::<T>::take((domain_id, domain_block_number)) {
         PendingOperatorUnlocks::<T>::try_mutate(|unlocking_operator_ids| {
             for operator_id in operator_ids {
                 if unlocking_operator_ids.contains(&operator_id) {
                     unlock_operator::<T>(operator_id)?;
                     unlocking_operator_ids.remove(&operator_id);
                 } else {
-                    unlock_nominator_withdrawals::<T>(operator_id, consensus_block_number)?;
+                    unlock_nominator_withdrawals::<T>(operator_id, domain_block_number)?;
                 }
             }
 
@@ -175,24 +182,27 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
 
 fn do_finalize_operator_deregistrations<T: Config>(
     domain_id: DomainId,
-    consensus_block_number: T::BlockNumber,
+    domain_block_number: T::DomainNumber,
 ) -> Result<(), Error> {
     let stake_withdrawal_locking_period = T::StakeWithdrawalLockingPeriod::get();
-    let unlock_block_number = consensus_block_number
+    let unlock_block_number = domain_block_number
         .checked_add(&stake_withdrawal_locking_period)
         .ok_or(Error::FinalizeOperatorDeregistration(
             TransitionError::BlockNumberOverflow,
         ))?;
 
     if let Some(operator_ids) = PendingOperatorDeregistrations::<T>::take(domain_id) {
-        PendingUnlocks::<T>::mutate(unlock_block_number, |maybe_stored_operator_ids| {
-            let mut stored_operator_ids = maybe_stored_operator_ids.take().unwrap_or_default();
-            operator_ids.into_iter().for_each(|operator_id| {
-                PendingOperatorUnlocks::<T>::append(operator_id);
-                stored_operator_ids.insert(operator_id);
-            });
-            *maybe_stored_operator_ids = Some(stored_operator_ids)
-        })
+        PendingUnlocks::<T>::mutate(
+            (domain_id, unlock_block_number),
+            |maybe_stored_operator_ids| {
+                let mut stored_operator_ids = maybe_stored_operator_ids.take().unwrap_or_default();
+                operator_ids.into_iter().for_each(|operator_id| {
+                    PendingOperatorUnlocks::<T>::append(operator_id);
+                    stored_operator_ids.insert(operator_id);
+                });
+                *maybe_stored_operator_ids = Some(stored_operator_ids)
+            },
+        )
     }
 
     Ok(())
@@ -264,10 +274,10 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
 
 fn unlock_nominator_withdrawals<T: Config>(
     operator_id: OperatorId,
-    current_consensus_block: T::BlockNumber,
+    domain_block_number: T::DomainNumber,
 ) -> Result<(), Error> {
     let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
-    match PendingNominatorUnlocks::<T>::take(operator_id, current_consensus_block) {
+    match PendingNominatorUnlocks::<T>::take(operator_id, domain_block_number) {
         None => Ok(()),
         Some(withdrawals) => withdrawals.into_iter().try_for_each(|withdrawal| {
             let frozen_balance =
@@ -298,7 +308,7 @@ pub struct PendingNominatorUnlock<NominatorId, Balance> {
 
 fn do_finalize_domain_pending_transfers<T: Config>(
     domain_id: DomainId,
-    current_consensus_block: T::BlockNumber,
+    domain_block_number: T::DomainNumber,
 ) -> Result<(), Error> {
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
@@ -313,10 +323,8 @@ fn do_finalize_domain_pending_transfers<T: Config>(
         let mut total_domain_stake = BalanceOf::<T>::zero();
         let mut current_operators = BTreeMap::new();
         for next_operator_id in &stake_summary.next_operators {
-            let operator_stake = finalize_operator_pending_transfers::<T>(
-                *next_operator_id,
-                current_consensus_block,
-            )?;
+            let operator_stake =
+                finalize_operator_pending_transfers::<T>(*next_operator_id, domain_block_number)?;
 
             total_domain_stake = total_domain_stake
                 .checked_add(&operator_stake)
@@ -342,7 +350,7 @@ fn do_finalize_domain_pending_transfers<T: Config>(
 
 fn finalize_operator_pending_transfers<T: Config>(
     operator_id: OperatorId,
-    current_consensus_block: T::BlockNumber,
+    domain_block_number: T::DomainNumber,
 ) -> Result<BalanceOf<T>, TransitionError> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
@@ -360,10 +368,11 @@ fn finalize_operator_pending_transfers<T: Config>(
 
         let mut total_shares = operator.total_shares;
         finalize_pending_withdrawals::<T>(
+            operator.current_domain_id,
             operator_id,
             &mut total_stake,
             &mut total_shares,
-            current_consensus_block,
+            domain_block_number,
         )?;
 
         finalize_pending_deposits::<T>(operator_id, &mut total_stake, &mut total_shares)?;
@@ -378,17 +387,19 @@ fn finalize_operator_pending_transfers<T: Config>(
 }
 
 fn finalize_pending_withdrawals<T: Config>(
+    domain_id: DomainId,
     operator_id: OperatorId,
     total_stake: &mut BalanceOf<T>,
     total_shares: &mut T::Share,
-    current_consensus_block_number: T::BlockNumber,
+    domain_block_number: T::DomainNumber,
 ) -> Result<(), TransitionError> {
     let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
-    let unlock_block_number = current_consensus_block_number
+    let unlock_block_number = domain_block_number
         .checked_add(&T::StakeWithdrawalLockingPeriod::get())
         .ok_or(TransitionError::BlockNumberOverflow)?;
     PendingWithdrawals::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, withdraw)| {
         finalize_nominator_withdrawal::<T>(
+            domain_id,
             operator_id,
             &freeze_identifier,
             nominator_id,
@@ -412,14 +423,16 @@ fn mint_funds<T: Config>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finalize_nominator_withdrawal<T: Config>(
+    domain_id: DomainId,
     operator_id: OperatorId,
     freeze_identifier: &FungibleFreezeId<T>,
     nominator_id: NominatorId<T>,
     withdraw: Withdraw<BalanceOf<T>>,
     total_stake: &mut BalanceOf<T>,
     total_shares: &mut T::Share,
-    unlock_at: T::BlockNumber,
+    unlock_at: T::DomainNumber,
 ) -> Result<(), TransitionError> {
     let (withdrew_stake, withdrew_shares) = match withdraw {
         Withdraw::All => {
@@ -483,9 +496,9 @@ fn finalize_nominator_withdrawal<T: Config>(
         },
     );
 
-    let mut operator_ids = PendingUnlocks::<T>::get(unlock_at).unwrap_or_default();
+    let mut operator_ids = PendingUnlocks::<T>::get((domain_id, unlock_at)).unwrap_or_default();
     operator_ids.insert(operator_id);
-    PendingUnlocks::<T>::insert(unlock_at, operator_ids);
+    PendingUnlocks::<T>::insert((domain_id, unlock_at), operator_ids);
 
     // update pool's remaining shares and stake
     *total_shares = total_shares
@@ -545,6 +558,108 @@ fn finalize_nominator_deposit<T: Config>(
         .ok_or(TransitionError::BalanceOverflow)?;
 
     Ok(())
+}
+
+pub(crate) fn do_finalize_slashed_operators<T: Config>(
+    domain_id: DomainId,
+) -> Result<(), TransitionError> {
+    let mut total_slashed_amount = BalanceOf::<T>::zero();
+    for (operator_id, slash_info) in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
+        let slashed_amount = slash_operator::<T>(operator_id, slash_info)?;
+        total_slashed_amount = total_slashed_amount
+            .checked_add(&slashed_amount)
+            .ok_or(TransitionError::BalanceOverflow)?;
+    }
+
+    // TODO: mint the total slashed amount to treasury
+
+    Ok(())
+}
+
+fn thaw_and_burn_frozen_balance<T: Config>(
+    id: &FungibleFreezeId<T>,
+    from: &T::AccountId,
+) -> Result<(), TransitionError> {
+    // thaw the frozen amount and burn
+    let locked_amount = T::Currency::balance_frozen(id, from);
+    T::Currency::thaw(id, from).map_err(|_| TransitionError::RemoveLock)?;
+    T::Currency::burn_from(from, locked_amount, Precision::Exact, Fortitude::Force)
+        .map_err(|_| TransitionError::BalanceBurn)?;
+
+    Ok(())
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct PendingOperatorSlashInfo<NominatorId, Balance> {
+    pub unlocking_nominators: Vec<PendingNominatorUnlock<NominatorId, Balance>>,
+}
+
+fn slash_operator<T: Config>(
+    operator_id: OperatorId,
+    slash_info: PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>,
+) -> Result<BalanceOf<T>, TransitionError> {
+    Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
+        // take the operator so this operator info is removed once we slash the operator.
+        let operator = maybe_operator
+            .take()
+            .ok_or(TransitionError::UnknownOperator)?;
+
+        let freeze_identifier = T::FreezeIdentifier::staking_freeze_id(operator_id);
+
+        let total_stake = operator
+            .current_total_stake
+            .checked_add(&operator.current_epoch_rewards)
+            .ok_or(TransitionError::BalanceOverflow)?;
+
+        let unlocking_withdrawals = slash_info
+            .unlocking_nominators
+            .into_iter()
+            .map(|pending_unlock| pending_unlock.balance)
+            .try_fold(BalanceOf::<T>::zero(), |acc, pending_withdrawal| {
+                acc.checked_add(&pending_withdrawal)
+                    .ok_or(TransitionError::BalanceOverflow)
+            })?;
+
+        let mut pending_deposits = BalanceOf::<T>::zero();
+
+        Nominators::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, _)| {
+            thaw_and_burn_frozen_balance::<T>(&freeze_identifier, &nominator_id)?;
+
+            // if there was a pending deposit from this nominator,
+            // then account that deposit in the slashed amount since this new deposit
+            // was burned above
+            if let Some(deposit) = PendingDeposits::<T>::take(operator_id, nominator_id) {
+                pending_deposits = pending_deposits
+                    .checked_add(&deposit)
+                    .ok_or(TransitionError::BalanceOverflow)?;
+            }
+
+            Ok(())
+        })?;
+
+        // remove all of the pending deposits since we burned all nominator stake.
+        let _ = PendingWithdrawals::<T>::clear_prefix(operator_id, u32::MAX, None);
+
+        // slash any new nominators as well
+        // all these are new nominators recorded after start
+        // of new epoch and before operator was slashed
+        for (nominator_id, deposit) in PendingDeposits::<T>::drain_prefix(operator_id) {
+            thaw_and_burn_frozen_balance::<T>(&freeze_identifier, &nominator_id)?;
+            pending_deposits = pending_deposits
+                .checked_add(&deposit)
+                .ok_or(TransitionError::BalanceOverflow)?;
+        }
+
+        // remove OperatorOwner Details
+        OperatorIdOwner::<T>::remove(operator_id);
+
+        // slashed_amount = current_total_stake + rewards + unlocking withdrawals + pending deposits
+        let slashed_amount = total_stake
+            .checked_add(&unlocking_withdrawals)
+            .and_then(|acc| acc.checked_add(&pending_deposits))
+            .ok_or(TransitionError::BalanceOverflow)?;
+        Ok(slashed_amount)
+    })
 }
 
 #[cfg(test)]
@@ -740,13 +855,12 @@ mod tests {
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
             // finalize and add to pending operator unlocks
-            let consensus_block_number = 100;
-            do_finalize_operator_deregistrations::<Test>(domain_id, consensus_block_number)
-                .unwrap();
+            let domain_block_number = 100;
+            do_finalize_operator_deregistrations::<Test>(domain_id, domain_block_number).unwrap();
 
             // unlock operator
             let unlock_at = 100 + crate::tests::StakeWithdrawalLockingPeriod::get();
-            assert!(do_unlock_pending_withdrawals::<Test>(unlock_at).is_ok());
+            assert!(do_unlock_pending_withdrawals::<Test>(domain_id, unlock_at).is_ok());
 
             for nominator in &total_deposits {
                 let mut required_minimum_free_balance = minimum_free_balance + nominator.1;
@@ -838,7 +952,7 @@ mod tests {
                 BTreeSet::from_iter(vec![operator_id])
             );
             assert_eq!(
-                PendingUnlocks::<Test>::get(expected_unlock),
+                PendingUnlocks::<Test>::get((domain_id, expected_unlock)),
                 Some(BTreeSet::from_iter(vec![operator_id]))
             )
         });

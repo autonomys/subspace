@@ -113,7 +113,7 @@ mod pallet {
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
-        Error as StakingEpochError, PendingNominatorUnlock,
+        Error as StakingEpochError, PendingNominatorUnlock, PendingOperatorSlashInfo,
     };
     use crate::weights::WeightInfo;
     use crate::{
@@ -137,6 +137,7 @@ mod pallet {
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
+    use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::fmt::Debug;
     use sp_std::vec;
@@ -250,8 +251,8 @@ mod pallet {
         /// Minimum operator stake required to become operator of a domain.
         type MinOperatorStake: Get<BalanceOf<Self>>;
 
-        /// Minimum number of blocks after which any finalized withdrawls are released to nominators.
-        type StakeWithdrawalLockingPeriod: Get<Self::BlockNumber>;
+        /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
+        type StakeWithdrawalLockingPeriod: Get<Self::DomainNumber>;
 
         /// Domain epoch transition interval
         type StakeEpochDuration: Get<Self::DomainNumber>;
@@ -304,7 +305,7 @@ mod pallet {
     /// Once epoch is complete, these operators are added to new domains under next_operators.
     #[pallet::storage]
     pub(super) type PendingOperatorSwitches<T: Config> =
-        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// List of all current epoch's nominators and their shares under a given operator,
     #[pallet::storage]
@@ -350,7 +351,7 @@ mod pallet {
     /// Stored here temporarily until domain epoch is complete.
     #[pallet::storage]
     pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageMap<_, Identity, DomainId, Vec<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// Stores a list of operators who are unlocking in the coming blocks.
     /// The operator will be removed when the wait period is over
@@ -367,7 +368,7 @@ mod pallet {
         Identity,
         OperatorId,
         Identity,
-        T::BlockNumber,
+        T::DomainNumber,
         Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
@@ -376,7 +377,19 @@ mod pallet {
     /// are withdrawing some staked funds.
     #[pallet::storage]
     pub(super) type PendingUnlocks<T: Config> =
-        StorageMap<_, Identity, T::BlockNumber, BTreeSet<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, (DomainId, T::DomainNumber), BTreeSet<OperatorId>, OptionQuery>;
+
+    /// A list operators who were slashed during the current epoch associated with the domain.
+    /// When the epoch for a given domain is complete, operator total stake is moved to treasury and
+    /// then deleted.
+    #[pallet::storage]
+    pub(super) type PendingSlashes<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        BTreeMap<OperatorId, PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>>,
+        OptionQuery,
+    >;
 
     /// Stores the next domain id.
     #[pallet::storage]
@@ -639,11 +652,15 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        let consensus_block_number = frame_system::Pallet::<T>::block_number();
+                        do_unlock_pending_withdrawals::<T>(
+                            domain_id,
+                            pruned_block_info.domain_block_number,
+                        )
+                        .map_err(Error::<T>::from)?;
+
                         do_finalize_domain_current_epoch::<T>(
                             domain_id,
                             pruned_block_info.domain_block_number,
-                            consensus_block_number,
                         )
                         .map_err(Error::<T>::from)?;
                     }
@@ -937,15 +954,12 @@ mod pallet {
                     )
                     .expect("Genesis operator registration must succeed");
 
-                    do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero(), Zero::zero())
+                    do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero())
                         .expect("Genesis epoch must succeed");
                 }
             }
 
             do_upgrade_runtimes::<T>(block_number);
-
-            do_unlock_pending_withdrawals::<T>(block_number)
-                .expect("Pending unlocks should not fail due to checks at epoch");
 
             let _ = SuccessfulBundles::<T>::clear(u32::MAX, None);
 
