@@ -281,8 +281,12 @@ where
             .map(|bundle| bundle.extrinsics_root())
             .collect();
 
-        let extrinsics =
-            self.compile_bundles_to_extrinsics(bundles, consensus_block_hash, domain_hash);
+        let tx_range = self
+            .consensus_client
+            .runtime_api()
+            .domain_tx_range(consensus_block_hash, self.domain_id)?;
+
+        let extrinsics = self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -325,13 +329,13 @@ where
     fn compile_bundles_to_extrinsics(
         &self,
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
-        consensus_block_hash: CBlock::Hash,
+        tx_range: U256,
         at: Block::Hash,
     ) -> Vec<Block::Extrinsic> {
         bundles
             .into_iter()
             .filter(|bundle| {
-                self.is_valid_bundle(bundle, consensus_block_hash, at)
+                self.is_valid_bundle(bundle, &tx_range, at)
                     .map_err(|err| {
                         tracing::error!(?err, "Error occurred in checking bundle validity");
                     })
@@ -357,15 +361,11 @@ where
             Block::Hash,
             Balance,
         >,
-        consensus_block_hash: CBlock::Hash,
+        tx_range: &U256,
         at: Block::Hash,
     ) -> Result<bool, sp_api::ApiError> {
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
-        let tx_range = self
-            .consensus_client
-            .runtime_api()
-            .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
         for opaque_extrinsic in &bundle.extrinsics {
             let Ok(extrinsic) =
@@ -383,7 +383,7 @@ where
                 at,
                 &extrinsic,
                 &bundle_vrf_hash,
-                &tx_range,
+                tx_range,
             )?;
 
             if !is_within_tx_range {
