@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockEncrypt, KeyInit};
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
 use alloc::vec::Vec;
 use subspace_core_primitives::{PotBytes, PotCheckpoint, PotKey, PotSeed};
@@ -31,12 +31,16 @@ pub(crate) fn create(
 }
 
 /// Verifies the AES based proof sequentially.
+///
+/// Panics if `checkpoint_iterations` is not a multiple of `2`.
 pub(crate) fn verify_sequential(
     seed: &PotSeed,
     key: &PotKey,
     checkpoints: &[PotCheckpoint],
     checkpoint_iterations: u32,
 ) -> bool {
+    assert_eq!(checkpoint_iterations % 2, 0);
+
     let key = GenericArray::from(PotBytes::from(*key));
     let cipher = Aes128::new(&key);
 
@@ -45,15 +49,17 @@ pub(crate) fn verify_sequential(
     for checkpoint in checkpoints.iter().rev().skip(1).rev() {
         inputs.push(GenericArray::from(PotBytes::from(*checkpoint)));
     }
+    let mut outputs = checkpoints
+        .iter()
+        .map(|checkpoint| GenericArray::from(PotBytes::from(*checkpoint)))
+        .collect::<Vec<_>>();
 
-    for _ in 0..checkpoint_iterations {
+    for _ in 0..checkpoint_iterations / 2 {
         cipher.encrypt_blocks(&mut inputs);
+        cipher.decrypt_blocks(&mut outputs);
     }
 
-    inputs
-        .iter()
-        .zip(checkpoints)
-        .all(|(a, b)| a.as_slice() == b.as_ref())
+    inputs == outputs
 }
 
 #[cfg(test)]
@@ -111,13 +117,13 @@ mod tests {
             &seed,
             &key,
             &checkpoints,
-            checkpoint_iterations + 1
+            checkpoint_iterations + 2
         ));
         assert!(!verify_sequential(
             &seed,
             &key,
             &checkpoints,
-            checkpoint_iterations - 1
+            checkpoint_iterations - 2
         ));
 
         // Decryption with wrong seed fails.
