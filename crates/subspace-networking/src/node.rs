@@ -1,5 +1,6 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
 use crate::shared::{Command, CreatedSubscription, HandlerFn, Shared};
+use crate::utils::multihash::Multihash;
 use crate::utils::ResizableSemaphorePermit;
 use crate::{request_responses, NewPeerInfo};
 use bytes::Bytes;
@@ -7,7 +8,6 @@ use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
-use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;

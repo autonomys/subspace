@@ -1,13 +1,10 @@
 use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
 use libp2p::kad::record::Key;
-use libp2p::multihash::{Code, Multihash};
 use libp2p::PeerId;
 
 #[test]
 fn binary_heap_insert_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
+    let peer_id = PeerId::random();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 10);
 
     assert_eq!(heap.size(), 0);
@@ -28,9 +25,7 @@ fn binary_heap_insert_works() {
 
 #[test]
 fn binary_heap_remove_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
+    let peer_id = PeerId::random();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 10);
 
     let key1 = Key::from(vec![1]);
@@ -48,9 +43,7 @@ fn binary_heap_remove_works() {
 
 #[test]
 fn binary_heap_limit_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
+    let peer_id = PeerId::random();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     let key1 = Key::from(vec![1]);
@@ -67,11 +60,9 @@ fn binary_heap_limit_works() {
 
 #[test]
 fn binary_heap_eviction_works() {
-    type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
+    type KademliaBucketKey<T> = libp2p::kad::KBucketKey<T>;
 
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [0u8].as_slice()).unwrap())
-            .unwrap();
+    let peer_id = PeerId::random();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     let key1 = Key::from(vec![1]);
@@ -99,9 +90,7 @@ fn binary_heap_eviction_works() {
 
 #[test]
 fn binary_heap_should_include_key_works() {
-    let peer_id =
-        PeerId::from_multihash(Multihash::wrap(Code::Identity.into(), [2u8].as_slice()).unwrap())
-            .unwrap();
+    let peer_id = PeerId::random();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     // Limit not reached

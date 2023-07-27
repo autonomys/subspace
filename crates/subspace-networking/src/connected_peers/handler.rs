@@ -41,8 +41,8 @@ impl fmt::Display for ConnectedPeersError {
 impl Error for ConnectedPeersError {}
 
 impl ConnectionHandler for Handler {
-    type InEvent = KeepAlive;
-    type OutEvent = ();
+    type FromBehaviour = KeepAlive;
+    type ToBehaviour = ();
     type Error = ConnectedPeersError;
     type InboundProtocol = DeniedUpgrade;
     type OutboundProtocol = DeniedUpgrade;

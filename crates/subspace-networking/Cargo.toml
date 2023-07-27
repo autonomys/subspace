@@ -51,7 +51,7 @@ unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_code
 void = "1.0.2"
 
 [dependencies.libp2p]
-version = "0.51.3"
+version = "0.52.1"
 default-features = false
 features = [
     "dns",
@@ -62,7 +62,6 @@ features = [
     "metrics",
     "noise",
     "ping",
-    "quic",
     "request-response",
     "serde",
     "tcp",
@@ -70,6 +69,18 @@ features = [
     "websocket",
     "yamux",
 ]
+[dependencies.libp2p-quic]
+version = "0.8.0-alpha"
+features = ["tokio"]
+
+# Remove after this patch goes to the release branch
+[dependencies.libp2p-kad]
+version = "0.44.3"
+
+# Remove after this patch goes to the release branch
+[dependencies.libp2p-connection-limits]
+version = "0.2.1"
 
 [dev-dependencies]
 rand = "0.8.5"
+

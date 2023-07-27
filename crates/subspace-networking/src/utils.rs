@@ -93,7 +93,7 @@ pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddre
 
             let peer_id: Option<PeerId> = modified_multiaddr.pop().and_then(|protocol| {
                 if let Protocol::P2p(peer_id) = protocol {
-                    peer_id.try_into().ok()
+                    Some(peer_id)
                 } else {
                     None
                 }

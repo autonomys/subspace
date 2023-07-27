@@ -50,7 +50,7 @@ use crate::utils::convert_multiaddresses;
 #[derive(Debug)]
 pub struct Behaviour {
     /// Protocol name.
-    protocol_name: &'static [u8],
+    protocol_name: &'static str,
     /// A mapping from `PeerId` to `ReservedPeerState`, where each `ReservedPeerState`
     /// represents the current state of the connection to a reserved peer.
     reserved_peers_state: HashMap<PeerId, ReservedPeerState>,
@@ -60,7 +60,7 @@ pub struct Behaviour {
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Protocol name.
-    pub protocol_name: &'static [u8],
+    pub protocol_name: &'static str,
     /// Predefined set of reserved peers with addresses.
     pub reserved_peers: Vec<Multiaddr>,
 }
@@ -144,7 +144,7 @@ impl Behaviour {
 
 impl NetworkBehaviour for Behaviour {
     type ConnectionHandler = Handler;
-    type OutEvent = Event;
+    type ToSwarm = Event;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -210,8 +210,9 @@ impl NetworkBehaviour for Behaviour {
             | FromSwarm::ExpiredListenAddr(_)
             | FromSwarm::ListenerError(_)
             | FromSwarm::ListenerClosed(_)
-            | FromSwarm::NewExternalAddr(_)
-            | FromSwarm::ExpiredExternalAddr(_) => {}
+            | FromSwarm::NewExternalAddrCandidate(_)
+            | FromSwarm::ExternalAddrConfirmed(_)
+            | FromSwarm::ExternalAddrExpired(_) => {}
         }
     }
 
@@ -227,7 +228,7 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         _: &mut Context<'_>,
         _: &mut impl PollParameters,
-    ) -> Poll<ToSwarm<Self::OutEvent, THandlerInEvent<Self>>> {
+    ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         for (_, state) in self.reserved_peers_state.iter_mut() {
             trace!(?state, "Reserved peer state.");
 

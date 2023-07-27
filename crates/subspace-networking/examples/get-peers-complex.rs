@@ -1,12 +1,11 @@
 use futures::channel::oneshot;
 use futures::StreamExt;
-use libp2p::identity::ed25519::Keypair;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::{Code, MultihashDigest};
 use libp2p::PeerId;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
+use subspace_networking::utils::multihash::Multihash;
 use subspace_networking::{Config, NetworkingParametersManager};
 
 #[tokio::main]
@@ -15,7 +14,6 @@ async fn main() {
 
     let mut bootstrap_nodes = Vec::new();
     let mut expected_node_id = PeerId::random();
-    let mut expected_kaypair = Keypair::generate();
 
     const TOTAL_NODE_COUNT: usize = 100;
     const EXPECTED_NODE_INDEX: usize = 75;
@@ -28,7 +26,6 @@ async fn main() {
             bootstrap_addresses: bootstrap_nodes.clone(),
             ..Config::default()
         };
-        let keypair = config.keypair.clone().try_into_ed25519().unwrap();
 
         let (node, mut node_runner) = subspace_networking::create(config).unwrap();
 
@@ -36,7 +33,6 @@ async fn main() {
 
         if i == EXPECTED_NODE_INDEX {
             expected_node_id = node.id();
-            expected_kaypair = keypair;
         }
 
         let (node_address_sender, node_address_receiver) = oneshot::channel();
@@ -61,7 +57,7 @@ async fn main() {
 
         tokio::time::sleep(Duration::from_millis(40)).await;
 
-        let address = node_addr.with(Protocol::P2p(node.id().into()));
+        let address = node_addr.with(Protocol::P2p(node.id()));
 
         bootstrap_nodes.push(address);
 
@@ -103,7 +99,7 @@ async fn main() {
         .unwrap();
 
     // Prepare multihash to look for in Kademlia
-    let key = Code::Identity.digest(&expected_kaypair.public().to_bytes());
+    let key: Multihash = node.id().into();
 
     let peers = node
         .get_closest_peers(key)
