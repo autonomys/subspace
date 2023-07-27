@@ -81,7 +81,6 @@ use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_fraud_proof::domain_extrinsics_builder::DomainExtrinsicsBuilder;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -143,11 +142,6 @@ pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
         Hash,
         NativeElseWasmExecutor<ExecutorDispatch>,
         VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-        DomainExtrinsicsBuilder<
-            Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            NativeElseWasmExecutor<ExecutorDispatch>,
-        >,
     >;
 
 pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
@@ -157,11 +151,6 @@ pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
         NativeElseWasmExecutor<ExecutorDispatch>,
         Hash,
         VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-        DomainExtrinsicsBuilder<
-            Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            NativeElseWasmExecutor<ExecutorDispatch>,
-        >,
     >;
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
@@ -341,21 +330,16 @@ where
 
     let bundle_validator = BundleValidator::new(client.clone());
 
-    let domain_extrinsics_builder =
-        DomainExtrinsicsBuilder::new(client.clone(), Arc::new(executor.clone()));
-
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         client.clone(),
         Arc::new(executor.clone()),
         VerifierClient::new(client.clone()),
-        domain_extrinsics_builder.clone(),
     );
 
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         client.clone(),
         executor,
         VerifierClient::new(client.clone()),
-        domain_extrinsics_builder,
     );
 
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(

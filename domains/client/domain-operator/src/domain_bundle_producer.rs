@@ -1,7 +1,6 @@
 use crate::bundle_producer_election_solver::BundleProducerElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::parent_chain::ParentChainInterface;
-use crate::sortition::TransactionSelector;
 use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
@@ -19,7 +18,6 @@ use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
@@ -208,18 +206,13 @@ where
                         "Error getting tx range: {error}"
                     )))
                 })?;
-            let tx_selector = TransactionSelector::new(
-                U256::from_be_bytes(proof_of_election.vrf_hash()),
-                tx_range,
-                self.client.clone(),
-            );
             let (bundle_header, extrinsics) = self
                 .domain_bundle_proposer
                 .propose_bundle_at(
                     proof_of_election,
                     consensus_block_info,
                     self.parent_chain.clone(),
-                    tx_selector,
+                    tx_range,
                 )
                 .await?;
 
