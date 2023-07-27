@@ -53,11 +53,11 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     /// The configuration for the [`PeerInfo`] protocol.
     pub(crate) peer_info_config: PeerInfoConfig,
     /// Provides peer-info for local peer.
-    pub(crate) peer_info_provider: PeerInfoProvider,
+    pub(crate) peer_info_provider: Option<PeerInfoProvider>,
     /// The configuration for the [`ConnectedPeers`] protocol (general instance).
-    pub(crate) general_connected_peers_config: ConnectedPeersConfig,
+    pub(crate) general_connected_peers_config: Option<ConnectedPeersConfig>,
     /// The configuration for the [`ConnectedPeers`] protocol (special instance).
-    pub(crate) special_connected_peers_config: ConnectedPeersConfig,
+    pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -77,9 +77,11 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
-    pub(crate) peer_info: PeerInfoBehaviour,
-    pub(crate) general_connected_peers: ConnectedPeersBehaviour<GeneralConnectedPeersInstance>,
-    pub(crate) special_connected_peers: ConnectedPeersBehaviour<SpecialConnectedPeersInstance>,
+    pub(crate) peer_info: Toggle<PeerInfoBehaviour>,
+    pub(crate) general_connected_peers:
+        Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
+    pub(crate) special_connected_peers:
+        Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -105,6 +107,10 @@ where
             })
             .into();
 
+        let peer_info = config
+            .peer_info_provider
+            .map(|provider| PeerInfoBehaviour::new(config.peer_info_config, provider));
+
         Self {
             identify: Identify::new(config.identify),
             kademlia,
@@ -116,13 +122,15 @@ where
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
-            peer_info: PeerInfoBehaviour::new(config.peer_info_config, config.peer_info_provider),
-            general_connected_peers: ConnectedPeersBehaviour::new(
-                config.general_connected_peers_config,
-            ),
-            special_connected_peers: ConnectedPeersBehaviour::new(
-                config.special_connected_peers_config,
-            ),
+            peer_info: peer_info.into(),
+            general_connected_peers: config
+                .general_connected_peers_config
+                .map(ConnectedPeersBehaviour::new)
+                .into(),
+            special_connected_peers: config
+                .special_connected_peers_config
+                .map(ConnectedPeersBehaviour::new)
+                .into(),
         }
     }
 }
