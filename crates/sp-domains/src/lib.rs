@@ -20,6 +20,8 @@
 pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
+#[cfg(test)]
+mod tests;
 pub mod transaction;
 
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
@@ -40,7 +42,7 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{Blake2b256Hash, Randomness, U256};
+use subspace_core_primitives::{bidirectional_distance, Blake2b256Hash, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
@@ -567,6 +569,12 @@ pub struct DomainBlockLimit {
     pub max_block_size: u32,
     /// The max block weight for the domain.
     pub max_block_weight: Weight,
+}
+
+/// Checks if the signer Id hash is within the tx range
+pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_range: &U256) -> bool {
+    let distance_from_vrf_hash = bidirectional_distance(bundle_vrf_hash, signer_id_hash);
+    distance_from_vrf_hash <= (*tx_range / 2)
 }
 
 sp_api::decl_runtime_apis! {
