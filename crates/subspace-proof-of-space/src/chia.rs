@@ -2,7 +2,7 @@
 use crate::chiapos::Tables;
 #[cfg(any(feature = "parallel", test))]
 use crate::chiapos::TablesCache;
-use crate::{PosTableType, Quality, Table};
+use crate::{PosTableType, Quality, Table, TableGenerator};
 use core::mem;
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
 
@@ -33,7 +33,29 @@ impl<'a> Quality for ChiaQuality<'a> {
     }
 }
 
-/// Subspace proof of space table
+/// Subspace proof of space table generator.
+///
+/// Chia implementation.
+#[derive(Debug, Default, Clone)]
+pub struct ChiaTableGenerator {
+    tables_cache: TablesCache<K>,
+}
+
+impl TableGenerator<ChiaTable> for ChiaTableGenerator {
+    fn generate(&mut self, seed: &PosSeed) -> ChiaTable {
+        ChiaTable {
+            tables: Tables::<K>::create((*seed).into(), &mut self.tables_cache),
+        }
+    }
+
+    fn generate_parallel(&mut self, seed: &PosSeed) -> ChiaTable {
+        ChiaTable {
+            tables: Tables::<K>::create_parallel((*seed).into(), &mut self.tables_cache),
+        }
+    }
+}
+
+/// Subspace proof of space table.
 ///
 /// Chia implementation.
 #[derive(Debug)]
@@ -43,6 +65,7 @@ pub struct ChiaTable {
 
 impl Table for ChiaTable {
     const TABLE_TYPE: PosTableType = PosTableType::Chia;
+    type Generator = ChiaTableGenerator;
 
     type Quality<'a> = ChiaQuality<'a>;
 

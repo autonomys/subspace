@@ -1,32 +1,20 @@
 pub mod import_blocks;
-pub mod node_provider_storage;
 
-use crate::dsn::node_provider_storage::NodeProviderStorage;
 use crate::piece_cache::PieceCache;
-use crate::SegmentHeaderCache;
-use either::Either;
 use sc_client_api::AuxStore;
-use sc_consensus_subspace_rpc::SegmentHeaderProvider;
-use std::num::NonZeroUsize;
+use sc_consensus_subspace::SegmentHeadersStore;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
-use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::{
-    peer_id, BootstrappedNetworkingParameters, CreationError, MemoryProviderStorage,
-    NetworkParametersPersistenceError, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbError, ParityDbProviderStorage, PeerInfoProvider, PieceAnnouncementRequestHandler,
-    PieceAnnouncementResponse, PieceByHashRequestHandler, PieceByHashResponse, ProviderStorage,
+    CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
+    NodeRunner, ParityDbError, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
-
-/// Provider records cache size
-const MAX_PROVIDER_RECORDS_LIMIT: usize = 100000; // ~ 10 MB
 
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
 
@@ -81,32 +69,16 @@ pub struct DsnConfig {
     pub target_connections: u32,
 }
 
-type DsnProviderStorage<AS> =
-    NodeProviderStorage<PieceCache<AS>, Either<ParityDbProviderStorage, MemoryProviderStorage>>;
-
 pub(crate) fn create_dsn_instance<AS>(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
     piece_cache: PieceCache<AS>,
-    segment_header_cache: SegmentHeaderCache<AS>,
-) -> Result<(Node, NodeRunner<DsnProviderStorage<AS>>), DsnConfigurationError>
+    segment_headers_store: SegmentHeadersStore<AS>,
+) -> Result<(Node, NodeRunner<PieceCache<AS>>), DsnConfigurationError>
 where
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
-
-    let peer_id = peer_id(&dsn_config.keypair);
-
-    let external_provider_storage = if let Some(path) = &dsn_config.base_path {
-        let db_path = path.join("storage_providers_db");
-
-        let cache_size: NonZeroUsize = NonZeroUsize::new(MAX_PROVIDER_RECORDS_LIMIT)
-            .expect("Manual value should be greater than zero.");
-
-        Either::Left(ParityDbProviderStorage::new(&db_path, cache_size, peer_id)?)
-    } else {
-        Either::Right(MemoryProviderStorage::new(peer_id))
-    };
 
     let networking_parameters_registry = {
         dsn_config
@@ -114,23 +86,17 @@ where
             .map(|path| {
                 let db_path = path.join("known_addresses_db");
 
-                NetworkingParametersManager::new(&db_path, dsn_config.bootstrap_nodes.clone())
-                    .map(|manager| manager.boxed())
+                NetworkingParametersManager::new(&db_path).map(|manager| manager.boxed())
             })
-            .unwrap_or(Ok(BootstrappedNetworkingParameters::new(
-                dsn_config.bootstrap_nodes,
-            )
-            .boxed()))?
+            .transpose()?
     };
 
-    let provider_storage =
-        NodeProviderStorage::new(peer_id, piece_cache.clone(), external_provider_storage);
     let keypair = dsn_config.keypair.clone();
     let mut default_networking_config = subspace_networking::Config::new(
         dsn_protocol_version,
         keypair,
-        provider_storage.clone(),
-        PeerInfoProvider::new_node(),
+        piece_cache.clone(),
+        Some(PeerInfoProvider::new_node()),
     );
 
     default_networking_config
@@ -143,34 +109,6 @@ where
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry,
         request_response_protocols: vec![
-            PieceAnnouncementRequestHandler::create({
-                move |peer_id, req| {
-                    trace!(?req, %peer_id, "Piece announcement request received.");
-
-                    let provider_record = ProviderRecord {
-                        provider: peer_id,
-                        key: req.piece_index_hash.into(),
-                        addresses: req.addresses.clone(),
-                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                    };
-
-                    let result = match provider_storage.add_provider(provider_record) {
-                        Ok(()) => Some(PieceAnnouncementResponse::Success),
-                        Err(error) => {
-                            error!(
-                                %error,
-                                %peer_id,
-                                ?req,
-                                "Failed to add provider for received key."
-                            );
-
-                            None
-                        }
-                    };
-
-                    async move { result }
-                }
-            }),
             PieceByHashRequestHandler::create(move |_, req| {
                 let result = match piece_cache.get_piece(req.piece_index_hash) {
                     Ok(maybe_piece) => maybe_piece,
@@ -200,7 +138,7 @@ where
                             block_limit = ROOT_BLOCK_NUMBER_LIMIT;
                         }
 
-                        let max_segment_index = segment_header_cache.max_segment_index();
+                        let max_segment_index = segment_headers_store.max_segment_index();
 
                         // several last segment indexes
                         (SegmentIndex::ZERO..=max_segment_index)
@@ -210,20 +148,15 @@ where
                     }
                 };
 
-                let internal_result = segment_indexes
+                let maybe_segment_headers = segment_indexes
                     .iter()
-                    .map(|segment_index| segment_header_cache.get_segment_header(*segment_index))
-                    .collect::<Result<Option<Vec<SegmentHeader>>, _>>();
+                    .map(|segment_index| segment_headers_store.get_segment_header(*segment_index))
+                    .collect::<Option<Vec<SegmentHeader>>>();
 
-                let result = match internal_result {
-                    Ok(Some(segment_headers)) => Some(SegmentHeaderResponse { segment_headers }),
-                    Ok(None) => {
+                let result = match maybe_segment_headers {
+                    Some(segment_headers) => Some(SegmentHeaderResponse { segment_headers }),
+                    None => {
                         error!("Segment header collection contained empty segment headers.");
-
-                        None
-                    }
-                    Err(error) => {
-                        error!(%error, "Failed to get segment headers from cache");
 
                         None
                     }
@@ -240,7 +173,8 @@ where
         special_target_connections: 0,
         reserved_peers: dsn_config.reserved_peers,
         // maintain permanent connections with any peer
-        general_connected_peers_handler: Arc::new(|_| true),
+        general_connected_peers_handler: Some(Arc::new(|_| true)),
+        bootstrap_addresses: dsn_config.bootstrap_nodes,
 
         ..default_networking_config
     };

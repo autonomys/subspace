@@ -33,6 +33,7 @@ use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, derive_randomness, verify_solution, VerifySolutionParams,
@@ -154,6 +155,8 @@ fn valid_header(
     let pieces_in_sector = farmer_parameters.farmer_protocol_info.max_pieces_in_sector;
     let sector_size = sector_size(pieces_in_sector);
 
+    let mut table_generator = PosTable::generator();
+
     for sector_index in iter::from_fn(|| Some(rand::random())) {
         let mut plotted_sector_bytes = vec![0; sector_size];
         let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
@@ -169,6 +172,7 @@ fn valid_header(
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
+            &mut table_generator,
         ))
         .unwrap();
 
@@ -193,6 +197,7 @@ fn valid_header(
                 &public_key,
                 &farmer_parameters.kzg,
                 &farmer_parameters.erasure_coding,
+                &mut table_generator,
             )
             .unwrap()
             .next()

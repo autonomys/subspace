@@ -1,18 +1,21 @@
-use crate::{self as pallet_domains, FungibleFreezeId};
+use crate::domain_registry::{DomainConfig, DomainObject};
+use crate::{self as pallet_domains, BundleError, DomainRegistry, FungibleFreezeId};
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::weights::Weight;
+use frame_support::{assert_err, assert_ok, parameter_types};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
+use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt,
     GenerateGenesisStateRoot, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection,
     SealedBundleHeader,
 };
 use sp_runtime::testing::Header;
-use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, IdentityLookup};
+use sp_runtime::OpaqueExtrinsic;
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::U256 as P256;
 use subspace_runtime_primitives::SSC;
@@ -184,6 +187,20 @@ pub(crate) fn create_dummy_receipt(
     parent_domain_block_receipt_hash: H256,
     block_extrinsics_roots: Vec<H256>,
 ) -> ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128> {
+    let (execution_trace, execution_trace_root) = if block_number == 0 {
+        (Vec::new(), Default::default())
+    } else {
+        let execution_trace = vec![H256::random(), H256::random()];
+        let trace: Vec<[u8; 32]> = execution_trace
+            .iter()
+            .map(|r| r.encode().try_into().expect("H256 must fit into [u8; 32]"))
+            .collect();
+        let execution_trace_root = MerkleTree::from_leaves(trace.as_slice())
+            .root()
+            .expect("Compute merkle root of trace should success")
+            .into();
+        (execution_trace, execution_trace_root)
+    };
     ExecutionReceipt {
         domain_block_number: block_number,
         domain_block_hash: H256::random(),
@@ -192,12 +209,8 @@ pub(crate) fn create_dummy_receipt(
         consensus_block_hash,
         block_extrinsics_roots,
         final_state_root: Default::default(),
-        execution_trace: if block_number == 0 {
-            Vec::new()
-        } else {
-            vec![H256::random(), H256::random()]
-        },
-        execution_trace_root: Default::default(),
+        execution_trace,
+        execution_trace_root,
         total_rewards: 0,
     }
 }
@@ -427,4 +440,103 @@ fn test_calculate_tx_range() {
         cur_tx_range.checked_mul(&P256::from(4_u64)).unwrap(),
         pallet_domains::calculate_tx_range(cur_tx_range, 4000, 1000)
     );
+}
+
+#[test]
+fn test_bundle_fromat_verification() {
+    let opaque_extrinsic = |dest: u64, value: u128| -> OpaqueExtrinsic {
+        UncheckedExtrinsic {
+            signature: None,
+            function: RuntimeCall::Balances(pallet_balances::Call::transfer { dest, value }),
+        }
+        .into()
+    };
+    new_test_ext().execute_with(|| {
+        let domain_id = DomainId::new(0);
+        let max_extrincis_count = 10;
+        let max_block_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
+        let domain_config = DomainConfig {
+            domain_name: b"test-domain".to_vec(),
+            runtime_id: 0u32,
+            max_block_size,
+            max_block_weight: Weight::MAX,
+            bundle_slot_probability: (1, 1),
+            target_bundles_per_block: 1,
+        };
+        let domain_obj = DomainObject {
+            owner_account_id: Default::default(),
+            created_at: Default::default(),
+            genesis_receipt_hash: Default::default(),
+            domain_config,
+        };
+        DomainRegistry::<Test>::insert(domain_id, domain_obj);
+
+        let mut valid_bundle = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
+        valid_bundle.extrinsics.push(opaque_extrinsic(1, 1));
+        valid_bundle.extrinsics.push(opaque_extrinsic(2, 2));
+        valid_bundle.sealed_header.header.bundle_extrinsics_root = BlakeTwo256::ordered_trie_root(
+            valid_bundle
+                .extrinsics
+                .iter()
+                .map(|xt| xt.encode())
+                .collect(),
+            sp_core::storage::StateVersion::V1,
+        );
+        assert_ok!(pallet_domains::Pallet::<Test>::check_bundle_size(
+            &valid_bundle,
+            max_block_size
+        ));
+        assert_ok!(pallet_domains::Pallet::<Test>::check_extrinsics_root(
+            &valid_bundle
+        ));
+
+        // Bundle exceed max size
+        let mut too_large_bundle = valid_bundle.clone();
+        for i in 0..max_extrincis_count {
+            too_large_bundle
+                .extrinsics
+                .push(opaque_extrinsic(i as u64, i as u128));
+        }
+        assert_err!(
+            pallet_domains::Pallet::<Test>::check_bundle_size(&too_large_bundle, max_block_size),
+            BundleError::BundleTooLarge
+        );
+
+        // Bundle with wrong value of `bundle_extrinsics_root`
+        let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
+        invalid_extrinsic_root_bundle
+            .sealed_header
+            .header
+            .bundle_extrinsics_root = H256::random();
+        assert_err!(
+            pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
+            BundleError::InvalidExtrinsicRoot
+        );
+
+        // Bundle with wrong value of `extrinsics`
+        let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
+        invalid_extrinsic_root_bundle.extrinsics[0] = opaque_extrinsic(3, 3);
+        assert_err!(
+            pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
+            BundleError::InvalidExtrinsicRoot
+        );
+
+        // Bundle with addtional extrinsic
+        let mut invalid_extrinsic_root_bundle = valid_bundle.clone();
+        invalid_extrinsic_root_bundle
+            .extrinsics
+            .push(opaque_extrinsic(4, 4));
+        assert_err!(
+            pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
+            BundleError::InvalidExtrinsicRoot
+        );
+
+        // Bundle with missing extrinsic
+        let mut invalid_extrinsic_root_bundle = valid_bundle;
+        invalid_extrinsic_root_bundle.extrinsics.pop();
+        assert_err!(
+            pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
+            BundleError::InvalidExtrinsicRoot
+        );
+    });
 }

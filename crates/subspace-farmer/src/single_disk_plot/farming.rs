@@ -83,6 +83,8 @@ where
     NC: NodeClient,
     PosTable: Table,
 {
+    let mut table_generator = PosTable::generator();
+
     while let Some(slot_info) = slot_info_notifications.next().await {
         let slot = slot_info.slot_number;
         let sectors_metadata = sectors_metadata.read();
@@ -120,6 +122,7 @@ where
                 &reward_address,
                 &kzg,
                 &erasure_coding,
+                &mut table_generator,
             )? {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,

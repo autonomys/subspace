@@ -68,23 +68,12 @@ impl ProofOfTime {
             });
         }
 
-        #[cfg(feature = "parallel")]
-        let result = pot_aes::verify_parallel(
+        if pot_aes::verify_sequential(
             &proof.seed,
             &proof.key,
             &proof.checkpoints,
             self.checkpoint_iterations,
-        );
-
-        #[cfg(not(feature = "parallel"))]
-        let result = pot_aes::verify_sequential(
-            &proof.seed,
-            &proof.key,
-            &proof.checkpoints,
-            self.checkpoint_iterations,
-        );
-
-        if result {
+        ) {
             Ok(())
         } else {
             Err(PotVerificationError::VerificationFailed)

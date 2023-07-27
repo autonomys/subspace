@@ -55,25 +55,21 @@ where
             let segment_commitment = match maybe_segment_commitment {
                 Some(segment_commitment) => segment_commitment,
                 None => {
-                    let segment_commitments = match self
-                        .node_client
-                        .segment_commitments(vec![segment_index])
-                        .await
-                    {
-                        Ok(segment_commitments) => segment_commitments,
-                        Err(error) => {
-                            error!(
-                                %piece_index,
-                                ?error,
-                                "Failed tor retrieve segment commitment from node"
-                            );
-                            return None;
-                        }
-                    };
+                    let segment_headers =
+                        match self.node_client.segment_headers(vec![segment_index]).await {
+                            Ok(segment_headers) => segment_headers,
+                            Err(error) => {
+                                error!(
+                                    %piece_index,
+                                    ?error,
+                                    "Failed tor retrieve segment headers from node"
+                                );
+                                return None;
+                            }
+                        };
 
-                    let segment_commitment = match segment_commitments.into_iter().next().flatten()
-                    {
-                        Some(segment_commitment) => segment_commitment,
+                    let segment_commitment = match segment_headers.into_iter().next().flatten() {
+                        Some(segment_header) => segment_header.segment_commitment(),
                         None => {
                             error!(
                                 %piece_index,

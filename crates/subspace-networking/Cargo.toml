@@ -16,6 +16,7 @@ include = [
 ]
 
 [dependencies]
+async-mutex = "1.4.0"
 actix-web = "4.3.1"
 anyhow = "1.0.71"
 async-trait = "0.1.68"
@@ -33,7 +34,7 @@ hex = "0.4.3"
 lru = "0.10.0"
 nohash-hasher = "0.2.0"
 parity-db = "0.4.6"
-parity-scale-codec = "3.6.1"
+parity-scale-codec = "3.6.3"
 parking_lot = "0.12.1"
 pin-project = "1.1.0"
 prometheus-client = "0.19.0"

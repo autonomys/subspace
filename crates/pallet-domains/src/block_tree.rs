@@ -8,6 +8,7 @@ use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
+use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
@@ -26,6 +27,7 @@ pub enum Error {
     MaxHeadDomainNumber,
     MultipleERsAfterChallengePeriod,
     MissingDomainBlock,
+    InvalidTraceRoot,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -121,6 +123,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         domain_block_number,
         block_extrinsics_roots,
         parent_domain_block_receipt_hash,
+        execution_trace,
+        execution_trace_root,
         ..
     } = execution_receipt;
 
@@ -137,6 +141,24 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         ensure!(
             !block_extrinsics_roots.is_empty() && *block_extrinsics_roots == execution_inbox,
             Error::InvalidExtrinsicsRoots
+        );
+
+        let mut trace = Vec::with_capacity(execution_trace.len());
+        for root in execution_trace {
+            trace.push(
+                root.encode()
+                    .try_into()
+                    .map_err(|_| Error::InvalidTraceRoot)?,
+            );
+        }
+        let expected_execution_trace_root: sp_core::H256 =
+            MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .ok_or(Error::InvalidTraceRoot)?
+                .into();
+        ensure!(
+            expected_execution_trace_root == *execution_trace_root,
+            Error::InvalidTraceRoot
         );
     }
 
@@ -774,6 +796,58 @@ mod tests {
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &unknown_parent_receipt),
                 Error::UnknownParentBlockReceipt
+            );
+        });
+    }
+
+    #[test]
+    fn test_invalid_trace_root_receipt() {
+        let creator = 0u64;
+        let operator_id1 = 1u64;
+        let operator_id2 = 2u64;
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            extend_block_tree(domain_id, operator_id1, 3);
+
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+
+            // Get the head receipt
+            let current_head_receipt =
+                get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
+                    .unwrap()
+                    .execution_receipt;
+
+            // Receipt with wrong value of `execution_trace_root`
+            let mut invalid_receipt = current_head_receipt.clone();
+            invalid_receipt.execution_trace_root = H256::random();
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                Error::InvalidTraceRoot
+            );
+
+            // Receipt with wrong value of trace
+            let mut invalid_receipt = current_head_receipt.clone();
+            invalid_receipt.execution_trace[0] = H256::random();
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                Error::InvalidTraceRoot
+            );
+
+            // Receipt with addtional trace
+            let mut invalid_receipt = current_head_receipt.clone();
+            invalid_receipt.execution_trace.push(H256::random());
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                Error::InvalidTraceRoot
+            );
+
+            // Receipt with missing trace
+            let mut invalid_receipt = current_head_receipt;
+            invalid_receipt.execution_trace.pop();
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
+                Error::InvalidTraceRoot
             );
         });
     }

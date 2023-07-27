@@ -21,6 +21,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, 
 use subspace_farmer_components::sector::{sector_size, SectorContentsMap, SectorMetadata};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
+use subspace_proof_of_space::Table;
 
 type PosTable = ChiaTable;
 
@@ -51,6 +52,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
     )
     .unwrap();
+    let mut table_generator = PosTable::generator();
     let archived_history_segment = archiver
         .add_block(
             AsRef::<[u8]>::as_ref(input.as_ref()).to_vec(),
@@ -123,6 +125,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
+            &mut table_generator,
         ))
         .unwrap();
 

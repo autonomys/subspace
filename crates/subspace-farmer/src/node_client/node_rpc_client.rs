@@ -7,9 +7,10 @@ use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentHeader, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
-    FarmerAppInfo, RewardSignatureResponse, RewardSigningInfo, SlotInfo, SolutionResponse,
+    FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
+    SolutionResponse,
 };
 
 // Defines max_concurrent_requests constant in the node rpc client.
@@ -123,14 +124,21 @@ impl NodeClient for NodeRpcClient {
         )))
     }
 
-    async fn segment_commitments(
+    async fn subscribe_node_sync_status_change(
         &self,
-        segment_indexes: Vec<SegmentIndex>,
-    ) -> Result<Vec<Option<SegmentCommitment>>, RpcError> {
-        Ok(self
+    ) -> Result<Pin<Box<dyn Stream<Item = NodeSyncStatus> + Send + 'static>>, RpcError> {
+        let subscription = self
             .client
-            .request("subspace_segmentCommitments", rpc_params![&segment_indexes])
-            .await?)
+            .subscribe(
+                "subspace_subscribeNodeSyncStatusChange",
+                rpc_params![],
+                "subspace_unsubscribeNodeSyncStatusChange",
+            )
+            .await?;
+
+        Ok(Box::pin(subscription.filter_map(
+            |node_sync_status_result| async move { node_sync_status_result.ok() },
+        )))
     }
 
     async fn segment_headers(

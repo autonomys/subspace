@@ -8,7 +8,7 @@ use rayon::ThreadPoolBuilder;
 #[cfg(any(feature = "chia", feature = "shim"))]
 use subspace_core_primitives::PosSeed;
 #[cfg(any(feature = "chia", feature = "shim"))]
-use subspace_proof_of_space::{Quality, Table};
+use subspace_proof_of_space::{Quality, Table, TableGenerator};
 
 #[cfg(any(feature = "chia", feature = "shim"))]
 fn pos_bench<PosTable>(
@@ -35,22 +35,24 @@ fn pos_bench<PosTable>(
 
     let mut group = c.benchmark_group(name);
 
+    let mut generator_instance = PosTable::generator();
     group.bench_function("table/single", |b| {
         b.iter(|| {
-            PosTable::generate(black_box(&seed));
+            generator_instance.generate(black_box(&seed));
         });
     });
 
     #[cfg(feature = "parallel")]
     {
+        let mut generator_instance = PosTable::generator();
         group.bench_function("table/parallel", |b| {
             b.iter(|| {
-                PosTable::generate_parallel(black_box(&seed));
+                generator_instance.generate_parallel(black_box(&seed));
             });
         });
     }
 
-    let table = PosTable::generate(&seed);
+    let table = generator_instance.generate(&seed);
 
     group.bench_function("quality/no-solution", |b| {
         b.iter(|| {

@@ -5,7 +5,6 @@ use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
 use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
 use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
@@ -15,17 +14,15 @@ use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
-use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PeerInfo, PeerInfoProvider, PieceAnnouncementRequestHandler,
-    PieceAnnouncementResponse, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-    ProviderStorage, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
-    SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
+    ParityDbProviderStorage, PeerInfo, PeerInfoProvider, PieceByHashRequest,
+    PieceByHashRequestHandler, PieceByHashResponse, SegmentHeaderBySegmentIndexesRequestHandler,
+    SegmentHeaderRequest, SegmentHeaderResponse,
 };
-use tracing::{debug, error, info, trace, Instrument};
+use tracing::{debug, error, info, Instrument};
 
 const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
 
@@ -54,7 +51,7 @@ pub(super) fn configure_dsn(
 ) -> Result<
     (
         Node,
-        NodeRunner<FarmerProviderStorage<ParityDbProviderStorage, FarmerPieceCache>>,
+        NodeRunner<FarmerProviderStorage<FarmerPieceCache>>,
         FarmerPieceCache,
     ),
     anyhow::Error,
@@ -64,8 +61,7 @@ pub(super) fn configure_dsn(
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
-        NetworkingParametersManager::new(&known_addresses_db_path, bootstrap_nodes)
-            .map(|manager| manager.boxed())?
+        NetworkingParametersManager::new(&known_addresses_db_path).map(|manager| manager.boxed())?
     };
 
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
@@ -99,12 +95,7 @@ pub(super) fn configure_dsn(
         "Piece cache initialized successfully"
     );
 
-    let farmer_provider_storage = FarmerProviderStorage::new(
-        peer_id,
-        readers_and_pieces.clone(),
-        persistent_provider_storage,
-        piece_cache.clone(),
-    );
+    let farmer_provider_storage = FarmerProviderStorage::new(peer_id, piece_cache.clone());
 
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
@@ -147,38 +138,16 @@ pub(super) fn configure_dsn(
         protocol_prefix,
         keypair,
         farmer_provider_storage.clone(),
-        PeerInfoProvider::new_farmer(Box::new(archival_storage_pieces)),
+        Some(PeerInfoProvider::new_farmer(Box::new(
+            archival_storage_pieces,
+        ))),
     );
     let config = Config {
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: !disable_private_ips,
-        networking_parameters_registry,
+        networking_parameters_registry: Some(networking_parameters_registry),
         request_response_protocols: vec![
-            PieceAnnouncementRequestHandler::create({
-                move |peer_id, req| {
-                    trace!(?req, %peer_id, "Piece announcement request received.");
-
-                    let provider_record = ProviderRecord {
-                        provider: peer_id,
-                        key: req.piece_index_hash.into(),
-                        addresses: req.addresses.clone(),
-                        expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                    };
-
-                    let result = farmer_provider_storage.add_provider(provider_record);
-                    if let Err(error) = &result {
-                        error!(
-                            %error,
-                            %peer_id,
-                            ?req,
-                            "Failed to add provider for received key."
-                        );
-                    };
-
-                    async move { result.map(|_| PieceAnnouncementResponse::Success).ok() }
-                }
-            }),
             PieceByHashRequestHandler::create(
                 move |_, &PieceByHashRequest { piece_index_hash }| {
                     debug!(?piece_index_hash, "Piece request received. Trying cache...");
@@ -300,9 +269,12 @@ pub(super) fn configure_dsn(
         max_pending_incoming_connections: pending_in_connections,
         general_target_connections: target_connections,
         // maintain permanent connections between farmers
-        special_connected_peers_handler: Arc::new(PeerInfo::is_farmer),
+        special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
         // other (non-farmer) connections
-        general_connected_peers_handler: Arc::new(|peer_info| !PeerInfo::is_farmer(peer_info)),
+        general_connected_peers_handler: Some(Arc::new(|peer_info| {
+            !PeerInfo::is_farmer(peer_info)
+        })),
+        bootstrap_addresses: bootstrap_nodes,
         ..default_config
     };
 

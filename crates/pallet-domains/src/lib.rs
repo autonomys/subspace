@@ -32,7 +32,9 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
+use crate::staking::Operator;
 use codec::{Decode, Encode};
+use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectFreeze};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
@@ -43,10 +45,9 @@ use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerEle
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, RuntimeId,
+    OperatorPublicKey, ProofOfElection, RuntimeId,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
-use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
+use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -482,6 +483,10 @@ mod pallet {
         StaleBundle,
         /// An invalid execution receipt found in the bundle.
         Receipt(BlockTreeError),
+        /// Bundle size exceed the max bundle size limit in the domain config
+        BundleTooLarge,
+        // Bundle with an invalid extrinsic root
+        InvalidExtrinsicRoot,
     }
 
     impl<T> From<RuntimeRegistryError> for Error<T> {
@@ -983,9 +988,8 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle } => {
-                    Self::pre_dispatch_submit_bundle(opaque_bundle)
-                }
+                Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
+                    .map_err(|_| InvalidTransaction::Call.into()),
                 Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
@@ -1103,18 +1107,6 @@ impl<T: Config> Pallet<T> {
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
-    fn pre_dispatch_submit_bundle(
-        opaque_bundle: &OpaqueBundleOf<T>,
-    ) -> Result<(), TransactionValidityError> {
-        let domain_id = opaque_bundle.domain_id();
-        let receipt = &opaque_bundle.sealed_header.header.receipt;
-
-        // TODO: Implement bundle validation.
-
-        verify_execution_receipt::<T>(domain_id, receipt)
-            .map_err(|_| InvalidTransaction::Call.into())
-    }
-
     // Check if a bundle is stale
     fn check_stale_bundle(
         current_block_number: T::BlockNumber,
@@ -1149,41 +1141,44 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
-        let operator_id = opaque_bundle.operator_id();
-        let sealed_header = &opaque_bundle.sealed_header;
+    fn check_bundle_size(
+        opaque_bundle: &OpaqueBundleOf<T>,
+        max_size: u32,
+    ) -> Result<(), BundleError> {
+        let bundle_size = opaque_bundle
+            .extrinsics
+            .iter()
+            .fold(0, |acc, xt| acc + xt.encoded_size() as u32);
+        ensure!(max_size >= bundle_size, BundleError::BundleTooLarge);
+        Ok(())
+    }
 
-        let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+    fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let expected_extrinsics_root = BlakeTwo256::ordered_trie_root(
+            opaque_bundle
+                .extrinsics
+                .iter()
+                .map(|xt| xt.encode())
+                .collect(),
+            sp_core::storage::StateVersion::V1,
+        );
+        ensure!(
+            expected_extrinsics_root == opaque_bundle.extrinsics_root(),
+            BundleError::InvalidExtrinsicRoot
+        );
+        Ok(())
+    }
 
-        if !operator
-            .signing_key
-            .verify(&sealed_header.pre_hash(), &sealed_header.signature)
-        {
-            return Err(BundleError::BadBundleSignature);
-        }
-
-        let domain_id = opaque_bundle.domain_id();
-        let receipt = &sealed_header.header.receipt;
-        let bundle_create_at = sealed_header.header.consensus_block_number;
-
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
-
-        // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
-        Self::check_stale_bundle(current_block_number, bundle_create_at)?;
-
-        // TODO: Implement bundle validation.
-
-        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
-
-        let proof_of_election = &sealed_header.header.proof_of_election;
+    fn check_proof_of_election(
+        domain_id: DomainId,
+        operator_id: OperatorId,
+        operator: Operator<BalanceOf<T>, T::Share>,
+        bundle_slot_probability: (u64, u64),
+        proof_of_election: &ProofOfElection<T::DomainHash>,
+    ) -> Result<(), BundleError> {
         proof_of_election
             .verify_vrf_signature(&operator.signing_key)
             .map_err(|_| BundleError::BadVrfSignature)?;
-
-        let bundle_slot_probability = DomainRegistry::<T>::get(domain_id)
-            .ok_or(BundleError::InvalidDomainId)?
-            .domain_config
-            .bundle_slot_probability;
 
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
@@ -1197,6 +1192,50 @@ impl<T: Config> Pallet<T> {
         if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
             return Err(BundleError::ThresholdUnsatisfied);
         }
+
+        Ok(())
+    }
+
+    fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let domain_id = opaque_bundle.domain_id();
+        let operator_id = opaque_bundle.operator_id();
+        let sealed_header = &opaque_bundle.sealed_header;
+
+        let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+
+        if !operator
+            .signing_key
+            .verify(&sealed_header.pre_hash(), &sealed_header.signature)
+        {
+            return Err(BundleError::BadBundleSignature);
+        }
+
+        // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
+        let current_block_number = frame_system::Pallet::<T>::current_block_number();
+        let bundle_create_at = sealed_header.header.consensus_block_number;
+        Self::check_stale_bundle(current_block_number, bundle_create_at)?;
+
+        let domain_config = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config;
+
+        // TODO: check bundle weight with `domain_config.max_block_weight`
+
+        Self::check_bundle_size(opaque_bundle, domain_config.max_block_size)?;
+
+        Self::check_extrinsics_root(opaque_bundle)?;
+
+        let proof_of_election = &sealed_header.header.proof_of_election;
+        Self::check_proof_of_election(
+            domain_id,
+            operator_id,
+            operator,
+            domain_config.bundle_slot_probability,
+            proof_of_election,
+        )?;
+
+        let receipt = &sealed_header.header.receipt;
+        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
         Ok(())
     }

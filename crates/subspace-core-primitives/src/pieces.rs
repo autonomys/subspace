@@ -20,7 +20,7 @@ use derive_more::{
     Add, AddAssign, AsMut, AsRef, Deref, DerefMut, Display, Div, DivAssign, From, Into, Mul,
     MulAssign, Sub, SubAssign,
 };
-use parity_scale_codec::{Decode, Encode, Input, MaxEncodedLen};
+use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use scale_info::TypeInfo;
@@ -552,7 +552,7 @@ impl RecordWitness {
 /// Internally piece contains a record and corresponding witness that together with segment
 /// commitment of the segment this piece belongs to can be used to verify that a piece belongs to
 /// the actual archival history of the blockchain.
-#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Piece(Box<PieceArray>);
 
@@ -560,19 +560,6 @@ impl Default for Piece {
     #[inline]
     fn default() -> Self {
         Self(PieceArray::new_boxed())
-    }
-}
-
-// TODO: Manual implementation due to https://github.com/paritytech/parity-scale-codec/issues/419,
-//  can be replaced with derive once fixed upstream version is released
-impl Decode for Piece {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        let piece = parity_scale_codec::decode_vec_with_len::<u8, _>(input, Self::SIZE)
-            .map_err(|error| error.chain("Could not decode `Piece.0`"))?;
-        let mut piece = mem::ManuallyDrop::new(piece);
-        // SAFETY: Original memory is not dropped and guaranteed to be allocated
-        let piece = unsafe { Box::from_raw(piece.as_mut_ptr() as *mut PieceArray) };
-        Ok(Piece(piece))
     }
 }
 
