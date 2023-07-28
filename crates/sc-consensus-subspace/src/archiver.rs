@@ -366,10 +366,17 @@ where
                 *last_archived_block.block.header().number(),
             ));
 
+            let last_archived_block_encoded =
+                if last_archived_block.block.header().number().is_zero() {
+                    encode_genesis_block(&last_archived_block)
+                } else {
+                    last_archived_block.encode()
+                };
+
             Archiver::with_initial_state(
                 kzg,
                 last_segment_header,
-                &last_archived_block.encode(),
+                &last_archived_block_encoded,
                 block_object_mappings,
             )
             .expect("Incorrect parameters for archiver")
